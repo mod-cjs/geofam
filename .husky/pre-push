@@ -1,0 +1,12 @@
+# Workflow trunk-based : pas de push direct sur main → passer par une PR.
+# Bypass ponctuel (bootstrap / urgence) : git push --no-verify
+protected="main"
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/$protected" ]; then
+    echo "⛔  Push direct sur '$protected' bloqué (workflow trunk-based)."
+    echo "    → git switch -c feat/<n°ticket>-slug, puis ouvre une PR avec « Closes #N »."
+    echo "    (Bypass ponctuel : git push --no-verify)"
+    exit 1
+  fi
+done
+exit 0
