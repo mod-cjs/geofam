@@ -1,0 +1,46 @@
+# Dependances
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Turbo
+.turbo/
+
+# Tests / couverture
+coverage/
+playwright-report/
+test-results/
+.nyc_output/
+
+# Secrets & environnement (JAMAIS commites)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editeurs
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# Prisma
+prisma/*.db
+prisma/migrations/dev/
+
+# Divers
+*.local

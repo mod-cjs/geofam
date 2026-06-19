@@ -1,0 +1,27 @@
+# PostgreSQL local de developpement.
+# Demarrage : pnpm db:up   |   Arret : pnpm db:down   |   Logs : pnpm db:logs
+# La meme version majeure (16) que la base managee Render pour eviter les surprises.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: roadsen-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: roadsen
+      POSTGRES_PASSWORD: roadsen_dev
+      POSTGRES_DB: roadsen_dev
+      # Active des fonctions necessaires aux tests d isolation (RLS teste avec roles).
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      - "5432:5432"
+    volumes:
+      - roadsen_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roadsen -d roadsen_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  roadsen_pgdata:
+    name: roadsen_pgdata
