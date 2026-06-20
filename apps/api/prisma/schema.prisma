@@ -1,0 +1,122 @@
+// =====================================================================
+//  ROADSEN — schema.prisma  (PostgreSQL, multi-tenant SaaS)
+//
+//  Socle minimal (issue #38). Sous-ensemble REEL de la conception
+//  (02-Conception/schema.prisma) : juste de quoi prouver l'isolation
+//  multi-tenant de bout en bout (Organization → Membership → Project).
+//
+//  Conventions (alignees sur la conception) :
+//   - Toute table METIER porte orgId NON-NULL (pivot d'isolation, FK -> organizations).
+//   - PK uuid ; mapping snake_case via @@map / @map.
+//   - Prisma seul NE garantit PAS l'isolation : la 1ere migration SQL
+//     active RLS (ENABLE + FORCE) + policies. Voir
+//     prisma/migrations/0001_init_rls/migration.sql.
+//   - L'app pose `SET LOCAL app.current_org = '<uuid>'` par transaction.
+//     RLS = filet ; le guard applicatif = defense en profondeur.
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+// ----------------------- Identite / tenant / RBAC -----------------------
+
+enum OrgStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+// Role AU SEIN d'un tenant (porte par Membership).
+enum Role {
+  OWNER
+  ADMIN
+  ENGINEER // ingenieur
+  TECHNICIAN // technicien-sondeur
+  VIEWER
+}
+
+// Role PLATEFORME (transverse, hors tenant) — back-office STARFIRE.
+enum PlatformRole {
+  SUPERADMIN
+  SUPPORT
+}
+
+model Organization {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String    @unique
+  status    OrgStatus @default(ACTIVE)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  memberships Membership[]
+  projects    Project[]
+
+  @@map("organizations")
+}
+
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  email        String        @unique
+  passwordHash String?       @map("password_hash")
+  fullName     String        @map("full_name")
+  platformRole PlatformRole? @map("platform_role")
+  isActive     Boolean       @default(true) @map("is_active")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  memberships Membership[]
+
+  @@map("users")
+}
+
+// User x Organization + role tenant. Un utilisateur peut appartenir a
+// plusieurs organisations ; le couple (orgId, userId) est unique.
+model Membership {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      Role
+  createdAt DateTime @default(now()) @map("created_at")
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+  @@index([orgId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+// ----------------------- Table metier porteuse de donnees -----------------------
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+// Table metier minimale, presente uniquement pour PROUVER l'isolation
+// (un tenant ne voit jamais les projets d'un autre, RLS + guard).
+model Project {
+  id          String        @id @default(uuid()) @db.Uuid
+  orgId       String        @map("org_id") @db.Uuid
+  name        String
+  status      ProjectStatus @default(DRAFT)
+  createdById String        @map("created_by_id") @db.Uuid
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([orgId, status])
+  @@map("projects")
+}

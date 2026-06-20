@@ -161,7 +161,52 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Migrations Prisma (deploy)
         run: pnpm --filter @roadsen/api prisma migrate deploy
-      - name: Tests integration + isolation multi-tenant
+      - name: Provisionne le role applicatif roadsen_app (prod-like)
+        # La migration 0001 cree roadsen_app NOLOGIN NOBYPASSRLS + GRANTs DML.
+        # En prod (Render) ce role est non-proprietaire et non-superuser : c'est
+        # LUI qui doit subir RLS FORCE. On lui donne juste un LOGIN + mot de passe
+        # JETABLE de CI pour pouvoir s'y connecter et PROUVER l'isolation sur le
+        # role de prod-like (et non sur le proprietaire 'roadsen', trop puissant).
+        env:
+          PGPASSWORD: roadsen_ci
+        run: |
+          psql -h localhost -U roadsen -d roadsen_ci -v ON_ERROR_STOP=1 \
+            -c "ALTER ROLE roadsen_app LOGIN PASSWORD 'ci_only';"
+      - name: Garde-fou anti-derive RLS (toute table org_id => RLS+FORCE+policy)
+        # SEUL vrai garde-fou contre l'oubli de RLS sur une FUTURE table : toute
+        # table portant une colonne 'org_id' DOIT avoir relrowsecurity ET
+        # relforcerowsecurity ET au moins une policy. Sinon CI rouge. Independant
+        # du role : on l interroge en tant que proprietaire (catalogue systeme).
+        env:
+          PGPASSWORD: roadsen_ci
+        run: |
+          set -euo pipefail
+          missing=$(psql -h localhost -U roadsen -d roadsen_ci -At -v ON_ERROR_STOP=1 -c "
+            SELECT string_agg(
+                     c.relname || ' (' ||
+                       CASE WHEN NOT c.relrowsecurity      THEN 'RLS off ' ELSE '' END ||
+                       CASE WHEN NOT c.relforcerowsecurity THEN 'FORCE off ' ELSE '' END ||
+                       CASE WHEN p.cnt = 0                 THEN 'no policy' ELSE '' END ||
+                     ')', ', ')
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'org_id' AND a.attnum > 0 AND NOT a.attisdropped
+            LEFT JOIN (SELECT polrelid, count(*) cnt FROM pg_policy GROUP BY polrelid) p ON p.polrelid = c.oid
+            WHERE n.nspname = 'public' AND c.relkind = 'r'
+              AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity OR COALESCE(p.cnt,0) = 0);
+          ")
+          if [ -n "$missing" ]; then
+            echo "::error::Table(s) avec org_id sans RLS FORCE + policy : $missing"
+            exit 1
+          fi
+          echo "OK : toutes les tables a org_id ont RLS + FORCE + policy"
+      - name: Tests integration + isolation multi-tenant (role roadsen_app)
+        # On EXECUTE l'isolation avec le role APPLICATIF (NOBYPASSRLS), pas le
+        # proprietaire : c'est la seule maniere de prouver que FORCE/NOBYPASSRLS
+        # tiennent sur un role prod-like. RLS_TEST_DATABASE_URL prime sur
+        # DATABASE_URL dans le spec. L'anti-skip rend "0 cas execute" = rouge.
+        env:
+          RLS_TEST_DATABASE_URL: 'postgresql://roadsen_app:ci_only@localhost:5432/roadsen_ci?schema=public'
         run: pnpm --filter @roadsen/api test:integration
 
   # ---------------------------------------------------------------
