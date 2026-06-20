@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import type { Project } from '@prisma/client';
 
-import type { PrismaService } from '../prisma/prisma.service';
+// Import VALEUR (et non `import type`) : NestJS s'appuie sur la metadonnee de
+// type du constructeur pour l'injection. Un `import type` est efface a la
+// compilation -> la DI ne peut plus resoudre PrismaService (echec au boot).
+import { PrismaService } from '../prisma/prisma.service';
 import { requireOrgId } from '../tenant/tenant-context';
 
 /**

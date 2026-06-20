@@ -101,15 +101,15 @@ CREATE INDEX "projects_org_id_status_idx" ON "projects" ("org_id", "status");
 ALTER TABLE "memberships" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "memberships" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "tenant_isolation" ON "memberships"
-  USING ("org_id" = current_setting('app.current_org', true)::uuid)
-  WITH CHECK ("org_id" = current_setting('app.current_org', true)::uuid);
+  USING ("org_id" = NULLIF(current_setting('app.current_org', true), '')::uuid)
+  WITH CHECK ("org_id" = NULLIF(current_setting('app.current_org', true), '')::uuid);
 
 -- projects
 ALTER TABLE "projects" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "projects" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "tenant_isolation" ON "projects"
-  USING ("org_id" = current_setting('app.current_org', true)::uuid)
-  WITH CHECK ("org_id" = current_setting('app.current_org', true)::uuid);
+  USING ("org_id" = NULLIF(current_setting('app.current_org', true), '')::uuid)
+  WITH CHECK ("org_id" = NULLIF(current_setting('app.current_org', true), '')::uuid);
 
 -- NOTE — organizations & users :
 --  Ce sont des tables de NOYAU (pas de colonne org_id : l'organisation EST

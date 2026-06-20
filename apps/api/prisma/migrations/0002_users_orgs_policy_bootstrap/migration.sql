@@ -37,8 +37,8 @@
 ALTER TABLE "organizations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "organizations" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "tenant_isolation" ON "organizations"
-  USING ("id" = current_setting('app.current_org', true)::uuid)
-  WITH CHECK ("id" = current_setting('app.current_org', true)::uuid);
+  USING ("id" = NULLIF(current_setting('app.current_org', true), '')::uuid)
+  WITH CHECK ("id" = NULLIF(current_setting('app.current_org', true), '')::uuid);
 
 -- ---------------------------------------------------------------------
 -- 2) users — RLS FORCE + policy "membership partage"
@@ -72,14 +72,14 @@ CREATE POLICY "tenant_isolation" ON "users"
     EXISTS (
       SELECT 1 FROM "memberships" m
       WHERE m."user_id" = "users"."id"
-        AND m."org_id"  = current_setting('app.current_org', true)::uuid
+        AND m."org_id"  = NULLIF(current_setting('app.current_org', true), '')::uuid
     )
   )
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM "memberships" m
       WHERE m."user_id" = "users"."id"
-        AND m."org_id"  = current_setting('app.current_org', true)::uuid
+        AND m."org_id"  = NULLIF(current_setting('app.current_org', true), '')::uuid
     )
   );
 
