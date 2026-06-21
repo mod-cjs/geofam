@@ -53,7 +53,7 @@ import { randomUUID } from 'node:crypto';
 // si indisponible, plutot qu'un echec de compilation.
 type PgClient = {
   connect: () => Promise<void>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }>;
   end: () => Promise<void>;
 };
@@ -208,7 +208,7 @@ describe('Isolation multi-tenant RLS FORCE (projects + organizations + users)', 
             new Error(`Base RLS non joignable en CI : ${name} non prouve.`)
           );
         }
-        // eslint-disable-next-line no-console
+
         console.warn(
           `[NON EXECUTE] ${name} — aucune base RLS joignable (hors CI).`,
         );
@@ -308,7 +308,6 @@ describe('Isolation multi-tenant RLS FORCE (projects + organizations + users)', 
   // echoue (CI rouge).
   it('couverture : >= 6 cas d isolation reellement executes (en CI/avec URL)', () => {
     if (!ENFORCE) {
-      // eslint-disable-next-line no-console
       console.warn(
         '[NON EXECUTE] verification de couverture ignoree hors CI et sans URL.',
       );

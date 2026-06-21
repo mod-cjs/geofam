@@ -81,8 +81,16 @@ module.exports = {
       },
     },
     {
-      /* Tests : on assouplit quelques regles bruyantes. */
-      files: ['**/*.test.ts', '**/*.spec.ts', '**/*.e2e.ts', '**/tests/**'],
+      /* Tests : on assouplit quelques regles bruyantes. Couvre aussi la
+         convention NestJS e2e (`*.e2e-spec.ts` + dossier `test/`). */
+      files: [
+        '**/*.test.ts',
+        '**/*.spec.ts',
+        '**/*.e2e.ts',
+        '**/*.e2e-spec.ts',
+        '**/tests/**',
+        '**/test/**',
+      ],
       rules: {
         '@typescript-eslint/no-explicit-any': 'off',
         'no-console': 'off',
