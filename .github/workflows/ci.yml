@@ -92,6 +92,9 @@ jobs:
         # (deploy auto sur main). On refuse tout DDL destructeur SAUF s il porte le
         # marqueur de revue explicite (revue ingenieur-securite documentee dans la PR) :
         #   -- ROADSEN-MIGRATION-REVIEWED: <raison + qui a valide>
+        # On ne scanne QUE les migrations MONTANTES (migration.sql) : les down.sql
+        # (rollbacks, appliques manuellement) contiennent legitimement des DROP et
+        # ne sont jamais joues par migrate deploy.
         run: |
           set +e
           mig_dir="apps/api/prisma/migrations"
@@ -104,7 +107,7 @@ jobs:
                 fail=1
               fi
             fi
-          done < <(find "$mig_dir" -name "*.sql")
+          done < <(find "$mig_dir" -name "migration.sql")
           [ "$fail" -eq 0 ] && echo "OK : aucune migration destructrice non revue" || exit 1
 
   unit:
