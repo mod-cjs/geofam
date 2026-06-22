@@ -7,7 +7,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // Pipe Zod + filtre d'erreur standard + versionnage + OpenAPI (cf. app.config).
-  // Memes reglages qu'en test e2e : zero derive entre runtime et tests.
+  // La CONFIGURATION applicative (configureApp) est identique en test e2e. NB :
+  // la resolution de modules differe (tests ts-jest en CommonJS vs build prod
+  // nodenext) ; ce qui releve de la resolution/ESM est couvert par le `build`,
+  // pas par les e2e.
   configureApp(app);
 
   await app.listen(process.env.PORT ?? 3000);

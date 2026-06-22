@@ -37,5 +37,13 @@ export function configureApp(app: INestApplication): void {
   // cleanupOpenApiDoc (nestjs-zod v5) post-traite le document pour y injecter
   // les schemas derives des createZodDto (remplace l'ancien patchNestJsSwagger).
   const document = cleanupOpenApiDoc(SwaggerModule.createDocument(app, config));
-  SwaggerModule.setup('docs', app, document);
+  // En PRODUCTION, on n'expose PAS /docs + /docs-json par defaut : c'est une
+  // surface d'API anonyme (fuite d'information). Activable explicitement via
+  // ROADSEN_EXPOSE_DOCS=1. Hors prod (dev/test), toujours expose.
+  if (
+    process.env.NODE_ENV !== 'production' ||
+    process.env.ROADSEN_EXPOSE_DOCS === '1'
+  ) {
+    SwaggerModule.setup('docs', app, document);
+  }
 }

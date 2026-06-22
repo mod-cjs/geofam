@@ -143,12 +143,33 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
   /**
    * Reprend des diagnostics structures du corps si presents (ex. `issues` de
-   * notre ZodValidationPipe maison), sans recopier le message deja extrait.
+   * notre ZodValidationPipe maison). Anti-fuite PAR CONSTRUCTION : on ne propage
+   * QUE {path, code} de chaque issue — jamais le reste du payload (valeur recue,
+   * message verbeux, detail SQL/colonne d'une exception future). On ne fait donc
+   * pas confiance a la forme amont : on la normalise ici.
    */
   private detailsFrom(payload: unknown): { details?: unknown } {
     if (payload && typeof payload === 'object' && 'issues' in payload) {
-      return { details: payload.issues };
+      const issues = payload.issues;
+      if (Array.isArray(issues)) {
+        return { details: issues.map((i) => this.normalizeIssue(i)) };
+      }
     }
     return {};
+  }
+
+  /** Reduit une issue arbitraire a la forme stricte {path, code}. */
+  private normalizeIssue(issue: unknown): { path: string; code: string } {
+    const o = (issue && typeof issue === 'object' ? issue : {}) as Record<
+      string,
+      unknown
+    >;
+    const path = Array.isArray(o.path)
+      ? o.path.map((p) => String(p)).join('.')
+      : typeof o.path === 'string'
+        ? o.path
+        : '';
+    const code = typeof o.code === 'string' ? o.code : 'invalid';
+    return { path, code };
   }
 }

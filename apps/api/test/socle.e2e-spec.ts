@@ -230,6 +230,22 @@ describe('Socle API — filtre + validation + traceId + versionnage (e2e, sans D
     expect(res.headers[TRACE_ID_HEADER]).toBe(upstream);
   });
 
+  it('traceId : un x-trace-id malforme (espaces/longueur) est IGNORE -> id genere', async () => {
+    // Anti log-injection / DoS d'en-tete : un id non conforme (espaces ici, mais
+    // aussi CR/LF, controle, > 128 car.) ne doit JAMAIS etre reflete.
+    const malicious = 'pas valide avec espaces';
+    const res = await request(app.getHttpServer())
+      .get('/filter-test/forbidden')
+      .set(TRACE_ID_HEADER, malicious);
+    const traceId = (res.body as ApiErrorBody).traceId;
+    expect(traceId).not.toBe(malicious);
+    // Un UUID v4 a ete genere a la place.
+    expect(traceId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+    expect(res.headers[TRACE_ID_HEADER]).toBe(traceId);
+  });
+
   it('versionnage : /v1/filter-test/versioned -> 200 ; la route non versionnee -> 404', async () => {
     const ok = await request(app.getHttpServer()).get(
       '/v1/filter-test/versioned',
@@ -298,5 +314,18 @@ describeDb('Socle API — health + OpenAPI (e2e, AppModule reel + DB)', () => {
     // La route versionnee figure bien dans le document.
     expect(doc.paths['/v1/health']).toBeDefined();
     expect(doc.paths['/v1/health'].get).toBeDefined();
+  });
+
+  it('chemin REEL : route protegee sans token -> 401 standard + traceId reel (AppModule complet)', async () => {
+    // Preuve sur l'AppModule REEL (gardes globales + TraceIdMiddleware cable dans
+    // AppModule.configure, pas dans un module de test synthetique) : la chaine
+    // middleware -> gardes -> filtre produit bien le format standard, et le
+    // traceId n'est PAS le filet 'unknown' (le middleware s'est execute).
+    const res = await request(app.getHttpServer()).get('/projects');
+    expect(res.status).toBe(401);
+    const body = res.body as ApiErrorBody;
+    assertStandardError(body, 401);
+    expect(body.traceId).not.toBe('unknown');
+    expect(res.headers[TRACE_ID_HEADER]).toBe(body.traceId);
   });
 });
