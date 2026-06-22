@@ -1,0 +1,41 @@
+import { VersioningType } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { ZodValidationPipe, cleanupOpenApiDoc } from 'nestjs-zod';
+
+import { AllExceptionsFilter } from './common/http-exception.filter';
+
+/**
+ * Configuration GLOBALE de l'API, en UN seul endroit. `main.ts` (runtime) ET
+ * les tests e2e l'appellent -> l'app testee est bootstrapee EXACTEMENT comme la
+ * prod (pas de derive test<->runtime : pipe, filtre, versionnage, OpenAPI).
+ *
+ * On NE fait PAS `app.listen` ici : l'ecoute reseau reste au seul `main.ts`.
+ */
+export function configureApp(app: INestApplication): void {
+  // Validation Zod GLOBALE (nestjs-zod) : valide les DTO createZodDto a la
+  // frontiere. Les controleurs existants gardent leur pipe explicite par route
+  // (meme philosophie Zod) ; les deux coexistent sans double validation.
+  app.useGlobalPipes(new ZodValidationPipe());
+
+  // Format d'erreur STANDARD pour toute l'API (cf. AllExceptionsFilter).
+  app.useGlobalFilters(new AllExceptionsFilter());
+
+  // Versionnage d'URI : seules les routes @Version('n') sont prefixees (/v1/...).
+  // Les routes non versionnees (/, /auth, /projects, /docs) restent inchangees.
+  app.enableVersioning({ type: VersioningType.URI });
+
+  // OpenAPI / Swagger : UI sur /docs, document JSON sur /docs-json.
+  const config = new DocumentBuilder()
+    .setTitle('ROADSEN API')
+    .setDescription(
+      'Plateforme de calcul geotechnique & routier (multi-tenant).',
+    )
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  // cleanupOpenApiDoc (nestjs-zod v5) post-traite le document pour y injecter
+  // les schemas derives des createZodDto (remplace l'ancien patchNestJsSwagger).
+  const document = cleanupOpenApiDoc(SwaggerModule.createDocument(app, config));
+  SwaggerModule.setup('docs', app, document);
+}

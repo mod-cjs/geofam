@@ -9,12 +9,14 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { TenantContextInterceptor } from './auth/tenant-context.interceptor';
 import { TenantGuard } from './auth/tenant.guard';
+import { TraceIdMiddleware } from './common/trace';
+import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
 import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
 
 @Module({
-  imports: [PrismaModule, AuthModule, ProjectsModule],
+  imports: [PrismaModule, AuthModule, ProjectsModule, HealthModule],
   controllers: [AppController],
   providers: [
     AppService,
@@ -32,10 +34,14 @@ import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
   ],
 })
 export class AppModule implements NestModule {
-  // Voie DEV par en-tetes (verrouillee : ROADSEN_DEV_HEADERS=1 && !prod). Elle
-  // pose directement le store ALS et coexiste avec la chaine de gardes : le
-  // TenantContextInterceptor ne re-enveloppe pas si le store est deja pose.
+  // Middlewares globaux, dans l'ordre d'execution :
+  //  1) TraceIdMiddleware     — pose req.traceId + en-tete x-trace-id AVANT les
+  //     gardes, pour qu'un 401/403/404 emette aussi un traceId.
+  //  2) TenantContextMiddleware — voie DEV par en-tetes (verrouillee :
+  //     ROADSEN_DEV_HEADERS=1 && !prod). Pose le store ALS et coexiste avec la
+  //     chaine de gardes : le TenantContextInterceptor ne re-enveloppe pas si le
+  //     store est deja pose.
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(TenantContextMiddleware).forRoutes('*');
+    consumer.apply(TraceIdMiddleware, TenantContextMiddleware).forRoutes('*');
   }
 }

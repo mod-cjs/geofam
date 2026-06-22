@@ -53,8 +53,10 @@ import { randomUUID } from 'node:crypto';
 // si indisponible, plutot qu'un echec de compilation.
 type PgClient = {
   connect: () => Promise<void>;
-
-  query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }>;
+  query: <R = Record<string, unknown>>(
+    sql: string,
+    params?: unknown[],
+  ) => Promise<{ rows: R[] }>;
   end: () => Promise<void>;
 };
 
@@ -75,7 +77,10 @@ const ENFORCE =
 function loadPgClient(): new (cfg: { connectionString: string }) => PgClient {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require('pg').Client;
+    const pg = require('pg') as {
+      Client: new (cfg: { connectionString: string }) => PgClient;
+    };
+    return pg.Client;
   } catch {
     throw new Error(
       "Dependance 'pg' introuvable : le test d'isolation ne peut pas se " +
@@ -229,7 +234,9 @@ describe('Isolation multi-tenant RLS FORCE (projects + organizations + users)', 
 
   guarded('2) projects : org A ne voit que ses projets', async () => {
     await app!.query(`SET app.current_org = '${orgA}'`);
-    const { rows } = await app!.query('SELECT org_id, name FROM projects');
+    const { rows } = await app!.query<{ org_id: string; name: string }>(
+      'SELECT org_id, name FROM projects',
+    );
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => r.org_id === orgA)).toBe(true);
     expect(rows.some((r) => r.name === 'P-B')).toBe(false);
@@ -249,7 +256,7 @@ describe('Isolation multi-tenant RLS FORCE (projects + organizations + users)', 
     '4) projects : UPDATE aveugle ne touche pas les lignes de B',
     async () => {
       await app!.query(`SET app.current_org = '${orgA}'`);
-      const { rows } = await app!.query(
+      const { rows } = await app!.query<{ org_id: string }>(
         `UPDATE projects SET name = 'pwn' RETURNING org_id`,
       );
       expect(rows.every((r) => r.org_id === orgA)).toBe(true);
@@ -262,7 +269,9 @@ describe('Isolation multi-tenant RLS FORCE (projects + organizations + users)', 
     '5) organizations : org A ne voit QUE orgA, jamais orgB',
     async () => {
       await app!.query(`SET app.current_org = '${orgA}'`);
-      const { rows } = await app!.query('SELECT id FROM organizations');
+      const { rows } = await app!.query<{ id: string }>(
+        'SELECT id FROM organizations',
+      );
       expect(rows).toHaveLength(1);
       expect(rows[0].id).toBe(orgA);
       expect(rows.some((r) => r.id === orgB)).toBe(false);
@@ -291,7 +300,9 @@ describe('Isolation multi-tenant RLS FORCE (projects + organizations + users)', 
     '7) users : org A ne voit QUE userA ; userB et son password_hash invisibles',
     async () => {
       await app!.query(`SET app.current_org = '${orgA}'`);
-      const { rows } = await app!.query('SELECT id, password_hash FROM users');
+      const { rows } = await app!.query<{ id: string; password_hash: string }>(
+        'SELECT id, password_hash FROM users',
+      );
       // Seul userA partage un membership avec orgA -> seul user visible.
       expect(rows).toHaveLength(1);
       expect(rows[0].id).toBe(userA);
