@@ -7,7 +7,8 @@
  * NOBYPASSRLS) :
  *
  *   projects :
- *     1) Sans `app.current_org` pose  -> AUCUNE ligne visible (fail-closed).
+ *     1) Sans `app.current_org` pose  -> ECHEC (fail-closed BRUYANT depuis 0004 :
+ *        app_current_org() RAISE au lieu de renvoyer "0 ligne" trompeur).
  *     2) org A pose -> voit seulement A, jamais B (etancheite SELECT).
  *     3) WITH CHECK : impossible d'INSERER une ligne pour un autre org.
  *     4) FORCE : meme un UPDATE "aveugle" ne touche pas les lignes d'un autre org.
@@ -226,11 +227,19 @@ describe('Isolation multi-tenant RLS FORCE (projects + organizations + users)', 
 
   // --- projects -------------------------------------------------------------
 
-  guarded('1) projects : sans org pose -> 0 ligne (fail-closed)', async () => {
-    await app!.query(`RESET app.current_org`);
-    const { rows } = await app!.query('SELECT * FROM projects');
-    expect(rows).toHaveLength(0);
-  });
+  guarded(
+    '1) projects : sans org pose -> ECHOUE (fail-closed BRUYANT, 0004)',
+    async () => {
+      // Depuis la migration 0004, le scoping passe par app_current_org() qui
+      // RAISE si app.current_org n'est pas pose, AU LIEU de renvoyer "0 ligne".
+      // Un SET LOCAL oublie echoue donc FORT (erreur traceable) plutot que de
+      // ressembler a un "tenant vide" trompeur. (cf. rls-failclosed #42.3)
+      await app!.query(`RESET app.current_org`);
+      await expect(app!.query('SELECT * FROM projects')).rejects.toThrow(
+        /app\.current_org non defini/i,
+      );
+    },
+  );
 
   guarded('2) projects : org A ne voit que ses projets', async () => {
     await app!.query(`SET app.current_org = '${orgA}'`);

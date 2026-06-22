@@ -1,0 +1,472 @@
+/**
+ * Test d'ISOLATION — durcissement #42 : fail-closed BRUYANT + non-fuite pool +
+ * preuve PROD-LIKE que le RAISE ne casse ni le login ni le provisioning.
+ *
+ * Complete rls-isolation.e2e-spec.ts (cas de base inchanges). Ici on prouve le
+ * DELTA de la migration 0004 :
+ *
+ *   #42.2  RLS SEULE bloque le cross-tenant — on opere via le role applicatif
+ *          roadsen_app (NOBYPASSRLS) en pg BRUT (aucun guard applicatif present) :
+ *          ce qui bloque ici est UNIQUEMENT la RLS base. (Le test confirme aussi
+ *          que sans le helper, le cross-org est impossible meme en requete nue.)
+ *   #42.3  SET LOCAL absent -> la requete tenant ECHOUE (RAISE app_current_org),
+ *          au lieu de renvoyer "0 ligne" trompeur (changement 0004).
+ *   #42.4  Non-fuite entre transactions du POOL : SET LOCAL pose en transaction A
+ *          ne fuit pas vers la transaction B (org differente) sur la MEME
+ *          connexion physique reutilisee.
+ *   #42.5  Assert role DB : roadsen_app a rolbypassrls=false ET rolsuper=false.
+ *   PIEGE  PROD-LIKE : login (auth_find_user_by_email) et provisioning
+ *          (provision_org) fonctionnent SANS app.current_org pose, car les
+ *          fonctions DEFINER sont owned par roadsen_auth (BYPASSRLS, NOLOGIN).
+ *          On prouve aussi que roadsen_auth N'EST PAS une surface de login
+ *          (NOLOGIN) et n'est PAS superuser.
+ *
+ * Connexions (cf. rls-isolation.e2e-spec.ts) :
+ *   - ADMIN_URL  = DATABASE_URL (superuser roadsen) : seed/teardown uniquement.
+ *   - APP_URL    = RLS_TEST_DATABASE_URL (roadsen_app, NOBYPASSRLS) : assertions.
+ *
+ * ANTI-SKIP identique aux autres specs : en CI / des qu'une URL est fournie,
+ * une base injoignable = ECHEC DUR (pas de faux-vert).
+ */
+import { randomUUID } from 'node:crypto';
+
+type PgClient = {
+  connect: () => Promise<void>;
+  query: <R = Record<string, unknown>>(
+    sql: string,
+    params?: unknown[],
+  ) => Promise<{ rows: R[] }>;
+  end: () => Promise<void>;
+};
+
+const APP_URL =
+  process.env.RLS_TEST_DATABASE_URL ?? process.env.DATABASE_URL ?? '';
+const ADMIN_URL = process.env.DATABASE_URL ?? '';
+const ENFORCE =
+  process.env.CI === 'true' || APP_URL.length > 0 || ADMIN_URL.length > 0;
+
+function loadPgClient(): new (cfg: { connectionString: string }) => PgClient {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pg = require('pg') as {
+      Client: new (cfg: { connectionString: string }) => PgClient;
+    };
+    return pg.Client;
+  } catch {
+    throw new Error(
+      "Dependance 'pg' introuvable : le test fail-closed ne peut pas se connecter.",
+    );
+  }
+}
+
+async function connectAs(url: string, label: string): Promise<PgClient> {
+  if (!url) {
+    throw new Error(
+      `${label} absent : impossible de prouver le fail-closed. En CI, fournir ` +
+        'DATABASE_URL (superuser) ET RLS_TEST_DATABASE_URL (roadsen_app).',
+    );
+  }
+  const Client = loadPgClient();
+  const client = new Client({ connectionString: url });
+  await client.connect();
+  return client;
+}
+
+describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', () => {
+  let admin: PgClient | null = null; // seed/teardown : superuser
+  let app: PgClient | null = null; // assertions : roadsen_app, NOBYPASSRLS
+  let connectError: Error | null = null;
+  let passedCases = 0;
+
+  const orgA = randomUUID();
+  const orgB = randomUUID();
+  const userA = randomUUID();
+  const userB = randomUUID();
+  const emailA = `fc-a-${userA.slice(0, 8)}@roadsen.test`;
+
+  beforeAll(async () => {
+    try {
+      admin = await connectAs(ADMIN_URL, 'DATABASE_URL (seed/superuser)');
+      app = await connectAs(APP_URL, 'RLS_TEST_DATABASE_URL (roadsen_app)');
+    } catch (err) {
+      connectError = err as Error;
+      if (ENFORCE) throw connectError;
+      return;
+    }
+
+    // Seed via superuser (bypasse RLS) : graphe 2 tenants.
+    await admin.query(
+      `INSERT INTO users (id, email, password_hash, full_name, updated_at)
+       VALUES ($1,$2,'hash-A','User A',now())`,
+      [userA, emailA],
+    );
+    await admin.query(
+      `INSERT INTO users (id, email, password_hash, full_name, updated_at)
+       VALUES ($1,$2,'hash-B','User B',now())`,
+      [userB, `fc-b-${userB.slice(0, 8)}@roadsen.test`],
+    );
+    await admin.query(
+      `INSERT INTO organizations (id, name, slug, "updatedAt") VALUES ($1,'Org A',$2,now())`,
+      [orgA, `fc-org-a-${orgA.slice(0, 8)}`],
+    );
+    await admin.query(
+      `INSERT INTO organizations (id, name, slug, "updatedAt") VALUES ($1,'Org B',$2,now())`,
+      [orgB, `fc-org-b-${orgB.slice(0, 8)}`],
+    );
+    await admin.query(
+      `INSERT INTO memberships (id, org_id, user_id, role) VALUES ($1,$2,$3,'OWNER')`,
+      [randomUUID(), orgA, userA],
+    );
+    await admin.query(
+      `INSERT INTO memberships (id, org_id, user_id, role) VALUES ($1,$2,$3,'OWNER')`,
+      [randomUUID(), orgB, userB],
+    );
+    await admin.query(
+      `INSERT INTO projects (id, org_id, name, created_by_id, updated_at) VALUES ($1,$2,'P-A',$3,now())`,
+      [randomUUID(), orgA, userA],
+    );
+    await admin.query(
+      `INSERT INTO projects (id, org_id, name, created_by_id, updated_at) VALUES ($1,$2,'P-B',$3,now())`,
+      [randomUUID(), orgB, userB],
+    );
+  });
+
+  afterAll(async () => {
+    if (admin) {
+      try {
+        await admin.query(`DELETE FROM projects WHERE org_id IN ($1,$2)`, [
+          orgA,
+          orgB,
+        ]);
+        await admin.query(`DELETE FROM memberships WHERE org_id IN ($1,$2)`, [
+          orgA,
+          orgB,
+        ]);
+        await admin.query(`DELETE FROM organizations WHERE id IN ($1,$2)`, [
+          orgA,
+          orgB,
+        ]);
+        await admin.query(`DELETE FROM users WHERE id IN ($1,$2)`, [
+          userA,
+          userB,
+        ]);
+      } finally {
+        await admin.end();
+      }
+    }
+    if (app) await app.end();
+  });
+
+  const guarded = (name: string, fn: () => Promise<void>) => {
+    it(name, async () => {
+      if (!app || !admin) {
+        if (ENFORCE) {
+          throw (
+            connectError ?? new Error(`Base RLS non joignable en CI : ${name}.`)
+          );
+        }
+        console.warn(`[NON EXECUTE] ${name} — aucune base RLS joignable.`);
+        return;
+      }
+      await fn();
+      passedCases += 1;
+    });
+  };
+
+  // --- #42.5 — assertions sur les attributs des roles DB ---------------------
+
+  guarded(
+    '#42.5 roadsen_app : rolbypassrls=false ET rolsuper=false',
+    async () => {
+      // Le role qui pose les assertions DOIT etre soumis a la RLS. S'il bypassait
+      // ou etait superuser, tous les autres tests seraient des faux-verts.
+      const { rows } = await admin!.query<{
+        rolsuper: boolean;
+        rolbypassrls: boolean;
+      }>(
+        `SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'roadsen_app'`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].rolsuper).toBe(false);
+      expect(rows[0].rolbypassrls).toBe(false);
+    },
+  );
+
+  guarded(
+    '#42.PIEGE roadsen_auth (owner DEFINER) : NOLOGIN, NON super, BYPASSRLS',
+    async () => {
+      // Le bypass RLS est porte par un role DEDIE, NON connectable (NOLOGIN) et
+      // NON superuser : surface minimale, jamais une porte de login.
+      const { rows } = await admin!.query<{
+        rolcanlogin: boolean;
+        rolsuper: boolean;
+        rolbypassrls: boolean;
+      }>(
+        `SELECT rolcanlogin, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'roadsen_auth'`,
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].rolcanlogin).toBe(false); // NOLOGIN : pas une surface
+      expect(rows[0].rolsuper).toBe(false); // moindre privilege
+      expect(rows[0].rolbypassrls).toBe(true); // bypass legitime pour l'auth a froid
+    },
+  );
+
+  guarded(
+    '#42.PIEGE owner : les 4 fonctions DEFINER sont OWNED par roadsen_auth',
+    async () => {
+      // GARDE-FOU CRITIQUE (revue adverse MAJEUR-3) : si l'ALTER OWNER de 0004
+      // n'avait pas pris, l'owner resterait roadsen (superuser). Les tests
+      // #42.PIEGE passeraient alors pour la MAUVAISE raison (bypass superuser au
+      // lieu du role dedie). On verifie donc explicitement le proprietaire reel
+      // via pg_proc.proowner. En CI comme en local, ces 4 fonctions DOIVENT
+      // appartenir a roadsen_auth, sinon le modele de securite n'est pas en place.
+      const { rows } = await admin!.query<{ proname: string; owner: string }>(
+        `SELECT p.proname, r.rolname AS owner
+         FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner
+         WHERE p.proname IN (
+           'provision_org','auth_find_user_by_email',
+           'auth_user_has_membership','auth_get_platform_role'
+         )
+         ORDER BY p.proname`,
+      );
+      expect(rows).toHaveLength(4);
+      for (const row of rows) {
+        expect(row.owner).toBe('roadsen_auth');
+      }
+    },
+  );
+
+  // --- #42.3 — SET LOCAL absent -> RAISE (fail-closed BRUYANT) ----------------
+
+  guarded(
+    '#42.3 projects : SANS app.current_org -> ECHOUE (RAISE), pas "0 ligne"',
+    async () => {
+      await app!.query(`RESET app.current_org`);
+      // Comportement 0004 : la policy appelle app_current_org() qui RAISE.
+      await expect(app!.query('SELECT * FROM projects')).rejects.toThrow(
+        /app\.current_org non defini/i,
+      );
+    },
+  );
+
+  guarded(
+    '#42.3 app_current_org() seule : RAISE explicite si GUC vide',
+    async () => {
+      await app!.query(`SET app.current_org = ''`);
+      await expect(app!.query('SELECT app_current_org()')).rejects.toThrow(
+        /app\.current_org non defini/i,
+      );
+      await app!.query(`RESET app.current_org`);
+    },
+  );
+
+  // --- #42.2 — RLS SEULE bloque le cross-tenant (aucun guard applicatif) ------
+
+  guarded(
+    '#42.2 RLS seule : sous org A, jamais une ligne de B (SELECT)',
+    async () => {
+      // En pg brut, AUCUN guard NestJS n'intervient : seul l'effet est la RLS.
+      await app!.query(`SET app.current_org = '${orgA}'`);
+      const { rows } = await app!.query<{ org_id: string }>(
+        'SELECT org_id FROM projects',
+      );
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every((r) => r.org_id === orgA)).toBe(true);
+    },
+  );
+
+  guarded(
+    '#42.2 RLS seule : INSERT cross-org refuse (WITH CHECK), aucun guard',
+    async () => {
+      await app!.query(`SET app.current_org = '${orgA}'`);
+      await expect(
+        app!.query(
+          `INSERT INTO projects (id, org_id, name, created_by_id, updated_at) VALUES ($1,$2,'fraude',$3,now())`,
+          [randomUUID(), orgB, userA],
+        ),
+      ).rejects.toThrow();
+      await app!.query(`RESET app.current_org`);
+    },
+  );
+
+  // --- #42.4 — non-fuite SET LOCAL entre transactions du POOL -----------------
+
+  guarded(
+    '#42.4 pool : SET LOCAL org A en tx A ne fuit pas vers tx B (org B) — meme connexion',
+    async () => {
+      // Une connexion physique unique (app), reutilisee sequentiellement par 2
+      // transactions. SET LOCAL est borne a la transaction : apres COMMIT de A,
+      // le contexte ne doit PAS persister dans B.
+      //
+      // Modele PgBouncer (transaction pooling) : chaque transaction recoit une
+      // connexion potentiellement deja utilisee. La garantie repose sur SET LOCAL
+      // (portee transaction) + le RAISE de 0004 si une tx oublie de poser le GUC.
+      // Ici on teste sur le pool pg natif : meme connexion, transactions
+      // successives. (PgBouncer reel : documente en commentaire, non installe.)
+
+      // Transaction A : pose org A, lit ses projets.
+      await app!.query('BEGIN');
+      await app!.query(`SET LOCAL app.current_org = '${orgA}'`);
+      const a = await app!.query<{ org_id: string }>(
+        'SELECT org_id FROM projects',
+      );
+      expect(a.rows.every((r) => r.org_id === orgA)).toBe(true);
+      await app!.query('COMMIT');
+
+      // Transaction B sur la MEME connexion : SI le contexte de A avait fuite,
+      // B verrait encore A. Mais SET LOCAL est borne a A -> sans nouveau SET LOCAL,
+      // B n'a AUCUN contexte -> RAISE (fail-closed bruyant 0004). C'est la preuve
+      // forte de non-fuite : B ne "herite" pas de A, et l'absence est detectee.
+      await app!.query('BEGIN');
+      await expect(app!.query('SELECT org_id FROM projects')).rejects.toThrow(
+        /app\.current_org non defini/i,
+      );
+      await app!.query('ROLLBACK');
+
+      // Et avec un SET LOCAL explicite vers B en tx B : on ne voit QUE B, jamais A.
+      await app!.query('BEGIN');
+      await app!.query(`SET LOCAL app.current_org = '${orgB}'`);
+      const b = await app!.query<{ org_id: string }>(
+        'SELECT org_id FROM projects',
+      );
+      expect(b.rows.length).toBeGreaterThan(0);
+      expect(b.rows.every((r) => r.org_id === orgB)).toBe(true);
+      expect(b.rows.some((r) => r.org_id === orgA)).toBe(false);
+      await app!.query('COMMIT');
+    },
+  );
+
+  // --- #42.PIEGE — login & provisioning OK malgre le RAISE (prod-safe) --------
+
+  guarded(
+    '#42.PIEGE login : auth_find_user_by_email marche SANS app.current_org',
+    async () => {
+      // Le coeur du piege : cette lecture a lieu AVANT tout contexte tenant.
+      // Sous roadsen_app (NOBYPASSRLS), elle ne marche QUE parce que la fonction
+      // DEFINER est owned par roadsen_auth (BYPASSRLS). Si le RAISE de 0004 avait
+      // casse l'auth, ce test echouerait (0 ligne ou exception).
+      await app!.query(`RESET app.current_org`);
+      const { rows } = await app!.query<{ id: string }>(
+        `SELECT id FROM auth_find_user_by_email($1)`,
+        [emailA],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].id).toBe(userA);
+    },
+  );
+
+  guarded(
+    '#42.PIEGE membership lookup : auth_user_has_membership marche SANS contexte',
+    async () => {
+      await app!.query(`RESET app.current_org`);
+      const { rows } = await app!.query<{ role: string }>(
+        `SELECT role FROM auth_user_has_membership($1::uuid, $2::uuid)`,
+        [userA, orgA],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].role).toBe('OWNER');
+      // cross : userA n'est PAS membre de orgB -> aucune ligne (pas de fuite)
+      const cross = await app!.query(
+        `SELECT role FROM auth_user_has_membership($1::uuid, $2::uuid)`,
+        [userA, orgB],
+      );
+      expect(cross.rows).toHaveLength(0);
+    },
+  );
+
+  guarded(
+    '#42.PIEGE provision_org : creation org+OWNER marche SANS app.current_org',
+    async () => {
+      // provision_org pose lui-meme app.current_org (SET LOCAL interne) et est
+      // owned par roadsen_auth (BYPASSRLS) : il fonctionne a froid. Preuve que le
+      // RAISE de 0004 n'a pas casse le bootstrap.
+      await app!.query(`RESET app.current_org`);
+      const slug = `fc-prov-${randomUUID().slice(0, 8)}`;
+      const { rows } = await app!.query<{ provision_org: string }>(
+        `SELECT provision_org('Org Provisionnee', $1, $2::uuid) AS provision_org`,
+        [slug, userA],
+      );
+      expect(rows).toHaveLength(1);
+      const newOrg = rows[0].provision_org;
+      expect(typeof newOrg).toBe('string');
+
+      // Verifie cote superuser que l'org ET le membership OWNER existent bien.
+      const check = await admin!.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM memberships WHERE org_id = $1 AND role = 'OWNER'`,
+        [newOrg],
+      );
+      expect(check.rows[0].n).toBe('1');
+
+      // teardown de l'org provisionnee
+      await admin!.query(`DELETE FROM memberships WHERE org_id = $1`, [newOrg]);
+      await admin!.query(`DELETE FROM organizations WHERE id = $1`, [newOrg]);
+    },
+  );
+
+  // --- CRITIQUE-1 (revue adverse) — provision_org ne FUIT PAS le contexte -----
+
+  guarded(
+    "CRITIQUE-1 provision_org : dans UNE transaction, ne fuit PAS le contexte de l'org creee",
+    async () => {
+      // set_config(..., is_local=true) est TRANSACTION-local, PAS function-local :
+      // avant le fix, le GUC pose par provision_org restait actif pour le reste de
+      // la transaction appelante -> les requetes suivantes voyaient l'org fabriquee
+      // (cross-tenant hors TenantGuard). Le fix capture/restaure le contexte.
+      //
+      // CAS A : aucun contexte prealable -> apres provision_org, une requete tenant
+      // DOIT RAISE (contexte restaure a vide), et surtout NE PAS retourner les
+      // lignes de l'org creee.
+      await app!.query('BEGIN');
+      const slug = `fc-leak-${randomUUID().slice(0, 8)}`;
+      const created = await app!.query<{ provision_org: string }>(
+        `SELECT provision_org('Org Leak', $1, $2::uuid) AS provision_org`,
+        [slug, userA],
+      );
+      const newOrg = created.rows[0].provision_org;
+      // Le contexte ne doit PAS avoir fui : app_current_org() RAISE (restaure vide).
+      await expect(app!.query('SELECT app_current_org()')).rejects.toThrow(
+        /app\.current_org non defini/i,
+      );
+      await app!.query('ROLLBACK');
+
+      // CAS B : un contexte prealable (orgA) est pose AVANT l'appel. Apres
+      // provision_org, le contexte DOIT etre restaure a orgA (et NON la nouvelle
+      // org). On le prouve en lisant les projets : on revoit ceux de orgA.
+      await app!.query('BEGIN');
+      await app!.query(`SET LOCAL app.current_org = '${orgA}'`);
+      const slugB = `fc-leak-b-${randomUUID().slice(0, 8)}`;
+      await app!.query(`SELECT provision_org('Org Leak B', $1, $2::uuid)`, [
+        slugB,
+        userA,
+      ]);
+      // Contexte restaure a orgA : app_current_org() == orgA, pas la nouvelle org.
+      const ctx = await app!.query<{ app_current_org: string }>(
+        'SELECT app_current_org()',
+      );
+      expect(ctx.rows[0].app_current_org).toBe(orgA);
+      // Et une lecture tenant ne voit QUE orgA (jamais l'org fabriquee).
+      const proj = await app!.query<{ org_id: string }>(
+        'SELECT org_id FROM projects',
+      );
+      expect(proj.rows.every((r) => r.org_id === orgA)).toBe(true);
+      await app!.query('ROLLBACK');
+
+      // teardown des orgs creees (le ROLLBACK ci-dessus annule CAS B ; CAS A a
+      // aussi ete rollback -> rien a nettoyer cote orgs, mais on s'assure par
+      // securite que rien ne subsiste si la semantique evoluait).
+      await admin!.query(`DELETE FROM memberships WHERE org_id = $1`, [newOrg]);
+      await admin!.query(`DELETE FROM organizations WHERE id = $1`, [newOrg]);
+    },
+  );
+
+  // GARDE-FOU ANTI-FAUX-VERT : on EXIGE qu'au moins 11 cas aient reellement passe
+  // (2 roles + 1 owner + 2 RAISE + 2 RLS-seule + 1 pool + 3 piege + 1 critique-1
+  // = 12 ; seuil 11 = marge).
+  it('couverture #42 : >= 11 cas reellement executes (en CI/avec URL)', () => {
+    if (!ENFORCE) {
+      console.warn('[NON EXECUTE] couverture #42 ignoree hors CI et sans URL.');
+      return;
+    }
+    expect(passedCases).toBeGreaterThanOrEqual(11);
+  });
+});

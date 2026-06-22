@@ -13,6 +13,14 @@ import { AllExceptionsFilter } from './common/http-exception.filter';
  * On NE fait PAS `app.listen` ici : l'ecoute reseau reste au seul `main.ts`.
  */
 export function configureApp(app: INestApplication): void {
+  // FAIL-FAST SECURITE : la voie en-tetes de DEV (x-org-id / x-user-id) court-
+  // circuite le TenantGuard (cf. tenant-context.middleware). Le middleware
+  // l'ignore deja si NODE_ENV === 'production', MAIS une telle config (var
+  // ROADSEN_DEV_HEADERS=1 fuitee en prod) est une erreur de deploiement grave
+  // qui ne doit PAS demarrer silencieusement. On REFUSE le boot : defense en
+  // profondeur (le runtime-guard du middleware reste, ceci en est la 2e barriere).
+  assertNoDevHeadersInProd();
+
   // Validation Zod GLOBALE (nestjs-zod) : valide les DTO createZodDto a la
   // frontiere. Les controleurs existants gardent leur pipe explicite par route
   // (meme philosophie Zod) ; les deux coexistent sans double validation.
@@ -45,5 +53,24 @@ export function configureApp(app: INestApplication): void {
     process.env.ROADSEN_EXPOSE_DOCS === '1'
   ) {
     SwaggerModule.setup('docs', app, document);
+  }
+}
+
+/**
+ * Refuse le demarrage si la voie en-tetes de DEV est activee EN PRODUCTION.
+ * Une var d'environnement de dev qui fuit en prod = contournement total du
+ * cloisonnement multi-tenant : on echoue FORT au boot plutot que de tourner
+ * avec une porte ouverte. Exporte pour etre testable unitairement.
+ */
+export function assertNoDevHeadersInProd(): void {
+  if (
+    process.env.NODE_ENV === 'production' &&
+    process.env.ROADSEN_DEV_HEADERS === '1'
+  ) {
+    throw new Error(
+      'Configuration interdite : ROADSEN_DEV_HEADERS=1 avec NODE_ENV=production. ' +
+        "La voie en-tetes de developpement contourne l'isolation multi-tenant et " +
+        'ne doit JAMAIS etre active en production. Demarrage refuse.',
+    );
   }
 }
