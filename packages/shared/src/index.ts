@@ -16,3 +16,9 @@ export const HealthStatusSchema = z.object({
   status: z.literal('ok'),
 });
 export type HealthStatus = z.infer<typeof HealthStatusSchema>;
+
+// Contrat d I/O des moteurs (enveloppe de resultat, whitelist de sortie,
+// detail d erreur sur, bornage des entrees persistees). AUCUN symbole moteur.
+export * from './engine-io.js';
+// Exemple de reference du pattern (moteur fictif, sans science).
+export * from './engine-io.reference.js';
