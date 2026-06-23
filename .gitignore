@@ -42,5 +42,10 @@ Thumbs.db
 prisma/*.db
 prisma/migrations/dev/
 
+# Tests / qualité (artefacts générés)
+coverage/
+**/reports/mutation/
+.stryker-tmp/
+
 # Divers
 *.local

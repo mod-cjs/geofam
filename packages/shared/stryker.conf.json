@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "Mutation testing (DoD §9) — la VRAIE preuve anti-régression : la suite doit TUER les mutants. Baseline 1er run (23/06) : 55% total (golden 68%, engine-io 42% — 112 survivants, surtout messages/chemins d'erreur non assertés). break=50 = plancher SOUS la baseline ; RATCHETER vers 70 en renforçant les assertions engine-io (messages/path/sens).",
+  "testRunner": "vitest",
+  "_plugins_comment": "Sous pnpm (node_modules isole), l'auto-decouverte @stryker-mutator/* echoue -> on liste le runner explicitement.",
+  "plugins": ["@stryker-mutator/vitest-runner"],
+  "vitest": { "configFile": "vitest.stryker.config.ts" },
+  "coverageAnalysis": "perTest",
+  "mutate": ["src/engine-io.ts", "src/testing/golden.ts"],
+  "reporters": ["clear-text", "progress"],
+  "tempDirName": ".stryker-tmp",
+  "cleanTempDir": true,
+  "timeoutMS": 60000,
+  "thresholds": {
+    "high": 90,
+    "low": 75,
+    "break": 50
+  }
+}
