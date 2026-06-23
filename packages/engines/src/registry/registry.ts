@@ -122,7 +122,13 @@ export const ENGINE_REGISTRY: readonly EngineRegistryEntry[] = [
     fichierSource: 'terzaghi_V13.html',
     cheminSource: `${ENGINE_SOURCES_CANONICAL_DIR}/terzaghi_V13.html`,
     sha256: '43214960a014d64e76c8d06e8d9c9746157ba0f75220afc425d6e87fd102c291',
-    version: '0.0.0',
+    // 1.0.0 : 1ere extraction equivalente (module TS, #45). engineSourceHash =
+    // ce sha256, lie a chaque sortie via meta (@roadsen/shared) -> un PV reste
+    // re-verifiable contre la version source EXACTE qui l a produit, meme apres
+    // evolution du moteur. Equivalence-PORTAGE prouvee (rel 1e-9) ; justesse
+    // scientifique NON validee tant que le kit cas-tests STARFIRE manque
+    // (@science-unsigned, MJ-6 : pas de prod sans conformite).
+    version: '1.0.0',
     confirmePar: 'title="Terzaghi — Fondations superficielles · NF P 94-261"',
   },
   {

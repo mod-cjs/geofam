@@ -9,6 +9,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { TenantContextInterceptor } from './auth/tenant-context.interceptor';
 import { TenantGuard } from './auth/tenant.guard';
+import { CalcModule } from './calc/calc.module';
 import { TraceIdMiddleware } from './common/trace';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -16,7 +17,7 @@ import { ProjectsModule } from './projects/projects.module';
 import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
 
 @Module({
-  imports: [PrismaModule, AuthModule, ProjectsModule, HealthModule],
+  imports: [PrismaModule, AuthModule, ProjectsModule, HealthModule, CalcModule],
   controllers: [AppController],
   providers: [
     AppService,

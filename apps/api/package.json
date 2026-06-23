@@ -34,6 +34,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.0.0",
     "@prisma/client": "^6.2.1",
+    "@roadsen/engines": "workspace:^",
     "@roadsen/shared": "workspace:^",
     "argon2": "^0.41.1",
     "nestjs-zod": "^5.4.0",

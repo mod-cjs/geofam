@@ -6,3 +6,7 @@
  * extraits viendront s ajouter ici, importes uniquement par apps/api.
  */
 export * from './registry/registry.js';
+
+// Moteur fondation superficielle (terzaghi, NF P 94-261) — module pur, recalcul
+// serveur. Importe uniquement par apps/api (jamais le front, DoD §8).
+export * from './terzaghi/index.js';

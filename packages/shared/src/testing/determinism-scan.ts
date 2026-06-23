@@ -71,6 +71,17 @@ export const DEFAULT_FORBIDDEN: ForbiddenPattern[] = [
     regex: /\bprocess\s*\.\s*env\b/,
     why: 'depend de l environnement d execution (non pur)',
   },
+  {
+    // MINEUR-2 : l ordre d enumeration de `for..in` n est pas garanti STABLE
+    // entre moteurs JS / plateformes pour toutes les formes de cles. Le test
+    // « x100 meme process » ne prouve PAS l ordre inter-plateforme ; ce scan
+    // statique le complete. Si une iteration ordonnee est requise, utiliser
+    // `for..of` sur un tableau trie ou `Object.keys().sort()`. Echappable par
+    // `determinism-allow` si l ordre est PROUVE indifferent.
+    id: 'for-in',
+    regex: /\bfor\s*\(\s*(?:const|let|var)?\s*[A-Za-z_$][\w$]*\s+in\b/,
+    why: 'ordre d enumeration for..in non garanti stable inter-plateforme',
+  },
 ];
 
 /** Commentaire d echappement explicite, a poser sur la ligne incriminee. */
