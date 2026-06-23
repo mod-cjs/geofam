@@ -53,6 +53,25 @@ export const EngineVersionSchema = z
   .regex(/^\d+\.\d+\.\d+$/, 'version moteur invalide (attendu MAJEUR.MINEUR.CORRECTIF)');
 export type EngineVersion = z.infer<typeof EngineVersionSchema>;
 
+/**
+ * Empreinte SHA-256 du HTML source FIGE dont le module a ete extrait (registre
+ * des versions de moteur, cf. packages/engines/registry). Les moteurs sont
+ * fournis par le client et evoluent : une evolution = nouveau hash => nouvelle
+ * version de module + golden rejoue. Lier ce hash a chaque sortie/PV permet de
+ * RE-VERIFIER un PV plus tard contre la version EXACTE qui l a produit, meme si
+ * le moteur a depuis evolue.
+ *
+ * Format : 64 caracteres hexadecimaux minuscules (digest SHA-256). Ce n est PAS
+ * un secret (c est une empreinte, pas le code) ; il est donc exposable au client.
+ */
+export const EngineSourceHashSchema = z
+  .string()
+  .regex(
+    /^[0-9a-f]{64}$/,
+    'empreinte source invalide (attendu SHA-256 hex minuscule, 64 car.)',
+  );
+export type EngineSourceHash = z.infer<typeof EngineSourceHashSchema>;
+
 // ---------------------------------------------------------------------------
 // 2. Valeurs autorisees & garde-fou anti-passthrough
 // ---------------------------------------------------------------------------
@@ -333,11 +352,19 @@ export function toSafeEngineError(raw: unknown): SafeEngineError {
 /**
  * En-tete commun a toute reponse moteur : identite + version FIGEE du moteur
  * ayant produit le resultat (tracabilite PV, recalcul reproductible).
+ *
+ * `engineSourceHash` (OPTIONNEL) : empreinte SHA-256 du HTML source dont le
+ * module a ete extrait (cf. registre packages/engines). Optionnel pour rester
+ * RETRO-COMPATIBLE (les contrats/exemples existants ne le fournissent pas
+ * encore) ; mais des qu un moteur reel est cable au registre, on l alimente
+ * pour qu un PV puisse etre re-verifie contre la version source EXACTE. Couple
+ * a `engineVersion`, il ferme la boucle hash <-> reproductibilite (critere #3).
  */
 export const EngineResultMetaSchema = z
   .object({
     engineId: EngineIdSchema,
     engineVersion: EngineVersionSchema,
+    engineSourceHash: EngineSourceHashSchema.optional(),
   })
   .strict();
 export type EngineResultMeta = z.infer<typeof EngineResultMetaSchema>;
