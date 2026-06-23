@@ -19,12 +19,41 @@
  * dans `golden.assert.ts` pour rester decouples du runner.
  */
 
-/** Tolerance numerique pour un champ. Au moins un des deux bornes doit etre fournie. */
+/**
+ * Seuil par defaut de bascule rel->abs pres de zero.
+ *
+ * Pourquoi : une tolerance RELATIVE devient inoperante quand |expected| tend vers 0
+ * (rel * |expected| -> 0, donc on retombe de facto sur l egalite stricte, ce qui
+ * rejette des ecarts numeriquement insignifiants autour de zero). Quand |expected|
+ * passe SOUS ce seuil, on n applique plus la borne relative ; seule la borne absolue
+ * (si fournie) peut accepter l ecart. Ce comportement est explicite et documente :
+ * il n ouvre AUCUNE tolerance qui ne soit deja declaree par l appelant (si aucune
+ * borne `abs` n est fournie pres de zero, l egalite stricte reste exigee).
+ *
+ * Surchargeable par champ via `NumericTolerance.nearZero`.
+ */
+export const DEFAULT_NEAR_ZERO = 1e-12;
+
+/**
+ * Tolerance numerique pour un champ.
+ *
+ * Modes :
+ *   - `exact: true`      : egalite stricte exigee, AUCUNE tolerance (meme si abs/rel fournis).
+ *   - `abs` et/ou `rel`  : ecart accepte si |delta| <= abs OU |delta| <= rel*|expected|.
+ *   - aucun des trois    : egalite stricte par defaut (comportement le plus strict).
+ *
+ * La borne RELATIVE est neutralisee quand |expected| < nearZero (cf. DEFAULT_NEAR_ZERO) :
+ * pres de zero, seule la borne `abs` peut accepter un ecart.
+ */
 export interface NumericTolerance {
+  /** Egalite stricte exigee : ignore abs/rel. Pour un champ qui ne doit JAMAIS varier. */
+  exact?: boolean;
   /** Ecart absolu maximal autorise : |actual - expected| <= abs. */
   abs?: number;
-  /** Ecart relatif maximal autorise : |actual - expected| <= rel * |expected|. */
+  /** Ecart relatif maximal autorise : |actual - expected| <= rel * |expected| (neutralise pres de zero). */
   rel?: number;
+  /** Seuil de bascule rel->abs pres de zero (defaut DEFAULT_NEAR_ZERO). */
+  nearZero?: number;
 }
 
 export interface GoldenCompareOptions {
@@ -38,8 +67,11 @@ export interface GoldenCompareOptions {
   /** Tolerance specifique par chemin de champ (ex. "deflexion", "tassement.total"). */
   toleranceByPath?: Record<string, NumericTolerance>;
   /**
-   * Si true, autorise des cles presentes d un cote et absentes de l autre.
-   * Defaut false : toute cle manquante/supplementaire est une difference.
+   * Si true, ignore UNIQUEMENT les cles EN TROP dans `actual` (presentes cote
+   * actual, absentes cote expected). Une cle ATTENDUE (dans expected) mais
+   * absente d `actual` reste TOUJOURS une difference — sinon un moteur qui cesse
+   * d ecrire un champ attendu passerait (faux-vert).
+   * Defaut false : toute cle manquante OU supplementaire est une difference.
    */
   allowExtraKeys?: boolean;
 }
@@ -67,17 +99,37 @@ function withinTolerance(
   expected: number,
   tol: NumericTolerance | undefined,
 ): boolean {
-  if (Number.isNaN(actual) || Number.isNaN(expected)) {
-    // NaN n est jamais "egal" : un NaN inattendu est un defaut, pas une tolerance.
-    return false;
+  // Semantique NaN : NaN est une valeur de sortie LEGITIME pour certains moteurs
+  // (ex. domaine de validite depasse). On la traite donc comme une valeur a part
+  // entiere ATTENDUE, pas comme une erreur en soi :
+  //   - expected NaN & actual NaN  -> MATCH (la reference attendait bien un NaN).
+  //   - expected NaN & actual fini -> ecart (on attendait NaN, on a un nombre).
+  //   - expected fini & actual NaN -> DEFAUT (NaN inattendu : aucune tolerance ne
+  //     le rattrape — c est le cas dangereux qu on ne doit JAMAIS masquer).
+  const expNaN = Number.isNaN(expected);
+  const actNaN = Number.isNaN(actual);
+  if (expNaN || actNaN) {
+    return expNaN && actNaN;
   }
-  if (actual === expected) return true;
+
+  if (actual === expected) return true; // couvre aussi +0/-0 et l egalite exacte
+  // Mode exact : aucune tolerance, meme si abs/rel sont par ailleurs fournis.
+  if (tol?.exact) return false;
   if (!tol || (tol.abs === undefined && tol.rel === undefined)) {
-    return false; // egalite stricte exigee
+    return false; // egalite stricte exigee (defaut le plus strict)
   }
+
   const delta = Math.abs(actual - expected);
   if (tol.abs !== undefined && delta <= tol.abs) return true;
-  if (tol.rel !== undefined && delta <= tol.rel * Math.abs(expected)) return true;
+
+  // Borne relative : neutralisee pres de zero (sinon rel*|expected| -> 0 et la
+  // borne ne sert plus a rien). En zone near-zero, seule `abs` peut accepter.
+  if (tol.rel !== undefined) {
+    const nearZero = tol.nearZero ?? DEFAULT_NEAR_ZERO;
+    if (Math.abs(expected) >= nearZero && delta <= tol.rel * Math.abs(expected)) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -98,14 +150,19 @@ function compareNode(
   if (typeof expected === 'number' && typeof actual === 'number') {
     const tol = resolveTolerance(path, opts);
     if (!withinTolerance(actual, expected, tol)) {
-      diffs.push({
-        path,
-        expected,
-        actual,
-        reason: tol
-          ? `ecart numerique hors tolerance (abs=${tol.abs ?? '-'}, rel=${tol.rel ?? '-'})`
-          : 'valeurs numeriques differentes (egalite stricte exigee)',
-      });
+      let reason: string;
+      if (Number.isNaN(expected) && !Number.isNaN(actual)) {
+        reason = 'NaN attendu mais valeur finie obtenue';
+      } else if (!Number.isNaN(expected) && Number.isNaN(actual)) {
+        reason = 'NaN inattendu (valeur finie attendue) — jamais tolere';
+      } else if (tol?.exact) {
+        reason = 'egalite exacte exigee (mode exact)';
+      } else if (tol && (tol.abs !== undefined || tol.rel !== undefined)) {
+        reason = `ecart numerique hors tolerance (abs=${tol.abs ?? '-'}, rel=${tol.rel ?? '-'})`;
+      } else {
+        reason = 'valeurs numeriques differentes (egalite stricte exigee)';
+      }
+      diffs.push({ path, expected, actual, reason });
     }
     return;
   }
@@ -133,13 +190,17 @@ function compareNode(
       const inExpected = k in expected;
       const inActual = k in actual;
       if (inExpected !== inActual) {
-        if (opts.allowExtraKeys) continue;
+        // allowExtraKeys n ignore QUE les cles EN TROP dans actual (presentes
+        // cote actual, absentes cote expected). Une cle ATTENDUE (dans expected)
+        // mais MANQUANTE dans actual reste TOUJOURS une difference : un moteur qui
+        // cesse d ecrire un champ attendu doit faire echouer le cas (anti faux-vert).
+        if (opts.allowExtraKeys && inActual && !inExpected) continue;
         diffs.push({
           path: childPath,
           expected: inExpected ? expected[k] : '(absent)',
           actual: inActual ? actual[k] : '(absent)',
           reason: inExpected
-            ? 'cle manquante dans actual'
+            ? 'cle attendue manquante dans actual'
             : 'cle supplementaire dans actual',
         });
         continue;
@@ -163,8 +224,15 @@ function compareNode(
 /**
  * Compare une sortie `actual` a une reference `expected`.
  *
- * @throws si `expected` et `actual` sont la MEME reference d objet (anti
- *   auto-reference : comparer un objet a lui-meme masquerait un test creux).
+ * @throws si `expected` et `actual` sont la MEME reference d objet.
+ *
+ * PORTEE de cette garde (honnete) : elle n attrape que le cas ou l on passe
+ * LITTERALEMENT le meme objet des deux cotes (`compareGolden(x, x)`). Sur le
+ * chemin runGoldenCase elle ne tire quasiment JAMAIS : le runner construit
+ * `actual` via `run(inputs)`, un objet distinct de `expected`, meme si les deux
+ * proviennent du module teste. La vraie defense contre l auto-reference au niveau
+ * runner est la PROVENANCE (assertProvenanceIsExternal) — elle-meme declarative
+ * et falsifiable. Ne pas considerer cette garde d identite comme suffisante.
  */
 export function compareGolden(
   expected: unknown,
