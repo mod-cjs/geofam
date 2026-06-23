@@ -123,10 +123,12 @@ describe('C1bis — LISTE BLANCHE fail-closed (portes ouvertes rejetees)', () =>
   ];
 
   it.each(VECTEURS)('rejette la porte ouverte : %s', (_nom, schema) => {
-    // 1) assertWhitelistSafe leve directement.
-    expect(() => assertWhitelistSafe(schema)).toThrow();
+    // 1) assertWhitelistSafe leve directement, avec le message explicite maison
+    //    (on asserte le message, pas seulement "ca jette" : tue les mutants de
+    //    chaine de message et garantit un diagnostic exploitable).
+    expect(() => assertWhitelistSafe(schema)).toThrow(/Contrat moteur non sur/);
     // 2) et la porte n atteint JAMAIS defineEngineContract (donc ni la projection).
-    expect(defineAvecOutput(schema)).toThrow();
+    expect(defineAvecOutput(schema)).toThrow(/Contrat moteur non sur/);
   });
 
   it('rejette un output avec .transform reinjecteur (MAJEUR-3)', () => {
@@ -166,6 +168,47 @@ describe('C1bis — LISTE BLANCHE fail-closed (portes ouvertes rejetees)', () =>
       i: SafeNumberSchema.optional().nullable(),
     });
     expect(() => assertWhitelistSafe(sain)).not.toThrow();
+  });
+});
+
+describe('C1ter — messages & sens assertes (ratchet mutation : chemin input/output + sens)', () => {
+  it('un schema d ENTREE invalide echoue en mentionnant le chemin "input"', () => {
+    expect(() =>
+      defineEngineContract({
+        id: 'reference',
+        inputSchema: z.object({ x: z.record(z.string(), z.number()) }),
+        outputSchema: z.object({ r: SafeNumberSchema }),
+      }),
+    ).toThrow(/input/);
+  });
+
+  it('un schema de SORTIE invalide echoue en mentionnant le chemin "output"', () => {
+    expect(() =>
+      defineEngineContract({
+        id: 'reference',
+        inputSchema: z.object({ a: SafeNumberSchema }),
+        outputSchema: z.object({ x: z.record(z.string(), z.number()) }),
+      }),
+    ).toThrow(/output/);
+  });
+
+  it('sens : .default() est REJETE en SORTIE (valeur non calculee) mais TOLERE en ENTREE', () => {
+    // SORTIE : .default() injecterait une valeur non calculee cote client -> rejet.
+    expect(() =>
+      defineEngineContract({
+        id: 'reference',
+        inputSchema: z.object({ a: SafeNumberSchema }),
+        outputSchema: z.object({ r: SafeNumberSchema.default(0) }),
+      }),
+    ).toThrow(/default|SORTIE/i);
+    // ENTREE : valeur par defaut d entree legitime -> tolere.
+    expect(() =>
+      defineEngineContract({
+        id: 'reference',
+        inputSchema: z.object({ a: SafeNumberSchema.default(0) }),
+        outputSchema: z.object({ r: SafeNumberSchema }),
+      }),
+    ).not.toThrow();
   });
 });
 
