@@ -107,7 +107,12 @@ export const ENGINE_REGISTRY: readonly EngineRegistryEntry[] = [
     fichierSource: 'GEOPLAQUE_V10.html',
     cheminSource: `${ENGINE_SOURCES_CANONICAL_DIR}/GEOPLAQUE_V10.html`,
     sha256: '45e3e24c405c35c21c0ae8e1d92f214036390f36f7215b96d97ac61feed9bbab',
-    version: '0.0.0',
+    // 1.0.0 : 1ere extraction equivalente (module TS, #54). engineSourceHash = ce
+    // sha256, lie a chaque sortie via meta (@roadsen/shared) -> un PV reste
+    // re-verifiable contre la version source EXACTE qui l a produit. Equivalence-
+    // PORTAGE prouvee (solveModel == HTML) ; justesse scientifique NON validee tant
+    // que le kit cas-tests STARFIRE manque (@science-unsigned, MJ-6 : pas de prod).
+    version: '1.0.0',
     confirmePar: 'title="GEOPLAQUE — plaques sur sol multicouche élastique"',
   },
   {

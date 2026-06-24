@@ -73,3 +73,22 @@ export {
   type PieuxOutput,
   type PieuxFixture,
 } from './pieux/index.js';
+
+// Moteur RADIER / PLAQUE sur sol multicouche elastique (GEOPLAQUE, EF) — module pur,
+// recalcul serveur. Importe uniquement par apps/api (jamais le front, DoD §8).
+//
+// Meme raison que les autres : radier exporte aussi `redactConfidentialWarning(s)`
+// (nom commun aux moteurs). Re-export EXPLICITE pour eviter l'ambiguite TS2308 ; le
+// redacteur reste accessible par import DIRECT du sous-module en test.
+export {
+  RADIER_ENGINE_ID,
+  RadierInputSchema,
+  RadierOutputSchema,
+  radierContract,
+  RADIER_CONFIDENTIAL_MARKER,
+  RADIER_FIXTURES,
+  runRadier,
+  type RadierInput,
+  type RadierOutput,
+  type RadierFixture,
+} from './radier/index.js';
