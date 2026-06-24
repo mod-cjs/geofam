@@ -90,7 +90,13 @@ export const ENGINE_REGISTRY: readonly EngineRegistryEntry[] = [
     fichierSource: 'roadsens_burmister_LCPC_VF_moderne.html',
     cheminSource: `${ENGINE_SOURCES_CANONICAL_DIR}/roadsens_burmister_LCPC_VF_moderne.html`,
     sha256: '259a58a8ac0881b20657a34a119de6e603a0ed2895fb4fca21527f2d8cfeb8ba',
-    version: '0.0.0',
+    // 1.0.0 : 1ere extraction equivalente (module TS, #46). engineSourceHash =
+    // ce sha256, lie a chaque sortie via meta (@roadsen/shared) -> un PV reste
+    // re-verifiable contre la version source EXACTE qui l a produit, meme apres
+    // evolution du moteur. Equivalence-PORTAGE prouvee (rel 1e-9) ; justesse
+    // scientifique NON validee tant que le kit cas-tests STARFIRE manque
+    // (@science-unsigned, MJ-6 : pas de prod sans conformite).
+    version: '1.0.0',
     confirmePar:
       'title="ROADSENS — Dimensionnement rationnel des chaussées · AGEROUTE Sénégal 2015"',
   },
