@@ -25,7 +25,7 @@ services:
     name: roadsen-api-recette
     runtime: node
     region: frankfurt
-    plan: starter # ~$7/mois — suffisant pour la recette STARFIRE
+    plan: free # plan gratuit : s'endort apres ~15 min d'inactivite (cold start ~50s a la 1ere requete). Passer a 'starter' (~7$/mois) pour eviter les mises en veille.
 
     # Render clone le dépôt entier depuis la racine du repo ;
     # rootDir indique le sous-répertoire à utiliser comme CWD pour
@@ -128,11 +128,12 @@ databases:
     databaseName: roadsen_recette
     user: roadsen
     region: frankfurt
-    plan: starter # ~$7/mois (256 Mo RAM, 1 Go disque) — suffisant pour recette
+    plan: free # plan gratuit : base TEMPORAIRE, supprimee par Render apres ~30 jours. Donnees de TEST uniquement. Passer a 'starter' (~7$/mois) pour la perenniser.
 
 
-    # Backups automatiques inclus dans le plan starter (quotidiens, rétention 7 j).
-    # Données recette = TEST UNIQUEMENT ; pas de contrainte RTO/RPO ici.
+    # ⚠️ Plan free : PAS de backups automatiques + EXPIRATION ~30 jours (la base est
+    # supprimee). Donnees recette = TEST UNIQUEMENT ; valider STARFIRE dans la fenetre,
+    # ou passer en 'starter' (backups quotidiens, retention 7 j) si la recette dure.
     # Supprimer cette base après validation STARFIRE.
 
 # ---------------------------------------------------------------------------
