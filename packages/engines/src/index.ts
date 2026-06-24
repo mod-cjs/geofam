@@ -52,3 +52,24 @@ export {
   type PressiometreOutput,
   type PressiometreFixture,
 } from './pressiometre/index.js';
+
+// Moteur PIEUX — fondations profondes (casagrande, NF P 94-262) — module pur,
+// recalcul serveur. Importe uniquement par apps/api (jamais le front, DoD §8).
+//
+// Meme raison que burmister/pressiometre : pieux exporte aussi
+// `redactConfidentialWarning(s)` (nom commun aux 6 moteurs). Re-export EXPLICITE pour
+// eviter l'ambiguite TS2308 ; le redacteur reste accessible par import DIRECT du
+// sous-module en test.
+export {
+  PIEUX_ENGINE_ID,
+  PIEUX_DEFAULT_COEFFS,
+  PieuxInputSchema,
+  PieuxOutputSchema,
+  pieuxContract,
+  PIEUX_CONFIDENTIAL_MARKER,
+  PIEUX_FIXTURES,
+  runPieux,
+  type PieuxInput,
+  type PieuxOutput,
+  type PieuxFixture,
+} from './pieux/index.js';

@@ -117,7 +117,13 @@ export const ENGINE_REGISTRY: readonly EngineRegistryEntry[] = [
     fichierSource: 'casagrande_V5.html',
     cheminSource: `${ENGINE_SOURCES_CANONICAL_DIR}/casagrande_V5.html`,
     sha256: '54c5d7d4cfd0d88998b26010335c888b9361163e0eb2825814f0c6430e4d86b0',
-    version: '0.0.0',
+    // 1.0.0 : 1ere extraction equivalente (module TS, #48). engineSourceHash =
+    // ce sha256, lie a chaque sortie via meta (@roadsen/shared) -> un PV reste
+    // re-verifiable contre la version source EXACTE qui l a produit, meme apres
+    // evolution du moteur. Equivalence-PORTAGE prouvee (rel 1e-9) ; justesse
+    // scientifique NON validee tant que le kit cas-tests STARFIRE manque
+    // (@science-unsigned, MJ-6 : pas de prod sans conformite).
+    version: '1.0.0',
     confirmePar:
       'title="CASAGRANDE — Calcul de fondations profondes (NF P 94-262)" + 69 occurrences "pieu"',
   },
