@@ -172,7 +172,12 @@ export const ENGINE_REGISTRY: readonly EngineRegistryEntry[] = [
     fichierSource: 'FASTLAB7.html',
     cheminSource: `${ENGINE_SOURCES_CANONICAL_DIR}/FASTLAB7.html`,
     sha256: '3271287e551448ea5ce8396a2e9687e38c7245a3c49259a02a5f4f393f48599a',
-    version: '0.0.0',
+    // 1.0.0 : 1ere extraction equivalente (module TS, #49-53). engineSourceHash = ce
+    // sha256, lie a chaque sortie via meta (@roadsen/shared) -> un PV reste
+    // re-verifiable contre la version source EXACTE. Equivalence-PORTAGE prouvee
+    // (recalc/classify == HTML) ; justesse scientifique NON validee tant que le kit
+    // cas-tests STARFIRE manque (@science-unsigned, MJ-6 : pas de prod).
+    version: '1.0.0',
     confirmePar:
       'title="FASTLAB — Traitement des essais & classification GTR (NF P 11-300)" + termes Proctor/Atterberg/Cc/Cs',
   },

@@ -92,3 +92,22 @@ export {
   type RadierOutput,
   type RadierFixture,
 } from './radier/index.js';
+
+// Moteur FASTLAB — essais de labo & classification GTR (NF P 11-300) — module pur,
+// recalcul serveur. Importe uniquement par apps/api (jamais le front, DoD §8).
+//
+// Meme raison que les autres : labo exporte aussi `redactConfidentialWarning(s)` (nom
+// commun aux moteurs). Re-export EXPLICITE pour eviter l'ambiguite TS2308 ; le
+// redacteur reste accessible par import DIRECT du sous-module en test.
+export {
+  LABO_ENGINE_ID,
+  LaboInputSchema,
+  LaboOutputSchema,
+  laboContract,
+  LABO_CONFIDENTIAL_MARKER,
+  LABO_FIXTURES,
+  runLabo,
+  type LaboInput,
+  type LaboOutput,
+  type LaboFixture,
+} from './labo/index.js';
