@@ -15,8 +15,8 @@
  *
  * GATE LOCAL : sources hors depot git -> SKIP BRUYANT en CI (jamais un faux-vert).
  */
-import type { GoldenCase } from '@roadsen/shared/src/testing/golden-case.js';
-import { runGoldenCase } from '@roadsen/shared/src/testing/golden-runner.js';
+import type { GoldenCase } from '@roadsen/shared/testing/golden-case.js';
+import { runGoldenCase } from '@roadsen/shared/testing/golden-runner.js';
 import { describe, expect, it } from 'vitest';
 
 import { computeLabo } from './engine.js';

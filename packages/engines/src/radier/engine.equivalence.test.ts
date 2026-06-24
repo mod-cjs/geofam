@@ -23,8 +23,8 @@
  * GATE LOCAL : les sources moteur sont HORS depot git. En CI elles sont absentes ->
  * SKIP BRUYANT (jamais un faux-vert). « 0 cas execute » localement serait un echec.
  */
-import type { GoldenCase } from '@roadsen/shared/src/testing/golden-case.js';
-import { runGoldenCase } from '@roadsen/shared/src/testing/golden-runner.js';
+import type { GoldenCase } from '@roadsen/shared/testing/golden-case.js';
+import { runGoldenCase } from '@roadsen/shared/testing/golden-runner.js';
 import { describe, expect, it } from 'vitest';
 
 import { computeRadier } from './engine.js';

@@ -57,6 +57,15 @@ export function baseVitestConfig(overrides: Parameters<typeof defineConfig>[0] =
   };
   const { coverage: coverageOverrides = {}, ...restTest } = testOverrides;
   return defineConfig({
+    // CONFIDENTIALITE (DoD 8) : nos packages workspace (@roadsen/engines,
+    // @roadsen/shared) n'exposent le SOURCE .ts que sous la condition d'export
+    // CUSTOM `roadsen-source` (cf. leurs package.json#exports). On l'active ICI
+    // pour que vitest resolve le src en test, SANS exposer aucune condition
+    // ('source'/'development') qu'un bundler navigateur honorerait. On AJOUTE la
+    // condition (les defauts Vite restent) plutot que de les remplacer.
+    resolve: {
+      conditions: ['roadsen-source'],
+    },
     test: {
       ...baseTest,
       ...restTest,

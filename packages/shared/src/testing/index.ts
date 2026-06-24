@@ -16,4 +16,5 @@ export * from './tolerance-profiles.js';
 export * from './golden-runner.js';
 export * from './determinism-scan.js';
 // golden.assert importe `vitest` (devDep) : a importer directement dans les tests
-// (`@roadsen/shared/src/testing/golden.assert`), pas via cet index runtime.
+// via le sous-chemin public (`@roadsen/shared/testing/golden.assert.js`), pas via
+// cet index runtime.

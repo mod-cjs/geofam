@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ZodValidationPipe, cleanupOpenApiDoc } from 'nestjs-zod';
 
 import { AllExceptionsFilter } from './common/http-exception.filter';
+import { getDeployEnv, getScienceStatus } from './recette/recette.config';
 
 /**
  * Configuration GLOBALE de l'API, en UN seul endroit. `main.ts` (runtime) ET
@@ -36,9 +37,7 @@ export function configureApp(app: INestApplication): void {
   // OpenAPI / Swagger : UI sur /docs, document JSON sur /docs-json.
   const config = new DocumentBuilder()
     .setTitle('ROADSEN API')
-    .setDescription(
-      'Plateforme de calcul geotechnique & routier (multi-tenant).',
-    )
+    .setDescription(buildApiDescription())
     .setVersion('1.0')
     .addBearerAuth()
     .build();
@@ -54,6 +53,24 @@ export function configureApp(app: INestApplication): void {
   ) {
     SwaggerModule.setup('docs', app, document);
   }
+}
+
+/**
+ * Construit la description OpenAPI. En RECETTE (science non signee), on prefixe
+ * une BANNIERE d'avertissement bien visible : justesse non validee (kit cas-tests
+ * STARFIRE en attente), interdit en production (MJ-6). En production avec science
+ * signee, on s'en tient a la description neutre.
+ */
+export function buildApiDescription(): string {
+  const base = 'Plateforme de calcul geotechnique & routier (multi-tenant).';
+  if (getDeployEnv() === 'recette' || getScienceStatus() === 'unsigned') {
+    return (
+      '[RECETTE — @science-unsigned] Justesse NON validee ' +
+      '(kit cas-tests STARFIRE en attente). NE PAS UTILISER EN PRODUCTION (MJ-6).\n\n' +
+      base
+    );
+  }
+  return base;
 }
 
 /**

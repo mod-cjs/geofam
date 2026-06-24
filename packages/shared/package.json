@@ -3,9 +3,35 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "//": "FAIL-CLOSED : la SEULE condition pointant vers le src .ts est `roadsen-source`, condition CUSTOM activee uniquement par nos runners de test. On n'expose ni 'development' ni 'source' (honorees par des bundlers). Prod/build = dist CJS (require/default). NB : @roadsen/shared est LEGITIMEMENT importable par le web — mais via le dist, pas le src brut.",
+      "roadsen-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "roadsen-source": "./src/testing/index.ts",
+      "types": "./dist/testing/index.d.ts",
+      "require": "./dist/testing/index.js",
+      "default": "./dist/testing/index.js"
+    },
+    "./testing/*.js": {
+      "//": "Sous-chemin PUBLIC de l'OUTILLAGE DE TEST (golden-runner, golden-case, golden.assert...). Importable par @roadsen/engines (tests) via `@roadsen/shared/testing/<fichier>.js` — PLUS de chemin profond `/src/`. La cle porte le suffixe `.js` (specifier ESM NodeNext) ; `*` capture le nom de base (ex. 'golden-runner') et se remappe sur `.ts` (src) ou `.d.ts`/`.js` (dist). Conditions COMPLETES : `roadsen-source` -> src (runtime test), `types` -> dist .d.ts (tsc/eslint resolvent ici : plus de TS2307/no-unresolved), `default` -> dist js. CONFIDENTIALITE : ce dossier ne contient QUE de l'outillage de test/Zod, AUCUN symbole moteur ; l'exposer aux outils (tsc/eslint/prod) est sans risque (a la difference de @roadsen/engines, jamais expose ainsi).",
+      "roadsen-source": "./src/testing/*.ts",
+      "types": "./dist/testing/*.d.ts",
+      "require": "./dist/testing/*.js",
+      "default": "./dist/testing/*.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && node -e \"require('fs').writeFileSync('dist/package.json', JSON.stringify({type:'commonjs'}))\"",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

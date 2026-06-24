@@ -293,10 +293,17 @@ describeDb('Socle API — health + OpenAPI (e2e, AppModule reel + DB)', () => {
     await app?.close();
   });
 
-  it('GET /v1/health -> 200 {status:"ok"}', async () => {
+  it('GET /v1/health -> 200 {status:"ok"} + env/science identifiables', async () => {
     const res = await request(app.getHttpServer()).get('/v1/health');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: 'ok' });
+    // status:'ok' (contrat de base) + champs d'identification d'environnement.
+    // Par defaut (sans ROADSEN_ENV/ROADSEN_SCIENCE_SIGNED), l'API est en recette
+    // et la science n'est pas signee (MJ-6).
+    expect(res.body).toEqual({
+      status: 'ok',
+      env: 'recette',
+      science: 'unsigned',
+    });
   });
 
   it('GET /docs -> 200 (UI Swagger)', async () => {

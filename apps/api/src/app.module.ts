@@ -1,6 +1,7 @@
 import type { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { Module } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule, seconds } from '@nestjs/throttler';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -14,18 +15,38 @@ import { TraceIdMiddleware } from './common/trace';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
+import { RecetteAccessGuard } from './recette/recette-access.guard';
 import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
 
 @Module({
-  imports: [PrismaModule, AuthModule, ProjectsModule, HealthModule, CalcModule],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    ProjectsModule,
+    HealthModule,
+    CalcModule,
+    // Rate limiting GLOBAL (anti-abus). Seuil LARGE (60 req / 60 s par IP) :
+    // raisonnable pour des endpoints de calcul, et assez haut pour ne pas
+    // perturber les suites e2e (qui enchainent quelques requetes par cas).
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: seconds(60), limit: 60 }],
+    }),
+  ],
   controllers: [AppController],
   providers: [
     AppService,
     // Chaine de gardes GLOBALE, dans l'ordre d'execution :
+    //  0) RecetteAccessGuard — PERIMETRE recette par cle d'API (X-Recette-Key).
+    //     INERTE si RECETTE_API_KEY non posee (les e2e restent verts). S'applique
+    //     a TOUTES les routes, @Public comprises : c'est une porte EXTERNE,
+    //     independante de l'auth JWT.
+    //  0bis) ThrottlerGuard — rate limiting (cf. ThrottlerModule ci-dessus).
     //  1) JwtAuthGuard  — exige un access token verifie (sauf @Public).
     //  2) TenantGuard   — prouve l'appartenance a l'org demandee, pose req.tenant.
     //  3) RolesGuard    — applique @Roles (role tenant ou platformRole).
     // Deny-by-default : toute route non @Public exige un token ET une org membre.
+    { provide: APP_GUARD, useClass: RecetteAccessGuard },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: TenantGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
