@@ -144,7 +144,13 @@ export const ENGINE_REGISTRY: readonly EngineRegistryEntry[] = [
     fichierSource: 'pressiometre__1_.html',
     cheminSource: `${ENGINE_SOURCES_CANONICAL_DIR}/pressiometre__1_.html`,
     sha256: 'b5a06e1c34e1928b06a3e9dcd5628d516ba7d0d2818a67c62bdb43e93c65e4dc',
-    version: '0.0.0',
+    // 1.0.0 : 1ere extraction equivalente (module TS, #47). engineSourceHash =
+    // ce sha256, lie a chaque sortie via meta (@roadsen/shared) -> un PV reste
+    // re-verifiable contre la version source EXACTE qui l a produit, meme apres
+    // evolution du moteur. Equivalence-PORTAGE prouvee (rel 1e-9) ; justesse
+    // scientifique NON validee tant que le kit cas-tests STARFIRE manque
+    // (@science-unsigned, MJ-6 : pas de prod sans conformite).
+    version: '1.0.0',
     confirmePar: 'title="PressioPro — Ménard NF EN ISO 22476-4"',
   },
   {

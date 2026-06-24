@@ -33,3 +33,22 @@ export {
   type BurmisterOutput,
   type BurmisterFixture,
 } from './burmister/index.js';
+
+// Moteur pressiometre Menard (NF EN ISO 22476-4) — module pur, recalcul serveur.
+// Importe uniquement par apps/api (jamais le front, DoD §8).
+//
+// Meme raison que burmister : pressiometre exporte aussi `redactConfidentialWarning(s)`
+// (nom commun aux 6 moteurs). Re-export EXPLICITE pour eviter l'ambiguite TS2308 ;
+// le redacteur reste accessible par import DIRECT du sous-module en test.
+export {
+  PRESSIOMETRE_ENGINE_ID,
+  PressiometreInputSchema,
+  PressiometreOutputSchema,
+  pressiometreContract,
+  PRESSIOMETRE_CONFIDENTIAL_MARKER,
+  PRESSIOMETRE_FIXTURES,
+  runPressiometre,
+  type PressiometreInput,
+  type PressiometreOutput,
+  type PressiometreFixture,
+} from './pressiometre/index.js';
