@@ -16,6 +16,7 @@ import { TraceIdMiddleware } from './common/trace';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
+import { PvModule } from './pv/pv.module';
 import { RecetteAccessGuard } from './recette/recette-access.guard';
 import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
 
@@ -27,6 +28,7 @@ import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
     ProjectsModule,
     HealthModule,
     CalcModule,
+    PvModule,
     // Rate limiting GLOBAL (anti-abus). Seuil LARGE (60 req / 60 s par IP) :
     // raisonnable pour des endpoints de calcul, et assez haut pour ne pas
     // perturber les suites e2e (qui enchainent quelques requetes par cas).
