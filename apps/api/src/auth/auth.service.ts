@@ -1,11 +1,17 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 // Imports VALEUR (DI NestJS) — jamais `import type` sur un service injecte.
 import type { PlatformRole, Role } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 
-import { verifyPassword } from './password';
+import { hashPassword, verifyPassword } from './password';
 import { TokenService } from './token.service';
 
 export interface TokenPair {
@@ -18,6 +24,42 @@ interface UserRow {
   password_hash: string | null;
   is_active: boolean;
 }
+
+/** Appartenance d'un user a une organisation (pour /auth/me). */
+export interface MembershipView {
+  orgId: string;
+  orgName: string;
+  orgSlug: string;
+  role: Role;
+}
+
+/** Profil renvoye par GET /auth/me : identite + orgs de l'utilisateur. */
+export interface UserProfile {
+  userId: string;
+  email: string;
+  fullName: string;
+  platformRole: PlatformRole | null;
+  memberships: MembershipView[];
+}
+
+// Forme brute renvoyee par auth_get_user_profile (1 ligne / membership ; org_*
+// NULL si le user n'a aucun membership). Snake_case = colonnes SQL.
+interface ProfileRow {
+  user_id: string;
+  email: string;
+  full_name: string;
+  platform_role: PlatformRole | null;
+  org_id: string | null;
+  org_name: string | null;
+  org_slug: string | null;
+  membership_role: Role | null;
+}
+
+// SQLSTATE PostgreSQL d'une violation d'unicite (ici : users.email / org.slug).
+const PG_UNIQUE_VIOLATION = '23505';
+// SQLSTATE d'une violation de cle etrangere (ici : ownerUserId inexistant lors de
+// l'INSERT du membership OWNER par provision_org).
+const PG_FOREIGN_KEY_VIOLATION = '23503';
 
 /**
  * AuthService — login (verif mdp + emission tokens), refresh, et resolution
@@ -106,6 +148,120 @@ export class AuthService {
     return rows[0]?.auth_get_platform_role ?? null;
   }
 
+  /**
+   * Cree un utilisateur (onboarding SUPERADMIN). Le mot de passe en clair est
+   * hache ICI (argon2id, MEME fonction que le login) : aucun secret en clair ne
+   * sort de ce service ni n'atteint la base. La creation passe par la fonction
+   * SECURITY DEFINER provision_user (0005), seule voie d'ecriture "a froid" hors
+   * tenant pour le runtime NOBYPASSRLS.
+   *
+   * Unicite de l'email : la contrainte UNIQUE(email) tranche cote base ; on NE
+   * fait PAS de SELECT prealable (oracle + course). Une violation 23505 est
+   * traduite en 409 BORNEE — message GENERIQUE, sans confirmer quel email existe
+   * (anti-enumeration, coherent avec le 401 generique du login).
+   *
+   * @returns l'uuid du user cree.
+   */
+  async provisionUser(
+    email: string,
+    password: string,
+    fullName: string,
+  ): Promise<string> {
+    const passwordHash = await hashPassword(password);
+    try {
+      const rows = await this.prisma.$queryRaw<{ provision_user: string }[]>`
+        SELECT provision_user(${email}, ${passwordHash}, ${fullName})
+      `;
+      return rows[0].provision_user;
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        // 409 sans divulguer l'email en conflit : on ne confirme pas une
+        // existence de compte a un appelant (meme SUPERADMIN -> pas d'oracle
+        // exploitable si la route etait un jour mal protegee).
+        throw new ConflictException('Création impossible : conflit de compte');
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Cree une organisation (onboarding SUPERADMIN) et son 1er membership OWNER,
+   * de maniere atomique, via la fonction SECURITY DEFINER provision_org (0002/0004).
+   *
+   * ENFORCEMENT (cf. note 0004) : `ownerUserId` est le 1er OWNER DESIGNE par le
+   * SUPERADMIN — un user EXISTANT. La fonction ne fait PAS confiance a une
+   * identite cliente : ce service n'est appele QUE depuis la route @Roles(SUPERADMIN).
+   * L'existence du user est garantie par la FK memberships_user_id_fkey : un
+   * ownerUserId inexistant leve une violation FK (23503), traduite en 400 BORNEE
+   * (« propriétaire introuvable ») plutot qu'une 500. Un slug deja pris leve une
+   * unicite (23505) -> 409.
+   *
+   * @returns l'uuid de l'organisation creee.
+   */
+  async provisionOrg(
+    name: string,
+    slug: string,
+    ownerUserId: string,
+  ): Promise<string> {
+    try {
+      const rows = await this.prisma.$queryRaw<{ provision_org: string }[]>`
+        SELECT provision_org(${name}, ${slug}, ${ownerUserId}::uuid)
+      `;
+      return rows[0].provision_org;
+    } catch (err) {
+      if (isForeignKeyViolation(err)) {
+        // Owner designe inexistant : refus explicite mais SANS revelation au-dela
+        // de "introuvable" (pas de detail SQL/colonne ; cf. AllExceptionsFilter).
+        throw new BadRequestException('Propriétaire désigné introuvable');
+      }
+      if (isUniqueViolation(err)) {
+        throw new ConflictException(
+          'Création impossible : conflit (slug déjà pris)',
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Profil + appartenances d'un user, pour GET /auth/me. Lu via la fonction
+   * DEFINER auth_get_user_profile (0005) : "users"/"memberships" etant sous RLS
+   * scopee par org courant, ce profil "a froid" (avant selection d'org) ne peut
+   * etre lu autrement par le runtime. `userId` DOIT etre le sub du JWT verifie
+   * (jamais une valeur cliente) -> un user ne lit que SON propre profil.
+   *
+   * @returns le profil, ou null si le user est introuvable (cas anormal : token
+   *          verifie mais user supprime depuis -> l'appelant repond 401).
+   */
+  async getProfile(userId: string): Promise<UserProfile | null> {
+    const rows = await this.prisma.$queryRaw<ProfileRow[]>`
+      SELECT user_id, email, full_name, platform_role,
+             org_id, org_name, org_slug, membership_role
+      FROM auth_get_user_profile(${userId}::uuid)
+    `;
+    const first = rows[0];
+    if (!first) return null;
+
+    // Une ligne par membership ; org_* NULL = user sans aucune org. On agrege
+    // les memberships en filtrant les lignes "sans org" (LEFT JOIN a vide).
+    const memberships: MembershipView[] = rows
+      .filter((r): r is ProfileRow & { org_id: string } => r.org_id !== null)
+      .map((r) => ({
+        orgId: r.org_id,
+        orgName: r.org_name ?? '',
+        orgSlug: r.org_slug ?? '',
+        role: r.membership_role as Role,
+      }));
+
+    return {
+      userId: first.user_id,
+      email: first.email,
+      fullName: first.full_name,
+      platformRole: first.platform_role,
+      memberships,
+    };
+  }
+
   private async issueTokens(userId: string): Promise<TokenPair> {
     const [accessToken, refreshToken] = await Promise.all([
       this.tokens.signAccess(userId),
@@ -113,4 +269,38 @@ export class AuthService {
     ]);
     return { accessToken, refreshToken };
   }
+}
+
+/**
+ * Detecte une violation d'unicite PostgreSQL (SQLSTATE 23505) remontee a travers
+ * un `$queryRaw`. Prisma enveloppe l'erreur PG brute dans une
+ * PrismaClientKnownRequestError (code P2010 = raw query failed) ; le SQLSTATE
+ * d'origine est expose dans `meta.code`. On verifie cette voie principale, avec
+ * un repli sur la chaine du message (robustesse si la forme du meta change).
+ */
+function isUniqueViolation(err: unknown): boolean {
+  return hasSqlState(err, PG_UNIQUE_VIOLATION);
+}
+
+/** Detecte une violation de cle etrangere PostgreSQL (SQLSTATE 23503). */
+function isForeignKeyViolation(err: unknown): boolean {
+  return hasSqlState(err, PG_FOREIGN_KEY_VIOLATION);
+}
+
+/**
+ * Vrai si l'erreur Prisma porte le SQLSTATE PostgreSQL donne. Prisma enveloppe
+ * l'erreur PG d'un `$queryRaw` dans une PrismaClientKnownRequestError (code
+ * P2010 = raw query failed) ; le SQLSTATE d'origine est dans `meta.code`. On
+ * verifie cette voie principale, avec repli sur le message (robustesse si la
+ * forme du meta evolue entre versions de Prisma).
+ */
+function hasSqlState(err: unknown, sqlState: string): boolean {
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    const meta = err.meta as { code?: unknown } | undefined;
+    if (meta?.code === sqlState) return true;
+    if (typeof err.message === 'string' && err.message.includes(sqlState)) {
+      return true;
+    }
+  }
+  return false;
 }

@@ -1,7 +1,7 @@
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 
 import type { AuthService } from './auth.service';
-import { IS_PUBLIC_KEY } from './decorators';
+import { IS_PUBLIC_KEY, NO_TENANT_KEY } from './decorators';
 import { fakeReflector, httpContext } from './guard-test-utils';
 import type { AuthedRequest } from './request-context';
 import { TenantGuard } from './tenant.guard';
@@ -32,6 +32,42 @@ describe('TenantGuard', () => {
         makeAuth(membership),
       );
       await expect(guard.canActivate(httpContext({}))).resolves.toBe(true);
+      expect(membership).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('given une route @NoTenant() (authentifiee, hors tenant)', () => {
+    it('autorise un user authentifie SANS resoudre de membership ni poser req.tenant', async () => {
+      const membership = jest.fn();
+      const guard = new TenantGuard(
+        fakeReflector({ [NO_TENANT_KEY]: true }),
+        makeAuth(membership),
+      );
+      const req = {
+        auth: { userId: 'u1' },
+        headers: {},
+      } as Partial<AuthedRequest>;
+      const ctx = httpContext(req);
+
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+      // Hors tenant : aucune org resolue, aucun contexte pose.
+      expect(membership).not.toHaveBeenCalled();
+      expect(req.tenant).toBeUndefined();
+    });
+
+    it('exige TOUT DE MEME une identite (401 si JwtAuthGuard n a pas pose req.auth)', async () => {
+      // @NoTenant leve l'appartenance a une org, PAS l'authentification : une
+      // requete sans req.auth reste un 401 (config KO / token absent en amont).
+      const membership = jest.fn();
+      const guard = new TenantGuard(
+        fakeReflector({ [NO_TENANT_KEY]: true }),
+        makeAuth(membership),
+      );
+      const ctx = httpContext({ headers: {} });
+
+      await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
       expect(membership).not.toHaveBeenCalled();
     });
   });

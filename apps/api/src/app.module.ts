@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule, seconds } from '@nestjs/throttler';
 
+import { AdminModule } from './admin/admin.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -22,6 +23,7 @@ import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
   imports: [
     PrismaModule,
     AuthModule,
+    AdminModule,
     ProjectsModule,
     HealthModule,
     CalcModule,

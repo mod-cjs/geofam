@@ -8,7 +8,7 @@ import {
 import { Reflector } from '@nestjs/core';
 
 import { AuthService } from './auth.service';
-import { IS_PUBLIC_KEY } from './decorators';
+import { IS_PUBLIC_KEY, NO_TENANT_KEY } from './decorators';
 import type { AuthedRequest } from './request-context';
 
 const UUID_RE =
@@ -53,6 +53,18 @@ export class TenantGuard implements CanActivate {
       // JwtAuthGuard doit s'executer AVANT : absence d'auth = configuration KO.
       throw new UnauthorizedException('Non authentifie');
     }
+
+    // @NoTenant : route AUTHENTIFIEE (req.auth deja exige ci-dessus) mais HORS
+    // contexte tenant. On ne resout AUCUNE org et on ne pose AUCUN req.tenant ->
+    // le handler s'execute hors ALS tenant (cf. TenantContextInterceptor). C'est
+    // le cas onboarding SUPERADMIN / /auth/me, qui n'appartiennent a aucun tenant
+    // et passent par des fonctions DEFINER dediees. Le RBAC (@Roles) reste
+    // applique par le RolesGuard en aval (il lit req.auth, pas req.tenant).
+    const noTenant = this.reflector.getAllAndOverride<boolean>(NO_TENANT_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (noTenant) return true;
 
     const orgId = orgFromRequest(req);
     if (!orgId) {

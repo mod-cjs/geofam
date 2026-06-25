@@ -85,12 +85,14 @@ $$;
 -- Accès au schéma et aux tables nécessaires aux fonctions DEFINER.
 GRANT USAGE ON SCHEMA public TO roadsen_auth;
 GRANT SELECT, INSERT ON organizations, memberships TO roadsen_auth;
-GRANT SELECT ON users TO roadsen_auth;
+-- users : SELECT (auth_find_user_by_email, auth_get_platform_role,
+-- auth_get_user_profile) + INSERT (provision_user, migration 0005).
+GRANT SELECT, INSERT ON users TO roadsen_auth;
 
 -- ---------------------------------------------------------------------------
 -- NOTE : GRANT EXECUTE sur les fonctions DEFINER
 -- ---------------------------------------------------------------------------
--- Les migrations 0002/0003/0004 accordent EXECUTE sur chaque fonction à
+-- Les migrations 0002/0003/0004/0005 accordent EXECUTE sur chaque fonction à
 -- roadsen_app (et révoquent PUBLIC). Ces GRANTs ne peuvent être rejoués ici
 -- que si les fonctions existent déjà (créées par une migration partielle).
 -- Si ce script est exécuté AVANT toute migration, ces GRANTs sont inutiles
@@ -101,7 +103,8 @@ GRANT SELECT ON users TO roadsen_auth;
 -- Pour vérifier :
 --   SELECT proname FROM pg_proc WHERE proname IN (
 --     'provision_org', 'auth_find_user_by_email',
---     'auth_user_has_membership', 'auth_get_platform_role', 'app_current_org'
+--     'auth_user_has_membership', 'auth_get_platform_role', 'app_current_org',
+--     'provision_user', 'auth_get_user_profile'
 --   );
 -- Si les fonctions sont présentes et que les GRANTs manquent, exécuter :
 --   GRANT EXECUTE ON FUNCTION provision_org(text, text, uuid) TO roadsen_app;
@@ -109,6 +112,8 @@ GRANT SELECT ON users TO roadsen_auth;
 --   GRANT EXECUTE ON FUNCTION auth_user_has_membership(uuid, uuid) TO roadsen_app;
 --   GRANT EXECUTE ON FUNCTION auth_get_platform_role(uuid) TO roadsen_app;
 --   GRANT EXECUTE ON FUNCTION app_current_org() TO PUBLIC;
+--   GRANT EXECUTE ON FUNCTION provision_user(text, text, text) TO roadsen_app;
+--   GRANT EXECUTE ON FUNCTION auth_get_user_profile(uuid) TO roadsen_app;
 -- ---------------------------------------------------------------------------
 
 -- Vérification finale (sortie dans la console Render).
