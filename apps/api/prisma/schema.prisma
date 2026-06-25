@@ -114,9 +114,84 @@ model Project {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
-  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  calcs    CalcResult[]
 
+  @@unique([orgId, id]) // cible de FK COMPOSITE (org_id, .) des tables enfant (0006)
   @@index([orgId])
   @@index([orgId, status])
   @@map("projects")
+}
+
+// ----------------------- Pipeline PV : calcul -> PV scelle (#63, incr. A) -----------------------
+//
+//  calc_results : calcul org-scope MUTABLE/jetable (recalcul serveur). official_pvs :
+//  PV OFFICIEL IMMUABLE et AUTOPORTANT (copie figee de ce qui a ete scelle).
+//  RLS FORCE + policies + triggers d'immuabilite + numerotation : portes par la
+//  migration SQL 0006 (Prisma seul ne les exprime pas). Voir
+//  prisma/migrations/0006_pv_seal_core/migration.sql.
+
+// Calcul persiste (jetable). input/output = JSON projete/whiteliste (jamais de champ
+// libre : la projection cote @roadsen/shared strippe les intermediaires avant stockage).
+model CalcResult {
+  id               String   @id @default(uuid()) @db.Uuid
+  orgId            String   @map("org_id") @db.Uuid
+  projectId        String   @map("project_id") @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  engineId         String   @map("engine_id")
+  engineVersion    String   @map("engine_version")
+  engineSourceHash String?  @map("engine_source_hash")
+  input            Json     @db.JsonB
+  output           Json     @db.JsonB
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  // FK COMPOSITE (orgId, projectId) -> projects(orgId, id) : un calcul ne reference
+  // qu'un projet de SON tenant (anti cross-tenant, cf. NOTE §4 de 0004).
+  project Project @relation(fields: [orgId, projectId], references: [orgId, id], onDelete: Cascade)
+
+  @@unique([orgId, id]) // org-coherence de l'id local
+  @@index([orgId])
+  @@index([orgId, projectId])
+  @@map("calc_results")
+}
+
+// PV OFFICIEL : AUTOPORTANT (copie figee de tout le contenu scelle) et IMMUABLE
+// (triggers BEFORE UPDATE/DELETE en 0006 ; aucun privilege UPDATE/DELETE pour le
+// runtime). Pas de FK vivante vers projects/calc_results : le PV survit a leur
+// suppression. calcResultId / projectId sont conserves comme reference/identite
+// FIGEE (sans relation Prisma). input_canonical = chaine canonique exacte scellee ;
+// content_hash = SHA-256 ; hmac = HMAC-SHA256 (clé PV_SIGNING_SECRET, jamais en base).
+model OfficialPv {
+  id               String   @id @default(uuid()) @db.Uuid
+  orgId            String   @map("org_id") @db.Uuid
+  calcResultId     String   @map("calc_result_id") @db.Uuid
+  projectId        String   @map("project_id") @db.Uuid
+  pvNumber         String   @map("pv_number")
+  userId           String   @map("user_id") @db.Uuid
+  projectName      String   @map("project_name")
+  engineId         String   @map("engine_id")
+  engineVersion    String   @map("engine_version")
+  engineSourceHash String?  @map("engine_source_hash")
+  inputCanonical   String   @map("input_canonical")
+  output           Json     @db.JsonB
+  scienceStatus    String   @map("science_status")
+  contentHash      String   @map("content_hash")
+  hmac             String
+  sealedAt         DateTime @map("sealed_at")
+
+  @@unique([orgId, pvNumber]) // numero unique par org
+  @@unique([orgId, calcResultId]) // idempotence d'emission : 1 calcul -> 1 PV
+  @@index([orgId])
+  @@map("official_pvs")
+}
+
+// Compteur de numerotation PAR ORG et PAR ANNEE (PV-RDS-{slug}-{YYYY}-{NNNNNN}).
+// Incremente atomiquement par allocate_pv_number(year) (0006), sous RLS FORCE.
+model PvCounter {
+  orgId   String @map("org_id") @db.Uuid
+  year    Int
+  lastSeq BigInt @default(0) @map("last_seq")
+
+  @@id([orgId, year])
+  @@map("pv_counters")
 }
