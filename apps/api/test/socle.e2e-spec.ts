@@ -274,6 +274,7 @@ if (DB_URL.length === 0 && !ENFORCE_DB) {
 
 describeDb('Socle API — health + OpenAPI (e2e, AppModule reel + DB)', () => {
   let app: INestApplication;
+  let savedSkipDocs: string | undefined;
 
   beforeAll(async () => {
     if (DB_URL.length === 0 && ENFORCE_DB) {
@@ -281,16 +282,23 @@ describeDb('Socle API — health + OpenAPI (e2e, AppModule reel + DB)', () => {
         'CI sans DATABASE_URL : le socle DB ne peut etre prouve.',
       );
     }
+    // Ce bloc TESTE /docs + /docs-json : on annule le defaut e2e (skip docs)
+    // pour que configureApp() construise et expose reellement le document.
+    savedSkipDocs = process.env.ROADSEN_SKIP_DOCS;
+    delete process.env.ROADSEN_SKIP_DOCS;
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
     await app.init();
-  });
+  }, 180_000);
 
   afterAll(async () => {
     await app?.close();
+    // Restaure le defaut e2e (skip docs) pour ne pas ralentir les suites suivantes.
+    if (savedSkipDocs === undefined) delete process.env.ROADSEN_SKIP_DOCS;
+    else process.env.ROADSEN_SKIP_DOCS = savedSkipDocs;
   });
 
   it('GET /v1/health -> 200 {status:"ok"} + env/science identifiables', async () => {

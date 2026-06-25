@@ -4,6 +4,7 @@ import { HealthStatusSchema } from '@roadsen/shared';
 import type { HealthStatus } from '@roadsen/shared';
 
 import { Public } from '../auth/decorators';
+import { RecetteExempt } from '../recette/recette-exempt.decorator';
 import { getDeployEnv, getScienceStatus } from '../recette/recette.config';
 
 import { HealthStatusDto } from './health.dto';
@@ -23,6 +24,7 @@ import { HealthStatusDto } from './health.dto';
 @Controller('health')
 export class HealthController {
   @Public()
+  @RecetteExempt()
   @Version('1')
   @Get()
   @ApiOkResponse({ type: HealthStatusDto })

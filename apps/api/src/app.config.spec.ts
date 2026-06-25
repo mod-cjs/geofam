@@ -1,4 +1,8 @@
-import { assertNoDevHeadersInProd } from './app.config';
+import {
+  assertCorsOriginsInProd,
+  assertNoDevHeadersInProd,
+  resolveCorsOrigins,
+} from './app.config';
 
 /**
  * Test unitaire du fail-fast securite (revue adverse MINEUR-2).
@@ -43,5 +47,56 @@ describe('assertNoDevHeadersInProd — fail-fast au boot', () => {
     process.env.NODE_ENV = 'development';
     process.env.ROADSEN_DEV_HEADERS = '1';
     expect(() => assertNoDevHeadersInProd()).not.toThrow();
+  });
+});
+
+/**
+ * Test unitaire du fail-fast CORS (#73, MINEUR-2).
+ *
+ * En production, un defaut permissif (origin:true) est interdit : sans liste
+ * d'origines declaree, le boot doit etre refuse. Hors prod (recette), le defaut
+ * permissif est tolere (la cle X-Recette-Key reste la barriere).
+ */
+describe('assertCorsOriginsInProd — fail-fast au boot', () => {
+  const prevNodeEnv = process.env.NODE_ENV;
+  const prevRoadsenEnv = process.env.ROADSEN_ENV;
+  const prevOrigins = process.env.ROADSEN_CORS_ORIGINS;
+
+  afterEach(() => {
+    const restore = (k: string, v: string | undefined): void => {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    };
+    restore('NODE_ENV', prevNodeEnv);
+    restore('ROADSEN_ENV', prevRoadsenEnv);
+    restore('ROADSEN_CORS_ORIGINS', prevOrigins);
+  });
+
+  it('REFUSE le boot si NODE_ENV=production ET aucune origine declaree', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.ROADSEN_ENV;
+    delete process.env.ROADSEN_CORS_ORIGINS;
+    expect(() => assertCorsOriginsInProd()).toThrow(/origine CORS/i);
+  });
+
+  it('REFUSE le boot si ROADSEN_ENV=production ET liste vide/blancs', () => {
+    delete process.env.NODE_ENV;
+    process.env.ROADSEN_ENV = 'production';
+    process.env.ROADSEN_CORS_ORIGINS = '  ,  ,';
+    expect(() => assertCorsOriginsInProd()).toThrow(/origine CORS/i);
+  });
+
+  it('AUTORISE le boot en production avec au moins une origine declaree', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.ROADSEN_CORS_ORIGINS = 'https://app.roadsen.example';
+    expect(() => assertCorsOriginsInProd()).not.toThrow();
+    expect(resolveCorsOrigins()).toEqual(['https://app.roadsen.example']);
+  });
+
+  it('AUTORISE le defaut permissif hors production (recette), sans origine', () => {
+    process.env.NODE_ENV = 'test';
+    process.env.ROADSEN_ENV = 'recette';
+    delete process.env.ROADSEN_CORS_ORIGINS;
+    expect(() => assertCorsOriginsInProd()).not.toThrow();
   });
 });

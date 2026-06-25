@@ -2,7 +2,9 @@ import { timingSafeEqual } from 'node:crypto';
 
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 
+import { RECETTE_EXEMPT_KEY } from './recette-exempt.decorator';
 import { RECETTE_KEY_HEADER, getRecetteApiKey } from './recette.config';
 
 /**
@@ -13,12 +15,22 @@ import { RECETTE_KEY_HEADER, getRecetteApiKey } from './recette.config';
  * a TOUTES les routes (/auth/login, /calc/*...), car la recette entiere est
  * fermee tant qu'on ne presente pas la cle.
  *
- * --- EXEMPTION : la sonde de sante ---
- * `/v1/health` est EXEMPTE : c'est l'endpoint que l'hebergeur (Render) interroge
- * pour savoir si l'instance est vivante — il n'envoie pas d'en-tete applicatif.
- * S'il etait protege, la sonde recevrait 401 et le service serait marque
- * « unhealthy ». /health ne renvoie que { status, env, science } (aucune donnee
- * sensible), donc l'ouvrir est sans risque de confidentialite.
+ * --- EXEMPTION : par DECORATEUR sur la ROUTE, pas par texte d'URL (#73) ---
+ * L'exemption est portee par la metadonnee @RecetteExempt() posee sur les
+ * handlers reellement publics au sens perimetre (la landing `GET /` et la sonde
+ * `GET /v1/health`). On la lit via le Reflector sur la ROUTE REELLEMENT MATCHEE
+ * (handler + classe). Consequence de securite : un endpoint NON decore — au
+ * premier chef `/calc/*` — NE PEUT PAS etre exempte, quelle que soit la forme de
+ * l'URL (dot-segments, %2f, double-encodage). Plus de comparaison de chaine
+ * d'URL brute => plus de surface de contournement par manipulation de path.
+ *
+ * Pourquoi PAS d'exemption pour /docs : la doc Swagger (`/docs`, `/docs-json`,
+ * assets `/docs/*`) est servie par un MIDDLEWARE Express (SwaggerModule.setup),
+ * en AMONT de la chaine de gardes Nest — ce guard ne s'execute donc JAMAIS pour
+ * ces routes (verifie empiriquement : canActivate n'est pas invoque pour /docs).
+ * Toute exemption texte « /docs » serait du code MORT ET une surface inutile :
+ * on l'a retiree. La doc reste accessible sans cle parce qu'elle ne passe pas par
+ * le guard, pas parce qu'on l'exempte.
  *
  * --- Activation conditionnelle (fail-safe pour les e2e) ---
  * Le guard n'est ACTIF que si la variable d'env `RECETTE_API_KEY` est posee :
@@ -33,48 +45,26 @@ import { RECETTE_KEY_HEADER, getRecetteApiKey } from './recette.config';
  * longueur (un mismatch de longueur est traite comme un echec, sans branche
  * dependante du contenu de la cle attendue).
  */
-/**
- * Chemins TOUJOURS ouverts (sans cle) :
- *  - sonde de sante de l'hebergeur (/v1/health) — Render l'interroge sans en-tete ;
- *  - la doc Swagger (/docs, ses assets statiques /docs/*, et le spec /docs-json) :
- *    l'UI doit se charger DANS UN NAVIGATEUR (qui n'envoie pas d'en-tete applicatif)
- *    pour que STARFIRE puisse cliquer « Authorize » et coller la cle. La doc ne
- *    revele que la FORME publique de l'API (schemas d'entree/sortie du contrat) —
- *    AUCUNE math ni intermediaire moteur (DoD §8) ; les CALCULS `/calc/*` restent,
- *    eux, fermes par la cle. Exempter la doc est donc sans risque de confidentialite.
- */
-const EXEMPT_EXACT: readonly string[] = [
-  '/v1/health',
-  '/health',
-  '/docs',
-  '/docs-json',
-];
-/** Prefixes ouverts (assets statiques de l'UI Swagger : /docs/swagger-ui-*.js, css...). */
-const EXEMPT_PREFIXES: readonly string[] = ['/docs/'];
-
-function isExemptPath(path: string): boolean {
-  if (EXEMPT_EXACT.includes(path)) return true;
-  return EXEMPT_PREFIXES.some((p) => path.startsWith(p));
-}
-
 @Injectable()
 export class RecetteAccessGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
   canActivate(context: ExecutionContext): boolean {
     const expected = getRecetteApiKey();
     // Guard inerte : aucune cle configuree -> on ne ferme pas la recette.
     if (expected === null) return true;
 
+    // Exemption decidee sur la ROUTE MATCHEE (handler/classe), pas sur l'URL.
+    // `/calc/*` n'est pas decore -> jamais exempte, quelle que soit l'URL.
+    const exempt = this.reflector.getAllAndOverride<boolean>(
+      RECETTE_EXEMPT_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (exempt) return true;
+
     const req = context.switchToHttp().getRequest<{
       headers: Record<string, string | string[] | undefined>;
-      url?: string;
-      originalUrl?: string;
     }>();
-    // Exemption sonde de sante : on isole le PATH (sans query string) et on le
-    // compare aux chemins ouverts. Render interroge /v1/health sans en-tete.
-    const rawPath = req.originalUrl ?? req.url ?? '';
-    const path = rawPath.split('?')[0]?.replace(/\/+$/, '') || '/';
-    if (isExemptPath(path)) return true;
-
     const provided = headerValue(req.headers[RECETTE_KEY_HEADER]);
     if (provided === null || !constantTimeEquals(provided, expected)) {
       throw new UnauthorizedException(

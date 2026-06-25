@@ -47,13 +47,15 @@ export function configureApp(app: INestApplication): void {
   //
   // PERF : la GENERATION du document (createDocument + cleanupOpenApiDoc sur les
   // DTO Zod volumineux des 6 moteurs) est CPU-lourde (~plusieurs dizaines de s).
-  // On la fait UNIQUEMENT quand les docs sont reellement exposees -> les suites
-  // e2e qui ne touchent pas /docs (calc-*, recette, socle non-docs) ne payent pas
-  // ce cout. cleanupOpenApiDoc (nestjs-zod v5) injecte les schemas createZodDto.
-  if (
+  // C'est cette generation qui faisait TIMEOUT (beforeAll 30 s) les e2e qui ne
+  // touchent pas /docs. On l'EVITE explicitement via ROADSEN_SKIP_DOCS=1 (opt-out
+  // reserve a ces suites e2e) : aucun effet en prod (qui ne pose pas ce flag) ni
+  // sur openapi-doc.e2e (qui teste /docs et NE pose PAS ce flag).
+  // cleanupOpenApiDoc (nestjs-zod v5) injecte les schemas createZodDto.
+  const exposeDocs =
     process.env.NODE_ENV !== 'production' ||
-    process.env.ROADSEN_EXPOSE_DOCS === '1'
-  ) {
+    process.env.ROADSEN_EXPOSE_DOCS === '1';
+  if (exposeDocs && process.env.ROADSEN_SKIP_DOCS !== '1') {
     const document = cleanupOpenApiDoc(
       SwaggerModule.createDocument(app, buildOpenApiDocument()),
     );
@@ -126,6 +128,44 @@ export function assertNoDevHeadersInProd(): void {
       'Configuration interdite : ROADSEN_DEV_HEADERS=1 avec NODE_ENV=production. ' +
         "La voie en-tetes de developpement contourne l'isolation multi-tenant et " +
         'ne doit JAMAIS etre active en production. Demarrage refuse.',
+    );
+  }
+}
+
+/** Indique si l'environnement courant est une PRODUCTION (NODE_ENV ou ROADSEN_ENV). */
+function isProductionEnv(): boolean {
+  return (
+    process.env.NODE_ENV === 'production' ||
+    process.env.ROADSEN_ENV === 'production'
+  );
+}
+
+/**
+ * Resout la liste des origines CORS autorisees depuis `ROADSEN_CORS_ORIGINS`
+ * (CSV). Exporte/testable : `main.ts` s'en sert pour configurer enableCors.
+ */
+export function resolveCorsOrigins(): string[] {
+  return (process.env.ROADSEN_CORS_ORIGINS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * FAIL-FAST SECURITE (#73, MINEUR-2) : en PRODUCTION, refuse le boot si aucune
+ * origine CORS n'est declaree. Sans liste, enableCors retomberait sur
+ * `origin:true` (reflet de TOUTE origine appelante) — trop permissif en prod, ou
+ * la cle X-Recette-Key n'est plus la barriere (les endpoints passeront sous auth
+ * tenant). En RECETTE, on tolere le defaut permissif (la cle reste la barriere) :
+ * cette assertion ne se declenche donc QU'en production. Exporte pour etre
+ * testable unitairement et appelee au boot par main.ts.
+ */
+export function assertCorsOriginsInProd(): void {
+  if (isProductionEnv() && resolveCorsOrigins().length === 0) {
+    throw new Error(
+      'Configuration interdite : aucune origine CORS declaree en production. ' +
+        'Renseignez ROADSEN_CORS_ORIGINS (liste CSV des origines autorisees) — ' +
+        'le defaut permissif (reflet de toute origine) est interdit en prod. Demarrage refuse.',
     );
   }
 }

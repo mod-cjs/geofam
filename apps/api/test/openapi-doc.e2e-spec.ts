@@ -42,9 +42,16 @@ interface RequestBodyShape {
 describe('OpenAPI /docs-json (e2e)', () => {
   let app: INestApplication<App>;
   let doc: OpenAPIObject;
+  let savedSkipDocs: string | undefined;
+  let savedExposeDocs: string | undefined;
 
   beforeAll(async () => {
+    savedSkipDocs = process.env.ROADSEN_SKIP_DOCS;
+    savedExposeDocs = process.env.ROADSEN_EXPOSE_DOCS;
     process.env.ROADSEN_EXPOSE_DOCS = '1';
+    // Cette suite TESTE le document : on annule le defaut e2e (skip docs) pour
+    // que configureApp() construise et expose reellement /docs-json.
+    delete process.env.ROADSEN_SKIP_DOCS;
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -60,6 +67,12 @@ describe('OpenAPI /docs-json (e2e)', () => {
 
   afterAll(async () => {
     await app.close();
+    // Restaure l'etat d'env : ne pas re-exposer les docs aux suites suivantes
+    // (sinon leurs beforeAll repayent la generation et risquent le timeout).
+    if (savedSkipDocs === undefined) delete process.env.ROADSEN_SKIP_DOCS;
+    else process.env.ROADSEN_SKIP_DOCS = savedSkipDocs;
+    if (savedExposeDocs === undefined) delete process.env.ROADSEN_EXPOSE_DOCS;
+    else process.env.ROADSEN_EXPOSE_DOCS = savedExposeDocs;
   });
 
   it('expose un schema de securite apiKey `recette-key` sur l en-tete X-Recette-Key', () => {

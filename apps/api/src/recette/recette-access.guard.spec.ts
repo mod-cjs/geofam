@@ -1,26 +1,39 @@
 import { UnauthorizedException } from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 
 import { RecetteAccessGuard } from './recette-access.guard';
+import { RECETTE_EXEMPT_KEY } from './recette-exempt.decorator';
 import { RECETTE_API_KEY_ENV } from './recette.config';
 
 /**
  * RecetteAccessGuard — porte de perimetre par cle d'API.
  *
- * On couvre les TROIS comportements decides :
+ * On couvre les comportements decides :
  *  (a) cle posee + bon en-tete         -> autorise (true) ;
  *  (b) cle posee + en-tete absent/faux -> 401 (UnauthorizedException) ;
- *  (c) cle ABSENTE                      -> guard INERTE -> autorise (true).
+ *  (c) cle ABSENTE                      -> guard INERTE -> autorise (true) ;
+ *  (d) EXEMPTION par @RecetteExempt() sur la ROUTE (et non par URL) : une route
+ *      exemptee passe sans cle ; une route NON exemptee (ex. /calc/*) reste fermee
+ *      quelle que soit l'URL.
+ *
+ * #73 : l'exemption ne s'appuie PLUS sur req.url/originalUrl (manipulable par
+ * dot-segments/encodage). Le Reflector decide sur le HANDLER reellement matche.
+ * Les cas d'URL deguisee sont prouves en e2e (recette-access-bypass.e2e-spec) sur
+ * le routeur reel ; ici on prouve la LOGIQUE de decision via le Reflector.
  *
  * La cle est lue a CHAQUE appel depuis l'environnement : on la pose/retire
  * autour de chaque cas (restauration garantie en afterEach) pour eviter toute
  * fuite d'etat entre les tests.
  */
 describe('RecetteAccessGuard', () => {
-  const guard = new RecetteAccessGuard();
+  let reflector: Reflector;
+  let guard: RecetteAccessGuard;
   let saved: string | undefined;
 
   beforeEach(() => {
+    reflector = new Reflector();
+    guard = new RecetteAccessGuard(reflector);
     saved = process.env[RECETTE_API_KEY_ENV];
     delete process.env[RECETTE_API_KEY_ENV];
   });
@@ -30,13 +43,26 @@ describe('RecetteAccessGuard', () => {
     else process.env[RECETTE_API_KEY_ENV] = saved;
   });
 
-  /** ExecutionContext mocke autour des en-tetes HTTP fournis (+ url optionnelle). */
-  function ctxWithHeaders(
+  /**
+   * ExecutionContext mocke. `exempt` controle ce que le Reflector renverra pour
+   * la metadonnee @RecetteExempt() sur le handler — c'est ce qui distingue une
+   * route ouverte (landing/health) d'une route gardee (ex. /calc/*).
+   */
+  function ctx(
     headers: Record<string, string | string[] | undefined>,
-    url?: string,
+    exempt = false,
   ): ExecutionContext {
+    const handler = (): void => undefined;
+    class FakeController {}
+    jest
+      .spyOn(reflector, 'getAllAndOverride')
+      .mockImplementation((key) =>
+        key === RECETTE_EXEMPT_KEY ? exempt : undefined,
+      );
     return {
-      switchToHttp: () => ({ getRequest: () => ({ headers, url }) }),
+      switchToHttp: () => ({ getRequest: () => ({ headers }) }),
+      getHandler: () => handler,
+      getClass: () => FakeController,
     } as unknown as ExecutionContext;
   }
 
@@ -47,18 +73,17 @@ describe('RecetteAccessGuard', () => {
     });
 
     it('when le bon X-Recette-Key est fourni then autorise (true)', () => {
-      const ctx = ctxWithHeaders({ 'x-recette-key': KEY });
-      expect(guard.canActivate(ctx)).toBe(true);
+      expect(guard.canActivate(ctx({ 'x-recette-key': KEY }))).toBe(true);
     });
 
     it('when X-Recette-Key est ABSENT then 401', () => {
-      const ctx = ctxWithHeaders({});
-      expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
+      expect(() => guard.canActivate(ctx({}))).toThrow(UnauthorizedException);
     });
 
     it('when X-Recette-Key est FAUX then 401', () => {
-      const ctx = ctxWithHeaders({ 'x-recette-key': 'mauvaise-cle' });
-      expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
+      expect(() =>
+        guard.canActivate(ctx({ 'x-recette-key': 'mauvaise-cle' })),
+      ).toThrow(UnauthorizedException);
     });
 
     it('when X-Recette-Key a la BONNE longueur mais differe then 401 (comparaison temps constant)', () => {
@@ -66,42 +91,28 @@ describe('RecetteAccessGuard', () => {
       // timingSafeEqual (et non le court-circuit de longueur).
       const sameLen = 'X'.repeat(KEY.length);
       expect(sameLen.length).toBe(KEY.length);
-      const ctx = ctxWithHeaders({ 'x-recette-key': sameLen });
-      expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
+      expect(() =>
+        guard.canActivate(ctx({ 'x-recette-key': sameLen })),
+      ).toThrow(UnauthorizedException);
     });
 
     it('when X-Recette-Key est vide ("") then 401 (traite comme absent)', () => {
-      const ctx = ctxWithHeaders({ 'x-recette-key': '' });
-      expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
-    });
-
-    it('when la sonde de sante /v1/health (sans cle) then autorise (true) — exemption Render', () => {
-      // La sonde de l'hebergeur n'envoie pas d'en-tete : /v1/health doit passer.
-      expect(guard.canActivate(ctxWithHeaders({}, '/v1/health'))).toBe(true);
-      // Avec query string + slash final : meme exemption.
-      expect(guard.canActivate(ctxWithHeaders({}, '/v1/health/?probe=1'))).toBe(
-        true,
+      expect(() => guard.canActivate(ctx({ 'x-recette-key': '' }))).toThrow(
+        UnauthorizedException,
       );
     });
 
-    it('when la doc Swagger (/docs, /docs-json, assets) sans cle then autorise (true) — UI chargeable au navigateur', () => {
-      // L'UI Swagger doit se charger sans cle pour que l'utilisateur clique Authorize.
-      expect(guard.canActivate(ctxWithHeaders({}, '/docs'))).toBe(true);
-      expect(guard.canActivate(ctxWithHeaders({}, '/docs-json'))).toBe(true);
-      expect(
-        guard.canActivate(ctxWithHeaders({}, '/docs/swagger-ui-bundle.js')),
-      ).toBe(true);
+    it('when la route est @RecetteExempt (sans cle) then autorise (true) — landing / sonde de sante', () => {
+      // Route decoree @RecetteExempt (ex. GET / ou GET /v1/health) : passe sans
+      // en-tete, meme avec la cle configuree.
+      expect(guard.canActivate(ctx({}, true))).toBe(true);
     });
 
-    it('when /calc/* ou la racine / sans cle then 401 (les CALCULS restent fermes)', () => {
-      expect(() =>
-        guard.canActivate(ctxWithHeaders({}, '/calc/terzaghi')),
-      ).toThrow(UnauthorizedException);
-      // Un chemin qui ne fait que COMMENCER par "docs" sans slash n'est pas exempte.
-      expect(() =>
-        guard.canActivate(ctxWithHeaders({}, '/docs-secret')),
-      ).toThrow(UnauthorizedException);
-      expect(() => guard.canActivate(ctxWithHeaders({}, '/'))).toThrow(
+    it('when la route N EST PAS exemptee (ex. /calc/*) sans cle then 401', () => {
+      // Aucune metadonnee @RecetteExempt -> la cle reste exigee. C'est la
+      // garantie #73 : seules les routes DECOREES sont ouvertes, l'URL ne joue
+      // aucun role.
+      expect(() => guard.canActivate(ctx({}, false))).toThrow(
         UnauthorizedException,
       );
     });
@@ -109,13 +120,13 @@ describe('RecetteAccessGuard', () => {
 
   describe('given RECETTE_API_KEY ABSENTE (guard inerte)', () => {
     it('when aucun en-tete then autorise (true) — e2e existants non casses', () => {
-      const ctx = ctxWithHeaders({});
-      expect(guard.canActivate(ctx)).toBe(true);
+      expect(guard.canActivate(ctx({}))).toBe(true);
     });
 
     it('when un X-Recette-Key traine quand meme then autorise (true) — toujours inerte', () => {
-      const ctx = ctxWithHeaders({ 'x-recette-key': 'peu-importe' });
-      expect(guard.canActivate(ctx)).toBe(true);
+      expect(guard.canActivate(ctx({ 'x-recette-key': 'peu-importe' }))).toBe(
+        true,
+      );
     });
   });
 });
