@@ -33,8 +33,29 @@ import { RECETTE_KEY_HEADER, getRecetteApiKey } from './recette.config';
  * longueur (un mismatch de longueur est traite comme un echec, sans branche
  * dependante du contenu de la cle attendue).
  */
-/** Chemins toujours ouverts (sonde de sante de l'hebergeur). */
-const EXEMPT_PATHS: readonly string[] = ['/v1/health', '/health'];
+/**
+ * Chemins TOUJOURS ouverts (sans cle) :
+ *  - sonde de sante de l'hebergeur (/v1/health) — Render l'interroge sans en-tete ;
+ *  - la doc Swagger (/docs, ses assets statiques /docs/*, et le spec /docs-json) :
+ *    l'UI doit se charger DANS UN NAVIGATEUR (qui n'envoie pas d'en-tete applicatif)
+ *    pour que STARFIRE puisse cliquer « Authorize » et coller la cle. La doc ne
+ *    revele que la FORME publique de l'API (schemas d'entree/sortie du contrat) —
+ *    AUCUNE math ni intermediaire moteur (DoD §8) ; les CALCULS `/calc/*` restent,
+ *    eux, fermes par la cle. Exempter la doc est donc sans risque de confidentialite.
+ */
+const EXEMPT_EXACT: readonly string[] = [
+  '/v1/health',
+  '/health',
+  '/docs',
+  '/docs-json',
+];
+/** Prefixes ouverts (assets statiques de l'UI Swagger : /docs/swagger-ui-*.js, css...). */
+const EXEMPT_PREFIXES: readonly string[] = ['/docs/'];
+
+function isExemptPath(path: string): boolean {
+  if (EXEMPT_EXACT.includes(path)) return true;
+  return EXEMPT_PREFIXES.some((p) => path.startsWith(p));
+}
 
 @Injectable()
 export class RecetteAccessGuard implements CanActivate {
@@ -52,7 +73,7 @@ export class RecetteAccessGuard implements CanActivate {
     // compare aux chemins ouverts. Render interroge /v1/health sans en-tete.
     const rawPath = req.originalUrl ?? req.url ?? '';
     const path = rawPath.split('?')[0]?.replace(/\/+$/, '') || '/';
-    if (EXEMPT_PATHS.includes(path)) return true;
+    if (isExemptPath(path)) return true;
 
     const provided = headerValue(req.headers[RECETTE_KEY_HEADER]);
     if (provided === null || !constantTimeEquals(provided, expected)) {

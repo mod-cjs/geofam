@@ -84,9 +84,26 @@ describe('RecetteAccessGuard', () => {
       );
     });
 
-    it('when /calc/* sans cle then 401 (l exemption ne couvre QUE la sante)', () => {
-      const ctx = ctxWithHeaders({}, '/calc/terzaghi');
-      expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
+    it('when la doc Swagger (/docs, /docs-json, assets) sans cle then autorise (true) — UI chargeable au navigateur', () => {
+      // L'UI Swagger doit se charger sans cle pour que l'utilisateur clique Authorize.
+      expect(guard.canActivate(ctxWithHeaders({}, '/docs'))).toBe(true);
+      expect(guard.canActivate(ctxWithHeaders({}, '/docs-json'))).toBe(true);
+      expect(
+        guard.canActivate(ctxWithHeaders({}, '/docs/swagger-ui-bundle.js')),
+      ).toBe(true);
+    });
+
+    it('when /calc/* ou la racine / sans cle then 401 (les CALCULS restent fermes)', () => {
+      expect(() =>
+        guard.canActivate(ctxWithHeaders({}, '/calc/terzaghi')),
+      ).toThrow(UnauthorizedException);
+      // Un chemin qui ne fait que COMMENCER par "docs" sans slash n'est pas exempte.
+      expect(() =>
+        guard.canActivate(ctxWithHeaders({}, '/docs-secret')),
+      ).toThrow(UnauthorizedException);
+      expect(() => guard.canActivate(ctxWithHeaders({}, '/'))).toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
