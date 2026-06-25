@@ -1,16 +1,16 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
-  LaboInputSchema,
+  LABO_FIXTURES,
   findEngine,
   runLabo,
-  type LaboInput,
   type LaboOutput,
 } from '@roadsen/engines';
 import { toSafeEngineError, type EngineResultEnvelope } from '@roadsen/shared';
 
 import { Public } from '../auth/decorators';
-import { ZodValidationPipe } from '../common/zod-validation.pipe';
+
+import { LaboInputDto } from './dto/calc.dto';
 
 /**
  * LaboController — recalcul SERVEUR des essais de laboratoire & classification GTR
@@ -41,10 +41,23 @@ export class LaboController {
     summary:
       'Recalcul serveur — essais de labo & classification GTR (FASTLAB, NF P 11-300). Portage @science-unsigned.',
   })
-  labo(
-    @Body(new ZodValidationPipe(LaboInputSchema))
-    body: LaboInput,
-  ): EngineResultEnvelope<LaboOutput> {
+  @ApiBody({
+    type: LaboInputDto,
+    examples: { demo: { value: LABO_FIXTURES[0]?.input } },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Enveloppe { ok, meta, output } (recalcul serveur).',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Entree hors-contrat (validation Zod).',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Cle d acces recette absente/invalide.',
+  })
+  labo(@Body() body: LaboInputDto): EngineResultEnvelope<LaboOutput> {
     try {
       return runLabo(body);
     } catch (err) {

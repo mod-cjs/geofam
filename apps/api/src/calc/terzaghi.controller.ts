@@ -1,16 +1,16 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
-  TerzaghiInputSchema,
+  TERZAGHI_FIXTURES,
   findEngine,
   runTerzaghi,
-  type TerzaghiInput,
   type TerzaghiOutput,
 } from '@roadsen/engines';
 import { toSafeEngineError, type EngineResultEnvelope } from '@roadsen/shared';
 
 import { Public } from '../auth/decorators';
-import { ZodValidationPipe } from '../common/zod-validation.pipe';
+
+import { TerzaghiInputDto } from './dto/calc.dto';
 
 /**
  * TerzaghiController — recalcul SERVEUR de la fondation superficielle (NF P 94-261).
@@ -41,8 +41,24 @@ export class TerzaghiController {
     summary:
       'Recalcul serveur — fondation superficielle (terzaghi, NF P 94-261). Portage @science-unsigned.',
   })
+  @ApiBody({
+    type: TerzaghiInputDto,
+    examples: { demo: { value: TERZAGHI_FIXTURES[0]?.input } },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Enveloppe { ok, meta, output } (recalcul serveur).',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Entree hors-contrat (validation Zod).',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Cle d acces recette absente/invalide.',
+  })
   terzaghi(
-    @Body(new ZodValidationPipe(TerzaghiInputSchema)) body: TerzaghiInput,
+    @Body() body: TerzaghiInputDto,
   ): EngineResultEnvelope<TerzaghiOutput> {
     try {
       return runTerzaghi(body);

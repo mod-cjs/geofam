@@ -1,16 +1,16 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
-  PieuxInputSchema,
+  PIEUX_FIXTURES,
   findEngine,
   runPieux,
-  type PieuxInput,
   type PieuxOutput,
 } from '@roadsen/engines';
 import { toSafeEngineError, type EngineResultEnvelope } from '@roadsen/shared';
 
 import { Public } from '../auth/decorators';
-import { ZodValidationPipe } from '../common/zod-validation.pipe';
+
+import { PieuxInputDto } from './dto/calc.dto';
 
 /**
  * PieuxController — recalcul SERVEUR de la portance de pieu / fondations profondes
@@ -44,10 +44,23 @@ export class PieuxController {
     summary:
       'Recalcul serveur — portance de pieu / fondations profondes (NF P 94-262, EC7). Portage @science-unsigned.',
   })
-  pieux(
-    @Body(new ZodValidationPipe(PieuxInputSchema))
-    body: PieuxInput,
-  ): EngineResultEnvelope<PieuxOutput> {
+  @ApiBody({
+    type: PieuxInputDto,
+    examples: { demo: { value: PIEUX_FIXTURES[0]?.input } },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Enveloppe { ok, meta, output } (recalcul serveur).',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Entree hors-contrat (validation Zod).',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Cle d acces recette absente/invalide.',
+  })
+  pieux(@Body() body: PieuxInputDto): EngineResultEnvelope<PieuxOutput> {
     try {
       return runPieux(body);
     } catch (err) {

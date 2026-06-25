@@ -1,16 +1,16 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
-  RadierInputSchema,
+  RADIER_FIXTURES,
   findEngine,
   runRadier,
-  type RadierInput,
   type RadierOutput,
 } from '@roadsen/engines';
 import { toSafeEngineError, type EngineResultEnvelope } from '@roadsen/shared';
 
 import { Public } from '../auth/decorators';
-import { ZodValidationPipe } from '../common/zod-validation.pipe';
+
+import { RadierInputDto } from './dto/calc.dto';
 
 /**
  * RadierController — recalcul SERVEUR du radier/plaque sur sol multicouche elastique
@@ -43,10 +43,23 @@ export class RadierController {
     summary:
       'Recalcul serveur — radier/plaque sur sol multicouche élastique (EF, GEOPLAQUE). Portage @science-unsigned.',
   })
-  radier(
-    @Body(new ZodValidationPipe(RadierInputSchema))
-    body: RadierInput,
-  ): EngineResultEnvelope<RadierOutput> {
+  @ApiBody({
+    type: RadierInputDto,
+    examples: { demo: { value: RADIER_FIXTURES[0]?.input } },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Enveloppe { ok, meta, output } (recalcul serveur).',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Entree hors-contrat (validation Zod).',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Cle d acces recette absente/invalide.',
+  })
+  radier(@Body() body: RadierInputDto): EngineResultEnvelope<RadierOutput> {
     try {
       return runRadier(body);
     } catch (err) {

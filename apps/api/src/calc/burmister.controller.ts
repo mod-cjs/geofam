@@ -1,16 +1,16 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
-  BurmisterInputSchema,
+  BURMISTER_FIXTURES,
   findEngine,
   runBurmister,
-  type BurmisterInput,
   type BurmisterOutput,
 } from '@roadsen/engines';
 import { toSafeEngineError, type EngineResultEnvelope } from '@roadsen/shared';
 
 import { Public } from '../auth/decorators';
-import { ZodValidationPipe } from '../common/zod-validation.pipe';
+
+import { BurmisterInputDto } from './dto/calc.dto';
 
 /**
  * BurmisterController — recalcul SERVEUR du dimensionnement de chaussees
@@ -44,8 +44,24 @@ export class BurmisterController {
     summary:
       'Recalcul serveur — dimensionnement de chaussees (burmister, AGEROUTE Senegal 2015). Portage @science-unsigned.',
   })
+  @ApiBody({
+    type: BurmisterInputDto,
+    examples: { demo: { value: BURMISTER_FIXTURES[0]?.input } },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Enveloppe { ok, meta, output } (recalcul serveur).',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Entree hors-contrat (validation Zod).',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Cle d acces recette absente/invalide.',
+  })
   burmister(
-    @Body(new ZodValidationPipe(BurmisterInputSchema)) body: BurmisterInput,
+    @Body() body: BurmisterInputDto,
   ): EngineResultEnvelope<BurmisterOutput> {
     try {
       return runBurmister(body);

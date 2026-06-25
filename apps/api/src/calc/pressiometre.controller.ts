@@ -1,16 +1,16 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
-  PressiometreInputSchema,
+  PRESSIOMETRE_FIXTURES,
   findEngine,
   runPressiometre,
-  type PressiometreInput,
   type PressiometreOutput,
 } from '@roadsen/engines';
 import { toSafeEngineError, type EngineResultEnvelope } from '@roadsen/shared';
 
 import { Public } from '../auth/decorators';
-import { ZodValidationPipe } from '../common/zod-validation.pipe';
+
+import { PressiometreInputDto } from './dto/calc.dto';
 
 /**
  * PressiometreController — recalcul SERVEUR du depouillement pressiometrique
@@ -44,9 +44,24 @@ export class PressiometreController {
     summary:
       'Recalcul serveur — depouillement pressiometrique Menard (NF EN ISO 22476-4). Portage @science-unsigned.',
   })
+  @ApiBody({
+    type: PressiometreInputDto,
+    examples: { demo: { value: PRESSIOMETRE_FIXTURES[0]?.input } },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Enveloppe { ok, meta, output } (recalcul serveur).',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Entree hors-contrat (validation Zod).',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Cle d acces recette absente/invalide.',
+  })
   pressiometre(
-    @Body(new ZodValidationPipe(PressiometreInputSchema))
-    body: PressiometreInput,
+    @Body() body: PressiometreInputDto,
   ): EngineResultEnvelope<PressiometreOutput> {
     try {
       return runPressiometre(body);
