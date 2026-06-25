@@ -1,0 +1,593 @@
+/**
+ * Test e2e du PDF du PV — surface tenant (#63, incr. C) — contre la VRAIE base.
+ *
+ * Prouve, via HTTP (supertest) sur l'app NestJS reelle + une connexion superuser
+ * pour seed/teardown :
+ *   1) GET /pvs/:id/pdf -> 200, Content-Type application/pdf, Content-Disposition
+ *      attachment; filename=<numero>.pdf, signature %PDF en tete, taille > 0.
+ *   2) CONTENU : le document rendu CONTIENT les donnees scellees clés (numero de
+ *      PV, empreinte SHA-256, >= 1 resultat) — verifie via collectPvPdfText sur le
+ *      PV reellement persiste (lu en base).
+ *   3) REGENERABILITE : deux generations du MEME PV -> octets identiques.
+ *   4) ISOLATION : le PDF d'un PV d'un AUTRE org -> 404.
+ *   5) ROLES : VIEWER (role tenant) PEUT telecharger le PDF (lecture) ; un user
+ *      hors-org -> 403/404.
+ *   6) AUCUNE fuite « science_status / unsigned » dans le rendu.
+ *
+ * ANTI-SKIP : DATABASE_URL absent ET CI -> echec dur. Hors CI sans base ->
+ * non-execute (honnete), interdit en CI.
+ */
+import { randomUUID } from 'node:crypto';
+
+import type { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import type { OfficialPv } from '@prisma/client';
+import { BURMISTER_FIXTURES, LABO_FIXTURES } from '@roadsen/engines';
+import request from 'supertest';
+
+import { AppModule } from '../src/app.module';
+import { hashPassword } from '../src/auth/password';
+import { buildPvDocDefinition, collectPvPdfText } from '../src/pv/pdf/pv-pdf';
+
+type PgClient = {
+  connect: () => Promise<void>;
+  query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
+  end: () => Promise<void>;
+};
+type PgClientCtor = new (cfg: { connectionString: string }) => PgClient;
+
+interface CalcBody {
+  calcResultId?: unknown;
+}
+interface PvBody {
+  id?: unknown;
+  pvNumber?: unknown;
+  contentHash?: unknown;
+}
+
+const ADMIN_URL = process.env.DATABASE_URL ?? '';
+const ENFORCE = process.env.CI === 'true' || ADMIN_URL.length > 0;
+
+function loadPgClient(): PgClientCtor {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require('pg') as { Client: PgClientCtor };
+  return mod.Client;
+}
+
+describe('PDF du PV — surface tenant (e2e)', () => {
+  let app: INestApplication | null = null;
+  let admin: PgClient | null = null;
+  let connectError: Error | null = null;
+
+  const orgA = randomUUID();
+  const orgB = randomUUID();
+  const slugA = `org-a-${orgA.slice(0, 8)}`;
+  const engineerA = randomUUID();
+  const viewerA = randomUUID();
+  const userB = randomUUID();
+  const projectA = randomUUID();
+  const projectB = randomUUID();
+  const PASSWORD = 'Sup3r-Secret!';
+  const burmisterInput = BURMISTER_FIXTURES[0].input;
+  // Profil labo RICHE (~131 champs : granulo + Atterberg + Proctor + CBR…) ->
+  // le tableau d'entrées DÉBORDE sur plusieurs pages (gabarit générique).
+  const laboInput = LABO_FIXTURES[0].input;
+
+  jest.setTimeout(60_000);
+
+  beforeAll(async () => {
+    try {
+      const Client = loadPgClient();
+      admin = new Client({ connectionString: ADMIN_URL });
+      await admin.connect();
+    } catch (err) {
+      connectError = err as Error;
+      if (ENFORCE) throw connectError;
+      return;
+    }
+
+    const hash = await hashPassword(PASSWORD);
+    await admin.query(
+      `INSERT INTO users (id, email, password_hash, full_name, updated_at) VALUES
+        ($1,$2,$7,'Eng A',now()), ($3,$4,$7,'View A',now()), ($5,$6,$7,'User B',now())`,
+      [
+        engineerA,
+        `eng-${engineerA.slice(0, 8)}@roadsen.test`,
+        viewerA,
+        `view-${viewerA.slice(0, 8)}@roadsen.test`,
+        userB,
+        `b-${userB.slice(0, 8)}@roadsen.test`,
+        hash,
+      ],
+    );
+    await admin.query(
+      `INSERT INTO organizations (id, name, slug, "updatedAt") VALUES ($1,'Org A',$2,now()), ($3,'Org B',$4,now())`,
+      [orgA, slugA, orgB, `org-b-${orgB.slice(0, 8)}`],
+    );
+    await admin.query(
+      `INSERT INTO memberships (id, org_id, user_id, role) VALUES
+        ($1,$2,$3,'ENGINEER'), ($4,$5,$6,'VIEWER'), ($7,$8,$9,'OWNER')`,
+      [
+        randomUUID(),
+        orgA,
+        engineerA,
+        randomUUID(),
+        orgA,
+        viewerA,
+        randomUUID(),
+        orgB,
+        userB,
+      ],
+    );
+    await admin.query(
+      `INSERT INTO projects (id, org_id, name, created_by_id, updated_at) VALUES ($1,$2,'P-A',$3,now()), ($4,$5,'P-B',$6,now())`,
+      [projectA, orgA, engineerA, projectB, orgB, userB],
+    );
+
+    process.env.ROADSEN_DEV_HEADERS = '0';
+    process.env.NODE_ENV = 'test';
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = moduleRef.createNestApplication();
+    await app.init();
+  }, 60_000);
+
+  afterAll(async () => {
+    if (admin) {
+      try {
+        await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+        await admin.query(`DELETE FROM official_pvs WHERE org_id IN ($1,$2)`, [
+          orgA,
+          orgB,
+        ]);
+        await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        await admin.query(`DELETE FROM pv_counters WHERE org_id IN ($1,$2)`, [
+          orgA,
+          orgB,
+        ]);
+        await admin.query(`DELETE FROM calc_results WHERE org_id IN ($1,$2)`, [
+          orgA,
+          orgB,
+        ]);
+        await admin.query(`DELETE FROM projects WHERE org_id IN ($1,$2)`, [
+          orgA,
+          orgB,
+        ]);
+        await admin.query(`DELETE FROM memberships WHERE org_id IN ($1,$2)`, [
+          orgA,
+          orgB,
+        ]);
+        await admin.query(`DELETE FROM organizations WHERE id IN ($1,$2)`, [
+          orgA,
+          orgB,
+        ]);
+        await admin.query(`DELETE FROM users WHERE id IN ($1,$2,$3)`, [
+          engineerA,
+          viewerA,
+          userB,
+        ]);
+      } finally {
+        await admin.end();
+      }
+    }
+    if (app) await app.close();
+  });
+
+  const ready = () => {
+    if (!app) {
+      if (ENFORCE)
+        throw connectError ?? new Error('App/base indisponible en CI.');
+      console.warn('[NON EXECUTE] base/app indisponible (hors CI).');
+      return false;
+    }
+    return true;
+  };
+
+  const server = (): import('http').Server =>
+    app!.getHttpServer() as import('http').Server;
+  const tokenCache = new Map<string, string>();
+  async function login(email: string): Promise<string> {
+    const cached = tokenCache.get(email);
+    if (cached) return cached;
+    const res = await request(server())
+      .post('/auth/login')
+      .send({ email, password: PASSWORD });
+    expect(res.status).toBe(200);
+    const token = String((res.body as { accessToken?: unknown }).accessToken);
+    tokenCache.set(email, token);
+    return token;
+  }
+  const emailEng = () => `eng-${engineerA.slice(0, 8)}@roadsen.test`;
+  const emailView = () => `view-${viewerA.slice(0, 8)}@roadsen.test`;
+  const emailB = () => `b-${userB.slice(0, 8)}@roadsen.test`;
+
+  // Emet un PV dans orgA pour un moteur/entree donnes (defaut burmister).
+  async function emitPvInA(
+    engine = 'burmister',
+    input: unknown = burmisterInput,
+  ): Promise<{ pvId: string; pvNumber: string }> {
+    const token = await login(emailEng());
+    const calc = await request(server())
+      .post(`/projects/${projectA}/calc/${engine}`)
+      .set('authorization', `Bearer ${token}`)
+      .set('x-org-id', orgA)
+      .send(input as object);
+    expect(calc.status).toBe(201);
+    const calcId = String((calc.body as CalcBody).calcResultId);
+    const emit = await request(server())
+      .post(`/projects/${projectA}/calc-results/${calcId}/pv`)
+      .set('authorization', `Bearer ${token}`)
+      .set('x-org-id', orgA);
+    expect(emit.status).toBe(201);
+    const pv = emit.body as PvBody;
+    return { pvId: String(pv.id), pvNumber: String(pv.pvNumber) };
+  }
+
+  // Telecharge un PDF (en Buffer) via l'endpoint authentifie+tenant.
+  function downloadPdf(token: string, pvId: string) {
+    return request(server())
+      .get(`/projects/${projectA}/pvs/${pvId}/pdf`)
+      .set('authorization', `Bearer ${token}`)
+      .set('x-org-id', orgA)
+      .buffer(true)
+      .parse((r, cb) => {
+        const data: Buffer[] = [];
+        r.on('data', (c: Buffer) => data.push(c));
+        r.on('end', () => cb(null, Buffer.concat(data)));
+      });
+  }
+
+  // Nombre de pages AUTORITAIRE depuis l'arbre /Pages du PDF (/Count N).
+  function pdfPageCount(buf: Buffer): number {
+    const s = buf.toString('latin1');
+    const m =
+      /\/Type\s*\/Pages[\s\S]{0,400}?\/Count\s+(\d+)/.exec(s) ??
+      /\/Count\s+(\d+)/.exec(s);
+    return m ? Number(m[1]) : 0;
+  }
+
+  it('1) GET pvs/:id/pdf -> 200, application/pdf, attachment, %PDF, taille>0', async () => {
+    if (!ready()) return;
+    const token = await login(emailEng());
+    const { pvId, pvNumber } = await emitPvInA();
+    const res = await request(server())
+      .get(`/projects/${projectA}/pvs/${pvId}/pdf`)
+      .set('authorization', `Bearer ${token}`)
+      .set('x-org-id', orgA)
+      .buffer(true)
+      .parse((r, cb) => {
+        const data: Buffer[] = [];
+        r.on('data', (c: Buffer) => data.push(c));
+        r.on('end', () => cb(null, Buffer.concat(data)));
+      });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/application\/pdf/);
+    expect(res.headers['content-disposition']).toContain(
+      `filename="${pvNumber}.pdf"`,
+    );
+    const body = res.body as Buffer;
+    expect(body.length).toBeGreaterThan(0);
+    expect(body.slice(0, 5).toString()).toBe('%PDF-');
+  });
+
+  it('2) CONTENU : le rendu contient numero de PV, hash SHA-256 et >= 1 resultat', async () => {
+    if (!ready()) return;
+    const { pvId } = await emitPvInA();
+    // On lit le PV REELLEMENT persiste (superuser) et on verifie le texte rendu.
+    const rows = await admin!.query(
+      `SELECT * FROM official_pvs WHERE id = $1`,
+      [pvId],
+    );
+    const pv = camelizePv(rows.rows[0] as Record<string, unknown>);
+    const text = collectPvPdfText(pv);
+    expect(text).toContain(pv.pvNumber);
+    expect(text).toContain(pv.contentHash); // empreinte SHA-256 (64 hex)
+    // >= 1 resultat : burmister produit au moins une grandeur de sortie.
+    expect(text).toContain('Résultats'.toUpperCase());
+    const outputKeys = Object.keys(pv.output as Record<string, unknown>);
+    expect(outputKeys.length).toBeGreaterThan(0);
+    // au moins une cle/valeur de sortie apparait dans le rendu.
+    const someKey = outputKeys[0];
+    expect(text.includes(someKey)).toBe(true);
+  });
+
+  it('3) REGENERABILITE : deux generations du meme PV -> octets identiques', async () => {
+    if (!ready()) return;
+    const token = await login(emailEng());
+    const { pvId } = await emitPvInA();
+    const dl = () =>
+      request(server())
+        .get(`/projects/${projectA}/pvs/${pvId}/pdf`)
+        .set('authorization', `Bearer ${token}`)
+        .set('x-org-id', orgA)
+        .buffer(true)
+        .parse((r, cb) => {
+          const data: Buffer[] = [];
+          r.on('data', (c: Buffer) => data.push(c));
+          r.on('end', () => cb(null, Buffer.concat(data)));
+        });
+    const a = await dl();
+    const b = await dl();
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(Buffer.compare(a.body as Buffer, b.body as Buffer)).toBe(0);
+  });
+
+  it('4) ISOLATION : PDF d un PV via un autre org -> 404', async () => {
+    if (!ready()) return;
+    const { pvId } = await emitPvInA();
+    const tokenB = await login(emailB());
+    const res = await request(server())
+      .get(`/projects/${projectB}/pvs/${pvId}/pdf`)
+      .set('authorization', `Bearer ${tokenB}`)
+      .set('x-org-id', orgB);
+    expect(res.status).toBe(404);
+  });
+
+  it('5) ROLES : VIEWER peut telecharger le PDF (lecture)', async () => {
+    if (!ready()) return;
+    const { pvId } = await emitPvInA();
+    const tokenView = await login(emailView());
+    const res = await request(server())
+      .get(`/projects/${projectA}/pvs/${pvId}/pdf`)
+      .set('authorization', `Bearer ${tokenView}`)
+      .set('x-org-id', orgA)
+      .buffer(true)
+      .parse((r, cb) => {
+        const data: Buffer[] = [];
+        r.on('data', (c: Buffer) => data.push(c));
+        r.on('end', () => cb(null, Buffer.concat(data)));
+      });
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).slice(0, 5).toString()).toBe('%PDF-');
+  });
+
+  it('6) AUCUNE fuite science_status / unsigned dans le rendu', async () => {
+    if (!ready()) return;
+    const { pvId } = await emitPvInA();
+    const rows = await admin!.query(
+      `SELECT * FROM official_pvs WHERE id = $1`,
+      [pvId],
+    );
+    const pv = camelizePv(rows.rows[0] as Record<string, unknown>);
+    const text = collectPvPdfText(pv).toLowerCase();
+    expect(text.includes('unsigned')).toBe(false);
+    expect(text.includes('science')).toBe(false);
+    expect(text.includes('@science')).toBe(false);
+  });
+
+  // --- 7) MULTI-PAGES : PV LABO (FASTLAB) à nombreux champs --------------------
+  //
+  //  Le moteur labo a ~180 champs d'entrée potentiels ; un profil réaliste
+  //  (granulo + Atterberg + Proctor + CBR…) fait DÉBORDER le tableau d'entrées
+  //  sur PLUSIEURS pages. On prouve que le gabarit « générique élégant » tient :
+  //  PDF généré sans erreur, Y>1 page, en-tête de tableau répété (headerRows:1),
+  //  bloc scellement insécable (unbreakable, jamais coupé), pagination « page X / Y »
+  //  avec Y>1, et contenu (numéro / hash / résultats) présent.
+  it('7) MULTI-PAGES : PV labo déborde sur plusieurs pages (gabarit générique)', async () => {
+    if (!ready()) return;
+    const token = await login(emailEng());
+    const { pvId, pvNumber } = await emitPvInA('labo', laboInput);
+
+    const res = await downloadPdf(token, pvId);
+    expect(res.status).toBe(200);
+    const buf = res.body as Buffer;
+    expect(buf.slice(0, 5).toString()).toBe('%PDF-');
+    // DÉBORDEMENT prouvé : strictement plus d'une page.
+    const pages = pdfPageCount(buf);
+    expect(pages).toBeGreaterThan(1);
+
+    // Contenu rendu (via la docDefinition = ce que voit le lecteur) : on relit le
+    // PV persisté et on vérifie numéro / hash / sections / pagination Y>1.
+    const rows = await admin!.query(
+      `SELECT * FROM official_pvs WHERE id = $1`,
+      [pvId],
+    );
+    const pv = camelizePv(rows.rows[0] as Record<string, unknown>);
+    const text = collectPvPdfText(pv);
+    expect(pv.pvNumber).toBe(pvNumber);
+    expect(text).toContain(pv.pvNumber); // en-tête répété (toutes pages)
+    expect(text).toContain(pv.contentHash); // bloc scellement présent
+    expect(text).toContain('SCELLEMENT');
+    expect(text).toContain('DONNÉES D’ENTRÉE'.toUpperCase());
+    expect(text).toContain('RÉSULTATS'.toUpperCase());
+    // En-tête de tableau « Paramètre » présent sur les tableaux entrée + résultats
+    // (≥2). headerRows:1 le fait répéter par page côté rendu (cf. docDef ci-dessous).
+    const paramHeaderCount = (text.match(/Paramètre/g) ?? []).length;
+    expect(paramHeaderCount).toBeGreaterThanOrEqual(2);
+
+    // Le bloc SCELLEMENT (unbreakable) n'apparaît qu'UNE fois (jamais dupliqué).
+    expect((text.match(/SCELLEMENT/g) ?? []).length).toBe(1);
+
+    // STRUCTURE prouvée déterministe (ce que pdfmake applique RÉELLEMENT par page) :
+    //  - headerRows:1 sur le tableau d'entrée -> en-tête répété à chaque page ;
+    //  - le bloc scellement porte unbreakable:true -> jamais coupé ;
+    //  - le footer (DynamicContent) émet « page X / Y » par page ; on l'évalue sur
+    //    la DERNIÈRE page avec Y = pages réelles -> « page N / N ».
+    const def = buildPvDocDefinition(pv);
+    const inputTable = findFirstTableWithHeader(def.content);
+    expect(inputTable?.table.headerRows).toBe(1);
+    expect(hasUnbreakableSeal(def.content)).toBe(true);
+    const footerLast = renderFooterText(def, pages, pages);
+    expect(footerLast).toContain(`page ${pages} / ${pages}`);
+    expect(footerLast).toContain(pv.pvNumber); // numéro répété en pied, toutes pages
+  });
+
+  // --- 8) PREUVE SUR LES OCTETS RÉELS (CRIT-2) --------------------------------
+  //
+  //  collectPvPdfText parcourt la docDefinition, PAS les octets produits : rien ne
+  //  garantit que ce texte est dans le PDF reçu par le lecteur. Ici on EXTRAIT le
+  //  texte des OCTETS RÉELS (pdf-parse) et on vérifie numéro de PV + empreinte
+  //  SHA-256 (64 hex) présents -> ferme la boucle docDefinition → octets.
+  it('8) OCTETS RÉELS : le texte extrait du PDF contient numéro + hash SHA-256', async () => {
+    if (!ready()) return;
+    const token = await login(emailEng());
+    const { pvId, pvNumber } = await emitPvInA();
+    const res = await downloadPdf(token, pvId);
+    expect(res.status).toBe(200);
+    const text = await extractPdfText(res.body as Buffer);
+    // Numéro de PV présent dans les octets (sans espaces : run sans letterSpacing).
+    expect(text).toContain(pvNumber);
+    // Empreinte SHA-256 (64 hex en Courier) présente dans les octets.
+    expect(/[0-9a-f]{64}/.test(text)).toBe(true);
+    // Au moins une clé de résultat (la sortie burmister rend p.ex. « epaisseur… »).
+    expect(/epaisseur|verdict|famille|fatigue/i.test(text)).toBe(true);
+  });
+
+  // --- 9) ANTI-FUITE SCIENCE SUR LES OCTETS (MAJ-1) ---------------------------
+  it('9) OCTETS RÉELS : aucune fuite « science / unsigned » dans le PDF', async () => {
+    if (!ready()) return;
+    const token = await login(emailEng());
+    const { pvId } = await emitPvInA();
+    const res = await downloadPdf(token, pvId);
+    const text = (await extractPdfText(res.body as Buffer)).toLowerCase();
+    expect(text.includes('unsigned')).toBe(false);
+    expect(text.includes('science')).toBe(false);
+    expect(text.includes('@science')).toBe(false);
+  });
+
+  // --- 10) FAIL-CLOSED HTTP (CRIT-1) : sceau invalide -> 409, pas de PDF -------
+  it('10) FAIL-CLOSED : input_canonical altéré en base -> PDF refusé (409)', async () => {
+    if (!ready()) return;
+    const token = await login(emailEng());
+    const { pvId } = await emitPvInA();
+    // Avant : le PDF se génère (sceau valide).
+    const ok = await downloadPdf(token, pvId);
+    expect(ok.status).toBe(200);
+
+    // ALTÉRATION de input_canonical en base (trigger d'immuabilité désactivé le
+    // temps de la falsification de test) -> le sceau ne vérifie plus.
+    await admin!.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+    await admin!.query(
+      `UPDATE official_pvs SET input_canonical = input_canonical || ' falsifie' WHERE id = $1`,
+      [pvId],
+    );
+    await admin!.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+
+    // Après : génération REFUSÉE (fail-closed) -> 409, aucun PDF.
+    const refused = await downloadPdf(token, pvId);
+    expect(refused.status).toBe(409);
+  });
+});
+
+/** Extrait le texte des OCTETS RÉELS d'un PDF (pdf-parse v1, CJS — jest-friendly). */
+async function extractPdfText(buf: Buffer): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pdfParse = require('pdf-parse') as (
+    b: Buffer,
+  ) => Promise<{ text: string }>;
+  const { text } = await pdfParse(buf);
+  return text;
+}
+
+/** Mappe une ligne SQL snake_case -> l'objet OfficialPv (camelCase) attendu par le rendu. */
+function camelizePv(row: Record<string, unknown>): OfficialPv {
+  return {
+    id: row.id as string,
+    orgId: row.org_id as string,
+    calcResultId: row.calc_result_id as string,
+    projectId: row.project_id as string,
+    pvNumber: row.pv_number as string,
+    userId: row.user_id as string,
+    projectName: row.project_name as string,
+    engineId: row.engine_id as string,
+    engineVersion: row.engine_version as string,
+    engineSourceHash: (row.engine_source_hash as string | null) ?? null,
+    inputCanonical: row.input_canonical as string,
+    output: row.output as OfficialPv['output'],
+    scienceStatus: row.science_status as string,
+    contentHash: row.content_hash as string,
+    hmac: row.hmac as string,
+    sealedAt: row.sealed_at as Date,
+  };
+}
+
+// --- Helpers structurels sur la docDefinition (preuves déterministes) -------
+
+interface TableNode {
+  table: { headerRows?: number; body?: unknown };
+}
+
+/** Trouve le 1er noeud avec un tableau à headerRows (le tableau d'entrée). */
+function findFirstTableWithHeader(content: unknown): TableNode | undefined {
+  let found: TableNode | undefined;
+  const walk = (n: unknown): void => {
+    if (found || n == null) return;
+    if (Array.isArray(n)) {
+      n.forEach(walk);
+      return;
+    }
+    if (typeof n === 'object') {
+      const o = n as Record<string, unknown>;
+      if (
+        o.table &&
+        typeof o.table === 'object' &&
+        typeof (o.table as { headerRows?: unknown }).headerRows === 'number'
+      ) {
+        found = n as TableNode;
+        return;
+      }
+      Object.values(o).forEach(walk);
+    }
+  };
+  walk(content);
+  return found;
+}
+
+/** Vrai si un noeud du contenu porte `unbreakable: true` (bloc scellement). */
+function hasUnbreakableSeal(content: unknown): boolean {
+  let ok = false;
+  const walk = (n: unknown): void => {
+    if (ok || n == null) return;
+    if (Array.isArray(n)) {
+      n.forEach(walk);
+      return;
+    }
+    if (typeof n === 'object') {
+      const o = n as Record<string, unknown>;
+      if (o.unbreakable === true) {
+        ok = true;
+        return;
+      }
+      Object.values(o).forEach(walk);
+    }
+  };
+  walk(content);
+  return ok;
+}
+
+/** Évalue le footer (DynamicContent) sur (page, pageCount) et collecte son texte. */
+function renderFooterText(
+  def: ReturnType<typeof buildPvDocDefinition>,
+  page: number,
+  pageCount: number,
+): string {
+  if (typeof def.footer !== 'function') return '';
+  const node = def.footer(page, pageCount, {
+    width: 595,
+    height: 842,
+    orientation: 'portrait',
+  });
+  const out: string[] = [];
+  const walk = (n: unknown): void => {
+    if (n == null) return;
+    if (typeof n === 'string') {
+      out.push(n);
+      return;
+    }
+    if (Array.isArray(n)) {
+      n.forEach(walk);
+      return;
+    }
+    if (typeof n === 'object') {
+      const o = n as Record<string, unknown>;
+      if (typeof o.text === 'string') out.push(o.text);
+      else if (o.text != null) walk(o.text);
+      if (o.columns) walk(o.columns);
+      if (o.stack) walk(o.stack);
+    }
+  };
+  walk(node);
+  return out.join(' ');
+}

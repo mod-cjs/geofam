@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -15,6 +16,8 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { requireOrgId } from '../tenant/tenant-context';
+
+import { renderPvPdf } from './pdf/pv-pdf';
 
 /** PV officiel + verdict de verification du sceau (recalcule a la lecture). */
 export interface OfficialPvView {
@@ -209,6 +212,43 @@ export class PvService {
       );
     }
     return { pv, sealValid: this.verify(pv, secret) };
+  }
+
+  /**
+   * Rend le PDF d'un PV du tenant. Passe par getViewById -> MEME isolation/RLS
+   * et MEME 404 cross-org/hors-projet. Le PDF est régénérable (rendu depuis les
+   * seules données scellées de l'official_pv).
+   */
+  async pdfForView(args: {
+    projectId: string;
+    pvId: string;
+  }): Promise<{ pv: OfficialPv; pdf: Buffer }> {
+    // getViewById -> signingSecret() : secret ABSENT = mauvaise config serveur
+    // -> 503 (ServiceUnavailable), déjà géré en amont. Distinct du 409 ci-dessous.
+    const { pv, sealValid } = await this.getViewById(args);
+    // FAIL-CLOSED — REFUS DUR (CRIT-1, décision titulaire) : un PV « officiel » au
+    // sceau cassé NE DOIT PAS exister en PDF (pas de tampon « invalide »). sealValid
+    // est faux si verifySeal échoue (donnée altérée) OU si input_canonical est
+    // illisible (le hash d'une canonique corrompue ne correspond plus) -> les deux
+    // cas = anomalie d'intégrité = 409 Conflict. renderPvPdf re-vérifie en défense
+    // en profondeur (il lèverait aussi). AUCUN rendu dégradé depuis la ligne.
+    if (!sealValid) {
+      throw new ConflictException(
+        "Intégrité du PV non vérifiée — anomalie d'intégrité, contactez le support.",
+      );
+    }
+    // Défense en profondeur : renderPvPdf re-vérifie le sceau ET re-parse la
+    // canonique (fail-closed). Toute erreur d'intégrité résiduelle (ex. canonique
+    // illisible dont le hash coïnciderait malgré tout) est mappée en 409, jamais
+    // un 500 brut — cohérent avec le refus dur ci-dessus.
+    try {
+      const pdf = await renderPvPdf(pv);
+      return { pv, pdf };
+    } catch {
+      throw new ConflictException(
+        "Intégrité du PV non vérifiée — anomalie d'intégrité, contactez le support.",
+      );
+    }
   }
 
   /** Liste les PV d'un projet du tenant (RLS scope), chacun avec son verdict. */

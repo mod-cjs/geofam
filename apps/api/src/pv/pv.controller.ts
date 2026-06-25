@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { OfficialPv } from '@prisma/client';
+import type { Response } from 'express';
 import { z } from 'zod';
 
 import { Roles } from '../auth/decorators';
@@ -102,6 +103,35 @@ export class PvController {
     @Param('pvId', new ZodValidationPipe(uuidParam)) pvId: string,
   ): Promise<OfficialPvView> {
     return this.pv.getViewById({ projectId, pvId });
+  }
+
+  /**
+   * GET /projects/:projectId/pvs/:pvId/pdf — PDF du PV (design maison).
+   * Même garde/isolation que GET pvs/:pvId (tous rôles tenant ; PV d'un autre org
+   * -> 404). Renvoie application/pdf en pièce jointe nommée <numéro>.pdf.
+   */
+  @Get('pvs/:pvId/pdf')
+  @Roles('OWNER', 'ADMIN', 'ENGINEER', 'TECHNICIAN', 'VIEWER', 'SUPERADMIN')
+  @ApiOperation({ summary: 'Génère le PDF (procès-verbal) d un PV officiel.' })
+  async getPvPdf(
+    @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
+    @Param('pvId', new ZodValidationPipe(uuidParam)) pvId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { pv, pdf } = await this.pv.pdfForView({ projectId, pvId });
+    // MIN-2 (défense en profondeur) : le numéro de PV est déjà borné par
+    // construction (PV-RDS-{slug}-{YYYY}-{NNNNNN}), mais on REVALIDE le charset
+    // avant interpolation dans Content-Disposition — ceinture+bretelles
+    // anti-injection d'en-tête (CR/LF, guillemets…). Un numéro hors charset =
+    // anomalie -> 500 borné plutôt qu'un en-tête fabriqué.
+    if (!/^[A-Za-z0-9-]+$/.test(pv.pvNumber)) {
+      throw new Error('Numéro de PV non conforme au charset attendu.');
+    }
+    const filename = `${pv.pvNumber}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', String(pdf.length));
+    res.end(pdf);
   }
 
   /** GET /projects/:projectId/pvs — liste les PV du projet (chacun avec sealValid). */
