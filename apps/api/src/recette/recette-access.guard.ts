@@ -10,8 +10,15 @@ import { RECETTE_KEY_HEADER, getRecetteApiKey } from './recette.config';
  *
  * Decision titulaire : l'acces a la recette se fait par CLE D'API partagee. Ce
  * guard est une porte EXTERNE, INDEPENDANTE de l'auth JWT/tenant : il s'applique
- * a TOUTES les routes (y compris @Public : /v1/health, /auth/login, /calc/*),
- * car la recette entiere est fermee tant qu'on ne presente pas la cle.
+ * a TOUTES les routes (/auth/login, /calc/*...), car la recette entiere est
+ * fermee tant qu'on ne presente pas la cle.
+ *
+ * --- EXEMPTION : la sonde de sante ---
+ * `/v1/health` est EXEMPTE : c'est l'endpoint que l'hebergeur (Render) interroge
+ * pour savoir si l'instance est vivante — il n'envoie pas d'en-tete applicatif.
+ * S'il etait protege, la sonde recevrait 401 et le service serait marque
+ * « unhealthy ». /health ne renvoie que { status, env, science } (aucune donnee
+ * sensible), donc l'ouvrir est sans risque de confidentialite.
  *
  * --- Activation conditionnelle (fail-safe pour les e2e) ---
  * Le guard n'est ACTIF que si la variable d'env `RECETTE_API_KEY` est posee :
@@ -26,6 +33,9 @@ import { RECETTE_KEY_HEADER, getRecetteApiKey } from './recette.config';
  * longueur (un mismatch de longueur est traite comme un echec, sans branche
  * dependante du contenu de la cle attendue).
  */
+/** Chemins toujours ouverts (sonde de sante de l'hebergeur). */
+const EXEMPT_PATHS: readonly string[] = ['/v1/health', '/health'];
+
 @Injectable()
 export class RecetteAccessGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
@@ -35,7 +45,15 @@ export class RecetteAccessGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest<{
       headers: Record<string, string | string[] | undefined>;
+      url?: string;
+      originalUrl?: string;
     }>();
+    // Exemption sonde de sante : on isole le PATH (sans query string) et on le
+    // compare aux chemins ouverts. Render interroge /v1/health sans en-tete.
+    const rawPath = req.originalUrl ?? req.url ?? '';
+    const path = rawPath.split('?')[0]?.replace(/\/+$/, '') || '/';
+    if (EXEMPT_PATHS.includes(path)) return true;
+
     const provided = headerValue(req.headers[RECETTE_KEY_HEADER]);
     if (provided === null || !constantTimeEquals(provided, expected)) {
       throw new UnauthorizedException(

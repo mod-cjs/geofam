@@ -30,12 +30,13 @@ describe('RecetteAccessGuard', () => {
     else process.env[RECETTE_API_KEY_ENV] = saved;
   });
 
-  /** ExecutionContext mocke autour des en-tetes HTTP fournis. */
+  /** ExecutionContext mocke autour des en-tetes HTTP fournis (+ url optionnelle). */
   function ctxWithHeaders(
     headers: Record<string, string | string[] | undefined>,
+    url?: string,
   ): ExecutionContext {
     return {
-      switchToHttp: () => ({ getRequest: () => ({ headers }) }),
+      switchToHttp: () => ({ getRequest: () => ({ headers, url }) }),
     } as unknown as ExecutionContext;
   }
 
@@ -71,6 +72,20 @@ describe('RecetteAccessGuard', () => {
 
     it('when X-Recette-Key est vide ("") then 401 (traite comme absent)', () => {
       const ctx = ctxWithHeaders({ 'x-recette-key': '' });
+      expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
+    });
+
+    it('when la sonde de sante /v1/health (sans cle) then autorise (true) — exemption Render', () => {
+      // La sonde de l'hebergeur n'envoie pas d'en-tete : /v1/health doit passer.
+      expect(guard.canActivate(ctxWithHeaders({}, '/v1/health'))).toBe(true);
+      // Avec query string + slash final : meme exemption.
+      expect(guard.canActivate(ctxWithHeaders({}, '/v1/health/?probe=1'))).toBe(
+        true,
+      );
+    });
+
+    it('when /calc/* sans cle then 401 (l exemption ne couvre QUE la sante)', () => {
+      const ctx = ctxWithHeaders({}, '/calc/terzaghi');
       expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
     });
   });
