@@ -45,7 +45,15 @@ export class RadierController {
   })
   @ApiBody({
     type: RadierInputDto,
-    examples: { demo: { value: RADIER_FIXTURES[0]?.input } },
+    // Exemple « Try it out » pre-rempli, SOURCE de la fixture de portage (#54)
+    // RADIER_FIXTURES[0].input : ENTREES uniquement (client-safe, DoD §8) — on ne
+    // reference jamais .output. Nomme clairement pour la recette STARFIRE.
+    examples: {
+      'radier-cas-de-reference': {
+        summary: 'Radier / plaque sur sol multicouche — cas de référence (GEOPLAQUE)',
+        value: RADIER_FIXTURES[0]?.input,
+      },
+    },
   })
   @ApiResponse({
     status: 201,

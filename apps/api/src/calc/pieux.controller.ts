@@ -46,7 +46,15 @@ export class PieuxController {
   })
   @ApiBody({
     type: PieuxInputDto,
-    examples: { demo: { value: PIEUX_FIXTURES[0]?.input } },
+    // Exemple « Try it out » pre-rempli, SOURCE de la fixture de portage (#48)
+    // PIEUX_FIXTURES[0].input : ENTREES uniquement (client-safe, DoD §8) — on ne
+    // reference jamais .output. Nomme clairement pour la recette STARFIRE.
+    examples: {
+      'pieu-cas-de-reference': {
+        summary: 'Pieu / fondation profonde — cas de référence (NF P 94-262, EC7)',
+        value: PIEUX_FIXTURES[0]?.input,
+      },
+    },
   })
   @ApiResponse({
     status: 201,

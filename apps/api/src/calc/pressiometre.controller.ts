@@ -46,7 +46,15 @@ export class PressiometreController {
   })
   @ApiBody({
     type: PressiometreInputDto,
-    examples: { demo: { value: PRESSIOMETRE_FIXTURES[0]?.input } },
+    // Exemple « Try it out » pre-rempli, SOURCE de la fixture de portage (#47)
+    // PRESSIOMETRE_FIXTURES[0].input : ENTREES uniquement (client-safe, DoD §8) —
+    // on ne reference jamais .output. Nomme clairement pour la recette STARFIRE.
+    examples: {
+      'pressiometre-cas-de-reference': {
+        summary: 'Pressiomètre Ménard — cas de référence (NF EN ISO 22476-4)',
+        value: PRESSIOMETRE_FIXTURES[0]?.input,
+      },
+    },
   })
   @ApiResponse({
     status: 201,

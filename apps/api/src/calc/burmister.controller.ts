@@ -46,7 +46,15 @@ export class BurmisterController {
   })
   @ApiBody({
     type: BurmisterInputDto,
-    examples: { demo: { value: BURMISTER_FIXTURES[0]?.input } },
+    // Exemple « Try it out » pre-rempli, SOURCE de la fixture de portage (#46)
+    // BURMISTER_FIXTURES[0].input : ENTREES uniquement (client-safe, DoD §8) — on
+    // ne reference jamais .output. Nomme clairement pour la recette STARFIRE.
+    examples: {
+      'chaussee-cas-de-reference': {
+        summary: 'Chaussée — cas de référence (AGEROUTE Sénégal 2015)',
+        value: BURMISTER_FIXTURES[0]?.input,
+      },
+    },
   })
   @ApiResponse({
     status: 201,

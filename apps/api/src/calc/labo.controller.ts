@@ -43,7 +43,15 @@ export class LaboController {
   })
   @ApiBody({
     type: LaboInputDto,
-    examples: { demo: { value: LABO_FIXTURES[0]?.input } },
+    // Exemple « Try it out » pre-rempli, SOURCE de la fixture de portage (#49-53)
+    // LABO_FIXTURES[0].input : ENTREES uniquement (client-safe, DoD §8) — on ne
+    // reference jamais .output. Nomme clairement pour la recette STARFIRE.
+    examples: {
+      'labo-cas-de-reference': {
+        summary: 'Essais labo & classification GTR — cas de référence (FASTLAB, NF P 11-300)',
+        value: LABO_FIXTURES[0]?.input,
+      },
+    },
   })
   @ApiResponse({
     status: 201,

@@ -43,7 +43,15 @@ export class TerzaghiController {
   })
   @ApiBody({
     type: TerzaghiInputDto,
-    examples: { demo: { value: TERZAGHI_FIXTURES[0]?.input } },
+    // Exemple « Try it out » pre-rempli, SOURCE de la fixture de portage (#45)
+    // TERZAGHI_FIXTURES[0].input : ENTREES uniquement (client-safe, DoD §8) — on
+    // ne reference jamais .output. Nomme clairement pour la recette STARFIRE.
+    examples: {
+      'fondation-superficielle-cas-de-reference': {
+        summary: 'Fondation superficielle — cas de référence (NF P 94-261)',
+        value: TERZAGHI_FIXTURES[0]?.input,
+      },
+    },
   })
   @ApiResponse({
     status: 201,
