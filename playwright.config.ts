@@ -1,28 +1,27 @@
 /**
- * Playwright — configuration minimale (smoke e2e).
+ * Playwright — configuration e2e ROADSEN.
  *
- * Le job CI `e2e` (uniquement au merge sur main) installe Chromium puis lance
- * `pnpm test:e2e` (= `playwright test`). On garde ICI un harnais leger : un
- * smoke test e2e suffit pour le socle ; les parcours lourds (auth, multi-tenant,
- * generation de PV) arriveront avec les features correspondantes.
+ * Deux modes :
+ *   - E2E_BASE_URL posé (CI/préprod) : pointe vers la cible existante,
+ *     pas de webServer local.
+ *   - Local sans E2E_BASE_URL : lance l'app web en dev sur localhost:3000.
  *
- * Le `webServer` (lancement de l app web) est volontairement DESACTIVE tant que
- * l app n expose pas de page stable a tester : on n active un parcours reseau
- * qu une fois la cible reelle disponible (pas de faux-vert e2e). Voir le smoke
- * test (tests/e2e/smoke.spec.ts) qui s auto-skippe en l absence de BASE_URL.
+ * E2E_API_BASE_URL : URL de l'API pour les tests directs endpoint
+ *   (défaut : http://localhost:3001).
  */
 import { defineConfig, devices } from '@playwright/test';
 
-const BASE_URL = process.env.E2E_BASE_URL;
+const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
+const isCI = !!process.env.CI;
 
 export default defineConfig({
   testDir: 'tests/e2e',
   fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [['html', { open: 'never' }], ['list']] : 'list',
+  forbidOnly: isCI,
+  retries: isCI ? 1 : 0,
+  reporter: isCI ? [['html', { open: 'never' }], ['list']] : 'list',
   use: {
-    ...(BASE_URL ? { baseURL: BASE_URL } : {}),
+    baseURL: BASE_URL,
     trace: 'on-first-retry',
   },
   projects: [
@@ -31,10 +30,16 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  // webServer: a activer quand l app web exposera une page e2e stable :
-  // webServer: {
-  //   command: 'pnpm --filter @roadsen/web start',
-  //   url: BASE_URL ?? 'http://localhost:3000',
-  //   reuseExistingServer: !process.env.CI,
-  // },
+  // Lance l'app Next.js en dev si E2E_BASE_URL n'est pas fourni (tests locaux).
+  // En CI, la cible est la préprod déployée — pas de webServer local.
+  ...(!process.env.E2E_BASE_URL
+    ? {
+        webServer: {
+          command: 'pnpm --filter @roadsen/web dev',
+          url: 'http://localhost:3000',
+          reuseExistingServer: true,
+          timeout: 60000,
+        },
+      }
+    : {}),
 });
