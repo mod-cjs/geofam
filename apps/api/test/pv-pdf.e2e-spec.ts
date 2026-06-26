@@ -431,20 +431,59 @@ describe('PDF du PV — surface tenant (e2e)', () => {
     expect(text).toContain(pvNumber);
     // Empreinte SHA-256 (64 hex en Courier) présente dans les octets.
     expect(/[0-9a-f]{64}/.test(text)).toBe(true);
-    // Au moins une clé de résultat (la sortie burmister rend p.ex. « epaisseur… »).
-    expect(/epaisseur|verdict|famille|fatigue/i.test(text)).toBe(true);
+    // #71 — la PRÉSENTATION MÉTIER atteint bien les OCTETS RÉELS : verdict
+    // (CONFORME/NON CONFORME), unité µdef, libellé lisible « Famille de structure ».
+    expect(/CONFORME|NON CONFORME/.test(text)).toBe(true);
+    expect(text.includes('Famille de structure')).toBe(true);
+    // Unité µdef présente. NB : pdf-parse normalise le micro-signe U+00B5 (µ) en
+    // mu grec U+03BC (μ) à l'extraction — le glyphe rendu est identique ; on tolère
+    // les deux points de code (artefact d'extraction, pas un défaut de rendu).
+    expect(/[µμ]def/.test(text)).toBe(true);
+    // clés internes brutes ABSENTES des octets (plus de vidage de dictionnaire).
+    expect(text.includes('epaisseurTotale')).toBe(false);
+    expect(text.includes('layers[')).toBe(false);
+    // FAIL-CLOSED (B-1/M-1) sur les OCTETS RÉELS : la clé moteur `projet`
+    // (redondante, désormais masquée) NE FUITE PLUS — l'ancien rendu auto
+    // « Autres paramètres » affichait sa valeur « Structure de reference ROADSENS ».
+    expect(text.includes('Structure de reference')).toBe(false);
+    expect(text.toUpperCase().includes('AUTRES PARAM')).toBe(false);
+    // #71-titulaire : l'ÉMETTEUR SCELLÉ (full_name « Eng A ») ET l'ORGANISATION
+    // SCELLÉE (« Org A ») sont rendus (provenance) ; le VISA « Établi et scellé
+    // par : <ingénieur> — <org> » est présent dans les OCTETS RÉELS.
+    expect(text.includes('Eng A')).toBe(true);
+    expect(text.includes('Org A')).toBe(true);
+    expect(text.includes('Établi et scellé par')).toBe(true);
+    // « Réf. <uuid projet> » ne fuite plus.
+    expect(text.includes('Réf. ')).toBe(false);
   });
 
-  // --- 9) ANTI-FUITE SCIENCE SUR LES OCTETS (MAJ-1) ---------------------------
-  it('9) OCTETS RÉELS : aucune fuite « science / unsigned » dans le PDF', async () => {
+  // --- 9) ANTI-FUITE SCIENCE + WORDING HONNÊTE SUR LES OCTETS -----------------
+  it('9) OCTETS RÉELS : pas de fuite science ; note d’intégrité présente ; termes juridiques bannis', async () => {
     if (!ready()) return;
     const token = await login(emailEng());
     const { pvId } = await emitPvInA();
     const res = await downloadPdf(token, pvId);
-    const text = (await extractPdfText(res.body as Buffer)).toLowerCase();
+    const raw = await extractPdfText(res.body as Buffer);
+    const text = raw.toLowerCase();
+    // anti-fuite science.
     expect(text.includes('unsigned')).toBe(false);
     expect(text.includes('science')).toBe(false);
     expect(text.includes('@science')).toBe(false);
+    // WORDING HONNÊTE (validé fiscal-juridique) sur les OCTETS RÉELS : note de
+    // portée présente, termes à valeur probatoire BANNIS.
+    expect(raw.includes('Ne vaut pas signature électronique qualifiée')).toBe(
+      true,
+    );
+    expect(raw.includes('ingénieur signataire')).toBe(true);
+    for (const banned of [
+      'fait foi',
+      'valeur probante',
+      'certifié',
+      'opposable',
+      'authentifié',
+    ]) {
+      expect(text.includes(banned)).toBe(false);
+    }
   });
 
   // --- 10) FAIL-CLOSED HTTP (CRIT-1) : sceau invalide -> 409, pas de PDF -------

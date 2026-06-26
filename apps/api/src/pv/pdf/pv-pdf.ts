@@ -9,6 +9,8 @@ import type {
 
 import { getPvPrinter } from './pv-pdf.fonts';
 import { COLORS, FINE_TABLE_LAYOUT, PV_STYLES } from './pv-pdf.theme';
+import { findPresentationModel } from './pv-presentation';
+import { renderRichBody } from './pv-presentation/render';
 
 /**
  * GENERATEUR DE PDF DU PV SCELLE (#63, incr. C) — design maison ROADSEN.
@@ -25,7 +27,7 @@ import { COLORS, FINE_TABLE_LAYOUT, PV_STYLES } from './pv-pdf.theme';
  */
 
 /** Contenu scellé tel que sérialisé dans input_canonical (cf. PvService). */
-interface SealedContent {
+export interface SealedContent {
   pvNumber: string;
   sealedAt: string;
   engineMeta: {
@@ -33,7 +35,15 @@ interface SealedContent {
     engineVersion: string;
     engineSourceHash?: string;
   };
-  identity: { userId: string; projectId: string; projectName: string };
+  identity: {
+    userId: string;
+    /** Nom de l'emetteur (SCELLE) ; '' si non renseigne -> « (identité non renseignée) ». */
+    userDisplayName?: string;
+    /** Organisation emettrice (SCELLE) — provenance / visa du PV. */
+    orgDisplayName?: string;
+    projectId: string;
+    projectName: string;
+  };
   input: unknown;
   output: unknown;
   scienceStatus: string;
@@ -192,19 +202,34 @@ export function buildPvDocDefinition(pv: OfficialPv): TDocumentDefinitions {
     content: [
       buildIdentityCards(sealed),
       buildObjet(sealed),
-      sectionTitle('Données d’entrée'),
-      buildKeyValueTable(sealed.input, 'Aucune donnée d’entrée enregistrée.'),
-      sectionTitle('Résultats'),
-      // MAJ-2 (frontière de confidentialité) : `output` a déjà été WHITELISTÉ en
-      // amont — projectEngineOutput(contract.outputSchema) au moment du calcul
-      // (calc-results.service.ts) puis figé dans input_canonical au scellement.
-      // Le PDF NE RE-RÉDIGE donc PAS : il rend une sortie déjà client-safe (aucun
-      // intermédiaire de calcul ne peut atteindre ce niveau).
-      buildKeyValueTable(sealed.output, 'Aucun résultat enregistré.'),
+      // PRÉSENTATION MÉTIER (#71) si le moteur a un modèle ; sinon FALLBACK propre.
+      ...buildBody(sealed),
       buildSealBlock(sealed, recomputedHash),
     ],
     styles: PV_STYLES,
   };
+}
+
+/**
+ * Corps du document : présentation MÉTIER riche si un PresentationModel existe
+ * pour le moteur (#71), sinon FALLBACK table clé-valeur propre. Les deux dérivent
+ * de la donnée SCELLÉE uniquement (CRIT-1 préservé).
+ */
+function buildBody(sealed: SealedContent): Content[] {
+  const model = findPresentationModel(sealed.engineMeta.engineId);
+  if (model) {
+    return renderRichBody(sealed, model);
+  }
+  // FALLBACK : table clé-valeur propre (sans lignes-bruit), input puis output.
+  return [
+    sectionTitle('Données d’entrée'),
+    buildKeyValueTable(sealed.input, 'Aucune donnée d’entrée enregistrée.'),
+    sectionTitle('Résultats'),
+    // MAJ-2 (frontière de confidentialité) : `output` a déjà été WHITELISTÉ en
+    // amont — projectEngineOutput(contract.outputSchema) au moment du calcul puis
+    // figé dans input_canonical au scellement. Le PDF NE RE-RÉDIGE PAS.
+    buildKeyValueTable(sealed.output, 'Aucun résultat enregistré.'),
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -319,23 +344,27 @@ function card(label: string, lines: string[]): TableCell {
 }
 
 function buildIdentityCards(sealed: SealedContent): Content {
-  // Cartes d'identité — TOUTES depuis la canonique scellée (CRIT-1). orgId n'est
-  // PAS dans le contenu scellé : on ne l'affiche donc pas (rien hors-sceau).
+  // Cartes d'identité — TOUTES depuis la canonique scellée (CRIT-1).
   const { identity, engineMeta } = sealed;
+  const model = findPresentationModel(engineMeta.engineId);
+  // Moteur : libellé MÉTIER si modèle présent, sinon l'id (pas de slug cryptique).
+  const engineLabel = model ? model.engineLabel : engineMeta.engineId;
+  // Ingénieur émetteur : VRAI NOM (userDisplayName, désormais SCELLÉ). Fallback
+  // « (identité non renseignée) » seulement si le nom scellé est vide.
   const rows: TableCell[][] = [
     [
-      card('Projet', [
-        identity.projectName,
-        `Réf. ${short(identity.projectId)}`,
-      ]),
-      card('Ingénieur émetteur', [`Réf. ${short(identity.userId)}`]),
+      // #71-titulaire(2) : « Réf. <slug> » RETIRÉE — le libellé projet suffit
+      // (pas de champ de réf admin dans le schéma ; on ne montre jamais le slug).
+      card('Projet', [identity.projectName]),
+      card('Ingénieur émetteur', [engineerDisplay(identity)]),
     ],
     [
-      card('Moteur', [
-        labelEngine(engineMeta.engineId),
-        `Version ${engineMeta.engineVersion}`,
-      ]),
-      card('Statut', ['Recalculé serveur', 'Intégrité vérifiée']),
+      card('Moteur', [engineLabel, `Version ${engineMeta.engineVersion}`]),
+      // MAJEUR-1 (audit) : libellé DESCRIPTIF, sans verdict ni jargon. « Intégrité
+      // vérifiée » serait une AUTO-ATTESTATION trompeuse (un PDF exporté puis
+      // modifié l'afficherait quand même) ; « Recalculé serveur » = jargon interne.
+      // La vraie portée d'intégrité est décrite dans le bloc scellement (+ Phase 2).
+      card('Statut', ['Scellé (empreinte SHA-256 / HMAC)']),
     ],
   ];
   return {
@@ -353,13 +382,19 @@ function buildIdentityCards(sealed: SealedContent): Content {
 }
 
 function buildObjet(sealed: SealedContent): Content {
-  // Bloc « objet » à filet bleu à gauche (motif maison .objet). Méta moteur =
-  // canonique scellée (CRIT-1). engineSourceHash 12-hex = ancrage de provenance
-  // (décision titulaire MAJ-3 : conservé ; hash non réversible).
-  const { engineMeta } = sealed;
-  const sha = engineMeta.engineSourceHash
-    ? ` · source ${engineMeta.engineSourceHash.slice(0, 12)}…`
-    : '';
+  // Bloc « objet » à filet bleu à gauche (motif maison .objet). #71 : PHRASE
+  // RÉDIGÉE depuis le PresentationModel (engineLabel + contexte projet), PAS un
+  // slug+hash. Repli propre (sans hash) si le moteur n'a pas de modèle.
+  const { engineMeta, identity } = sealed;
+  const model = findPresentationModel(engineMeta.engineId);
+  let objetText: string;
+  if (model) {
+    const projetCtx = identity.projectName ? `« ${identity.projectName} »` : '';
+    objetText = model.objectSentence.replace('{projet}', projetCtx).trim();
+  } else {
+    // Repli générique (aucun slug brut, aucun hash dans l'objet).
+    objetText = `Note de calcul — ${engineMeta.engineId} (version ${engineMeta.engineVersion}).`;
+  }
   return {
     margin: [0, 8, 0, 0],
     table: {
@@ -374,7 +409,7 @@ function buildObjet(sealed: SealedContent): Content {
                 margin: [0, 0, 0, 3],
               },
               {
-                text: `${labelEngine(engineMeta.engineId)} — version ${engineMeta.engineVersion}${sha}`,
+                text: objetText,
                 fontSize: 9.5,
                 color: COLORS.text,
               },
@@ -563,17 +598,53 @@ function buildSealBlock(
                 text: `Horodatage de scellement : ${formatDateTime(new Date(sealed.sealedAt))}`,
                 style: 'cellMuted',
               },
+              // VISA (#71-titulaire 5) : « Établi et scellé par ». Le sceau
+              // cryptographique EST la signature ; on le rend explicite. Émetteur +
+              // organisation viennent de la canonique SCELLÉE.
               {
-                text: 'Recalculé serveur — vérifiable.',
-                fontSize: 8.5,
-                color: COLORS.textSec,
-                margin: [0, 4, 0, 0],
+                text: 'Établi et scellé par :',
+                style: 'cardLabel',
+                color: COLORS.muted,
+                margin: [0, 8, 0, 2],
+              },
+              {
+                text: visaText(sealed),
+                fontSize: 9,
+                bold: true,
+                color: COLORS.text,
+              },
+              // NOTE SCIENCE (#71-titulaire 3) : honnête, pas « brouillon ». Les
+              // libellés/unités métier sont en co-validation expert.
+              {
+                text: 'Libellés et unités métier établis selon la méthode rationnelle (AGEROUTE 2015) — en cours de co-validation avec l’expert.',
+                fontSize: 7,
+                italics: true,
+                color: COLORS.muted,
+                margin: [0, 6, 0, 0],
               },
               // NOTE D'HONNÊTETÉ : l'affichage des valeurs est formaté (nettoyage
               // du bruit binaire) ; la représentation SCELLÉE (empreinte ci-dessus)
-              // est l'autorité. Le sceau porte sur la donnée exacte, pas l'affichage.
+              // est la version de référence. On retire « fait foi » (connotation
+              // juridique non acquise — fiscal-juridique tranche en parallèle).
               {
-                text: 'Valeurs affichées au format ; la représentation scellée (empreinte ci-dessus) fait foi.',
+                text: 'Valeurs affichées au format ; la représentation scellée (empreinte ci-dessus) constitue la version de référence du contenu.',
+                fontSize: 7,
+                italics: true,
+                color: COLORS.muted,
+                margin: [0, 4, 0, 0],
+              },
+              // NOTE D'INTÉGRITÉ / PORTÉE (texte EXACT validé par fiscal-juridique,
+              // anti-surcote) : on décrit ce que le scellement FAIT (détection
+              // d'altération) sans prétendre à une valeur probatoire/signature
+              // qualifiée qu'on n'a pas. Termes juridiques bannis (« fait foi »,
+              // « certifié »…) ; on garde « intégrité / scellé / version de référence ».
+              {
+                text:
+                  'Document scellé pour contrôle d’intégrité (SHA-256 / HMAC, ' +
+                  'horodatage serveur), permettant de détecter toute modification ' +
+                  'ultérieure. Aide au calcul — la responsabilité de l’étude reste ' +
+                  'à l’ingénieur signataire. Ne vaut pas signature électronique ' +
+                  'qualifiée (loi 2008-08).',
                 fontSize: 7,
                 italics: true,
                 color: COLORS.muted,
@@ -582,27 +653,23 @@ function buildSealBlock(
             ],
             margin: [12, 12, 12, 12],
           },
-          // Zone QR placeholder 48x48pt, fond blanc bordure #e3e6ea.
+          // #71 : QR vide RETIRÉ (façade « cassée ») -> simple texte grisé. Le QR
+          // réel de vérification en ligne arrive en Phase 2.
           {
             stack: [
               {
-                canvas: [
-                  {
-                    type: 'rect',
-                    x: 0,
-                    y: 0,
-                    w: 48,
-                    h: 48,
-                    lineColor: COLORS.rule,
-                    color: COLORS.white,
-                  },
-                ],
+                text: 'Vérification en ligne :',
+                fontSize: 8,
+                color: COLORS.muted,
+                alignment: 'right',
               },
               {
-                text: 'Vérif. en ligne\n(Phase 2)',
-                style: 'footer',
-                alignment: 'center',
-                margin: [0, 4, 0, 0],
+                text: 'disponible en Phase 2',
+                fontSize: 8,
+                italics: true,
+                color: COLORS.muted2,
+                alignment: 'right',
+                margin: [0, 2, 0, 0],
               },
             ],
             margin: [12, 14, 12, 12],
@@ -700,10 +767,10 @@ function scalar(v: unknown): string {
   if (typeof v === 'string' || typeof v === 'bigint') {
     return String(v);
   }
-  // Garde-fou : `flatten` ne passe ici que des scalaires (les objets/tableaux
-  // sont récursés). Si un type inattendu arrive, on sérialise en JSON plutôt que
-  // de produire « [object Object] ».
-  return JSON.stringify(v);
+  // Garde-fou : `flatten` ne passe ici que des scalaires (objets/tableaux récursés).
+  // Un type inattendu -> marqueur NEUTRE (M-3), JAMAIS JSON.stringify (qui
+  // déverserait des sous-champs potentiellement confidentiels).
+  return '(structuré)';
 }
 
 /**
@@ -721,7 +788,7 @@ function scalar(v: unknown): string {
  *
  * Rendu FR : virgule décimale (séparateur d'usage). La NOTE du bloc scellement
  * rappelle que l'affichage est formaté et que la représentation scellée (empreinte)
- * fait foi — honnêteté d'ingénieur.
+ * constitue la version de référence du contenu — honnêteté d'ingénieur.
  */
 function formatNumber(n: number): string {
   if (!Number.isFinite(n)) return frDecimal(String(n)); // NaN/Infinity : tel quel
@@ -735,12 +802,31 @@ function frDecimal(s: string): string {
   return s.replace('.', ',');
 }
 
-function short(id: string): string {
-  return id.length > 13 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
+/**
+ * Nom de l'ingénieur émetteur À AFFICHER. #71-titulaire(1) : userDisplayName est
+ * désormais une donnée SCELLÉE (l'auteur fait partie de l'intégrité du PV). On rend
+ * le VRAI NOM ; fallback « (identité non renseignée) » seulement s'il est vide
+ * (jamais le slug technique).
+ */
+function engineerDisplay(identity: SealedContent['identity']): string {
+  const name = identity.userDisplayName;
+  if (typeof name === 'string' && name.trim().length > 0) {
+    return name.trim();
+  }
+  return '(identité non renseignée)';
 }
 
-function labelEngine(engineId: string): string {
-  return engineId;
+/**
+ * Texte du VISA (#71-titulaire 5) : « <Ingénieur émetteur> — <Organisation> ».
+ * Émetteur et organisation viennent de la canonique SCELLÉE. L'organisation peut
+ * manquer (PV émis avant l'ajout du champ) -> on n'affiche que l'émetteur.
+ */
+function visaText(sealed: SealedContent): string {
+  const engineer = engineerDisplay(sealed.identity);
+  const org = sealed.identity.orgDisplayName;
+  return typeof org === 'string' && org.trim().length > 0
+    ? `${engineer} — ${org.trim()}`
+    : engineer;
 }
 
 /** Date jj/mm/aaaa en UTC (déterministe, indépendant du fuseau du serveur). */

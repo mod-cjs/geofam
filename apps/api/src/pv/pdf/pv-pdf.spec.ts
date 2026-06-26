@@ -22,7 +22,12 @@ import { buildPvDocDefinition, collectPvPdfText, renderPvPdf } from './pv-pdf';
 
 const SECRET = 'secret-unitaire-pv';
 
-/** Construit un OfficialPv COHÉRENT (sceau valide) à partir d'un contenu. */
+/**
+ * Construit un OfficialPv COHÉRENT (sceau valide). Par DÉFAUT, moteur SANS modèle
+ * de présentation (`fondation-superficielle`) -> voie FALLBACK (table clé-valeur)
+ * qui exerce le formatage de nombres (formatNumber) et la projection brute. Les
+ * tests #71 de présentation riche utilisent leur propre fabrique chaussée.
+ */
 function makeSealedPv(
   overrides: Partial<{
     pvNumber: string;
@@ -30,15 +35,18 @@ function makeSealedPv(
     output: SealableValue;
     projectName: string;
     scienceStatus: string;
+    engineId: string;
   }> = {},
 ): OfficialPv {
   const pvNumber = overrides.pvNumber ?? 'PV-RDS-org-a-2026-000001';
+  const engineId = overrides.engineId ?? 'fondation-superficielle';
   const sealedAtIso = '2026-06-25T10:00:00.000Z';
+  const output = overrides.output ?? { epaisseur: 0.32, verdict: 'OK' };
   const content: SealableValue = {
     pvNumber,
     sealedAt: sealedAtIso,
     engineMeta: {
-      engineId: 'chaussee-burmister',
+      engineId,
       engineVersion: '1.0.0',
       engineSourceHash: 'a'.repeat(64),
     },
@@ -48,7 +56,7 @@ function makeSealedPv(
       projectName: overrides.projectName ?? 'Route A',
     },
     input: overrides.input ?? { trafic: 'T1', module: '1,5' },
-    output: overrides.output ?? { epaisseur: 0.32, verdict: 'OK' },
+    output,
     scienceStatus: overrides.scienceStatus ?? 'unsigned',
   };
   const canonical = canonicalize(content);
@@ -60,14 +68,11 @@ function makeSealedPv(
     pvNumber,
     userId: 'u-1',
     projectName: overrides.projectName ?? 'Route A',
-    engineId: 'chaussee-burmister',
+    engineId,
     engineVersion: '1.0.0',
     engineSourceHash: 'a'.repeat(64),
     inputCanonical: canonical,
-    output: overrides.output ?? {
-      epaisseur: 0.32,
-      verdict: 'OK',
-    },
+    output: output,
     scienceStatus: overrides.scienceStatus ?? 'unsigned',
     contentHash: sealContentHash(canonical),
     hmac: sealHmac(canonical, SECRET),
@@ -219,9 +224,30 @@ describe('Bruit flottant IEEE-754 — nettoyé À L’AFFICHAGE seulement', () =
     expect(() => buildPvDocDefinition(pv)).not.toThrow();
   });
 
-  it('note d’honnêteté : « représentation scellée … fait foi » est rendue', () => {
+  it('note d’honnêteté + INTÉGRITÉ/PORTÉE (validée fiscal-juridique, anti-surcote)', () => {
     const pv = makeSealedPv();
-    const text = collectPvPdfText(pv).toLowerCase();
-    expect(text).toContain('fait foi');
+    const raw = collectPvPdfText(pv);
+    const text = raw.toLowerCase();
+    // Note d'affichage (version de référence) conservée.
+    expect(raw).toContain('version de référence du contenu');
+    // NOUVELLE note d'intégrité/portée (texte exact validé juridiquement).
+    expect(raw).toContain('Document scellé pour contrôle d’intégrité');
+    expect(raw).toContain(
+      'la responsabilité de l’étude reste à l’ingénieur signataire',
+    );
+    expect(raw).toContain('Ne vaut pas signature électronique qualifiée');
+    expect(raw).toContain('loi 2008-08');
+    // TERMES JURIDIQUES BANNIS du document (sens probatoire non acquis).
+    for (const banned of [
+      'fait foi',
+      'valeur probante',
+      'certifié',
+      'opposable',
+      'authentifié',
+    ]) {
+      expect(text.includes(banned)).toBe(false);
+    }
+    // « vérifiable » non qualifié toujours retiré.
+    expect(text.includes('— vérifiable')).toBe(false);
   });
 });

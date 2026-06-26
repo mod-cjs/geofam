@@ -86,10 +86,10 @@ export class PvService {
           );
         }
 
-        // Coordonnees du tenant (slug) + libelle projet — lisibles sous RLS.
+        // Coordonnees du tenant (slug + nom) + libelle projet — lisibles sous RLS.
         const org = await tx.organization.findUnique({
           where: { id: orgId },
-          select: { slug: true },
+          select: { slug: true, name: true },
         });
         const project = await tx.project.findUnique({
           where: { id: args.projectId },
@@ -99,6 +99,21 @@ export class PvService {
           // Ne devrait pas arriver (FK), mais fail-closed plutot que sceller a vide.
           throw new NotFoundException('Organisation ou projet introuvable.');
         }
+
+        // IDENTITE DE L'EMETTEUR (donnee SCELLEE — l'auteur fait partie de
+        // l'integrite du PV, pas un simple affichage). Lecture du profil de
+        // l'emetteur AUTHENTIFIE (args.userId = sub JWT verifie) : il est membre de
+        // l'org courante -> visible sous la RLS users (policy 0002/0004 :
+        // membership partage avec app_current_org()). On scelle son fullName.
+        const emitter = await tx.user.findUnique({
+          where: { id: args.userId },
+          select: { fullName: true },
+        });
+        // fullName est NON-NULL au schema ; fallback defensif si vide/illisible.
+        const userDisplayName =
+          emitter?.fullName && emitter.fullName.trim().length > 0
+            ? emitter.fullName.trim()
+            : '';
 
         // sealedAt FIGE (ISO string) : c'est l'horodatage SCELLE du PV.
         const sealedAtIso = new Date().toISOString();
@@ -132,6 +147,12 @@ export class PvService {
           },
           identity: {
             userId: args.userId,
+            // Nom de l'emetteur + organisation : SCELLES (visa du PV = provenance).
+            // Le PV est le livrable du bureau d'etudes -> l'organisation fait partie
+            // de la provenance scellee, comme l'auteur. userDisplayName vide est
+            // scelle tel quel ('') -> rendu « (identité non renseignée) ».
+            userDisplayName,
+            orgDisplayName: org.name,
             projectId: args.projectId,
             projectName: project.name,
           },

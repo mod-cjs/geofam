@@ -23,6 +23,12 @@ export const COLORS = {
   ruleThin: '#eef0f3',
   white: '#ffffff',
   accent: '#bf6a04',
+  // Refonte #71 (spec designer) : alerte bordeaux (non conforme), zébrage, fond
+  // de groupe, bordure légère de table.
+  alert: '#8b1a1a',
+  zebra: '#f5f7fa',
+  groupFill71: '#eef2f7',
+  ruleSoft: '#d0d8e4',
 } as const;
 
 /** Styles nommés pdfmake (hiérarchie de tailles alignée sur les docs maison). */
