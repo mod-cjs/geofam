@@ -33,4 +33,19 @@ export class ProjectsService {
       }),
     );
   }
+
+  /**
+   * Lit un projet du tenant courant (RLS scope). Renvoie null si l'id est absent
+   * OU appartient a un autre org : la RLS rend la ligne d'un autre tenant
+   * INVISIBLE (findUnique -> null), donc le 404 « introuvable » est rendu a
+   * l'identique pour « n'existe pas » et « existe mais pas chez vous »
+   * (anti-enumeration : l'appelant ne distingue pas les deux cas). La
+   * traduction null -> 404 est faite par le controleur.
+   */
+  getById(projectId: string): Promise<Project | null> {
+    const orgId = requireOrgId();
+    return this.prisma.withTenant(orgId, (tx) =>
+      tx.project.findUnique({ where: { id: projectId } }),
+    );
+  }
 }

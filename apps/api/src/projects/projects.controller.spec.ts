@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { z } from 'zod';
 
 import type { AuthedRequest } from '../auth/request-context';
@@ -74,6 +75,54 @@ describe('ProjectsController.create — forcing du proprietaire (#42)', () => {
     });
     expect(service.create).not.toHaveBeenCalledWith(
       expect.objectContaining({ createdById: 'attaquant-uid' }),
+    );
+  });
+});
+
+/**
+ * ProjectsController.getOne — GET /projects/:projectId (detail projet).
+ *
+ * Couvre la couche controleur : traduction du contrat service (null = absent ou
+ * hors tenant) en 404 « introuvable » TENANT-SAFE (anti-enumeration : meme
+ * reponse pour « n'existe pas » et « existe chez un autre org »). La preuve
+ * d'isolation REELLE (RLS, cross-org -> 404) est portee par les e2e contre
+ * Postgres reel (qa-test) ; ici on prouve qu'aucun chemin du controleur ne
+ * transforme un null-service en autre chose qu'un 404 borne.
+ */
+describe('ProjectsController.getOne — detail projet + 404 tenant-safe', () => {
+  let service: { getById: jest.Mock };
+  let controller: ProjectsController;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = { getById: jest.fn() };
+    controller = new ProjectsController(service as unknown as ProjectsService);
+  });
+
+  it('given un projet existant du tenant : renvoie le projet tel quel', async () => {
+    const project = { id: 'proj-1', name: 'Forage A', orgId: 'org-1' };
+    service.getById.mockResolvedValue(project);
+
+    await expect(controller.getOne('proj-1')).resolves.toBe(project);
+    expect(service.getById).toHaveBeenCalledWith('proj-1');
+  });
+
+  it('given un id absent : leve NotFound (404) — message borne, pas de detail', async () => {
+    service.getById.mockResolvedValue(null);
+
+    await expect(controller.getOne('proj-absent')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  it('given un projet d un AUTRE org (invisible sous RLS -> null) : MEME 404 que l absent (tenant-safe)', async () => {
+    // Le service rend null quand la RLS masque la ligne d'un autre tenant : le
+    // controleur ne doit PAS distinguer ce cas d'un id inexistant (sinon
+    // enumeration cross-org possible). On verifie l'identite de comportement.
+    service.getById.mockResolvedValue(null);
+
+    await expect(controller.getOne('proj-autre-org')).rejects.toBeInstanceOf(
+      NotFoundException,
     );
   });
 });

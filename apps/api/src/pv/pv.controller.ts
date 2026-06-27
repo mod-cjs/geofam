@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, Req, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { OfficialPv } from '@prisma/client';
+import type { CalcResult, OfficialPv } from '@prisma/client';
 import type { Response } from 'express';
 import { z } from 'zod';
 
@@ -71,6 +71,46 @@ export class PvController {
       projectId,
       userId: req.auth!.userId, // identite JWT verifiee (jamais une valeur cliente)
       body,
+    });
+  }
+
+  /**
+   * GET /projects/:projectId/calc-results — liste les calculs persistes du projet
+   * (master de la vue master-detail). Lecture : tous les roles tenant.
+   * Isolation : RLS scope au tenant ; un projet d'un autre org -> liste vide
+   * (tenant-safe). Preuve d'isolation reelle aux e2e (qa-test).
+   */
+  @Get('calc-results')
+  @Roles('OWNER', 'ADMIN', 'ENGINEER', 'TECHNICIAN', 'VIEWER', 'SUPERADMIN')
+  @ApiOperation({
+    summary: 'Liste les calc_results (calculs persistes) d un projet.',
+  })
+  listCalcResults(
+    @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
+  ): Promise<CalcResult[]> {
+    return this.calcResults.listForProject(projectId);
+  }
+
+  /**
+   * GET /projects/:projectId/calc-results/:calcId — detail d'un calcul persiste
+   * (detail de la vue master-detail). Lecture : tous les roles tenant.
+   * Isolation : 404 tenant-safe si le calcul appartient a un autre org OU a un
+   * autre projet du meme org (cf. CalcResultsService.getForProject). La sortie
+   * persistee est DEJA projetee (whitelist @roadsen/shared a l'ecriture) : aucun
+   * intermediaire de calcul ne fuit (DoD §8).
+   */
+  @Get('calc-results/:calcId')
+  @Roles('OWNER', 'ADMIN', 'ENGINEER', 'TECHNICIAN', 'VIEWER', 'SUPERADMIN')
+  @ApiOperation({
+    summary: 'Lit un calc_result (calcul persiste) d un projet.',
+  })
+  getCalcResult(
+    @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
+    @Param('calcId', new ZodValidationPipe(uuidParam)) calcId: string,
+  ): Promise<CalcResult> {
+    return this.calcResults.getForProject({
+      projectId,
+      calcResultId: calcId,
     });
   }
 

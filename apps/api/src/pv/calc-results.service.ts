@@ -181,6 +181,46 @@ export class CalcResultsService {
       tx.calcResult.findUnique({ where: { id: calcResultId } }),
     );
   }
+
+  /**
+   * Liste les calc_results d'un projet du tenant courant (RLS scope, plus recent
+   * d'abord). Un projet d'un AUTRE org est invisible -> liste vide (jamais une
+   * fuite cross-tenant) : aucune distinction entre « projet vide » et « projet
+   * d'un autre org » (tenant-safe). La preuve d'isolation reelle est aux e2e.
+   */
+  listForProject(projectId: string): Promise<CalcResult[]> {
+    const orgId = requireOrgId();
+    return this.prisma.withTenant(orgId, (tx) =>
+      tx.calcResult.findMany({
+        where: { projectId },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+  }
+
+  /**
+   * Lit UN calc_result d'un projet du tenant courant (master-detail).
+   * @throws NotFoundException si le calcul n'existe pas dans le tenant courant
+   *   OU n'appartient pas a `projectId` : meme 404 « introuvable » pour les deux
+   *   cas (tenant-safe, anti-enumeration ; calque sur PvService.getViewById).
+   *   La RLS rend deja invisible un calcul d'un autre org (findUnique -> null) ;
+   *   le check projectId barre un calcul d'un AUTRE projet du MEME org.
+   */
+  async getForProject(args: {
+    projectId: string;
+    calcResultId: string;
+  }): Promise<CalcResult> {
+    const orgId = requireOrgId();
+    const calc = await this.prisma.withTenant(orgId, (tx) =>
+      tx.calcResult.findUnique({ where: { id: args.calcResultId } }),
+    );
+    if (!calc || calc.projectId !== args.projectId) {
+      throw new NotFoundException(
+        'Calcul introuvable dans ce projet/cette organisation.',
+      );
+    }
+    return calc;
+  }
 }
 
 /** Convertit une ZodError (ou autre) en 400 borne, sans divulguer la valeur recue. */
