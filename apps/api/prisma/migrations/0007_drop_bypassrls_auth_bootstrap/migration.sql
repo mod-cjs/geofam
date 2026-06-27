@@ -525,18 +525,27 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'roadsen_auth') THEN
     CREATE ROLE "roadsen_auth" NOLOGIN NOSUPERUSER NOBYPASSRLS;
   ELSE
-    ALTER ROLE "roadsen_auth" NOLOGIN NOSUPERUSER NOBYPASSRLS;
+    -- roadsen_auth existe deja (cree en 0004 avec les bons attributs). On NE
+    -- re-affirme PAS NOSUPERUSER/NOBYPASSRLS via ALTER ROLE : changer ces attributs
+    -- (meme en no-op) exige SUPERUSER/BYPASSRLS — impossible pour le user managed
+    -- (CREATEROLE non-superuser). On se limite a NOLOGIN (alterable avec CREATEROLE).
+    ALTER ROLE "roadsen_auth" NOLOGIN;
   END IF;
 END
 $$;
 
 -- 4.2) roadsen_auth : acces schema + DML d'identite (ce que les DEFINER touchent).
-GRANT USAGE ON SCHEMA public TO "roadsen_auth";
+--      CREATE (pas seulement USAGE) est requis pour les ALTER OWNER de 4.3 :
+--      reattribuer un objet a roadsen_auth exige que roadsen_auth ait CREATE sur le
+--      schema. Idempotent avec 0004 (qui l'a deja pose) ; on le re-affirme pour que
+--      0007 soit self-contenu si rejoue isolement.
+GRANT USAGE, CREATE ON SCHEMA public TO "roadsen_auth";
 GRANT SELECT, INSERT ON "organizations", "memberships", "users" TO "roadsen_auth";
 
--- 4.3) PROPRIETE des 6 fonctions a roadsen_auth (le DEFINER s'execute alors avec
---      SON privilege de table). Le role de migration est membre de roadsen_auth
---      (il l'a cree / le possede) -> ALTER OWNER autorise sans superuser.
+-- 4.3) PROPRIETE des 7 fonctions a roadsen_auth (le DEFINER s'execute alors avec
+--      SON privilege de table). PRE-REQUIS PG : (a) executant MEMBRE de roadsen_auth
+--      (GRANT roadsen_auth TO CURRENT_USER, pose en 0004) + (b) roadsen_auth a CREATE
+--      sur public (pose en 0004, re-affirme ci-dessus) -> ALTER OWNER sans superuser.
 ALTER FUNCTION "provision_org"(text, text, uuid)            OWNER TO "roadsen_auth";
 ALTER FUNCTION "provision_user"(text, text, text)           OWNER TO "roadsen_auth";
 ALTER FUNCTION "auth_find_user_by_email"(text)              OWNER TO "roadsen_auth";

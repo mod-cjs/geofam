@@ -187,9 +187,36 @@ BEGIN
 END
 $$;
 
--- roadsen_auth doit pouvoir USE le schema et acceder aux tables qu'il lit/ecrit
--- au travers des fonctions DEFINER (provision_org ecrit organizations+memberships).
-GRANT USAGE ON SCHEMA public TO "roadsen_auth";
+-- ---------------------------------------------------------------------
+-- APPARTENANCE DU USER DE CONNEXION (mono-utilisateur managed) — #42 runtime.
+--
+--  Deux besoins distincts resolus par le meme mecanisme (GRANT role TO user) :
+--    1) `ALTER FUNCTION ... OWNER TO roadsen_auth` ci-dessous EXIGE que l'executant
+--       (CURRENT_USER = user de migration) soit MEMBRE de roadsen_auth. Sans ce
+--       GRANT, l'ALTER OWNER echoue (« must be able to SET ROLE roadsen_auth »).
+--    2) au RUNTIME, l'app fait `SET LOCAL ROLE roadsen_app` (barriere B1) : le user
+--       de connexion (= CURRENT_USER) doit donc etre MEMBRE de roadsen_app pour y
+--       basculer.
+--
+--  PG16+ : `GRANT role TO member` confere par defaut l'option SET (WITH SET TRUE)
+--  -> le membre peut faire `SET ROLE`. (En PG <16, SET ROLE est de toute facon
+--  permis a un membre.) On accorde donc l'appartenance aux DEUX roles a CURRENT_USER.
+--  Idempotent : un GRANT deja en place ne fait rien.
+-- ---------------------------------------------------------------------
+GRANT "roadsen_auth" TO CURRENT_USER;
+GRANT "roadsen_app"  TO CURRENT_USER;
+
+-- roadsen_auth : acces au schema + tables qu'il lit/ecrit via les DEFINER.
+--
+-- CREATE est REQUIS (pas seulement USAGE) : PostgreSQL exige que pour reattribuer
+-- la propriete d'un objet a un role R (ALTER ... OWNER TO R ci-dessous), R ait le
+-- privilege CREATE sur le SCHEMA contenant l'objet. Sans CREATE, l'ALTER OWNER
+-- echoue « permission denied for schema public » sous un executant non-superuser.
+-- (En local superuser, l'ALTER OWNER passait gratuitement -> le manque etait masque.)
+-- C'est le PREMIER ALTER OWNER TO roadsen_auth de toute la chaine : poser CREATE
+-- ICI couvre AUSSI les ALTER OWNER de 0005 (provision_user, auth_get_user_profile)
+-- et de 0007 (les 7 fonctions), tant que roadsen_auth conserve CREATE sur public.
+GRANT USAGE, CREATE ON SCHEMA public TO "roadsen_auth";
 GRANT SELECT, INSERT ON "organizations", "memberships" TO "roadsen_auth";
 GRANT SELECT ON "users" TO "roadsen_auth";
 
@@ -198,6 +225,9 @@ GRANT SELECT ON "users" TO "roadsen_auth";
 -- revision : le franchissement RLS a froid sera assure par le drapeau de 0007).
 -- Les GRANT EXECUTE a roadsen_app poses en 0002/0003 restent valides (ils
 -- portent sur la fonction, pas sur le proprietaire).
+-- PRE-REQUIS PG de CET ALTER OWNER : (a) executant MEMBRE de roadsen_auth
+-- (GRANT roadsen_auth TO CURRENT_USER, pose plus haut) + (b) roadsen_auth a CREATE
+-- sur public (pose juste au-dessus). Les deux sont desormais satisfaits.
 ALTER FUNCTION "provision_org"(text, text, uuid)            OWNER TO "roadsen_auth";
 ALTER FUNCTION "auth_find_user_by_email"(text)              OWNER TO "roadsen_auth";
 ALTER FUNCTION "auth_user_has_membership"(uuid, uuid)       OWNER TO "roadsen_auth";

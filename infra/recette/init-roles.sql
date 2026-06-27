@@ -98,8 +98,21 @@ END
 $$;
 
 -- roadsen_auth : accès schéma + DML d'identité (ce que les DEFINER touchent).
-GRANT USAGE ON SCHEMA public TO roadsen_auth;
+-- CREATE (pas seulement USAGE) : requis pour les ALTER FUNCTION ... OWNER TO
+-- roadsen_auth de la chaîne (réattribuer un objet à un rôle exige que ce rôle ait
+-- CREATE sur le schéma contenant l'objet).
+GRANT USAGE, CREATE ON SCHEMA public TO roadsen_auth;
 GRANT SELECT, INSERT ON organizations, memberships, users TO roadsen_auth;
+
+-- ---------------------------------------------------------------------------
+-- 3) APPARTENANCE DU USER DE CONNEXION (mono-utilisateur managed) — #42 runtime.
+--    Le user de connexion (CURRENT_USER) doit être MEMBRE de roadsen_app (pour
+--    `SET LOCAL ROLE roadsen_app` au runtime = barrière B1) ET de roadsen_auth
+--    (pour `ALTER FUNCTION ... OWNER TO roadsen_auth` en migration). PG16+ :
+--    GRANT role TO member confère l'option SET par défaut (SET ROLE autorisé).
+-- ---------------------------------------------------------------------------
+GRANT roadsen_app  TO CURRENT_USER;
+GRANT roadsen_auth TO CURRENT_USER;
 
 -- ---------------------------------------------------------------------------
 -- NOTE : GRANT EXECUTE sur les fonctions DEFINER

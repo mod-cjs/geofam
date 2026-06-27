@@ -55,6 +55,13 @@ BEGIN
           AND has_table_privilege('roadsen_auth','memberships','INSERT'))
   THEN RAISE EXCEPTION 'roadsen_auth doit detenir SELECT/INSERT sur l identite'; END IF;
 
+  -- 5bis) roadsen_auth a USAGE + CREATE sur public (pre-requis des ALTER OWNER de
+  --       la chaine : reattribuer un objet a roadsen_auth exige CREATE sur le schema).
+  IF NOT has_schema_privilege('roadsen_auth','public','USAGE')
+  THEN RAISE EXCEPTION 'roadsen_auth doit avoir USAGE sur public'; END IF;
+  IF NOT has_schema_privilege('roadsen_auth','public','CREATE')
+  THEN RAISE EXCEPTION 'roadsen_auth doit avoir CREATE sur public (ALTER OWNER chaine)'; END IF;
+
   -- 6) roadsen_app conserve le DML sur les tables de DONNEES (projects)
   IF NOT has_table_privilege('roadsen_app','projects','SELECT')
   THEN RAISE EXCEPTION 'roadsen_app doit garder le DML sur projects (donnees)'; END IF;
@@ -86,5 +93,20 @@ BEGIN
     AND relrowsecurity AND relforcerowsecurity;
   IF v_cnt <> 4 THEN RAISE EXCEPTION 'FORCE RLS attendu sur les 4 tables socle, trouve %', v_cnt; END IF;
 
-  RAISE NOTICE 'VERIF CHAINE OK — etat public = modele PROOF (2 barrieres, sans BYPASSRLS)';
+  -- 10) RUNTIME (#42) : le user de connexion DOIT etre MEMBRE de roadsen_app
+  --     (pour `SET LOCAL ROLE roadsen_app`) ET de roadsen_auth (ALTER OWNER en
+  --     migration). pg_has_role(member, role, 'MEMBER') = appartenance effective.
+  IF NOT pg_has_role(CURRENT_USER, 'roadsen_app', 'MEMBER')
+  THEN RAISE EXCEPTION 'le user de connexion DOIT etre membre de roadsen_app (SET ROLE runtime)'; END IF;
+  IF NOT pg_has_role(CURRENT_USER, 'roadsen_auth', 'MEMBER')
+  THEN RAISE EXCEPTION 'le user de connexion DOIT etre membre de roadsen_auth (ALTER OWNER migration)'; END IF;
+  -- et il doit pouvoir reellement SET ROLE roadsen_app (option USAGE/SET) :
+  BEGIN
+    EXECUTE 'SET LOCAL ROLE "roadsen_app"';
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'le user de connexion ne peut pas SET ROLE roadsen_app (option SET manquante ?)';
+  END;
+
+  RAISE NOTICE 'VERIF CHAINE OK — etat public = modele PROOF (2 barrieres, sans BYPASSRLS) + runtime SET ROLE pret';
 END $$;

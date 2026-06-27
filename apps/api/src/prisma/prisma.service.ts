@@ -17,16 +17,36 @@ import { PrismaClient } from '@prisma/client';
  * En dehors d'une transaction scopee, RLS rend les lignes invisibles
  * (fail-closed : current_setting('app.current_org', true) = NULL).
  *
+ * RUNTIME `SET ROLE roadsen_app` — BARRIERE B1 EFFECTIVE EN MONO-UTILISATEUR (#42)
+ * --------------------------------------------------------------------------------
+ * Sur un Postgres MANAGE (Render), la connexion se fait avec l'UTILISATEUR managed,
+ * qui est le PROPRIETAIRE des tables. Un proprietaire garde TOUS les privilcges de
+ * table : le `REVOKE` d'identite de la migration 0007 (barriere B1) ne s'exerce
+ * donc PAS tant que l'app opere comme proprietaire. Pour rendre B1 reelle, CHAQUE
+ * transaction/chemin DB bascule explicitement en `roadsen_app` via
+ * `SET LOCAL ROLE "roadsen_app"` :
+ *   - `current_user` devient roadsen_app -> les verifications de privilege et la RLS
+ *     s'appliquent comme pour le runtime non-proprietaire (REVOKE identite + FORCE
+ *     RLS + NOBYPASSRLS effectifs). Un acces direct a users/orgs/memberships echoue
+ *     (insufficient_privilege), meme si la connexion physique est le proprietaire.
+ *   - les fonctions SECURITY DEFINER (owned by roadsen_auth) s'executent QUAND MEME
+ *     avec les droits de roadsen_auth : SECURITY DEFINER ignore le SET ROLE de
+ *     l'appelant. Login / membership / provision / pv_emitter_context restent OK.
+ *
+ * Pourquoi `SET LOCAL ROLE` (et non `SET ROLE`) : SET LOCAL est borne a la
+ * transaction -> il MEURT au COMMIT/ROLLBACK, sans polluer la connexion poolee
+ * reutilisee ensuite. On ne fait JAMAIS de `SET ROLE` persistant hors tx (qui
+ * laisserait une connexion du pool bloquee en roadsen_app pour une requete suivante).
+ *
+ * Pre-requis base : le user de connexion DOIT etre membre de roadsen_app
+ * (GRANT "roadsen_app" TO <user>, pose en migration) pour pouvoir SET ROLE.
+ *
  * INVARIANT D'AUTH (migration 0007) : NE JAMAIS appeler une fonction DEFINER
- * d'auth/bootstrap (auth_find_user_by_email, auth_user_has_membership,
- * auth_get_platform_role, auth_get_user_profile, provision_user, provision_org)
- * a l'INTERIEUR d'un `withTenant`. Ces fonctions posent un drapeau de confiance
- * `app.auth_bootstrap` qui ouvre la branche RLS d'IDENTITE ; il est tx-local et
- * referme avant leur RETURN. Appelees en AUTO-COMMIT (hors transaction, comme le
- * fait AuthService via $queryRaw), le drapeau ne survit pas a l'appel. Les glisser
- * dans la MEME transaction qu'une requete tenant exposerait une fenetre ou le
- * drapeau pourrait etre actif pour d'autres requetes de la tx. AuthService lit donc
- * l'identite HORS withTenant ; withTenant ne sert QU'aux tables de donnees tenant.
+ * d'auth/bootstrap a l'INTERIEUR d'un `withTenant`. Ces fonctions posent un drapeau
+ * de confiance `app.auth_bootstrap` (tx-local, referme avant RETURN) qui ouvre la
+ * branche RLS d'IDENTITE. Les melanger a une requete tenant exposerait une fenetre
+ * ou le drapeau serait actif. AuthService lit donc l'identite HORS withTenant, via
+ * `asAppRole(...)` (transaction dediee, role roadsen_app, sans contexte tenant).
  */
 @Injectable()
 export class PrismaService
@@ -44,8 +64,12 @@ export class PrismaService
   }
 
   /**
-   * Execute `fn` dans une transaction scopee au tenant `orgId`.
-   * Le client transactionnel passe a `fn` voit RLS applique sur ce seul org.
+   * Execute `fn` dans une transaction scopee au tenant `orgId`, SOUS le role
+   * roadsen_app. Le client transactionnel passe a `fn` voit RLS applique sur ce
+   * seul org ET opere avec les privileges (restreints) de roadsen_app.
+   *
+   * Ordre des SET LOCAL : ROLE d'abord, PUIS app.current_org. set_config(...,true)
+   * et SET LOCAL ROLE sont tous deux tx-local -> ils tombent ensemble au COMMIT.
    *
    * @throws si `orgId` n'est pas un UUID — on refuse de poser un contexte
    *         non valide (qui resterait fail-closed mais masquerait un bug).
@@ -56,9 +80,36 @@ export class PrismaService
   ): Promise<T> {
     assertUuid(orgId);
     return this.$transaction(async (tx) => {
-      // set_config(name, value, is_local=true) == SET LOCAL, mais accepte un
-      // parametre lie -> pas d'interpolation de chaine (anti-injection).
+      // 1) bascule en roadsen_app (barriere B1) — borne a la transaction.
+      await tx.$executeRaw`SET LOCAL ROLE "roadsen_app"`;
+      // 2) pose le tenant courant. set_config(name, value, is_local=true) == SET
+      //    LOCAL, mais accepte un parametre lie -> pas d'interpolation (anti-injection).
       await tx.$executeRaw`SELECT set_config('app.current_org', ${orgId}, true)`;
+      return fn(tx);
+    });
+  }
+
+  /**
+   * Execute `fn` dans une transaction SOUS le role roadsen_app, SANS contexte
+   * tenant. Voie des chemins d'AUTH (login, membership-lookup, provision, profil,
+   * pv_emitter_context appele hors withTenant) : ils n'ont pas d'org en main et
+   * lisent l'identite UNIQUEMENT via les fonctions SECURITY DEFINER.
+   *
+   * Pourquoi une transaction explicite et roadsen_app : si l'app tournait comme
+   * PROPRIETAIRE (connexion managed) en auto-commit, un acces direct a l'identite
+   * passerait (privilege owner). En forcant roadsen_app ici, tout acces DIRECT a
+   * users/orgs/memberships echoue (insufficient_privilege) ; SEULES les fonctions
+   * DEFINER franchissent — defense en profondeur : meme une regression future qui
+   * lirait l'identite en direct sur le chemin d'auth echouerait FERME au lieu de
+   * fuiter sous les privileges du proprietaire.
+   *
+   * `SET LOCAL ROLE` borne a la tx -> pas de pollution du pool.
+   */
+  async asAppRole<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.$transaction(async (tx) => {
+      await tx.$executeRaw`SET LOCAL ROLE "roadsen_app"`;
       return fn(tx);
     });
   }

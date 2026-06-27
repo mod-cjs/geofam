@@ -66,11 +66,14 @@ const PG_FOREIGN_KEY_VIOLATION = '23503';
  * d'appartenance (membership) utilisee par le guard tenant.
  *
  * NB lecture hors RLS : login et check membership ont lieu AVANT tout contexte
- * tenant. On passe par les fonctions SECURITY DEFINER de la migration 0003
- * (auth_find_user_by_email / auth_user_has_membership), seule voie sanctionnee
- * pour ces lectures "a froid" sans role BYPASSRLS. On N'utilise PAS withTenant
- * ici (pas d'org en main). Aucune autre requete ne lit users/memberships hors
- * scope.
+ * tenant. On passe par les fonctions SECURITY DEFINER (auth_find_user_by_email /
+ * auth_user_has_membership / ...), seule voie sanctionnee pour ces lectures "a
+ * froid" sans BYPASSRLS (modele 0007 : drapeau fail-closed + privilege identite
+ * porte par roadsen_auth). On N'utilise PAS withTenant ici (pas d'org en main) :
+ * on utilise `prisma.asAppRole(...)`, qui execute la requete dans une transaction
+ * SOUS le role roadsen_app (barriere B1 : meme connecte comme proprietaire managed,
+ * un acces DIRECT a l'identite echouerait ; seules les fonctions DEFINER passent).
+ * Aucune autre requete ne lit users/memberships hors scope.
  */
 @Injectable()
 export class AuthService {
@@ -85,10 +88,15 @@ export class AuthService {
    * la MEME 401 generique : aucun oracle d'enumeration.
    */
   async login(email: string, password: string): Promise<TokenPair> {
-    const rows = await this.prisma.$queryRaw<UserRow[]>`
-      SELECT id, password_hash, is_active
-      FROM auth_find_user_by_email(${email})
-    `;
+    // asAppRole : la requete tourne SOUS roadsen_app (barriere B1) meme si la
+    // connexion physique est le proprietaire managed. La fonction DEFINER
+    // (owned roadsen_auth) franchit la RLS d'identite ; un acces direct echouerait.
+    const rows = await this.prisma.asAppRole(
+      (tx) => tx.$queryRaw<UserRow[]>`
+        SELECT id, password_hash, is_active
+        FROM auth_find_user_by_email(${email})
+      `,
+    );
     const user = rows[0];
 
     // Anti-timing / anti-enumeration : on execute TOUJOURS verifyPassword (meme
@@ -130,9 +138,11 @@ export class AuthService {
    * Utilise par le TenantGuard AVANT de poser app.current_org (fail-closed).
    */
   async membershipRole(userId: string, orgId: string): Promise<Role | null> {
-    const rows = await this.prisma.$queryRaw<{ role: Role }[]>`
-      SELECT role FROM auth_user_has_membership(${userId}::uuid, ${orgId}::uuid)
-    `;
+    const rows = await this.prisma.asAppRole(
+      (tx) => tx.$queryRaw<{ role: Role }[]>`
+        SELECT role FROM auth_user_has_membership(${userId}::uuid, ${orgId}::uuid)
+      `,
+    );
     return rows[0]?.role ?? null;
   }
 
@@ -142,9 +152,11 @@ export class AuthService {
    * autorise un PlatformRole.
    */
   async platformRole(userId: string): Promise<PlatformRole | null> {
-    const rows = await this.prisma.$queryRaw<
-      { auth_get_platform_role: PlatformRole | null }[]
-    >`SELECT auth_get_platform_role(${userId}::uuid)`;
+    const rows = await this.prisma.asAppRole(
+      (tx) => tx.$queryRaw<{ auth_get_platform_role: PlatformRole | null }[]>`
+        SELECT auth_get_platform_role(${userId}::uuid)
+      `,
+    );
     return rows[0]?.auth_get_platform_role ?? null;
   }
 
@@ -169,9 +181,11 @@ export class AuthService {
   ): Promise<string> {
     const passwordHash = await hashPassword(password);
     try {
-      const rows = await this.prisma.$queryRaw<{ provision_user: string }[]>`
-        SELECT provision_user(${email}, ${passwordHash}, ${fullName})
-      `;
+      const rows = await this.prisma.asAppRole(
+        (tx) => tx.$queryRaw<{ provision_user: string }[]>`
+          SELECT provision_user(${email}, ${passwordHash}, ${fullName})
+        `,
+      );
       return rows[0].provision_user;
     } catch (err) {
       if (isUniqueViolation(err)) {
@@ -204,9 +218,11 @@ export class AuthService {
     ownerUserId: string,
   ): Promise<string> {
     try {
-      const rows = await this.prisma.$queryRaw<{ provision_org: string }[]>`
-        SELECT provision_org(${name}, ${slug}, ${ownerUserId}::uuid)
-      `;
+      const rows = await this.prisma.asAppRole(
+        (tx) => tx.$queryRaw<{ provision_org: string }[]>`
+          SELECT provision_org(${name}, ${slug}, ${ownerUserId}::uuid)
+        `,
+      );
       return rows[0].provision_org;
     } catch (err) {
       if (isForeignKeyViolation(err)) {
@@ -234,11 +250,13 @@ export class AuthService {
    *          verifie mais user supprime depuis -> l'appelant repond 401).
    */
   async getProfile(userId: string): Promise<UserProfile | null> {
-    const rows = await this.prisma.$queryRaw<ProfileRow[]>`
-      SELECT user_id, email, full_name, platform_role,
-             org_id, org_name, org_slug, membership_role
-      FROM auth_get_user_profile(${userId}::uuid)
-    `;
+    const rows = await this.prisma.asAppRole(
+      (tx) => tx.$queryRaw<ProfileRow[]>`
+        SELECT user_id, email, full_name, platform_role,
+               org_id, org_name, org_slug, membership_role
+        FROM auth_get_user_profile(${userId}::uuid)
+      `,
+    );
     const first = rows[0];
     if (!first) return null;
 

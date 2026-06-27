@@ -211,6 +211,11 @@ function ddl(): string {
     -- NOTE : on n'accorde A render_app AUCUN droit sur users/memberships/
     -- organizations -> meme drapeau pose, il bute sur le manque de privilege.
 
+    -- SCENARIO MONO-UTILISATEUR (#42 runtime) : render_owner (= la connexion qui
+    -- POSSEDE les tables) est rendu MEMBRE de render_app pour pouvoir SET ROLE
+    -- render_app au runtime (comme le user managed Render bascule en roadsen_app).
+    GRANT ${APP} TO ${OWNER};
+
     RESET ROLE;
   `;
 }
@@ -578,11 +583,92 @@ describe('Modele SANS BYPASSRLS — 2 barrieres prouvees sous owner+runtime NON-
     },
   );
 
-  it('couverture : >= 5 cas reellement executes (en CI/avec URL)', () => {
+  // ----- (MONO) scenario VRAI mono-utilisateur : la connexion = PROPRIETAIRE qui
+  //       fait SET ROLE render_app au runtime (== Render managed). C'est LE point a
+  //       prouver : SET ROLE prive REELLEMENT le proprietaire de son privilege identite.
+  guarded(
+    'MONO) proprietaire qui SET ROLE render_app perd l acces identite direct ; DEFINER+isolation intacts',
+    async () => {
+      // bootstrap (sous render_app via DEFINER) : un user + une org a interroger.
+      let u = '';
+      let org = '';
+      await asRole(APP, async (c) => {
+        u = (
+          await c.query<{ p: string }>(`SELECT provision_user($1,$2) AS p`, [
+            'mono@x.test',
+            'hM',
+          ])
+        ).rows[0].p;
+        org = (
+          await c.query<{ p: string }>(`SELECT provision_org($1,$2,$3) AS p`, [
+            'Mono',
+            'org-mono',
+            u,
+          ])
+        ).rows[0].p;
+      });
+
+      // 1) SOUS render_owner (= la connexion proprietaire) : lecture identite DIRECTE
+      //    REUSSIT (privilege owner). On pose le drapeau pour passer FORCE RLS.
+      await setup!.query(`SET ROLE ${OWNER}`);
+      await setup!.query(`SET search_path = ${SCHEMA}, pg_catalog`);
+      try {
+        await setup!.query(`SET app.auth_bootstrap = 'on'`);
+        const asOwner = await setup!.query<{ n: string }>(
+          `SELECT count(*)::text AS n FROM users`,
+        );
+        expect(Number(asOwner.rows[0].n)).toBeGreaterThanOrEqual(1); // owner LIT l'identite
+        await setup!.query(`RESET app.auth_bootstrap`);
+
+        // 2) le PROPRIETAIRE bascule en render_app (== SET LOCAL ROLE du runtime).
+        await setup!.query(`SET ROLE ${APP}`);
+
+        // 2a) acces DIRECT a l'identite REFUSE meme si la session est le proprietaire :
+        //     le role COURANT est render_app (sans privilege identite) -> 42501.
+        await setup!.query(`SET app.auth_bootstrap = 'on'`);
+        await expect(setup!.query(`SELECT * FROM users`)).rejects.toThrow(
+          /permission denied|insufficient privilege|denied for (table|relation) users/i,
+        );
+        await setup!.query(`RESET app.auth_bootstrap`);
+
+        // 2b) les DEFINER marchent sous render_app (DEFINER ignore le SET ROLE).
+        const login = await setup!.query<{ id: string }>(
+          `SELECT id FROM auth_find_user_by_email($1)`,
+          ['mono@x.test'],
+        );
+        expect(login.rows).toHaveLength(1);
+        expect(login.rows[0].id).toBe(u);
+        const ctx = await setup!.query<{ org_slug: string }>(
+          `SELECT org_slug FROM pv_emitter_context($1::uuid,$2::uuid)`,
+          [org, u],
+        );
+        expect(ctx.rows[0].org_slug).toBe('org-mono');
+
+        // 2c) isolation donnees sous render_app : ne voit que l'org courante.
+        await setup!.query(`SELECT set_config('app.current_org',$1,true)`, [
+          org,
+        ]);
+        await setup!.query(
+          `INSERT INTO projects(org_id,name) VALUES ($1,'P-MONO')`,
+          [org],
+        );
+        const sel = await setup!.query<{ name: string }>(
+          `SELECT name FROM projects`,
+        );
+        expect(sel.rows.every((r) => r.name === 'P-MONO')).toBe(true);
+      } finally {
+        await setup!.query(`RESET ROLE`);
+        await setup!.query(`RESET app.current_org`);
+        await setup!.query(`RESET app.auth_bootstrap`);
+      }
+    },
+  );
+
+  it('couverture : >= 6 cas reellement executes (en CI/avec URL)', () => {
     if (!ENFORCE) {
       console.warn('[NON EXECUTE] couverture ignoree hors CI et sans URL.');
       return;
     }
-    expect(passed).toBeGreaterThanOrEqual(5);
+    expect(passed).toBeGreaterThanOrEqual(6);
   });
 });

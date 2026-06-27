@@ -107,6 +107,14 @@ export class PvService {
         // passe : orgId (deja prouvee par TenantGuard) + args.userId (sub JWT
         // verifie). Le nom de l'org et le visa de l'emetteur sont des donnees
         // SCELLEES (provenance du PV), pas un simple affichage.
+        //
+        // NB ROLE : cet appel a lieu DANS withTenant (donc SOUS roadsen_app, cf.
+        // PrismaService). pv_emitter_context etant SECURITY DEFINER, il s'execute
+        // QUAND MEME avec les droits de roadsen_auth (le SET ROLE de l'appelant est
+        // ignore par SECURITY DEFINER) -> il franchit la RLS d'identite. C'est une
+        // lecture identite READ-ONLY, auto-contenue (drapeau on->off interne) : seule
+        // exception sanctionnee a "pas de DEFINER d'identite dans withTenant", car
+        // l'emission a besoin du visa scelle au moment du scellement.
         const ctxRows = await tx.$queryRaw<
           Array<{
             org_slug: string;
