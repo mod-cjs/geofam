@@ -1,18 +1,40 @@
 /**
- * Couche API ROADSEN — implémentation MOCK.
+ * Couche API ROADSEN — point de bascule mock / vrai backend.
  *
- * Ce module est le SEUL endroit à remplacer lors du câblage du vrai backend.
- * Les signatures, les types et les formes de retour sont identiques au contrat réel.
+ * NEXT_PUBLIC_API_BASE_URL posée → vrai client HTTP (http-client.ts).
+ * Variable absente → implémentation mock conservée (démo continue de marcher).
  *
- * Basculement de scénario de démo :
+ * Interface identique dans les deux cas : aucun consommateur n'a besoin de savoir
+ * sur quel backend il tourne. Un seul point de bascule = cette variable d'env.
+ *
+ * Basculement de scénario de démo (mode mock uniquement) :
  * - Query param `?demo=expired | quota-exhausted | module-locked | active`
- * - Ou cookie `roadsen_demo_scenario` (posé par le DemoPanel)
+ * - Ou via le DemoPanel (localStorage `roadsen_demo_scenario`)
  *
  * Confidentialité DoD §8 : aucun import @roadsen/engines.
  */
 
 // Paramètres de contrat intentionnellement inutilisés dans le mock sont préfixés _.
 
+import {
+  httpLogin,
+  httpLogout,
+  httpGetStoredToken,
+  httpGetStoredUser,
+  httpGetStoredOrgs,
+  httpGetEntitlements,
+  httpListProjects,
+  httpCreateProject,
+  httpGetProject,
+  httpListCalcResults,
+  httpGetCalcResult,
+  httpRunCalc,
+  httpListPvs,
+  httpGetPv,
+  httpEmitPv,
+  httpVerifyPv,
+  httpDownloadPvPdf,
+} from './http-client';
 import {
   MOCK_LOGIN_RESPONSE,
   MOCK_CALCULS,
@@ -36,7 +58,20 @@ import type {
 } from './types';
 
 // ---------------------------------------------------------------------------
-// Scénario de démo — résolution
+// Détection du mode : mock ou vrai backend
+//
+// NEXT_PUBLIC_API_BASE_URL est lue à la compilation par Next.js (static replace).
+// En tests vitest, process.env.NEXT_PUBLIC_API_BASE_URL est undefined par défaut
+// → mode mock conservé ; les tests existants restent verts sans configuration.
+// ---------------------------------------------------------------------------
+
+const _USE_REAL_BACKEND =
+  typeof process !== 'undefined' &&
+  typeof process.env.NEXT_PUBLIC_API_BASE_URL === 'string' &&
+  process.env.NEXT_PUBLIC_API_BASE_URL.trim() !== '';
+
+// ---------------------------------------------------------------------------
+// Scénario de démo — résolution (mock uniquement, no-op en mode réel)
 // ---------------------------------------------------------------------------
 
 const DEMO_SCENARIO_KEY = 'roadsen_demo_scenario';
@@ -90,6 +125,8 @@ function delay(ms = 400): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function login(req: LoginRequest): Promise<LoginResponse> {
+  if (_USE_REAL_BACKEND) return httpLogin(req);
+
   await delay(600);
   if (req.email === '' || req.password === '') {
     throw { statusCode: 401, reason: 'UNAUTHORIZED', message: 'Identifiants incorrects' };
@@ -107,6 +144,8 @@ export async function login(req: LoginRequest): Promise<LoginResponse> {
 }
 
 export async function logout(): Promise<void> {
+  if (_USE_REAL_BACKEND) return httpLogout();
+
   await delay(200);
   if (typeof window !== 'undefined') {
     sessionStorage.removeItem('roadsen_access_token');
@@ -116,11 +155,13 @@ export async function logout(): Promise<void> {
 }
 
 export function getStoredToken(): string | null {
+  if (_USE_REAL_BACKEND) return httpGetStoredToken();
   if (typeof window === 'undefined') return null;
   return sessionStorage.getItem('roadsen_access_token');
 }
 
 export function getStoredUser() {
+  if (_USE_REAL_BACKEND) return httpGetStoredUser();
   if (typeof window === 'undefined') return null;
   try {
     const raw = sessionStorage.getItem('roadsen_user');
@@ -131,6 +172,7 @@ export function getStoredUser() {
 }
 
 export function getStoredOrgs() {
+  if (_USE_REAL_BACKEND) return httpGetStoredOrgs();
   if (typeof window === 'undefined') return [];
   try {
     const raw = sessionStorage.getItem('roadsen_orgs');
@@ -145,6 +187,7 @@ export function getStoredOrgs() {
 // ---------------------------------------------------------------------------
 
 export async function getEntitlements(orgId: string): Promise<EntitlementsResponse> {
+  if (_USE_REAL_BACKEND) return httpGetEntitlements(orgId);
   await delay(300);
   return getMockEntitlements(getActiveScenario(), orgId);
 }
@@ -154,6 +197,7 @@ export async function getEntitlements(orgId: string): Promise<EntitlementsRespon
 // ---------------------------------------------------------------------------
 
 export async function listProjects(orgId: string): Promise<Project[]> {
+  if (_USE_REAL_BACKEND) return httpListProjects(orgId);
   await delay(500);
   return MOCK_PROJECTS.filter((p) => p.orgId === orgId);
 }
@@ -162,6 +206,8 @@ export async function createProject(
   orgId: string,
   req: CreateProjectRequest,
 ): Promise<Project> {
+  if (_USE_REAL_BACKEND) return httpCreateProject(orgId, req);
+
   await delay(600);
   const newProject: Project = {
     id: `proj_${Date.now()}`,
@@ -178,6 +224,8 @@ export async function createProject(
 }
 
 export async function getProject(_orgId: string, projectId: string): Promise<Project> {
+  if (_USE_REAL_BACKEND) return httpGetProject(_orgId, projectId);
+
   await delay(300);
   const p = MOCK_PROJECTS.find((x) => x.id === projectId);
   if (!p) throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Projet introuvable' };
@@ -192,6 +240,7 @@ export async function listCalcResults(
   _orgId: string,
   projectId: string,
 ): Promise<CalcResult[]> {
+  if (_USE_REAL_BACKEND) return httpListCalcResults(_orgId, projectId);
   await delay(400);
   return MOCK_CALCULS.filter((c) => c.projectId === projectId);
 }
@@ -201,6 +250,8 @@ export async function getCalcResult(
   _projectId: string,
   calcId: string,
 ): Promise<CalcResult> {
+  if (_USE_REAL_BACKEND) return httpGetCalcResult(_orgId, _projectId, calcId);
+
   await delay(300);
   const c = MOCK_CALCULS.find((x) => x.id === calcId);
   if (!c) throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Calcul introuvable' };
@@ -241,6 +292,8 @@ export async function runCalc(
   projectId: string,
   req: CalcRequest,
 ): Promise<CalcResult> {
+  if (_USE_REAL_BACKEND) return httpRunCalc(orgId, projectId, req);
+
   // Vérifier entitlements en défense
   const ent = getMockEntitlements(getActiveScenario(), orgId);
   if (ent.expired) {
@@ -308,6 +361,7 @@ export async function runCalc(
 // ---------------------------------------------------------------------------
 
 export async function listPvs(_orgId: string, projectId: string): Promise<OfficialPv[]> {
+  if (_USE_REAL_BACKEND) return httpListPvs(_orgId, projectId);
   await delay(400);
   return MOCK_PVS.filter((p) => p.projectId === projectId);
 }
@@ -317,6 +371,8 @@ export async function getPv(
   _projectId: string,
   pvId: string,
 ): Promise<OfficialPv> {
+  if (_USE_REAL_BACKEND) return httpGetPv(_orgId, _projectId, pvId);
+
   await delay(300);
   const pv = MOCK_PVS.find((p) => p.id === pvId);
   if (!pv) throw { statusCode: 404, reason: 'NOT_FOUND', message: 'PV introuvable' };
@@ -328,6 +384,8 @@ export async function emitPv(
   projectId: string,
   req: EmitPvRequest,
 ): Promise<OfficialPv> {
+  if (_USE_REAL_BACKEND) return httpEmitPv(orgId, projectId, req);
+
   // Vérifier entitlements
   const ent = getMockEntitlements(getActiveScenario());
   if (ent.expired) {
@@ -370,6 +428,8 @@ export async function emitPv(
 }
 
 export async function verifyPv(_pvId: string): Promise<VerifyPvResponse> {
+  if (_USE_REAL_BACKEND) return httpVerifyPv(_pvId);
+
   await delay(500);
   return {
     pvId: _pvId,
@@ -378,7 +438,22 @@ export async function verifyPv(_pvId: string): Promise<VerifyPvResponse> {
   };
 }
 
-export async function downloadPvPdf(pvId: string): Promise<Blob> {
+export async function downloadPvPdf(
+  pvId: string,
+  orgId?: string,
+  projectId?: string,
+): Promise<Blob> {
+  if (_USE_REAL_BACKEND) {
+    if (!orgId || !projectId) {
+      throw {
+        statusCode: 400,
+        reason: 'SERVER_ERROR',
+        message: 'orgId et projectId requis en mode réel',
+      };
+    }
+    return httpDownloadPvPdf(orgId, projectId, pvId);
+  }
+
   await delay(800);
   // Mock PDF — en prod : fetch GET /projects/:id/pvs/:pvId/pdf
   const content = `PV SCELLÉ — ROADSEN\nID: ${pvId}\nCeci est un aperçu de démonstration.`;

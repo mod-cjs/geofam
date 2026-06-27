@@ -7,13 +7,14 @@
  * Pas de "créer un compte" ni "mot de passe oublié" (P1, comptes pré-provisionnés).
  */
 
-import { useRef, useState, type FormEvent } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle } from 'lucide-react';
-import { login } from '@/lib/api/client';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useRef, useState, type FormEvent } from 'react';
+
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Field';
 import { Logotype } from '@/components/ui/Logotype';
+import { login } from '@/lib/api/client';
 
 interface FieldErrors {
   email?: string;
@@ -34,8 +35,8 @@ export default function LoginClient() {
 
   // Validation on-blur
   function validateEmail(value: string): string | undefined {
-    if (!value.trim()) return 'L\'adresse e-mail est requise';
-    if (!value.includes('@')) return 'Format d\'adresse invalide';
+    if (!value.trim()) return "L'adresse e-mail est requise";
+    if (!value.includes('@')) return "Format d'adresse invalide";
     return undefined;
   }
 
@@ -68,8 +69,12 @@ export default function LoginClient() {
     setLoading(true);
     try {
       await login({ email, password });
-      // Poser le cookie mock d'authentification
-      document.cookie = 'roadsen_mock_auth=1; path=/; SameSite=Lax';
+      // En mode mock : pose un cookie indicateur pour les middlewares demo.
+      // En mode réel (NEXT_PUBLIC_API_BASE_URL posée) : le serveur gère les
+      // cookies httpOnly via Set-Cookie ; on ne pose rien côté client.
+      if (!process.env.NEXT_PUBLIC_API_BASE_URL) {
+        document.cookie = 'roadsen_mock_auth=1; path=/; SameSite=Lax';
+      }
       router.push(returnTo);
     } catch (err: unknown) {
       const apiErr = err as { message?: string };
@@ -241,7 +246,8 @@ export default function LoginClient() {
             lineHeight: 1.5,
           }}
         >
-          Démo : saisissez n&apos;importe quel e-mail et mot de passe (sauf &laquo;&nbsp;wrong&nbsp;&raquo;).
+          Démo : saisissez n&apos;importe quel e-mail et mot de passe (sauf
+          &laquo;&nbsp;wrong&nbsp;&raquo;).
         </p>
       </div>
     </div>
