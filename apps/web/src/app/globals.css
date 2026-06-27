@@ -1,26 +1,322 @@
+/* ============================================================
+   ROADSEN — globals.css  (Lot 0 — tokens v3 · Tailwind v4)
+   Source de vérité : identite-v3.md + excellence-v1.md
+   NE PAS modifier sans mettre à jour les specs figées.
+   ============================================================ */
+
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------ */
+/* 1. TOKENS CSS NATIFS — :root (thème clair, défaut)                 */
+/* ------------------------------------------------------------------ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* --- Surfaces --- */
+  --surface-canvas:    #f7f6f4;
+  --surface-base:      #ffffff;
+  --surface-raised:    #ffffff;
+  --surface-overlay:   #ffffff;
+  --surface-nav:       #22262b;
+  /* Pour le focus ring : surface locale (par défaut = canvas clair) */
+  --surface-current:   var(--surface-canvas);
+
+  /* --- Élévation (zéro-offset — jamais border + elevation simultanément) --- */
+  --elevation-card:    0 0 0 1px rgba(0,0,0,0.07);
+  --elevation-sticky:  0 1px 0 0 rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
+  --elevation-modal:   0 0 0 1px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.10);
+  --elevation-popover: 0 0 0 1px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.08);
+  /* Aliases excellence-v1 */
+  --elevation-static:  var(--elevation-card);
+  --elevation-float:   0 2px 4px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.08);
+
+  /* --- Marque / action --- */
+  --accent-brand:          #b86a2e;   /* aplats, logotype — JAMAIS texte fonctionnel */
+  --accent-action:         #a05226;   /* bouton primaire, liens, onglet actif (5,11:1 sur canvas) */
+  --accent-action-hover:   #8e4820;
+  --accent-action-on-nav:  #d9954e;  /* actif sur surface-nav asphalte (5,4:1) */
+  --accent-fg:             #ffffff;   /* label sur bouton action, poids 500 min */
+  --struct-petrole:        #1f4e4a;   /* en-têtes groupe tableau, boutons secondaires */
+  --struct-petrole-fg:     #ffffff;
+  --struct-petrole-rgb:    31, 78, 74;
+
+  /* --- Texte (ratios WCAG 2.2 figés) --- */
+  --text-primary:    #1f2329;   /* ~13:1 sur canvas — AAA */
+  --text-secondary:  #4a5158;   /* 7,1:1 sur canvas — AA */
+  --text-muted:      #6b7077;   /* 4,6:1 sur canvas — AA · interdit <16px décoratif seul */
+  --text-on-nav:     #f7f6f4;   /* texte sur surface-nav asphalte */
+  --text-link:       #a05226;   /* = accent-action sur fond clair */
+  /* Aliases excellence-v1 */
+  --color-text:      var(--text-primary);
+  --color-text-sec:  var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-action:    var(--accent-action);
+  --color-action-hover: var(--accent-action-hover);
+  --color-action-dark: var(--accent-action-on-nav);
+  --color-brand:     var(--accent-brand);
+  --color-petrole:   var(--struct-petrole);
+  --color-canvas:    var(--surface-canvas);
+  --color-base:      var(--surface-base);
+  --color-alt:       #eef0f1;
+  --color-nav:       var(--surface-nav);
+  --color-structure: var(--struct-petrole);
+
+  /* --- Bordures --- */
+  --border-subtle:   rgba(0,0,0,0.07);
+  --border-default:  rgba(0,0,0,0.11);
+  --border-strong:   rgba(0,0,0,0.18);
+  --border-focus:    #a05226;
+  --color-border:    rgba(0,0,0,0.08);
+
+  /* --- Verdicts (rouge/vert = UNIQUEMENT ici) --- */
+  --status-pass-bg:  #e9f1ec;
+  --status-pass-tx:  #2f6b46;   /* 5,13:1 sur pass-bg */
+  --status-fail-bg:  #fbeceb;
+  --status-fail-tx:  #8b1a1a;   /* 8,12:1 sur fail-bg */
+  /* Aliases excellence-v1 */
+  --color-verdict-pass-bg: var(--status-pass-bg);
+  --color-verdict-pass-fg: var(--status-pass-tx);
+  --color-verdict-fail-bg: var(--status-fail-bg);
+  --color-verdict-fail-fg: var(--status-fail-tx);
+
+  /* --- Tags de domaine (préfixe texte NON SUPPRIMABLE) --- */
+  --domain-road-bg:   #f0ede9;
+  --domain-road-tx:   #6b4f38;   /* préfixe "CH." */
+  --domain-found-bg:  #e8edf0;
+  --domain-found-tx:  #2d5060;   /* préfixe "FD." */
+  --domain-lab-bg:    #ededec;
+  --domain-lab-tx:    #4a4a47;   /* préfixe "LB." */
+
+  /* --- Géométrie (radius) --- */
+  --radius-sm:    3px;
+  --radius-base:  4px;
+  --radius-lg:    6px;
+  --radius-xl:    8px;
+
+  /* --- Espacement 4pt --- */
+  --sp-1:   4px;
+  --sp-2:   8px;
+  --sp-3:   12px;
+  --sp-4:   16px;
+  --sp-5:   20px;
+  --sp-6:   24px;
+  --sp-8:   32px;
+  --sp-10:  40px;
+  --sp-12:  48px;
+  --sp-16:  64px;
+
+  /* --- Typographie --- */
+  --font-sans: 'Geist', -apple-system, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'Cascadia Code', ui-monospace, monospace;
+  /* Scale Major Third — base 14px */
+  --text-2xs:   11px;
+  --text-xs:    12px;
+  --text-sm:    14px;
+  --text-base:  16px;
+  --text-lg:    20px;
+  --text-xl:    24px;
+  --text-2xl:   32px;   /* plafond résultat calcul */
+
+  /* --- Motion --- */
+  --dur-instant:   100ms;
+  --dur-fast:      150ms;
+  --dur-base:      200ms;
+  --dur-moderate:  250ms;
+  --dur-slow:      300ms;
+  /* Courbes */
+  --ease-entrance: cubic-bezier(0.165, 0.84, 0.44, 1);
+  --ease-exit:     cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-state:    cubic-bezier(0.455, 0.03, 0.515, 0.955);
+
+  /* --- États --- */
+  --state-selected-bg: rgba(31, 78, 74, 0.08);
+  --row-hover-bg:      rgba(31, 78, 74, 0.04);
+  --nav-hover:         rgba(255, 255, 255, 0.06);
+  --nav-selected:      rgba(255, 255, 255, 0.08);
+  --muted-on-nav:      rgba(255, 255, 255, 0.55);
+  --border-nav:        rgba(255, 255, 255, 0.08);
 }
 
+/* ------------------------------------------------------------------ */
+/* 2. THÈME SOMBRE — activation via data-theme="dark"                 */
+/*    (PAS via @media prefers-color-scheme — toggle explicite requis)  */
+/* ------------------------------------------------------------------ */
+[data-theme="dark"] {
+  --surface-canvas:    #111210;
+  --surface-base:      #1a1917;
+  --surface-raised:    #222019;
+  --surface-overlay:   #2a2826;
+  --surface-nav:       #0e0d0c;
+  --surface-current:   var(--surface-canvas);
+
+  --elevation-card:    0 0 0 1px rgba(255,255,255,0.07);
+  --elevation-sticky:  0 1px 0 0 rgba(255,255,255,0.05);
+  --elevation-modal:   0 0 0 1px rgba(255,255,255,0.06), 0 8px 32px rgba(0,0,0,0.40);
+  --elevation-static:  var(--elevation-card);
+
+  --accent-brand:          #b86a2e;   /* inchangé */
+  --accent-action:         #c97a3f;
+  --accent-action-hover:   #dba050;
+  --accent-action-on-nav:  #d9954e;
+  --accent-fg:             #111210;
+
+  --struct-petrole:        #2a6b65;
+
+  --text-primary:    rgba(255,255,255,0.92);
+  --text-secondary:  rgba(255,255,255,0.60);
+  --text-muted:      rgba(255,255,255,0.35);   /* décoratif seulement en dark */
+  --text-on-nav:     rgba(255,255,255,0.92);
+  --text-link:       #c97a3f;
+
+  --border-subtle:   rgba(255,255,255,0.07);
+  --border-default:  rgba(255,255,255,0.11);
+  --border-strong:   rgba(255,255,255,0.18);
+  --border-focus:    #c97a3f;
+
+  /* Verdicts dark : fond clair conservé (île claire — provisoire, à valider) */
+  --status-pass-bg:  #e9f1ec;
+  --status-pass-tx:  #2f6b46;
+  --status-fail-bg:  #fbeceb;
+  --status-fail-tx:  #8b1a1a;
+
+  /* Aliases dark */
+  --color-text:      var(--text-primary);
+  --color-text-sec:  var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-action:    var(--accent-action);
+  --color-action-hover: var(--accent-action-hover);
+  --color-action-dark: var(--accent-action-on-nav);
+  --color-brand:     var(--accent-brand);
+  --color-petrole:   var(--struct-petrole);
+  --color-canvas:    var(--surface-canvas);
+  --color-base:      var(--surface-base);
+  --color-alt:       #222019;
+  --color-nav:       var(--surface-nav);
+  --color-border:    rgba(255,255,255,0.08);
+  --border-nav:      rgba(255,255,255,0.08);
+  --color-verdict-pass-bg: var(--status-pass-bg);
+  --color-verdict-pass-fg: var(--status-pass-tx);
+  --color-verdict-fail-bg: var(--status-fail-bg);
+  --color-verdict-fail-fg: var(--status-fail-tx);
+}
+
+/* ------------------------------------------------------------------ */
+/* 3. TAILWIND v4 @theme — exposition des tokens au runtime Tailwind   */
+/* ------------------------------------------------------------------ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Polices */
+  --font-sans: var(--font-geist-sans), -apple-system, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), 'Cascadia Code', ui-monospace, monospace;
+
+  /* Couleurs ROADSEN */
+  --color-rds-canvas:        var(--surface-canvas);
+  --color-rds-base:          var(--surface-base);
+  --color-rds-nav:           var(--surface-nav);
+  --color-rds-action:        var(--accent-action);
+  --color-rds-action-hover:  var(--accent-action-hover);
+  --color-rds-action-on-nav: var(--accent-action-on-nav);
+  --color-rds-brand:         var(--accent-brand);
+  --color-rds-petrole:       var(--struct-petrole);
+  --color-rds-pass-bg:       var(--status-pass-bg);
+  --color-rds-pass-tx:       var(--status-pass-tx);
+  --color-rds-fail-bg:       var(--status-fail-bg);
+  --color-rds-fail-tx:       var(--status-fail-tx);
+  --color-rds-text:          var(--text-primary);
+  --color-rds-text-sec:      var(--text-secondary);
+  --color-rds-text-muted:    var(--text-muted);
+
+  /* Radius */
+  --radius-sm:   var(--radius-sm);
+  --radius-base: var(--radius-base);
+  --radius-lg:   var(--radius-lg);
+  --radius-xl:   var(--radius-xl);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ------------------------------------------------------------------ */
+/* 4. BASE — body, reset typographique                                 */
+/* ------------------------------------------------------------------ */
+body {
+  background-color: var(--surface-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ------------------------------------------------------------------ */
+/* 5. CLASSES UTILITAIRES MÉTIER                                       */
+/* ------------------------------------------------------------------ */
+
+/* Valeurs numériques : Geist Mono + tabular-nums + alignement droite */
+.numeric,
+td.value,
+td.ratio,
+td.coeff {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  letter-spacing: 0;
+}
+
+/* Micro-labels uppercase */
+.label-caps {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* ------------------------------------------------------------------ */
+/* 6. FOCUS RING GLOBAL — double anneau, transition: none              */
+/* ------------------------------------------------------------------ */
+:focus-visible {
+  outline:        2px solid var(--border-focus);
+  outline-offset: 2px;
+  box-shadow:     0 0 0 4px var(--surface-current, var(--surface-canvas)),
+                  0 0 0 6px var(--border-focus);
+  transition:     none;
+}
+
+/* Annulation de l'outline natif sur les éléments qui gèrent eux-mêmes */
+[data-focus-ring="false"]:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* 7. SKELETON — animation shimmer                                     */
+/* ------------------------------------------------------------------ */
+@keyframes roadsen-shimmer {
+  0%, 100% { opacity: 0.45; }
+  50%       { opacity: 0.85; }
+}
+
+.skeleton {
+  background-color: var(--color-alt, #eef0f1);
+  border-radius: var(--radius-base);
+  animation: roadsen-shimmer 1400ms ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------------ */
+/* 8. PREFERS-REDUCED-MOTION — source unique, non négociable           */
+/* ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration:        0.01ms !important;
+    animation-iteration-count: 1      !important;
+    transition-duration:       0.01ms !important;
+  }
+  /* Skeleton reste visible mais immobile */
+  .skeleton {
+    animation: none;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ------------------------------------------------------------------ */
+/* 9. SCROLLBAR DISCRÈTE                                               */
+/* ------------------------------------------------------------------ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-default) transparent;
 }

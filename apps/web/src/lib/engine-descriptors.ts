@@ -332,10 +332,13 @@ const pressiometreDescriptor: EngineDescriptor = {
 
 // ---------------------------------------------------------------------------
 // Pieux — fondation profonde (NF P 94-262 / EC7)
+//
+// ID canonique : 'casagrande' (nom du fichier GeoSuite, cf. mémoire geosuite-engine-mapping).
+// Mapping : casagrande (entitlements/mock-data) = pieux (fonction métier).
 // ---------------------------------------------------------------------------
 
 const pieuxDescriptor: EngineDescriptor = {
-  id: 'pieux',
+  id: 'casagrande',
   label: 'Fondation profonde — pieux (NF P 94-262)',
   description: 'Calcul de portance et vérification ELU/ELS de pieux isolés ou en groupe.',
   norme: 'NF P 94-262 (EC7 DA2 NA France)',
@@ -460,10 +463,13 @@ const pieuxDescriptor: EngineDescriptor = {
 
 // ---------------------------------------------------------------------------
 // Radier / plaque sur sol élastique multicouche (EF)
+//
+// ID canonique : 'geoplaque' (nom du fichier GeoSuite GEOPLAQUE, cf. mémoire geosuite-engine-mapping).
+// Mapping : geoplaque (entitlements/mock-data) = radier/plaque EF (fonction métier).
 // ---------------------------------------------------------------------------
 
 const radierDescriptor: EngineDescriptor = {
-  id: 'radier',
+  id: 'geoplaque',
   label: 'Radier / plaque sur sol élastique (EF)',
   description: "Tassements et diagnostics d'une fondation sur radier par éléments finis.",
   norme: 'Méthode Ménard — EF plaque de Winkler généralisé',
@@ -525,10 +531,13 @@ const radierDescriptor: EngineDescriptor = {
 
 // ---------------------------------------------------------------------------
 // FASTLAB — essais de labo & classification GTR (NF P 11-300)
+//
+// ID canonique : 'fastlab' (nom du fichier GeoSuite FASTLAB, cf. mémoire geosuite-engine-mapping).
+// Mapping : fastlab (entitlements/mock-data) = labo+GTR (fonction métier).
 // ---------------------------------------------------------------------------
 
 const laboDescriptor: EngineDescriptor = {
-  id: 'labo',
+  id: 'fastlab',
   label: 'Labo & classification GTR (FASTLAB / NF P 11-300)',
   description: 'Classification GTR des sols à partir des résultats de laboratoire.',
   norme: 'NF P 11-300 (GTR)',

@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
 
 /**
- * Page d'accueil — redirige vers la page de test moteurs (/recette).
- * La home définitive sera construite au jalon UI complet.
+ * Redirect racine — géré par le middleware (D-23 ADR 0010).
+ * Ce composant n'est atteint que si le middleware ne tourne pas (build statique, etc.).
  */
 export default function Home() {
-  redirect('/recette');
+  redirect('/login');
 }
