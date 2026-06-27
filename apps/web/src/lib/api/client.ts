@@ -11,8 +11,7 @@
  * Confidentialité DoD §8 : aucun import @roadsen/engines.
  */
 
-// Paramètres de contract intentionnellement inutilisés dans le mock (préfixe _).
-/* eslint-disable @typescript-eslint/no-unused-vars */
+// Paramètres de contrat intentionnellement inutilisés dans le mock sont préfixés _.
 
 import {
   MOCK_LOGIN_RESPONSE,
@@ -23,7 +22,6 @@ import {
   getMockEntitlements,
   type DemoScenario,
 } from './mock-data';
-
 import type {
   LoginRequest,
   LoginResponse,
@@ -51,7 +49,11 @@ export function getActiveScenario(): DemoScenario {
   const qp = sp.get('demo') as DemoScenario | null;
   if (qp && ['active', 'expired', 'quota-exhausted', 'module-locked'].includes(qp)) {
     // Persister pour les navigations suivantes
-    try { localStorage.setItem(DEMO_SCENARIO_KEY, qp); } catch {}
+    try {
+      localStorage.setItem(DEMO_SCENARIO_KEY, qp);
+    } catch {
+      /* storage indisponible */
+    }
     return qp;
   }
 
@@ -59,14 +61,20 @@ export function getActiveScenario(): DemoScenario {
   try {
     const stored = localStorage.getItem(DEMO_SCENARIO_KEY) as DemoScenario | null;
     if (stored) return stored;
-  } catch {}
+  } catch {
+    /* storage indisponible */
+  }
 
   return 'active';
 }
 
 export function setDemoScenario(s: DemoScenario): void {
   if (typeof window === 'undefined') return;
-  try { localStorage.setItem(DEMO_SCENARIO_KEY, s); } catch {}
+  try {
+    localStorage.setItem(DEMO_SCENARIO_KEY, s);
+  } catch {
+    /* storage indisponible */
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -117,7 +125,9 @@ export function getStoredUser() {
   try {
     const raw = sessionStorage.getItem('roadsen_user');
     return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 export function getStoredOrgs() {
@@ -125,7 +135,9 @@ export function getStoredOrgs() {
   try {
     const raw = sessionStorage.getItem('roadsen_orgs');
     return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +160,7 @@ export async function listProjects(orgId: string): Promise<Project[]> {
 
 export async function createProject(
   orgId: string,
-  req: CreateProjectRequest
+  req: CreateProjectRequest,
 ): Promise<Project> {
   await delay(600);
   const newProject: Project = {
@@ -178,7 +190,7 @@ export async function getProject(_orgId: string, projectId: string): Promise<Pro
 
 export async function listCalcResults(
   _orgId: string,
-  projectId: string
+  projectId: string,
 ): Promise<CalcResult[]> {
   await delay(400);
   return MOCK_CALCULS.filter((c) => c.projectId === projectId);
@@ -187,7 +199,7 @@ export async function listCalcResults(
 export async function getCalcResult(
   _orgId: string,
   _projectId: string,
-  calcId: string
+  calcId: string,
 ): Promise<CalcResult> {
   await delay(300);
   const c = MOCK_CALCULS.find((x) => x.id === calcId);
@@ -218,7 +230,7 @@ function mockShouldFail(req: CalcRequest): boolean {
     const params = req.params as { layers?: Array<{ h?: number }> };
     const layers = Array.isArray(params?.layers) ? params.layers : [];
     const totalH = layers.reduce((sum, l) => sum + (Number(l?.h) || 0), 0);
-    if (layers.length > 0 && totalH < 0.20) return true;
+    if (layers.length > 0 && totalH < 0.2) return true;
   }
 
   return false;
@@ -227,7 +239,7 @@ function mockShouldFail(req: CalcRequest): boolean {
 export async function runCalc(
   orgId: string,
   projectId: string,
-  req: CalcRequest
+  req: CalcRequest,
 ): Promise<CalcResult> {
   // Vérifier entitlements en défense
   const ent = getMockEntitlements(getActiveScenario(), orgId);
@@ -238,7 +250,11 @@ export async function runCalc(
     throw { statusCode: 402, reason: 'QUOTA', message: "Quota d'utilisation atteint" };
   }
   if (!ent.modules.includes(req.engineId)) {
-    throw { statusCode: 403, reason: 'MODULE_NOT_IN_PACK', message: 'Module non inclus dans votre abonnement' };
+    throw {
+      statusCode: 403,
+      reason: 'MODULE_NOT_IN_PACK',
+      message: 'Module non inclus dans votre abonnement',
+    };
   }
 
   // Simuler calcul (~800ms)
@@ -251,7 +267,8 @@ export async function runCalc(
         NE: 3200000,
         NEadm: 980000,
         verdict: 'FAIL' as const,
-        failReason: 'NE admissible (980 000) inférieur au trafic de dimensionnement (3 200 000). Épaisseur de chaussée insuffisante.',
+        failReason:
+          'NE admissible (980 000) inférieur au trafic de dimensionnement (3 200 000). Épaisseur de chaussée insuffisante.',
         rows: [
           { label: 'Trafic de dimensionnement NE', value: 3200000, unit: 'essieux' },
           { label: 'NE admissible (couche 1)', value: 980000, unit: 'essieux' },
@@ -298,7 +315,7 @@ export async function listPvs(_orgId: string, projectId: string): Promise<Offici
 export async function getPv(
   _orgId: string,
   _projectId: string,
-  pvId: string
+  pvId: string,
 ): Promise<OfficialPv> {
   await delay(300);
   const pv = MOCK_PVS.find((p) => p.id === pvId);
@@ -309,7 +326,7 @@ export async function getPv(
 export async function emitPv(
   orgId: string,
   projectId: string,
-  req: EmitPvRequest
+  req: EmitPvRequest,
 ): Promise<OfficialPv> {
   // Vérifier entitlements
   const ent = getMockEntitlements(getActiveScenario());
@@ -323,9 +340,14 @@ export async function emitPv(
   await delay(700);
 
   const calc = MOCK_CALCULS.find((c) => c.id === req.calcResultId);
-  if (!calc) throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Calcul introuvable' };
+  if (!calc)
+    throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Calcul introuvable' };
   if (calc.status !== 'DONE') {
-    throw { statusCode: 422, reason: 'SERVER_ERROR', message: 'Le calcul doit avoir le statut Calculé' };
+    throw {
+      statusCode: 422,
+      reason: 'SERVER_ERROR',
+      message: 'Le calcul doit avoir le statut Calculé',
+    };
   }
 
   const newPv: OfficialPv = {

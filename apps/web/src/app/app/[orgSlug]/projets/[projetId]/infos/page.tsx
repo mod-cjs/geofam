@@ -6,23 +6,26 @@
  */
 
 import { useEffect, useState } from 'react';
-import { getProject } from '@/lib/api/client';
-import type { Project } from '@/lib/api/types';
-import { Input } from '@/components/ui/Field';
+
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Field';
 import { Skeleton } from '@/components/ui/Skeleton.client';
 import { useToast } from '@/components/ui/Toast';
+import { getProject } from '@/lib/api/client';
+import type { Project } from '@/lib/api/types';
 import { resolveOrgId } from '@/lib/org-context';
 
 interface Props {
   params: Promise<{ orgSlug: string; projetId: string }>;
 }
 
-
 function formatDate(iso: string): string {
   return new Intl.DateTimeFormat('fr-FR', {
-    day: '2-digit', month: 'long', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(new Date(iso));
 }
 
@@ -36,14 +39,19 @@ export default function InfosPage({ params: paramsPromise }: Props) {
   useEffect(() => {
     paramsPromise.then(({ orgSlug, projetId }) => {
       const orgId = resolveOrgId(orgSlug);
-      if (!orgId) { setLoading(false); return; }
-      getProject(orgId, projetId).then((p) => {
-        setProject(p);
-        setName(p.name);
+      if (!orgId) {
         setLoading(false);
-      }).catch(() => setLoading(false));
+        return;
+      }
+      getProject(orgId, projetId)
+        .then((p) => {
+          setProject(p);
+          setName(p.name);
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
     });
-  }, []);
+  }, [paramsPromise]);
 
   async function handleSave() {
     if (!project || !name.trim()) return;
@@ -138,7 +146,13 @@ export default function InfosPage({ params: paramsPromise }: Props) {
         }}
       >
         <MetaRow label="Identifiant" value={project.id} mono />
-        <MetaRow label="Domaine" value={{ CH: 'Chaussées', FD: 'Fondations', LB: 'Labo / Sol' }[project.domain] ?? project.domain} />
+        <MetaRow
+          label="Domaine"
+          value={
+            { CH: 'Chaussées', FD: 'Fondations', LB: 'Labo / Sol' }[project.domain] ??
+            project.domain
+          }
+        />
         <MetaRow label="Créé le" value={formatDate(project.createdAt)} />
         <MetaRow label="Modifié le" value={formatDate(project.updatedAt)} />
       </div>
@@ -146,10 +160,22 @@ export default function InfosPage({ params: paramsPromise }: Props) {
   );
 }
 
-function MetaRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function MetaRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
   return (
     <div style={{ display: 'flex', gap: 16, alignItems: 'baseline' }}>
-      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', minWidth: 100 }}>{label}</span>
+      <span
+        style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', minWidth: 100 }}
+      >
+        {label}
+      </span>
       <span
         style={{
           fontSize: 'var(--text-sm)',

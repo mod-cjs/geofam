@@ -8,17 +8,17 @@
  * Variantes : conforme (pass) · non-conforme (fail) · neutre · recalculable · scellé · en-cours · erreur
  */
 
-import { Check, Clock, Hash, Lock, RefreshCw, X, AlertTriangle } from "lucide-react";
-import type { ReactNode } from "react";
+import { Check, Clock, Lock, RefreshCw, X, AlertTriangle } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 export type BadgeVariant =
-  | "conforme"
-  | "non-conforme"
-  | "neutre"
-  | "recalculable"
-  | "scelle"
-  | "en-cours"
-  | "erreur";
+  | 'conforme'
+  | 'non-conforme'
+  | 'neutre'
+  | 'recalculable'
+  | 'scelle'
+  | 'en-cours'
+  | 'erreur';
 
 interface BadgeProps {
   variant: BadgeVariant;
@@ -36,60 +36,60 @@ const badgeConfig: Record<
   }
 > = {
   conforme: {
-    label: "Conforme",
+    label: 'Conforme',
     icon: <Check size={11} strokeWidth={2} aria-hidden="true" />,
     style: {
-      background: "var(--status-pass-bg)",
-      color: "var(--status-pass-tx)",
+      background: 'var(--status-pass-bg)',
+      color: 'var(--status-pass-tx)',
     },
   },
-  "non-conforme": {
-    label: "Non conforme",
+  'non-conforme': {
+    label: 'Non conforme',
     icon: <X size={11} strokeWidth={2} aria-hidden="true" />,
     style: {
-      background: "var(--status-fail-bg)",
-      color: "var(--status-fail-tx)",
+      background: 'var(--status-fail-bg)',
+      color: 'var(--status-fail-tx)',
     },
   },
   neutre: {
-    label: "En attente",
+    label: 'En attente',
     icon: <Clock size={11} strokeWidth={1.5} aria-hidden="true" />,
     style: {
-      background: "var(--color-alt, #eef0f1)",
-      color: "var(--text-secondary)",
+      background: 'var(--color-alt, #eef0f1)',
+      color: 'var(--text-secondary)',
     },
   },
   recalculable: {
-    label: "Recalculable",
+    label: 'Recalculable',
     icon: <RefreshCw size={11} strokeWidth={1.5} aria-hidden="true" />,
     style: {
-      background: "transparent",
-      color: "var(--text-secondary)",
-      boxShadow: "inset 0 0 0 1px var(--border-default)",
+      background: 'transparent',
+      color: 'var(--text-secondary)',
+      boxShadow: 'inset 0 0 0 1px var(--border-default)',
     },
   },
   scelle: {
-    label: "Scellé",
+    label: 'Scellé',
     icon: <Lock size={11} strokeWidth={1.5} aria-hidden="true" />,
     style: {
-      background: "var(--surface-nav)",
-      color: "#ffffff",
+      background: 'var(--surface-nav)',
+      color: '#ffffff',
     },
   },
-  "en-cours": {
-    label: "En cours",
+  'en-cours': {
+    label: 'En cours',
     icon: <Clock size={11} strokeWidth={1.5} aria-hidden="true" />,
     style: {
-      background: "#eff6ff",
-      color: "#1d4ed8",
+      background: '#eff6ff',
+      color: '#1d4ed8',
     },
   },
   erreur: {
-    label: "Erreur",
+    label: 'Erreur',
     icon: <AlertTriangle size={11} strokeWidth={1.5} aria-hidden="true" />,
     style: {
-      background: "var(--status-fail-bg)",
-      color: "var(--status-fail-tx)",
+      background: 'var(--status-fail-bg)',
+      color: 'var(--status-fail-tx)',
     },
   },
 };
@@ -102,14 +102,14 @@ export function Badge({ variant, label, className }: BadgeProps) {
     <span
       className={className}
       style={{
-        display: "inline-flex",
-        alignItems: "center",
+        display: 'inline-flex',
+        alignItems: 'center',
         gap: 4,
         fontSize: 11,
         fontWeight: 600,
         lineHeight: 1,
-        padding: "2px 8px",
-        borderRadius: 2,  /* pas rounded-full — le pill est trop ludique */
+        padding: '2px 8px',
+        borderRadius: 2 /* pas rounded-full — le pill est trop ludique */,
         ...config.style,
       }}
       aria-label={displayLabel}
@@ -129,13 +129,13 @@ export function BadgeCompact({ variant, label, className }: BadgeProps) {
     <span
       className={className}
       style={{
-        display: "inline-flex",
-        alignItems: "center",
+        display: 'inline-flex',
+        alignItems: 'center',
         gap: 3,
         fontSize: 10,
         fontWeight: 600,
         lineHeight: 1,
-        padding: "1px 5px",
+        padding: '1px 5px',
         borderRadius: 2,
         ...config.style,
       }}

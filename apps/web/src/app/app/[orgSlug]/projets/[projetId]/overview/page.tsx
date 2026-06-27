@@ -5,15 +5,16 @@
  * Synthèse : derniers calculs, derniers PV, compteurs.
  */
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { Calculator, FileCheck2, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+
+import { Badge } from '@/components/ui/Badge';
+import { DomainTag } from '@/components/ui/DomainTag';
+import type { Domain } from '@/components/ui/DomainTag';
+import { Skeleton } from '@/components/ui/Skeleton.client';
 import { listCalcResults, listPvs } from '@/lib/api/client';
 import type { CalcResult, OfficialPv } from '@/lib/api/types';
-import { Skeleton } from '@/components/ui/Skeleton.client';
-import { DomainTag } from '@/components/ui/DomainTag';
-import { Badge } from '@/components/ui/Badge';
-import type { Domain } from '@/components/ui/DomainTag';
 import { resolveOrgId } from '@/lib/org-context';
 
 /**
@@ -46,18 +47,25 @@ export default function OverviewPage({ params: paramsPromise }: Props) {
       setOrgSlug(s);
       setProjetId(p);
       const orgId = resolveOrgId(s);
-      if (!orgId) { setLoading(false); return; }
+      if (!orgId) {
+        setLoading(false);
+        return;
+      }
       Promise.all([listCalcResults(orgId, p), listPvs(orgId, p)]).then(([c, v]) => {
         setCalculs(c);
         setPvs(v);
         setLoading(false);
       });
     });
-  }, []);
+  }, [paramsPromise]);
 
   if (loading) {
     return (
-      <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement de la vue d'ensemble">
+      <div
+        style={{ padding: 24 }}
+        aria-busy="true"
+        aria-label="Chargement de la vue d'ensemble"
+      >
         <Skeleton variant="text" style={{ width: 200, height: 24, marginBottom: 16 }} />
         <Skeleton variant="card-projet" />
       </div>
@@ -70,7 +78,14 @@ export default function OverviewPage({ params: paramsPromise }: Props) {
   return (
     <div style={{ padding: 24, maxWidth: 800, margin: '0 auto', width: '100%' }}>
       {/* Compteurs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 32 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: 12,
+          marginBottom: 32,
+        }}
+      >
         <StatCard
           label="Calculs"
           value={calculs.length}
@@ -85,22 +100,42 @@ export default function OverviewPage({ params: paramsPromise }: Props) {
 
       {/* Derniers calculs */}
       <section aria-labelledby="recent-calculs">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 12,
+          }}
+        >
           <h2
             id="recent-calculs"
-            style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}
+            style={{
+              fontSize: 'var(--text-base)',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              margin: 0,
+            }}
           >
             Derniers calculs
           </h2>
           <Link
             href={`/app/${orgSlug}/projets/${projetId}/calculs`}
-            style={{ fontSize: 'var(--text-xs)', color: 'var(--text-link)', display: 'flex', alignItems: 'center', gap: 4 }}
+            style={{
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-link)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
           >
             Voir tous <ArrowRight size={12} strokeWidth={1.5} aria-hidden="true" />
           </Link>
         </div>
         {recentCalculs.length === 0 ? (
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Aucun calcul encore.</p>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            Aucun calcul encore.
+          </p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {recentCalculs.map((c) => (
@@ -119,11 +154,24 @@ export default function OverviewPage({ params: paramsPromise }: Props) {
                 }}
               >
                 <DomainTag domain={ENGINE_DOMAIN[c.engineId] ?? 'road'} size="compact" />
-                <span style={{ flex: 1, fontSize: 'var(--text-sm)', color: 'var(--text-primary)', fontWeight: 500 }}>
+                <span
+                  style={{
+                    flex: 1,
+                    fontSize: 'var(--text-sm)',
+                    color: 'var(--text-primary)',
+                    fontWeight: 500,
+                  }}
+                >
                   {c.label}
                 </span>
                 <Badge
-                  variant={c.status === 'DONE' ? 'recalculable' : c.status === 'ERROR' ? 'erreur' : 'neutre'}
+                  variant={
+                    c.status === 'DONE'
+                      ? 'recalculable'
+                      : c.status === 'ERROR'
+                        ? 'erreur'
+                        : 'neutre'
+                  }
                   label={c.status === 'DONE' ? 'Calculé' : c.status}
                 />
               </Link>
@@ -134,22 +182,42 @@ export default function OverviewPage({ params: paramsPromise }: Props) {
 
       {/* Derniers PV */}
       <section aria-labelledby="recent-pvs" style={{ marginTop: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 12,
+          }}
+        >
           <h2
             id="recent-pvs"
-            style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}
+            style={{
+              fontSize: 'var(--text-base)',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              margin: 0,
+            }}
           >
             Derniers PV scellés
           </h2>
           <Link
             href={`/app/${orgSlug}/projets/${projetId}/pv`}
-            style={{ fontSize: 'var(--text-xs)', color: 'var(--text-link)', display: 'flex', alignItems: 'center', gap: 4 }}
+            style={{
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-link)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
           >
             Voir tous <ArrowRight size={12} strokeWidth={1.5} aria-hidden="true" />
           </Link>
         </div>
         {recentPvs.length === 0 ? (
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>Aucun PV émis.</p>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            Aucun PV émis.
+          </p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {recentPvs.map((pv) => (
@@ -167,8 +235,20 @@ export default function OverviewPage({ params: paramsPromise }: Props) {
                   textDecoration: 'none',
                 }}
               >
-                <FileCheck2 size={16} strokeWidth={1.5} aria-hidden="true" style={{ color: 'var(--struct-petrole)' }} />
-                <span style={{ flex: 1, fontSize: 'var(--text-sm)', color: 'var(--text-primary)', fontWeight: 500 }}>
+                <FileCheck2
+                  size={16}
+                  strokeWidth={1.5}
+                  aria-hidden="true"
+                  style={{ color: 'var(--struct-petrole)' }}
+                />
+                <span
+                  style={{
+                    flex: 1,
+                    fontSize: 'var(--text-sm)',
+                    color: 'var(--text-primary)',
+                    fontWeight: 500,
+                  }}
+                >
                   {pv.number}
                 </span>
                 <span
@@ -189,7 +269,15 @@ export default function OverviewPage({ params: paramsPromise }: Props) {
   );
 }
 
-function StatCard({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
+function StatCard({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+}) {
   return (
     <div
       style={{
@@ -216,7 +304,9 @@ function StatCard({ label, value, icon }: { label: string; value: number; icon: 
         >
           {value}
         </div>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
+        <div
+          style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}
+        >
           {label}
         </div>
       </div>

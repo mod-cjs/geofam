@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * A-14 — Toast / Notification
@@ -17,6 +17,7 @@
  * API : ToastProvider + useToast hook
  */
 
+import { AlertCircle, CheckCircle, Info, X, AlertTriangle } from 'lucide-react';
 import {
   createContext,
   useCallback,
@@ -25,14 +26,13 @@ import {
   useRef,
   useState,
   type ReactNode,
-} from "react";
-import { AlertCircle, CheckCircle, Info, X, AlertTriangle } from "lucide-react";
+} from 'react';
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
-export type ToastType = "success" | "error" | "warning" | "info";
+export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 export interface ToastItem {
   id: string;
@@ -53,7 +53,7 @@ export interface ToastItem {
 
 interface ToastContextValue {
   toasts: ToastItem[];
-  addToast: (opts: Omit<ToastItem, "id" | "exiting">) => string;
+  addToast: (opts: Omit<ToastItem, 'id' | 'exiting'>) => string;
   dismissToast: (id: string) => void;
 }
 
@@ -71,9 +71,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const dismissToast = useCallback((id: string) => {
     /* Déclenche l'animation de sortie */
-    setToasts((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, exiting: true } : t))
-    );
+    setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, exiting: true } : t)));
     /* Supprime après animation */
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -81,14 +79,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addToast = useCallback(
-    (opts: Omit<ToastItem, "id" | "exiting">): string => {
+    (opts: Omit<ToastItem, 'id' | 'exiting'>): string => {
       const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       const defaultDuration =
-        opts.duration !== undefined
-          ? opts.duration
-          : opts.type === "error"
-          ? 6000
-          : 4000;
+        opts.duration !== undefined ? opts.duration : opts.type === 'error' ? 6000 : 4000;
 
       setToasts((prev) => {
         const next = [...prev, { ...opts, id, exiting: false }];
@@ -102,13 +96,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       }
       return id;
     },
-    [dismissToast]
+    [dismissToast],
   );
 
   /* Nettoyage des timers à l'unmount */
   useEffect(() => {
+    const timers = timersRef.current;
     return () => {
-      timersRef.current.forEach((t) => clearTimeout(t));
+      timers.forEach((t) => clearTimeout(t));
     };
   }, []);
 
@@ -124,9 +119,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 /* Hook consommateur                                                   */
 /* ------------------------------------------------------------------ */
 
-export function useToast(): Omit<ToastContextValue, "toasts"> {
+export function useToast(): Omit<ToastContextValue, 'toasts'> {
   const ctx = useContext(ToastContext);
-  if (!ctx) throw new Error("useToast must be used inside <ToastProvider>");
+  if (!ctx) throw new Error('useToast must be used inside <ToastProvider>');
   return { addToast: ctx.addToast, dismissToast: ctx.dismissToast };
 }
 
@@ -142,10 +137,10 @@ const iconByType: Record<ToastType, ReactNode> = {
 };
 
 export const colorByType: Record<ToastType, { icon: string; border: string }> = {
-  success: { icon: "var(--status-pass-tx)", border: "rgba(47,107,70,0.2)" },
-  error: { icon: "var(--status-fail-tx)", border: "rgba(139,26,26,0.2)" },
-  warning: { icon: "#92550a", border: "rgba(146,85,10,0.2)" },
-  info: { icon: "var(--struct-petrole)", border: "rgba(31,78,74,0.2)" },
+  success: { icon: 'var(--status-pass-tx)', border: 'rgba(47,107,70,0.2)' },
+  error: { icon: 'var(--status-fail-tx)', border: 'rgba(139,26,26,0.2)' },
+  warning: { icon: '#92550a', border: 'rgba(146,85,10,0.2)' },
+  info: { icon: 'var(--struct-petrole)', border: 'rgba(31,78,74,0.2)' },
 };
 
 interface ToastRegionProps {
@@ -161,29 +156,29 @@ function ToastRegion({ toasts, onDismiss }: ToastRegionProps) {
         aria-live="polite"
         aria-atomic="false"
         aria-relevant="additions"
-        style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 200 }}
+        style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 200 }}
       />
       {/* Zone assertive (erreurs) */}
       <div
         aria-live="assertive"
         aria-atomic="true"
-        style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 200 }}
+        style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 200 }}
       />
 
       {/* Conteneur visuel */}
       <div
         style={{
-          position: "fixed",
+          position: 'fixed',
           /* bottom-right ≥ 768px — top-center < 768px via CSS custom */
           bottom: 24,
           right: 24,
-          display: "flex",
-          flexDirection: "column",
+          display: 'flex',
+          flexDirection: 'column',
           gap: 8,
           zIndex: 200,
-          pointerEvents: "none",
+          pointerEvents: 'none',
           maxWidth: 360,
-          width: "calc(100vw - 48px)",
+          width: 'calc(100vw - 48px)',
         }}
         /* Responsive via media query inline non disponible ; on applique via className */
         className="rds-toast-region"
@@ -235,19 +230,19 @@ export function ToastCard({
 
   return (
     <div
-      role={toast.type === "error" ? "alert" : "status"}
-      aria-live={toast.type === "error" ? "assertive" : "polite"}
+      role={toast.type === 'error' ? 'alert' : 'status'}
+      aria-live={toast.type === 'error' ? 'assertive' : 'polite'}
       aria-atomic="true"
       className="rds-toast-card"
       style={{
-        background: "var(--surface-base)",
-        borderRadius: "var(--radius-lg)",
-        boxShadow: "var(--elevation-modal)",
-        padding: "12px 14px",
-        display: "flex",
-        alignItems: "flex-start",
+        background: 'var(--surface-base)',
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--elevation-modal)',
+        padding: '12px 14px',
+        display: 'flex',
+        alignItems: 'flex-start',
         gap: 10,
-        pointerEvents: "auto",
+        pointerEvents: 'auto',
         animation: toast.exiting
           ? `rds-toast-out var(--dur-fast, 150ms) var(--ease-exit, cubic-bezier(0.55,0,1,0.45)) forwards`
           : `rds-toast-in var(--dur-base, 200ms) var(--ease-entrance, cubic-bezier(0.165,0.84,0.44,1)) forwards`,
@@ -265,7 +260,7 @@ export function ToastCard({
           style={{
             fontSize: 13,
             fontWeight: 500,
-            color: "var(--text-primary)",
+            color: 'var(--text-primary)',
             margin: 0,
             lineHeight: 1.4,
           }}
@@ -283,12 +278,12 @@ export function ToastCard({
               marginTop: 6,
               fontSize: 12,
               fontWeight: 500,
-              color: "var(--accent-action)",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
+              color: 'var(--accent-action)',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
               padding: 0,
-              textDecoration: "underline",
+              textDecoration: 'underline',
               textUnderlineOffset: 2,
             }}
           >
@@ -302,14 +297,14 @@ export function ToastCard({
         onClick={() => onDismiss(toast.id)}
         aria-label="Fermer la notification"
         style={{
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: "var(--text-muted)",
-          display: "flex",
-          alignItems: "center",
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--text-muted)',
+          display: 'flex',
+          alignItems: 'center',
           padding: 2,
-          borderRadius: "var(--radius-sm)",
+          borderRadius: 'var(--radius-sm)',
           flexShrink: 0,
         }}
       >

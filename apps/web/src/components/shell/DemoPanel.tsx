@@ -6,16 +6,33 @@
  * Position : coin inférieur droit, hors du flux normal.
  */
 
-import { useState } from 'react';
 import { Settings2, X } from 'lucide-react';
-import { useDemoScenario } from '@/providers';
+import { useState } from 'react';
+
 import type { DemoScenario } from '@/lib/api/mock-data';
+import { useDemoScenario } from '@/providers';
 
 const SCENARIOS: { id: DemoScenario; label: string; description: string }[] = [
-  { id: 'active', label: 'Abonnement actif', description: 'Pack complet · 363 calculs restants' },
-  { id: 'expired', label: 'Abonnement expiré', description: 'Lecture seule — calculs bloqués' },
-  { id: 'quota-exhausted', label: 'Quota épuisé', description: '0 calcul restant · expiré fin 2026' },
-  { id: 'module-locked', label: 'Pack ROUTES (limité)', description: 'Fondations et labo verrouillés' },
+  {
+    id: 'active',
+    label: 'Abonnement actif',
+    description: 'Pack complet · 363 calculs restants',
+  },
+  {
+    id: 'expired',
+    label: 'Abonnement expiré',
+    description: 'Lecture seule — calculs bloqués',
+  },
+  {
+    id: 'quota-exhausted',
+    label: 'Quota épuisé',
+    description: '0 calcul restant · expiré fin 2026',
+  },
+  {
+    id: 'module-locked',
+    label: 'Pack ROUTES (limité)',
+    description: 'Fondations et labo verrouillés',
+  },
 ];
 
 export function DemoPanel() {
@@ -90,7 +107,13 @@ export function DemoPanel() {
             <button
               onClick={() => setOpen(false)}
               aria-label="Fermer le panneau de démo"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', display: 'flex' }}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#fff',
+                display: 'flex',
+              }}
             >
               <X size={16} strokeWidth={1.5} aria-hidden="true" />
             </button>
@@ -106,7 +129,9 @@ export function DemoPanel() {
                 lineHeight: 1.5,
               }}
             >
-              Basculer le gating d'abonnement (UI uniquement — le serveur barrerait en prod).
+              {
+                "Basculer le gating d'abonnement (UI uniquement — le serveur barrerait en prod)."
+              }
             </p>
             {SCENARIOS.map((s) => (
               <button
@@ -123,16 +148,22 @@ export function DemoPanel() {
                   padding: '10px 16px',
                   background: s.id === scenario ? 'var(--state-selected-bg)' : 'none',
                   border: 'none',
-                  borderLeft: s.id === scenario ? '3px solid var(--struct-petrole)' : '3px solid transparent',
+                  borderLeft:
+                    s.id === scenario
+                      ? '3px solid var(--struct-petrole)'
+                      : '3px solid transparent',
                   cursor: 'pointer',
                   textAlign: 'left',
                   transition: `background var(--dur-fast) var(--ease-state)`,
                 }}
                 onMouseOver={(e) => {
-                  if (s.id !== scenario) (e.currentTarget as HTMLElement).style.background = 'var(--row-hover-bg)';
+                  if (s.id !== scenario)
+                    (e.currentTarget as HTMLElement).style.background =
+                      'var(--row-hover-bg)';
                 }}
                 onMouseOut={(e) => {
-                  if (s.id !== scenario) (e.currentTarget as HTMLElement).style.background = 'none';
+                  if (s.id !== scenario)
+                    (e.currentTarget as HTMLElement).style.background = 'none';
                 }}
               >
                 <span

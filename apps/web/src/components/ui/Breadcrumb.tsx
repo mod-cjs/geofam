@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * A-22 — Breadcrumb (fil d'Ariane)
@@ -10,8 +10,6 @@
  * - Segments intermédiaires : text-secondary 13px
  * - Dernier segment : text-on-nav 13px 500 (sur fond asphalte topbar)
  */
-
-import type { ReactNode } from "react";
 
 export interface BreadcrumbSegment {
   label: string;
@@ -37,18 +35,18 @@ export function Breadcrumb({ segments, onDark = true, className }: BreadcrumbPro
     ];
   }
 
-  const textDefault = onDark ? "rgba(255,255,255,0.55)" : "var(--text-secondary)";
-  const textCurrent = onDark ? "var(--text-on-nav)" : "var(--text-primary)";
-  const textHover = onDark ? "#ffffff" : "var(--text-primary)";
+  const textDefault = onDark ? 'rgba(255,255,255,0.55)' : 'var(--text-secondary)';
+  const textCurrent = onDark ? 'var(--text-on-nav)' : 'var(--text-primary)';
+  const textHover = onDark ? '#ffffff' : 'var(--text-primary)';
 
   return (
     <nav aria-label="Fil d'Ariane" className={className}>
       <ol
         style={{
-          display: "flex",
-          alignItems: "center",
+          display: 'flex',
+          alignItems: 'center',
           gap: 4,
-          listStyle: "none",
+          listStyle: 'none',
           margin: 0,
           padding: 0,
           fontSize: 13,
@@ -60,8 +58,14 @@ export function Breadcrumb({ segments, onDark = true, className }: BreadcrumbPro
 
           if (isEllipsis) {
             return (
-              <li key="ellipsis" style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <span aria-hidden="true" style={{ color: "rgba(255,255,255,0.3)", margin: "0 2px" }}>
+              <li
+                key="ellipsis"
+                style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{ color: 'rgba(255,255,255,0.3)', margin: '0 2px' }}
+                >
                   /
                 </span>
                 <span style={{ color: textDefault }}>…</span>
@@ -70,18 +74,21 @@ export function Breadcrumb({ segments, onDark = true, className }: BreadcrumbPro
           }
 
           return (
-            <li key={index} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <li key={index} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               {index > 0 && (
                 <span
                   aria-hidden="true"
-                  style={{ color: onDark ? "rgba(255,255,255,0.3)" : "var(--text-muted)", margin: "0 2px" }}
+                  style={{
+                    color: onDark ? 'rgba(255,255,255,0.3)' : 'var(--text-muted)',
+                    margin: '0 2px',
+                  }}
                 >
                   /
                 </span>
               )}
               {isLast || !segment.href ? (
                 <span
-                  aria-current={isLast ? "page" : undefined}
+                  aria-current={isLast ? 'page' : undefined}
                   style={{
                     color: isLast ? textCurrent : textDefault,
                     fontWeight: isLast ? 500 : 400,
@@ -94,11 +101,15 @@ export function Breadcrumb({ segments, onDark = true, className }: BreadcrumbPro
                   href={segment.href}
                   style={{
                     color: textDefault,
-                    textDecoration: "none",
+                    textDecoration: 'none',
                     transition: `color var(--dur-fast) var(--ease-state)`,
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = textHover; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = textDefault; }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = textHover;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = textDefault;
+                  }}
                 >
                   {segment.label}
                 </a>

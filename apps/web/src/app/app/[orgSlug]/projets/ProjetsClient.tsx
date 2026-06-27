@@ -5,18 +5,19 @@
  * États : chargement · vide · filtre sans résultat · erreur · liste
  */
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { Plus, FolderOpen, AlertCircle, RefreshCw } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+
+import { Button } from '@/components/ui/Button';
+import { DomainTag } from '@/components/ui/DomainTag';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Input, Select, Textarea } from '@/components/ui/Field';
+import { Modal } from '@/components/ui/Modal';
+import { Skeleton } from '@/components/ui/Skeleton.client';
+import { useToast } from '@/components/ui/Toast';
 import { listProjects, createProject } from '@/lib/api/client';
 import type { Project, ProjectDomain } from '@/lib/api/types';
-import { Button } from '@/components/ui/Button';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Skeleton } from '@/components/ui/Skeleton.client';
-import { Modal } from '@/components/ui/Modal';
-import { DomainTag } from '@/components/ui/DomainTag';
-import { Input, Select, Textarea } from '@/components/ui/Field';
-import { useToast } from '@/components/ui/Toast';
 import { useOrgId } from '@/lib/org-context';
 
 function formatRelative(iso: string): string {
@@ -26,12 +27,6 @@ function formatRelative(iso: string): string {
   if (d === 1) return 'hier';
   return `il y a ${d} j`;
 }
-
-const DOMAIN_LABELS: Record<ProjectDomain, string> = {
-  CH: 'Chaussées',
-  FD: 'Fondations',
-  LB: 'Labo / Sol',
-};
 
 interface ProjetsClientProps {
   orgSlug: string;
@@ -54,7 +49,7 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
   const [newDomain, setNewDomain] = useState<ProjectDomain>('CH');
   const [newNameError, setNewNameError] = useState<string | undefined>();
 
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     if (!orgId) {
       setError('Organisation introuvable.');
       setLoading(false);
@@ -70,9 +65,11 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [orgId]);
 
-  useEffect(() => { loadProjects(); }, [orgId]);
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
 
   async function handleCreateProject(e: FormEvent) {
     e.preventDefault();
@@ -105,18 +102,6 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
     }
   }
 
-  const ctaButton = (
-    <Button
-      variant="action"
-      size="sm"
-      iconLeft={<Plus size={14} strokeWidth={1.5} aria-hidden="true" />}
-      onClick={() => setNewProjectOpen(true)}
-      onDark
-    >
-      Nouveau projet
-    </Button>
-  );
-
   return (
     <div style={{ padding: '32px 32px', maxWidth: 1100, margin: '0 auto' }}>
       {/* En-tête de page */}
@@ -141,7 +126,13 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
           >
             Mes projets
           </h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: 4 }}>
+          <p
+            style={{
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-secondary)',
+              marginTop: 4,
+            }}
+          >
             {orgSlug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
           </p>
         </div>
@@ -181,8 +172,19 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
             textAlign: 'center',
           }}
         >
-          <AlertCircle size={24} strokeWidth={1.5} aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }} />
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', maxWidth: 360 }}>
+          <AlertCircle
+            size={24}
+            strokeWidth={1.5}
+            aria-hidden="true"
+            style={{ color: 'var(--status-fail-tx)' }}
+          />
+          <p
+            style={{
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-secondary)',
+              maxWidth: 360,
+            }}
+          >
             {error}
           </p>
           <Button
@@ -218,7 +220,6 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
             <ProjectRow
               key={project.id}
               project={project}
-              orgSlug={orgSlug}
               onClick={() => router.push(`/app/${orgSlug}/projets/${project.id}`)}
             />
           ))}
@@ -265,8 +266,13 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
               id="new-project-name"
               label="Nom du projet"
               value={newName}
-              onChange={(e) => { setNewName(e.target.value); setNewNameError(undefined); }}
-              onBlur={() => { if (!newName.trim()) setNewNameError('Le nom est requis'); }}
+              onChange={(e) => {
+                setNewName(e.target.value);
+                setNewNameError(undefined);
+              }}
+              onBlur={() => {
+                if (!newName.trim()) setNewNameError('Le nom est requis');
+              }}
               error={newNameError}
               placeholder="ex. RN2 PK45 — Réhabilitation"
               required
@@ -301,15 +307,7 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
 // Ligne de projet
 // ---------------------------------------------------------------------------
 
-function ProjectRow({
-  project,
-  orgSlug,
-  onClick,
-}: {
-  project: Project;
-  orgSlug: string;
-  onClick: () => void;
-}) {
+function ProjectRow({ project, onClick }: { project: Project; onClick: () => void }) {
   const rowRef = useRef<HTMLDivElement>(null);
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -339,12 +337,26 @@ function ProjectRow({
         transition: `background var(--dur-fast) var(--ease-state)`,
         outline: 'none',
       }}
-      onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--row-hover-bg)'; }}
-      onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-base)'; }}
-      onFocus={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = '0 0 0 2px var(--border-focus)'; }}
-      onBlur={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'var(--elevation-card)'; }}
+      onMouseOver={(e) => {
+        (e.currentTarget as HTMLElement).style.background = 'var(--row-hover-bg)';
+      }}
+      onMouseOut={(e) => {
+        (e.currentTarget as HTMLElement).style.background = 'var(--surface-base)';
+      }}
+      onFocus={(e) => {
+        (e.currentTarget as HTMLElement).style.boxShadow =
+          '0 0 0 2px var(--border-focus)';
+      }}
+      onBlur={(e) => {
+        (e.currentTarget as HTMLElement).style.boxShadow = 'var(--elevation-card)';
+      }}
     >
-      <FolderOpen size={20} strokeWidth={1.5} aria-hidden="true" style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+      <FolderOpen
+        size={20}
+        strokeWidth={1.5}
+        aria-hidden="true"
+        style={{ color: 'var(--text-muted)', flexShrink: 0 }}
+      />
 
       <div style={{ flex: 1, minWidth: 0 }}>
         <div

@@ -5,11 +5,12 @@
  * Persiste l'onglet actif via l'URL.
  */
 
-import { type ReactNode, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { type ReactNode, useEffect, useState } from 'react';
+
+import { Badge } from '@/components/ui/Badge';
 import { getProject } from '@/lib/api/client';
 import type { Project } from '@/lib/api/types';
-import { Badge, BadgeCompact } from '@/components/ui/Badge';
 import { useOrgId } from '@/lib/org-context';
 
 interface Tab {
@@ -55,7 +56,11 @@ interface ProjetLayoutClientProps {
   projetId: string;
 }
 
-export default function ProjetLayoutClient({ children, orgSlug, projetId }: ProjetLayoutClientProps) {
+export default function ProjetLayoutClient({
+  children,
+  orgSlug,
+  projetId,
+}: ProjetLayoutClientProps) {
   const pathname = usePathname();
   const orgId = useOrgId(orgSlug);
   const [project, setProject] = useState<Project | null>(null);
@@ -63,7 +68,9 @@ export default function ProjetLayoutClient({ children, orgSlug, projetId }: Proj
 
   useEffect(() => {
     if (!orgId) return;
-    getProject(orgId, projetId).then(setProject).catch(() => {});
+    getProject(orgId, projetId)
+      .then(setProject)
+      .catch(() => {});
   }, [orgId, projetId]);
 
   function isTabActive(tab: Tab): boolean {
@@ -71,7 +78,13 @@ export default function ProjetLayoutClient({ children, orgSlug, projetId }: Proj
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 48px)' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 'calc(100vh - 48px)',
+      }}
+    >
       {/* Bande projet 44px */}
       <div
         style={{
@@ -113,9 +126,7 @@ export default function ProjetLayoutClient({ children, orgSlug, projetId }: Proj
           >
             {project?.name ?? '—'}
           </span>
-          {project && (
-            <Badge variant="neutre" label={project.domain} />
-          )}
+          {project && <Badge variant="neutre" label={project.domain} />}
         </div>
 
         {/* Séparateur vertical */}
@@ -131,13 +142,19 @@ export default function ProjetLayoutClient({ children, orgSlug, projetId }: Proj
         {/* Onglets */}
         <nav
           aria-label="Onglets du projet"
-          style={{ display: 'flex', alignItems: 'center', gap: 0, overflow: 'auto', scrollbarWidth: 'none' }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0,
+            overflow: 'auto',
+            scrollbarWidth: 'none',
+          }}
         >
           <ul
             role="tablist"
             style={{ display: 'flex', listStyle: 'none', padding: 0, margin: 0, gap: 0 }}
           >
-            {tabs.map((tab, idx) => {
+            {tabs.map((tab) => {
               const active = isTabActive(tab);
               return (
                 <li key={tab.id} role="presentation">
@@ -158,15 +175,21 @@ export default function ProjetLayoutClient({ children, orgSlug, projetId }: Proj
                       color: active ? 'var(--struct-petrole)' : 'var(--text-secondary)',
                       background: active ? 'rgba(31, 78, 74, 0.07)' : 'transparent',
                       textDecoration: 'none',
-                      borderBottom: active ? '2px solid var(--struct-petrole)' : '2px solid transparent',
+                      borderBottom: active
+                        ? '2px solid var(--struct-petrole)'
+                        : '2px solid transparent',
                       transition: `color var(--dur-fast) var(--ease-state), border-color var(--dur-fast) var(--ease-state)`,
                       whiteSpace: 'nowrap',
                     }}
                     onMouseOver={(e) => {
-                      if (!active) (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)';
+                      if (!active)
+                        (e.currentTarget as HTMLElement).style.color =
+                          'var(--text-primary)';
                     }}
                     onMouseOut={(e) => {
-                      if (!active) (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
+                      if (!active)
+                        (e.currentTarget as HTMLElement).style.color =
+                          'var(--text-secondary)';
                     }}
                   >
                     {tab.label}
@@ -179,9 +202,7 @@ export default function ProjetLayoutClient({ children, orgSlug, projetId }: Proj
       </div>
 
       {/* Contenu de l'onglet */}
-      <div style={{ flex: 1 }}>
-        {children}
-      </div>
+      <div style={{ flex: 1 }}>{children}</div>
     </div>
   );
 }

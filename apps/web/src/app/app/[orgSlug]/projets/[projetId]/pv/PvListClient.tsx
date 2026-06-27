@@ -8,15 +8,16 @@
  * Vérification = appel serveur, jamais comparaison visuelle du hash tronqué
  */
 
-import { useEffect, useState } from 'react';
 import { Lock, Download, ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react';
-import { listPvs, verifyPv, downloadPvPdf } from '@/lib/api/client';
-import type { OfficialPv, VerifyPvResponse } from '@/lib/api/types';
+import { useCallback, useEffect, useState } from 'react';
+
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Skeleton } from '@/components/ui/Skeleton.client';
 import { Modal } from '@/components/ui/Modal';
+import { Skeleton } from '@/components/ui/Skeleton.client';
 import { useToast } from '@/components/ui/Toast';
+import { listPvs, verifyPv, downloadPvPdf } from '@/lib/api/client';
+import type { OfficialPv, VerifyPvResponse } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 
 function formatDate(iso: string): string {
@@ -53,7 +54,7 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
   // Téléchargement PDF
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  const loadPvs = async () => {
+  const loadPvs = useCallback(async () => {
     if (!orgId) {
       setError('Organisation introuvable.');
       setLoading(false);
@@ -69,9 +70,11 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [orgId, projetId]);
 
-  useEffect(() => { loadPvs(); }, [projetId]);
+  useEffect(() => {
+    loadPvs();
+  }, [loadPvs]);
 
   async function handleVerify(pv: OfficialPv) {
     setVerifyModal({ pvId: pv.id, number: pv.number });
@@ -132,10 +135,31 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
 
       {/* Erreur */}
       {!loading && error && (
-        <div role="alert" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: 40 }}>
-          <AlertCircle size={24} strokeWidth={1.5} aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }} />
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{error}</p>
-          <Button variant="secondary" size="sm" iconLeft={<RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />} onClick={loadPvs}>
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 12,
+            padding: 40,
+          }}
+        >
+          <AlertCircle
+            size={24}
+            strokeWidth={1.5}
+            aria-hidden="true"
+            style={{ color: 'var(--status-fail-tx)' }}
+          />
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+            {error}
+          </p>
+          <Button
+            variant="secondary"
+            size="sm"
+            iconLeft={<RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />}
+            onClick={loadPvs}
+          >
             Réessayer
           </Button>
         </div>
@@ -172,14 +196,22 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
       {/* Modale vérification intégrité (C-03) */}
       <Modal
         open={verifyModal !== null}
-        onClose={() => { if (!verifying) { setVerifyModal(null); setVerifyResult(null); } }}
+        onClose={() => {
+          if (!verifying) {
+            setVerifyModal(null);
+            setVerifyResult(null);
+          }
+        }}
         title={`Vérifier l'intégrité — ${verifyModal?.number ?? ''}`}
         size="sm"
         footer={
           <Button
             variant="ghost"
             size="md"
-            onClick={() => { setVerifyModal(null); setVerifyResult(null); }}
+            onClick={() => {
+              setVerifyModal(null);
+              setVerifyResult(null);
+            }}
             disabled={verifying}
           >
             Fermer
@@ -187,7 +219,9 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
         }
       >
         {verifying && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0' }}>
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0' }}
+          >
             <div
               style={{
                 width: 16,
@@ -214,7 +248,9 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
                 alignItems: 'flex-start',
                 gap: 12,
                 padding: '12px 14px',
-                background: verifyResult.intact ? 'var(--status-pass-bg)' : 'var(--status-fail-bg)',
+                background: verifyResult.intact
+                  ? 'var(--status-pass-bg)'
+                  : 'var(--status-fail-bg)',
                 borderRadius: 'var(--radius-base)',
               }}
             >
@@ -223,7 +259,9 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
                 strokeWidth={1.5}
                 aria-hidden="true"
                 style={{
-                  color: verifyResult.intact ? 'var(--status-pass-tx)' : 'var(--status-fail-tx)',
+                  color: verifyResult.intact
+                    ? 'var(--status-pass-tx)'
+                    : 'var(--status-fail-tx)',
                   flexShrink: 0,
                 }}
               />
@@ -232,23 +270,39 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
                   style={{
                     fontSize: 'var(--text-sm)',
                     fontWeight: 500,
-                    color: verifyResult.intact ? 'var(--status-pass-tx)' : 'var(--status-fail-tx)',
+                    color: verifyResult.intact
+                      ? 'var(--status-pass-tx)'
+                      : 'var(--status-fail-tx)',
                   }}
                 >
                   {verifyResult.intact
                     ? 'Sceau vérifié — document intact'
                     : 'Le sceau ne correspond pas — ce document a pu être altéré'}
                 </div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 4 }}>
+                <div
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--text-muted)',
+                    marginTop: 4,
+                  }}
+                >
                   Vérifié le {formatDate(verifyResult.verifiedAt)} côté serveur
                 </div>
               </div>
             </div>
 
             {/* Rappel légal */}
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
-              Cette vérification confirme l'intégrité des données depuis le scellement.
-              Elle ne constitue pas une signature électronique qualifiée (loi 2008-08).
+            <p
+              style={{
+                fontSize: 'var(--text-xs)',
+                color: 'var(--text-muted)',
+                lineHeight: 1.6,
+                margin: 0,
+              }}
+            >
+              {
+                "Cette vérification confirme l'intégrité des données depuis le scellement. Elle ne constitue pas une signature électronique qualifiée (loi 2008-08)."
+              }
             </p>
           </div>
         )}
@@ -300,13 +354,24 @@ function PvRow({
           flexShrink: 0,
         }}
       >
-        <Lock size={16} strokeWidth={1.5} aria-hidden="true" style={{ color: 'var(--text-on-nav)' }} />
+        <Lock
+          size={16}
+          strokeWidth={1.5}
+          aria-hidden="true"
+          style={{ color: 'var(--text-on-nav)' }}
+        />
       </div>
 
       {/* Infos */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--text-primary)' }}>
+          <span
+            style={{
+              fontSize: 'var(--text-sm)',
+              fontWeight: 500,
+              color: 'var(--text-primary)',
+            }}
+          >
             {pv.number}
           </span>
           {/* Badge Scellé */}
@@ -327,7 +392,13 @@ function PvRow({
             Scellé
           </span>
         </div>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: 2 }}>
+        <div
+          style={{
+            fontSize: 'var(--text-xs)',
+            color: 'var(--text-secondary)',
+            marginTop: 2,
+          }}
+        >
           {pv.engineId} · {pv.sealedBy} · {formatDate(pv.sealedAt)}
         </div>
         {/* Hash HMAC tronqué — 8 chars, visible mais sans légende explicative */}

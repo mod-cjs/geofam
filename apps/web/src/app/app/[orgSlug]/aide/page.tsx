@@ -26,8 +26,15 @@ export default function AidePage() {
       >
         Aide
       </h1>
-      <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 24 }}>
-        Raccourcis et informations utiles. Pour toute question, contactez votre administrateur.
+      <p
+        style={{
+          color: 'var(--text-secondary)',
+          fontSize: 'var(--text-sm)',
+          marginBottom: 24,
+        }}
+      >
+        Raccourcis et informations utiles. Pour toute question, contactez votre
+        administrateur.
       </p>
 
       <section style={{ marginBottom: 28 }}>
@@ -41,7 +48,16 @@ export default function AidePage() {
         >
           Raccourcis clavier
         </h2>
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <ul
+          style={{
+            listStyle: 'none',
+            padding: 0,
+            margin: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+          }}
+        >
           {SHORTCUTS.map((s) => (
             <li
               key={s.keys}
@@ -74,9 +90,9 @@ export default function AidePage() {
           Support
         </h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
-          Votre organisation et votre abonnement sont gérés par l'équipe ROADSEN. Pour une
-          extension de pack, un renouvellement ou un accès supplémentaire, adressez votre demande à
-          votre interlocuteur habituel.
+          {
+            "Votre organisation et votre abonnement sont gérés par l'équipe ROADSEN. Pour une extension de pack, un renouvellement ou un accès supplémentaire, adressez votre demande à votre interlocuteur habituel."
+          }
         </p>
       </section>
 
@@ -88,7 +104,8 @@ export default function AidePage() {
           paddingTop: 12,
         }}
       >
-        ROADSEN — plateforme de calcul géotechnique &amp; routier. Version de démonstration.
+        ROADSEN — plateforme de calcul géotechnique &amp; routier. Version de
+        démonstration.
       </footer>
     </div>
   );

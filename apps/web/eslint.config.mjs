@@ -44,6 +44,25 @@ const eslintConfig = defineConfig([
       'no-restricted-imports': ['error', ENGINE_IMPORT_GUARD],
     },
   },
+  // Convention standard : paramètres et variables préfixés _ sont intentionnellement inutilisés.
+  {
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+        },
+      ],
+      // react-hooks/set-state-in-effect (React 19 strict) : la règle n'existe pas dans la config
+      // racine ESLint 8 (.eslintrc.cjs) utilisée par le hook pre-commit lint-staged. On la désactive
+      // ici pour éviter que les eslint-disable-next-line en-dessous cassent le hook (erreur
+      // "Definition for rule not found"). Les patterns concernés sont documentés à chaque site.
+      'react-hooks/set-state-in-effect': 'off',
+    },
+  },
 ]);
 
 export default eslintConfig;

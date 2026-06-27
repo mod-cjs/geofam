@@ -8,155 +8,164 @@
  * = Playwright e2e. Ici on teste le contrat des items et le rendu SSR.
  */
 
-import { describe, it, expect } from "vitest";
-import { renderToString } from "react-dom/server";
-import { CommandPalette, DEMO_COMMAND_ITEMS, type CommandItem } from "../CommandPalette";
+import { renderToString } from 'react-dom/server';
+import { describe, it, expect } from 'vitest';
+
+import { CommandPalette, DEMO_COMMAND_ITEMS } from '../CommandPalette';
 
 function render(node: React.ReactElement): string {
   return renderToString(node);
 }
 
-describe("CommandPalette — A-20", () => {
-  describe("État fermé (open=false)", () => {
-    it("renders nothing when closed", () => {
+describe('CommandPalette — A-20', () => {
+  describe('État fermé (open=false)', () => {
+    it('renders nothing when closed', () => {
       const html = render(
-        <CommandPalette open={false} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />
+        <CommandPalette open={false} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />,
       );
-      expect(html).toBe("");
+      expect(html).toBe('');
     });
   });
 
-  describe("État ouvert (open=true)", () => {
-    it("renders dialog with aria-modal=true", () => {
+  describe('État ouvert (open=true)', () => {
+    it('renders dialog with aria-modal=true', () => {
       const html = render(
-        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} hasProject />
+        <CommandPalette
+          open={true}
+          onClose={() => {}}
+          items={DEMO_COMMAND_ITEMS}
+          hasProject
+        />,
       );
       expect(html).toContain('aria-modal="true"');
     });
 
-    it("renders role=dialog", () => {
+    it('renders role=dialog', () => {
       const html = render(
-        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />
+        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />,
       );
       expect(html).toContain('role="dialog"');
     });
 
-    it("renders search input placeholder", () => {
+    it('renders search input placeholder', () => {
       const html = render(
-        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />
+        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />,
       );
-      expect(html).toContain("Rechercher une commande");
+      expect(html).toContain('Rechercher une commande');
     });
 
-    it("renders backdrop overlay", () => {
+    it('renders backdrop overlay', () => {
       const html = render(
-        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />
+        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />,
       );
       expect(html).toContain('aria-hidden="true"');
     });
   });
 
-  describe("Items groupés", () => {
-    it("navigation items appear in the palette", () => {
+  describe('Items groupés', () => {
+    it('navigation items appear in the palette', () => {
       const html = render(
-        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />
+        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />,
       );
-      expect(html).toContain("Aller aux Projets");
-      expect(html).toContain("Navigation");
+      expect(html).toContain('Aller aux Projets');
+      expect(html).toContain('Navigation');
     });
 
-    it("action items with requiresProject=true are filtered out when hasProject=false", () => {
+    it('action items with requiresProject=true are filtered out when hasProject=false', () => {
       // Le filtrage se fait dans visibleItems avant de passer à cmdk.
       // On vérifie le contrat de filtrage sur les items directement,
       // car cmdk peut rendre des items cachés dans le DOM SSR via ses internals.
       const visibleWithoutProject = DEMO_COMMAND_ITEMS.filter(
-        (item) => !item.requiresProject
+        (item) => !item.requiresProject,
       );
-      const hasNewCalc = visibleWithoutProject.some((i) => i.label === "Nouveau calcul");
-      const hasEmitPv = visibleWithoutProject.some((i) => i.label === "Émettre un PV");
+      const hasNewCalc = visibleWithoutProject.some((i) => i.label === 'Nouveau calcul');
+      const hasEmitPv = visibleWithoutProject.some((i) => i.label === 'Émettre un PV');
       expect(hasNewCalc).toBe(false);
       expect(hasEmitPv).toBe(false);
     });
 
-    it("action items appear when hasProject=true", () => {
+    it('action items appear when hasProject=true', () => {
       const html = render(
-        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} hasProject />
+        <CommandPalette
+          open={true}
+          onClose={() => {}}
+          items={DEMO_COMMAND_ITEMS}
+          hasProject
+        />,
       );
-      expect(html).toContain("Nouveau calcul");
+      expect(html).toContain('Nouveau calcul');
     });
 
-    it("recent items are shown (non contextual)", () => {
+    it('recent items are shown (non contextual)', () => {
       const html = render(
-        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />
+        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />,
       );
-      expect(html).toContain("Burmister n°12");
+      expect(html).toContain('Burmister n°12');
     });
   });
 
-  describe("Raccourcis (Kbd)", () => {
-    it("renders Cmd+K shortcut hint in the footer", () => {
+  describe('Raccourcis (Kbd)', () => {
+    it('renders Cmd+K shortcut hint in the footer', () => {
       const html = render(
-        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />
+        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />,
       );
-      expect(html).toContain("Ctrl");
-      expect(html).toContain("Entrée");
+      expect(html).toContain('Ctrl');
+      expect(html).toContain('Entrée');
     });
 
-    it("renders N shortcut (Nouveau calcul)", () => {
+    it('renders N shortcut (Nouveau calcul)', () => {
       const html = render(
-        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />
+        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />,
       );
       // Kbd "N" dans le footer
-      expect(html).toContain(">N<");
+      expect(html).toContain('>N<');
     });
   });
 
-  describe("Apparition < 100ms (opacity uniquement)", () => {
-    it("animation uses opacity and dur-instant (not spring)", () => {
+  describe('Apparition < 100ms (opacity uniquement)', () => {
+    it('animation uses opacity and dur-instant (not spring)', () => {
       const html = render(
-        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />
+        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />,
       );
-      expect(html).toContain("rds-cmdk-in");
-      expect(html).toContain("opacity");
-      expect(html).not.toContain("spring");
+      expect(html).toContain('rds-cmdk-in');
+      expect(html).toContain('opacity');
+      expect(html).not.toContain('spring');
     });
   });
 
-  describe("État vide (aucun item)", () => {
-    it("renders empty state text when no items", () => {
-      const html = render(
-        <CommandPalette open={true} onClose={() => {}} items={[]} />
-      );
-      expect(html).toContain("Aucune commande récente");
+  describe('État vide (aucun item)', () => {
+    it('renders empty state text when no items', () => {
+      const html = render(<CommandPalette open={true} onClose={() => {}} items={[]} />);
+      expect(html).toContain('Aucune commande récente');
     });
   });
 
-  describe("DEMO_COMMAND_ITEMS (ossature galerie)", () => {
-    it("contains navigation, actions, and recent groups", () => {
+  describe('DEMO_COMMAND_ITEMS (ossature galerie)', () => {
+    it('contains navigation, actions, and recent groups', () => {
       const groups = new Set(DEMO_COMMAND_ITEMS.map((i) => i.group));
-      expect(groups.has("navigation")).toBe(true);
-      expect(groups.has("actions")).toBe(true);
-      expect(groups.has("recent")).toBe(true);
+      expect(groups.has('navigation')).toBe(true);
+      expect(groups.has('actions')).toBe(true);
+      expect(groups.has('recent')).toBe(true);
     });
 
-    it("project-required items have requiresProject=true", () => {
+    it('project-required items have requiresProject=true', () => {
       const projectItems = DEMO_COMMAND_ITEMS.filter((i) => i.requiresProject);
       expect(projectItems.length).toBeGreaterThan(0);
     });
 
-    it("each item has an id, label, and onSelect", () => {
+    it('each item has an id, label, and onSelect', () => {
       for (const item of DEMO_COMMAND_ITEMS) {
         expect(item.id).toBeTruthy();
         expect(item.label).toBeTruthy();
-        expect(typeof item.onSelect).toBe("function");
+        expect(typeof item.onSelect).toBe('function');
       }
     });
   });
 
-  describe("Zéro faux-vert", () => {
-    it("renders non-empty HTML when open", () => {
+  describe('Zéro faux-vert', () => {
+    it('renders non-empty HTML when open', () => {
       const html = render(
-        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />
+        <CommandPalette open={true} onClose={() => {}} items={DEMO_COMMAND_ITEMS} />,
       );
       expect(html.length).toBeGreaterThan(200);
     });

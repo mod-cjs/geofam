@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * A-09 — OutputTable (gabarit générique paramétrable)
@@ -17,16 +17,11 @@
  * - Helper fmt() : Intl.NumberFormat('fr-FR') + espace fine U+202F
  */
 
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import { AlertCircle } from "lucide-react";
-import { SkeletonOutputTable } from "./Skeleton";
-import { fmt } from "./Metric";
+import { AlertCircle } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+
+import { fmt } from './Metric';
+import { SkeletonOutputTable } from './Skeleton';
 
 export { fmt };
 
@@ -58,7 +53,7 @@ export interface TableRow {
   groupLabel?: string;
 }
 
-export type OutputTableStatus = "idle" | "loading" | "success" | "error" | "empty";
+export type OutputTableStatus = 'idle' | 'loading' | 'success' | 'error' | 'empty';
 
 interface OutputTableProps {
   columns: TableColumn[];
@@ -81,9 +76,9 @@ interface OutputTableProps {
 export function OutputTable({
   columns,
   rows,
-  status = "idle",
+  status = 'idle',
   error,
-  idColumnLabel = "Paramètre",
+  idColumnLabel = 'Paramètre',
   skeletonRows = 6,
   className,
   style,
@@ -100,7 +95,7 @@ export function OutputTable({
     if (!sentinel) return;
     const observer = new IntersectionObserver(
       ([entry]) => setHeaderStuck(!entry.isIntersecting),
-      { threshold: 0, rootMargin: "-1px 0px 0px 0px" }
+      { threshold: 0, rootMargin: '-1px 0px 0px 0px' },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
@@ -108,12 +103,12 @@ export function OutputTable({
 
   /* Focus programmatique + scrollIntoView après CALC_SUCCESS */
   useEffect(() => {
-    if (status !== "success" || !tableRef.current) return;
+    if (status !== 'success' || !tableRef.current) return;
     const el = tableRef.current;
-    el.setAttribute("tabindex", "-1");
+    el.setAttribute('tabindex', '-1');
     el.focus({ preventScroll: true });
-    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollIntoView({ behavior: prefersReduced ? "auto" : "smooth", block: "nearest" });
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: prefersReduced ? 'auto' : 'smooth', block: 'nearest' });
   }, [status]);
 
   const totalColumns = columns.length + 1; // +1 colonne id
@@ -121,23 +116,23 @@ export function OutputTable({
   /* ---------------------------------------------------------------- */
   /* État : erreur inline                                             */
   /* ---------------------------------------------------------------- */
-  if (status === "error") {
+  if (status === 'error') {
     return (
       <div
         role="alert"
         style={{
-          display: "flex",
-          alignItems: "center",
+          display: 'flex',
+          alignItems: 'center',
           gap: 8,
-          padding: "12px 16px",
-          background: "var(--status-fail-bg)",
-          borderRadius: "var(--radius-base)",
-          color: "var(--status-fail-tx)",
+          padding: '12px 16px',
+          background: 'var(--status-fail-bg)',
+          borderRadius: 'var(--radius-base)',
+          color: 'var(--status-fail-tx)',
           fontSize: 13,
         }}
       >
         <AlertCircle size={16} strokeWidth={1.5} aria-hidden="true" />
-        <span>{error ?? "Une erreur est survenue lors du calcul."}</span>
+        <span>{error ?? 'Une erreur est survenue lors du calcul.'}</span>
       </div>
     );
   }
@@ -145,7 +140,7 @@ export function OutputTable({
   /* ---------------------------------------------------------------- */
   /* État : chargement skeleton (CLS = 0)                             */
   /* ---------------------------------------------------------------- */
-  if (status === "loading") {
+  if (status === 'loading') {
     return (
       <div className={className} style={style}>
         <SkeletonOutputTable rows={skeletonRows} columns={totalColumns} />
@@ -156,13 +151,13 @@ export function OutputTable({
   /* ---------------------------------------------------------------- */
   /* État : vide                                                       */
   /* ---------------------------------------------------------------- */
-  if (status === "empty" || (status === "success" && rows.length === 0)) {
+  if (status === 'empty' || (status === 'success' && rows.length === 0)) {
     return (
       <div
         style={{
-          padding: "32px 16px",
-          textAlign: "center",
-          color: "var(--text-muted)",
+          padding: '32px 16px',
+          textAlign: 'center',
+          color: 'var(--text-muted)',
           fontSize: 13,
         }}
         role="status"
@@ -175,15 +170,15 @@ export function OutputTable({
   /* ---------------------------------------------------------------- */
   /* État idle : table vide réservée (CLS = 0, zone pré-calcul)      */
   /* ---------------------------------------------------------------- */
-  if (status === "idle") {
+  if (status === 'idle') {
     return (
       <div
         style={{
           minHeight: `calc(${skeletonRows} * 40px + 48px)`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "var(--text-muted)",
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text-muted)',
           fontSize: 13,
         }}
         role="status"
@@ -197,10 +192,7 @@ export function OutputTable({
   /* État success                                                      */
   /* ---------------------------------------------------------------- */
   return (
-    <div
-      className={className}
-      style={{ position: "relative", ...style }}
-    >
+    <div className={className} style={{ position: 'relative', ...style }}>
       {/* Annonce aria-live CALC_SUCCESS */}
       <div
         ref={ariaLiveRef}
@@ -208,15 +200,15 @@ export function OutputTable({
         aria-live="polite"
         aria-atomic="true"
         style={{
-          position: "absolute",
+          position: 'absolute',
           width: 1,
           height: 1,
-          overflow: "hidden",
-          clip: "rect(0,0,0,0)",
-          whiteSpace: "nowrap",
+          overflow: 'hidden',
+          clip: 'rect(0,0,0,0)',
+          whiteSpace: 'nowrap',
         }}
       >
-        {status === "success" ? "Résultat prêt" : ""}
+        {status === 'success' ? 'Résultat prêt' : ''}
       </div>
 
       {/* Sentinelle IntersectionObserver pour sticky header */}
@@ -226,21 +218,21 @@ export function OutputTable({
       <div
         ref={tableRef}
         style={{
-          overflowX: "auto",
+          overflowX: 'auto',
           animation:
-            status === "success"
-              ? "rds-table-enter var(--dur-base, 200ms) var(--ease-entrance, cubic-bezier(0.165,0.84,0.44,1)) forwards"
+            status === 'success'
+              ? 'rds-table-enter var(--dur-base, 200ms) var(--ease-entrance, cubic-bezier(0.165,0.84,0.44,1)) forwards'
               : undefined,
         }}
         aria-label="Résultats de calcul"
       >
         <table
           style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontFamily: "var(--font-sans)",
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontFamily: 'var(--font-sans)',
             fontSize: 14,
-            tableLayout: "auto",
+            tableLayout: 'auto',
           }}
         >
           {/* En-tête sticky */}
@@ -250,25 +242,25 @@ export function OutputTable({
               <th
                 scope="col"
                 style={{
-                  position: "sticky",
+                  position: 'sticky',
                   left: 0,
                   top: 0,
-                  zIndex: 12, /* Au-dessus des cellules sticky-left ET sticky-top */
+                  zIndex: 12 /* Au-dessus des cellules sticky-left ET sticky-top */,
                   width: 160,
                   minWidth: 160,
-                  padding: "9px 12px",
-                  textAlign: "left",
+                  padding: '9px 12px',
+                  textAlign: 'left',
                   fontSize: 11,
                   fontWeight: 600,
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  color: "var(--text-muted)",
-                  background: "var(--surface-base)",
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  color: 'var(--text-muted)',
+                  background: 'var(--surface-base)',
                   boxShadow: headerStuck
-                    ? "var(--elevation-sticky), 4px 0 8px rgba(0,0,0,0.06)"
-                    : "4px 0 8px rgba(0,0,0,0.06)",
+                    ? 'var(--elevation-sticky), 4px 0 8px rgba(0,0,0,0.06)'
+                    : '4px 0 8px rgba(0,0,0,0.06)',
                   transition: `box-shadow var(--dur-fast, 150ms) var(--ease-state)`,
-                  whiteSpace: "nowrap",
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {idColumnLabel}
@@ -280,20 +272,20 @@ export function OutputTable({
                   key={col.key}
                   scope="col"
                   style={{
-                    position: "sticky",
+                    position: 'sticky',
                     top: 0,
                     zIndex: 10,
-                    padding: "9px 12px",
-                    textAlign: col.numeric ? "right" : "left",
+                    padding: '9px 12px',
+                    textAlign: col.numeric ? 'right' : 'left',
                     fontSize: 11,
                     fontWeight: 600,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    color: "var(--text-muted)",
-                    background: "var(--surface-base)",
-                    boxShadow: headerStuck ? "var(--elevation-sticky)" : "none",
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    color: 'var(--text-muted)',
+                    background: 'var(--surface-base)',
+                    boxShadow: headerStuck ? 'var(--elevation-sticky)' : 'none',
                     transition: `box-shadow var(--dur-fast, 150ms) var(--ease-state)`,
-                    whiteSpace: "nowrap",
+                    whiteSpace: 'nowrap',
                     width: col.width,
                   }}
                 >
@@ -302,10 +294,10 @@ export function OutputTable({
                     <span
                       aria-label={`en ${col.unit}`}
                       style={{
-                        fontFamily: "var(--font-mono)",
+                        fontFamily: 'var(--font-mono)',
                         fontSize: 10,
                         fontWeight: 400,
-                        color: "var(--text-muted)",
+                        color: 'var(--text-muted)',
                         marginLeft: 4,
                       }}
                     >
@@ -326,13 +318,13 @@ export function OutputTable({
                     <td
                       colSpan={totalColumns}
                       style={{
-                        padding: "6px 12px",
-                        background: "var(--struct-petrole)",
-                        color: "var(--struct-petrole-fg)",
+                        padding: '6px 12px',
+                        background: 'var(--struct-petrole)',
+                        color: 'var(--struct-petrole-fg)',
                         fontSize: 11,
                         fontWeight: 600,
-                        letterSpacing: "0.05em",
-                        textTransform: "uppercase",
+                        letterSpacing: '0.05em',
+                        textTransform: 'uppercase',
                       }}
                     >
                       {row.groupLabel}
@@ -372,28 +364,30 @@ function DataRow({ row, columns }: { row: TableRow; columns: TableColumn[] }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: hovered ? "var(--row-hover-bg, rgba(31,78,74,0.04))" : "transparent",
+        background: hovered ? 'var(--row-hover-bg, rgba(31,78,74,0.04))' : 'transparent',
         transition: `background-color var(--dur-fast, 150ms) var(--ease-state)`,
-        borderBottom: "1px solid var(--color-alt, #eef0f1)",
+        borderBottom: '1px solid var(--color-alt, #eef0f1)',
       }}
     >
       {/* Cellule id gelée */}
       <td
         style={{
-          position: "sticky",
+          position: 'sticky',
           left: 0,
           zIndex: 5,
           width: 160,
           minWidth: 160,
-          padding: "9px 12px",
+          padding: '9px 12px',
           fontSize: 13,
           fontWeight: 500,
-          color: "var(--text-primary)",
-          background: hovered ? "var(--row-hover-bg, rgba(31,78,74,0.04))" : "var(--surface-base)",
-          boxShadow: "4px 0 8px rgba(0,0,0,0.06)",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
+          color: 'var(--text-primary)',
+          background: hovered
+            ? 'var(--row-hover-bg, rgba(31,78,74,0.04))'
+            : 'var(--surface-base)',
+          boxShadow: '4px 0 8px rgba(0,0,0,0.06)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
           transition: `background-color var(--dur-fast, 150ms) var(--ease-state)`,
         }}
         title={row.id}
@@ -405,23 +399,23 @@ function DataRow({ row, columns }: { row: TableRow; columns: TableColumn[] }) {
       {columns.map((col) => {
         const raw = row.cells?.[col.key];
         const displayValue =
-          col.numeric && typeof raw === "number"
+          col.numeric && typeof raw === 'number'
             ? fmt(raw, col.decimals ?? 4)
             : raw === null || raw === undefined
-            ? "—"
-            : String(raw);
+              ? '—'
+              : String(raw);
 
         return (
           <td
             key={col.key}
             style={{
-              padding: "9px 12px",
+              padding: '9px 12px',
               fontSize: 14,
-              fontFamily: col.numeric ? "var(--font-mono)" : "var(--font-sans)",
-              fontVariantNumeric: col.numeric ? "tabular-nums" : undefined,
+              fontFamily: col.numeric ? 'var(--font-mono)' : 'var(--font-sans)',
+              fontVariantNumeric: col.numeric ? 'tabular-nums' : undefined,
               fontWeight: col.numeric ? 600 : 400,
-              textAlign: col.numeric ? "right" : "left",
-              color: "var(--text-primary)",
+              textAlign: col.numeric ? 'right' : 'left',
+              color: 'var(--text-primary)',
             }}
           >
             {displayValue}

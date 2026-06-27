@@ -10,15 +10,6 @@
  */
 
 import {
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-  type ReactNode,
-  type KeyboardEvent,
-} from 'react';
-import { usePathname, useRouter } from 'next/navigation';
-import {
   FolderOpen,
   Library,
   Settings,
@@ -28,12 +19,14 @@ import {
   ChevronRight,
   Check,
   LogOut,
-  User,
   Menu,
   X,
 } from 'lucide-react';
-import { Logotype, StrataBar } from '@/components/ui/Logotype';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
+
 import { Avatar } from '@/components/ui/Avatar';
+import { Logotype, StrataBar } from '@/components/ui/Logotype';
 import { logout, getStoredUser, getStoredOrgs } from '@/lib/api/client';
 import type { OrgClaim } from '@/lib/api/types';
 
@@ -164,13 +157,15 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
 
   return (
     <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        overflow: 'hidden',
-        '--surface-current': 'var(--surface-nav)',
-      } as React.CSSProperties}
+      style={
+        {
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          overflow: 'hidden',
+          '--surface-current': 'var(--surface-nav)',
+        } as React.CSSProperties
+      }
     >
       {/* Logotype */}
       <div
@@ -182,11 +177,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
           flexShrink: 0,
         }}
       >
-        {collapsed ? (
-          <StrataBar />
-        ) : (
-          <Logotype size={36} />
-        )}
+        {collapsed ? <StrataBar /> : <Logotype size={36} />}
         {onClose && (
           <button
             onClick={onClose}
@@ -213,7 +204,11 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
       {/* OrgSwitcher */}
       <div
         ref={orgMenuRef}
-        style={{ position: 'relative', padding: collapsed ? '8px 4px' : '8px 8px', flexShrink: 0 }}
+        style={{
+          position: 'relative',
+          padding: collapsed ? '8px 4px' : '8px 8px',
+          flexShrink: 0,
+        }}
       >
         <button
           aria-haspopup="listbox"
@@ -234,13 +229,16 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
             justifyContent: collapsed ? 'center' : 'flex-start',
             transition: `background var(--dur-fast) var(--ease-state)`,
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--nav-hover)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = orgMenuOpen ? 'var(--nav-selected)' : 'transparent'; }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--nav-hover)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = orgMenuOpen
+              ? 'var(--nav-selected)'
+              : 'transparent';
+          }}
         >
-          <Avatar
-            name={currentOrg?.slug ?? orgSlug}
-            size="sm"
-          />
+          <Avatar name={currentOrg?.slug ?? orgSlug} size="sm" />
           {!collapsed && (
             <>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -294,7 +292,13 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
             }}
           >
             {orgs.length === 0 ? (
-              <div style={{ padding: '12px 14px', fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+              <div
+                style={{
+                  padding: '12px 14px',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--text-muted)',
+                }}
+              >
                 Aucune organisation
               </div>
             ) : (
@@ -316,20 +320,39 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
                     textAlign: 'left',
                     borderBottom: '1px solid var(--border-subtle)',
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--row-hover-bg)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--row-hover-bg)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'none';
+                  }}
                 >
                   <Avatar name={org.slug} size="sm" />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', fontWeight: org.slug === orgSlug ? 500 : 400 }}>
-                      {org.slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                    <div
+                      style={{
+                        fontSize: 'var(--text-sm)',
+                        color: 'var(--text-primary)',
+                        fontWeight: org.slug === orgSlug ? 500 : 400,
+                      }}
+                    >
+                      {org.slug
+                        .replace(/-/g, ' ')
+                        .replace(/\b\w/g, (c) => c.toUpperCase())}
                     </div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                    <div
+                      style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}
+                    >
                       {org.role}
                     </div>
                   </div>
                   {org.slug === orgSlug && (
-                    <Check size={14} strokeWidth={1.5} aria-hidden="true" style={{ color: 'var(--struct-petrole)' }} />
+                    <Check
+                      size={14}
+                      strokeWidth={1.5}
+                      aria-hidden="true"
+                      style={{ color: 'var(--struct-petrole)' }}
+                    />
                   )}
                 </button>
               ))
@@ -339,10 +362,20 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
       </div>
 
       {/* Séparateur */}
-      <div style={{ height: 1, background: 'var(--border-nav)', flexShrink: 0, margin: '0 8px' }} />
+      <div
+        style={{
+          height: 1,
+          background: 'var(--border-nav)',
+          flexShrink: 0,
+          margin: '0 8px',
+        }}
+      />
 
       {/* Navigation principale */}
-      <nav aria-label="Navigation principale" style={{ flex: 1, overflow: 'auto', padding: '8px 8px 0' }}>
+      <nav
+        aria-label="Navigation principale"
+        style={{ flex: 1, overflow: 'auto', padding: '8px 8px 0' }}
+      >
         {/* Section label */}
         {!collapsed && (
           <div
@@ -381,17 +414,22 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
                     textDecoration: 'none',
                     color: active ? 'var(--accent-action-on-nav)' : 'var(--text-on-nav)',
                     background: active ? 'rgba(31,78,74,0.12)' : 'transparent',
-                    borderLeft: active ? '3px solid var(--struct-petrole)' : '3px solid transparent',
+                    borderLeft: active
+                      ? '3px solid var(--struct-petrole)'
+                      : '3px solid transparent',
                     fontSize: 'var(--text-sm)',
                     fontWeight: active ? 500 : 400,
                     transition: `background var(--dur-fast) var(--ease-state), color var(--dur-fast) var(--ease-state)`,
                     position: 'relative',
                   }}
                   onMouseOver={(e) => {
-                    if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--nav-hover)';
+                    if (!active)
+                      (e.currentTarget as HTMLElement).style.background =
+                        'var(--nav-hover)';
                   }}
                   onMouseOut={(e) => {
-                    if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent';
+                    if (!active)
+                      (e.currentTarget as HTMLElement).style.background = 'transparent';
                   }}
                 >
                   {item.icon}
@@ -401,7 +439,10 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
                     <span>{item.label}</span>
                   )}
                 </a>
-                <NavTooltip label={item.label} visible={collapsed && tooltipId === item.id} />
+                <NavTooltip
+                  label={item.label}
+                  visible={collapsed && tooltipId === item.id}
+                />
               </li>
             );
           })}
@@ -448,17 +489,22 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
                     textDecoration: 'none',
                     color: active ? 'var(--accent-action-on-nav)' : 'var(--text-on-nav)',
                     background: active ? 'rgba(31,78,74,0.12)' : 'transparent',
-                    borderLeft: active ? '3px solid var(--struct-petrole)' : '3px solid transparent',
+                    borderLeft: active
+                      ? '3px solid var(--struct-petrole)'
+                      : '3px solid transparent',
                     fontSize: 'var(--text-sm)',
                     fontWeight: active ? 500 : 400,
                     transition: `background var(--dur-fast) var(--ease-state)`,
                     position: 'relative',
                   }}
                   onMouseOver={(e) => {
-                    if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--nav-hover)';
+                    if (!active)
+                      (e.currentTarget as HTMLElement).style.background =
+                        'var(--nav-hover)';
                   }}
                   onMouseOut={(e) => {
-                    if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent';
+                    if (!active)
+                      (e.currentTarget as HTMLElement).style.background = 'transparent';
                   }}
                 >
                   {item.icon}
@@ -468,7 +514,10 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
                     <span>{item.label}</span>
                   )}
                 </a>
-                <NavTooltip label={item.label} visible={collapsed && tooltipId === item.id} />
+                <NavTooltip
+                  label={item.label}
+                  visible={collapsed && tooltipId === item.id}
+                />
               </li>
             );
           })}
@@ -481,8 +530,18 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
 
         {/* Paramètres + Aide */}
         {[
-          { id: 'settings', label: 'Paramètres', icon: <Settings size={20} strokeWidth={1.5} aria-hidden="true" />, href: `/app/${orgSlug}/parametres/general` },
-          { id: 'aide', label: 'Aide', icon: <HelpCircle size={20} strokeWidth={1.5} aria-hidden="true" />, href: `/app/${orgSlug}/aide` },
+          {
+            id: 'settings',
+            label: 'Paramètres',
+            icon: <Settings size={20} strokeWidth={1.5} aria-hidden="true" />,
+            href: `/app/${orgSlug}/parametres/general`,
+          },
+          {
+            id: 'aide',
+            label: 'Aide',
+            icon: <HelpCircle size={20} strokeWidth={1.5} aria-hidden="true" />,
+            href: `/app/${orgSlug}/aide`,
+          },
         ].map((item) => (
           <div key={item.id} style={{ position: 'relative' }}>
             <a
@@ -504,11 +563,19 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
                 marginBottom: 2,
                 transition: `background var(--dur-fast) var(--ease-state)`,
               }}
-              onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--nav-hover)'; }}
-              onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              onMouseOver={(e) => {
+                (e.currentTarget as HTMLElement).style.background = 'var(--nav-hover)';
+              }}
+              onMouseOut={(e) => {
+                (e.currentTarget as HTMLElement).style.background = 'transparent';
+              }}
             >
               {item.icon}
-              {collapsed ? <span className="sr-only">{item.label}</span> : <span>{item.label}</span>}
+              {collapsed ? (
+                <span className="sr-only">{item.label}</span>
+              ) : (
+                <span>{item.label}</span>
+              )}
             </a>
             <NavTooltip label={item.label} visible={collapsed && tooltipId === item.id} />
           </div>
@@ -556,8 +623,12 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
                 padding: 4,
                 borderRadius: 'var(--radius-base)',
               }}
-              onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text-on-nav)'; }}
-              onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--muted-on-nav)'; }}
+              onMouseOver={(e) => {
+                (e.currentTarget as HTMLElement).style.color = 'var(--text-on-nav)';
+              }}
+              onMouseOut={(e) => {
+                (e.currentTarget as HTMLElement).style.color = 'var(--muted-on-nav)';
+              }}
             >
               <LogOut size={16} strokeWidth={1.5} aria-hidden="true" />
             </button>
@@ -586,14 +657,20 @@ export function Sidebar({ orgSlug }: SidebarProps) {
   const toggleCollapse = useCallback(() => {
     setCollapsed((v) => {
       const next = !v;
-      try { localStorage.setItem(SIDEBAR_STATE_KEY, next ? 'collapsed' : 'expanded'); } catch {}
+      try {
+        localStorage.setItem(SIDEBAR_STATE_KEY, next ? 'collapsed' : 'expanded');
+      } catch {
+        /* storage indisponible */
+      }
       return next;
     });
   }, []);
 
-  // Fermer le drawer mobile sur navigation
+  // Fermer le drawer mobile sur navigation.
   const pathname = usePathname();
-  useEffect(() => { setMobileOpen(false); }, [pathname]);
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   // Gérer l'inert sur le main au drawer mobile
   useEffect(() => {
@@ -691,7 +768,11 @@ export function Sidebar({ orgSlug }: SidebarProps) {
         }}
         className="sidebar-mobile"
       >
-        <SidebarContent orgSlug={orgSlug} collapsed={false} onClose={() => setMobileOpen(false)} />
+        <SidebarContent
+          orgSlug={orgSlug}
+          collapsed={false}
+          onClose={() => setMobileOpen(false)}
+        />
       </aside>
 
       {/* Sidebar desktop */}
@@ -736,8 +817,12 @@ export function Sidebar({ orgSlug }: SidebarProps) {
             flexShrink: 0,
             transition: `background var(--dur-fast) var(--ease-state)`,
           }}
-          onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--nav-hover)'; }}
-          onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+          onMouseOver={(e) => {
+            (e.currentTarget as HTMLElement).style.background = 'var(--nav-hover)';
+          }}
+          onMouseOut={(e) => {
+            (e.currentTarget as HTMLElement).style.background = 'none';
+          }}
         >
           {collapsed ? (
             <ChevronRight size={16} strokeWidth={1.5} aria-hidden="true" />

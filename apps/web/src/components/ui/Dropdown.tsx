@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * A-13 — Dropdown / Menu d'actions
@@ -16,14 +16,13 @@
 import {
   createContext,
   useCallback,
-  useContext,
   useEffect,
   useId,
   useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
-} from "react";
+} from 'react';
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -59,7 +58,7 @@ interface DropdownProps {
   /** Largeur du panneau (défaut 200px) */
   width?: number | string;
   /** Alignement du panneau (défaut "left") */
-  align?: "left" | "right";
+  align?: 'left' | 'right';
   className?: string;
 }
 
@@ -67,7 +66,7 @@ export function Dropdown({
   trigger,
   items,
   width = 200,
-  align = "left",
+  align = 'left',
   className,
 }: DropdownProps) {
   const [open, setOpen] = useState(false);
@@ -83,7 +82,9 @@ export function Dropdown({
       setOpen(false);
       setClosing(false);
       /* Retour focus au déclencheur */
-      const btn = triggerRef.current?.querySelector<HTMLElement>("button, [role=button], a");
+      const btn = triggerRef.current?.querySelector<HTMLElement>(
+        'button, [role=button], a',
+      );
       btn?.focus();
     }, 155); // var(--dur-fast) 150ms + marge
   }, []);
@@ -103,8 +104,8 @@ export function Dropdown({
         close();
       }
     }
-    document.addEventListener("mousedown", onMouseDown, true);
-    return () => document.removeEventListener("mousedown", onMouseDown, true);
+    document.addEventListener('mousedown', onMouseDown, true);
+    return () => document.removeEventListener('mousedown', onMouseDown, true);
   }, [open, close]);
 
   /* Focus trap clavier */
@@ -112,27 +113,27 @@ export function Dropdown({
     if (!open) return;
     const items = Array.from(
       panelRef.current?.querySelectorAll<HTMLElement>(
-        '[role="menuitem"]:not([aria-disabled="true"])'
-      ) ?? []
+        '[role="menuitem"]:not([aria-disabled="true"])',
+      ) ?? [],
     );
     const idx = items.indexOf(document.activeElement as HTMLElement);
 
-    if (e.key === "Escape") {
+    if (e.key === 'Escape') {
       e.preventDefault();
       close();
-    } else if (e.key === "ArrowDown") {
+    } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       items[(idx + 1) % items.length]?.focus();
-    } else if (e.key === "ArrowUp") {
+    } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       items[(idx - 1 + items.length) % items.length]?.focus();
-    } else if (e.key === "Home") {
+    } else if (e.key === 'Home') {
       e.preventDefault();
       items[0]?.focus();
-    } else if (e.key === "End") {
+    } else if (e.key === 'End') {
       e.preventDefault();
       items[items.length - 1]?.focus();
-    } else if (e.key === "Tab") {
+    } else if (e.key === 'Tab') {
       /* Sort du menu → fermer */
       close();
     }
@@ -146,7 +147,7 @@ export function Dropdown({
       /* Focus premier item à la prochaine frame */
       setTimeout(() => {
         const first = panelRef.current?.querySelector<HTMLElement>(
-          '[role="menuitem"]:not([aria-disabled="true"])'
+          '[role="menuitem"]:not([aria-disabled="true"])',
         );
         first?.focus();
       }, 20);
@@ -158,7 +159,7 @@ export function Dropdown({
       <div
         ref={triggerRef}
         className={className}
-        style={{ position: "relative", display: "inline-flex" }}
+        style={{ position: 'relative', display: 'inline-flex' }}
         onKeyDown={onKeyDown}
       >
         {/* Déclencheur — on clone l'enfant avec aria-expanded */}
@@ -179,18 +180,18 @@ export function Dropdown({
             role="menu"
             aria-orientation="vertical"
             style={{
-              position: "absolute",
+              position: 'absolute',
               zIndex: 100,
-              top: "calc(100% + 4px)",
-              ...(align === "right" ? { right: 0 } : { left: 0 }),
+              top: 'calc(100% + 4px)',
+              ...(align === 'right' ? { right: 0 } : { left: 0 }),
               width,
               minWidth: 160,
               maxWidth: 280,
-              background: "var(--surface-overlay)",
-              borderRadius: "var(--radius-lg)",
-              boxShadow: "var(--elevation-popover)",
-              padding: "4px 0",
-              outline: "none",
+              background: 'var(--surface-overlay)',
+              borderRadius: 'var(--radius-lg)',
+              boxShadow: 'var(--elevation-popover)',
+              padding: '4px 0',
+              outline: 'none',
               animation: closing
                 ? `rds-dd-out var(--dur-fast, 150ms) var(--ease-exit, cubic-bezier(0.55,0,1,0.45)) forwards`
                 : `rds-dd-in var(--dur-base, 200ms) var(--ease-entrance, cubic-bezier(0.165,0.84,0.44,1)) forwards`,
@@ -224,13 +225,7 @@ export function Dropdown({
 /* Ligne d'item                                                        */
 /* ------------------------------------------------------------------ */
 
-function DropdownItemRow({
-  item,
-  onClose,
-}: {
-  item: DropdownItem;
-  onClose: () => void;
-}) {
+function DropdownItemRow({ item, onClose }: { item: DropdownItem; onClose: () => void }) {
   const [hovered, setHovered] = useState(false);
 
   function handleClick() {
@@ -245,19 +240,19 @@ function DropdownItemRow({
         <hr
           aria-hidden="true"
           style={{
-            margin: "4px 0",
-            border: "none",
-            borderTop: "1px solid var(--border-subtle)",
+            margin: '4px 0',
+            border: 'none',
+            borderTop: '1px solid var(--border-subtle)',
           }}
         />
       )}
       <div
         role="menuitem"
         tabIndex={item.disabled ? -1 : 0}
-        aria-disabled={item.disabled ? "true" : undefined}
+        aria-disabled={item.disabled ? 'true' : undefined}
         onClick={handleClick}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
+          if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             handleClick();
           }
@@ -265,39 +260,40 @@ function DropdownItemRow({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
-          display: "flex",
-          alignItems: "center",
+          display: 'flex',
+          alignItems: 'center',
           gap: 8,
-          padding: "7px 12px",
+          padding: '7px 12px',
           fontSize: 13,
           fontWeight: 400,
-          cursor: item.disabled ? "not-allowed" : "pointer",
+          cursor: item.disabled ? 'not-allowed' : 'pointer',
           color: item.disabled
-            ? "var(--text-muted)"
+            ? 'var(--text-muted)'
             : item.danger
-            ? "var(--status-fail-tx)"
-            : "var(--text-primary)",
-          background: hovered && !item.disabled
-            ? item.danger
-              ? "var(--status-fail-bg)"
-              : "rgba(31,78,74,0.05)"
-            : "transparent",
+              ? 'var(--status-fail-tx)'
+              : 'var(--text-primary)',
+          background:
+            hovered && !item.disabled
+              ? item.danger
+                ? 'var(--status-fail-bg)'
+                : 'rgba(31,78,74,0.05)'
+              : 'transparent',
           transition: `background-color var(--dur-fast, 150ms) var(--ease-state, cubic-bezier(0.455,0.03,0.515,0.955))`,
-          userSelect: "none",
-          outline: "none",
+          userSelect: 'none',
+          outline: 'none',
         }}
       >
         {item.icon && (
           <span
             aria-hidden="true"
             style={{
-              display: "flex",
+              display: 'flex',
               flexShrink: 0,
               color: item.disabled
-                ? "var(--text-muted)"
+                ? 'var(--text-muted)'
                 : item.danger
-                ? "var(--status-fail-tx)"
-                : "var(--text-secondary)",
+                  ? 'var(--status-fail-tx)'
+                  : 'var(--text-secondary)',
             }}
           >
             {item.icon}

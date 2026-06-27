@@ -17,14 +17,6 @@
  */
 
 import {
-  useEffect,
-  useRef,
-  useState,
-  useCallback,
-  type FormEvent,
-} from 'react';
-import { useRouter } from 'next/navigation';
-import {
   Plus,
   Calculator,
   ChevronLeft,
@@ -33,28 +25,24 @@ import {
   Loader2,
   FileCheck2,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState, useCallback, type FormEvent } from 'react';
 
-import {
-  listCalcResults,
-  runCalc,
-  emitPv,
-  getEntitlements,
-} from '@/lib/api/client';
-import type { CalcResult, EntitlementsResponse } from '@/lib/api/types';
-import { ENGINE_DESCRIPTORS, findDescriptor } from '@/lib/engine-descriptors';
-import type { EngineDescriptor, FieldDescriptor } from '@/lib/engine-descriptors';
-
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DomainTag } from '@/components/ui/DomainTag';
-import { Badge } from '@/components/ui/Badge';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Skeleton } from '@/components/ui/Skeleton.client';
-import { OutputTable } from '@/components/ui/OutputTable';
-import { VerdictBanner } from '@/components/ui/VerdictBanner';
-import { Modal } from '@/components/ui/Modal';
-import { Input, Select } from '@/components/ui/Field';
-import { useToast } from '@/components/ui/Toast';
 import type { Domain } from '@/components/ui/DomainTag';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Input, Select } from '@/components/ui/Field';
+import { Modal } from '@/components/ui/Modal';
+import { Skeleton } from '@/components/ui/Skeleton.client';
+import { useToast } from '@/components/ui/Toast';
+import { VerdictBanner } from '@/components/ui/VerdictBanner';
+import { listCalcResults, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
+import type { CalcResult, EntitlementsResponse } from '@/lib/api/types';
+import { findDescriptor } from '@/lib/engine-descriptors';
+import type { EngineDescriptor } from '@/lib/engine-descriptors';
+
 import { useOrgId } from '@/lib/org-context';
 
 // Formatage numérique fr-FR
@@ -63,8 +51,8 @@ const fmt = (n: number, decimals = 4) =>
 
 function relDate(iso: string): string {
   const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
-  if (d === 0) return "auj.";
-  if (d === 1) return "hier";
+  if (d === 0) return 'auj.';
+  if (d === 1) return 'hier';
   return `${d}j`;
 }
 
@@ -146,7 +134,9 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     }
   }, [orgId, projetId]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // Initialiser les valeurs du formulaire depuis le descripteur
   function initFormValues(desc: EngineDescriptor): Record<string, string> {
@@ -223,7 +213,9 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
 
       // Focus sur les résultats (excellence-v1 §D)
       setTimeout(() => {
-        const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const prefersReduced = window.matchMedia(
+          '(prefers-reduced-motion: reduce)',
+        ).matches;
         resultRef.current?.focus();
         resultRef.current?.scrollIntoView({
           behavior: prefersReduced ? 'auto' : 'smooth',
@@ -233,10 +225,13 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     } catch (err: unknown) {
       const apiErr = err as { reason?: string; message?: string };
       const msg =
-        apiErr?.reason === 'EXPIRED' ? "Abonnement expiré — calcul impossible."
-        : apiErr?.reason === 'QUOTA' ? "Quota épuisé — calcul impossible."
-        : apiErr?.reason === 'MODULE_NOT_IN_PACK' ? "Ce module n'est pas inclus dans votre abonnement."
-        : apiErr?.message ?? 'Erreur lors du calcul. Réessayez.';
+        apiErr?.reason === 'EXPIRED'
+          ? 'Abonnement expiré — calcul impossible.'
+          : apiErr?.reason === 'QUOTA'
+            ? 'Quota épuisé — calcul impossible.'
+            : apiErr?.reason === 'MODULE_NOT_IN_PACK'
+              ? "Ce module n'est pas inclus dans votre abonnement."
+              : (apiErr?.message ?? 'Erreur lors du calcul. Réessayez.');
       addToast({ type: 'error', message: msg });
       setPanel({ mode: 'form', engineId, descriptor: descriptor });
     } finally {
@@ -271,7 +266,8 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     }
   }
 
-  const currentCalc = (panel.mode === 'result' || panel.mode === 'view') ? panel.calc : null;
+  const currentCalc =
+    panel.mode === 'result' || panel.mode === 'view' ? panel.calc : null;
   const isExpired = entitlements?.expired ?? false;
   const isQuotaExhausted = !isExpired && (entitlements?.quota.remaining ?? 1) <= 0;
 
@@ -321,24 +317,27 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
           </Button>
 
           {/* Bandeau quota */}
-          {entitlements && !isExpired && entitlements.quota.remaining <= 10 && entitlements.quota.remaining > 0 && (
-            <div
-              style={{
-                marginTop: 8,
-                padding: '6px 8px',
-                background: '#fff8e7',
-                borderRadius: 'var(--radius-base)',
-                fontSize: 'var(--text-xs)',
-                color: '#8b6000',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-            >
-              <AlertCircle size={12} strokeWidth={1.5} aria-hidden="true" />
-              {entitlements.quota.remaining} calcul(s) restant(s)
-            </div>
-          )}
+          {entitlements &&
+            !isExpired &&
+            entitlements.quota.remaining <= 10 &&
+            entitlements.quota.remaining > 0 && (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: '6px 8px',
+                  background: '#fff8e7',
+                  borderRadius: 'var(--radius-base)',
+                  fontSize: 'var(--text-xs)',
+                  color: '#8b6000',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <AlertCircle size={12} strokeWidth={1.5} aria-hidden="true" />
+                {entitlements.quota.remaining} calcul(s) restant(s)
+              </div>
+            )}
 
           {/* Bandeau expiré */}
           {isExpired && (
@@ -409,7 +408,10 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
               title="Aucun calcul"
               description="Créez un premier calcul pour ce projet."
               ctaLabel="Nouveau calcul"
-              onCta={() => { setPanel({ mode: 'select-engine' }); setMobileDrillDown(true); }}
+              onCta={() => {
+                setPanel({ mode: 'select-engine' });
+                setMobileDrillDown(true);
+              }}
             />
           )}
 
@@ -433,9 +435,13 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                         gap: 4,
                         width: '100%',
                         padding: '10px 10px',
-                        background: isSelected ? 'var(--state-selected-bg)' : 'transparent',
+                        background: isSelected
+                          ? 'var(--state-selected-bg)'
+                          : 'transparent',
                         border: 'none',
-                        borderLeft: isSelected ? '3px solid var(--struct-petrole)' : '3px solid transparent',
+                        borderLeft: isSelected
+                          ? '3px solid var(--struct-petrole)'
+                          : '3px solid transparent',
                         borderRadius: 'var(--radius-base)',
                         cursor: 'pointer',
                         textAlign: 'left',
@@ -443,20 +449,29 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                         transition: `background var(--dur-fast) var(--ease-state)`,
                       }}
                       onMouseOver={(e) => {
-                        if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'var(--row-hover-bg)';
+                        if (!isSelected)
+                          (e.currentTarget as HTMLElement).style.background =
+                            'var(--row-hover-bg)';
                       }}
                       onMouseOut={(e) => {
-                        if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'transparent';
+                        if (!isSelected)
+                          (e.currentTarget as HTMLElement).style.background =
+                            'transparent';
                       }}
                       aria-pressed={isSelected}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <DomainTag domain={ENGINE_DOMAIN[calc.engineId] ?? 'road'} size="compact" />
+                        <DomainTag
+                          domain={ENGINE_DOMAIN[calc.engineId] ?? 'road'}
+                          size="compact"
+                        />
                         <Badge
                           variant={
-                            calc.status === 'DONE' ? 'recalculable'
-                            : calc.status === 'ERROR' ? 'erreur'
-                            : 'neutre'
+                            calc.status === 'DONE'
+                              ? 'recalculable'
+                              : calc.status === 'ERROR'
+                                ? 'erreur'
+                                : 'neutre'
                           }
                           label={STATUS_LABELS[calc.status] ?? calc.status}
                         />
@@ -581,7 +596,11 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
             onFieldChange={(key, val) => {
               setFormValues((prev) => ({ ...prev, [key]: val }));
               if (formErrors[key]) {
-                setFormErrors((prev) => { const n = { ...prev }; delete n[key]; return n; });
+                setFormErrors((prev) => {
+                  const n = { ...prev };
+                  delete n[key];
+                  return n;
+                });
               }
             }}
             onSubmit={handleRunCalc}
@@ -619,7 +638,10 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                 <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
                   Calcul en cours — {panel.label}
                 </p>
-                <Skeleton variant="output-table" style={{ width: '100%', maxWidth: 600 }} />
+                <Skeleton
+                  variant="output-table"
+                  style={{ width: '100%', maxWidth: 600 }}
+                />
               </>
             )}
           </div>
@@ -644,7 +666,9 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
       {currentCalc && (
         <Modal
           open={pvModalOpen}
-          onClose={() => { if (!emittingPv) setPvModalOpen(false); }}
+          onClose={() => {
+            if (!emittingPv) setPvModalOpen(false);
+          }}
           title="Émettre et sceller un PV"
           size="md"
           footer={
@@ -733,11 +757,27 @@ function EngineSelector({
 
   return (
     <div style={{ padding: 24, maxWidth: 640, margin: '0 auto', width: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 20,
+        }}
+      >
+        <h2
+          style={{
+            fontSize: 'var(--text-lg)',
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            margin: 0,
+          }}
+        >
           Sélectionner un moteur
         </h2>
-        <Button variant="ghost" size="sm" onClick={onCancel}>Annuler</Button>
+        <Button variant="ghost" size="sm" onClick={onCancel}>
+          Annuler
+        </Button>
       </div>
 
       {ENGINE_GROUPS.map((group) => (
@@ -786,30 +826,57 @@ function EngineSelector({
                     transition: `background var(--dur-fast) var(--ease-state)`,
                   }}
                   onMouseOver={(e) => {
-                    if (unlocked) (e.currentTarget as HTMLElement).style.background = 'var(--row-hover-bg)';
+                    if (unlocked)
+                      (e.currentTarget as HTMLElement).style.background =
+                        'var(--row-hover-bg)';
                   }}
                   onMouseOut={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = 'var(--surface-base)';
+                    (e.currentTarget as HTMLElement).style.background =
+                      'var(--surface-base)';
                   }}
                 >
                   <Calculator
                     size={16}
                     strokeWidth={1.5}
                     aria-hidden="true"
-                    style={{ color: 'var(--struct-petrole)', flexShrink: 0, marginTop: 2 }}
+                    style={{
+                      color: 'var(--struct-petrole)',
+                      flexShrink: 0,
+                      marginTop: 2,
+                    }}
                   />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--text-primary)' }}>
+                      <span
+                        style={{
+                          fontSize: 'var(--text-sm)',
+                          fontWeight: 500,
+                          color: 'var(--text-primary)',
+                        }}
+                      >
                         {desc.label}
                       </span>
                       {!unlocked && (
-                        <span data-testid={`engine-lock-${engineId}`} style={{ display: 'inline-flex' }}>
-                          <Lock size={12} strokeWidth={1.5} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
+                        <span
+                          data-testid={`engine-lock-${engineId}`}
+                          style={{ display: 'inline-flex' }}
+                        >
+                          <Lock
+                            size={12}
+                            strokeWidth={1.5}
+                            aria-hidden="true"
+                            style={{ color: 'var(--text-muted)' }}
+                          />
                         </span>
                       )}
                     </div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: 2 }}>
+                    <div
+                      style={{
+                        fontSize: 'var(--text-xs)',
+                        color: 'var(--text-secondary)',
+                        marginTop: 2,
+                      }}
+                    >
                       {desc.norme}
                     </div>
                   </div>
@@ -846,8 +913,6 @@ function CalcForm({
   onSubmit: (e?: FormEvent) => void;
   onBack: () => void;
 }) {
-  const nonSectionFields = descriptor.fields.filter((f) => f.type !== 'section');
-
   return (
     <div style={{ padding: 24, maxWidth: 640, margin: '0 auto', width: '100%' }}>
       {/* Fil d'Ariane interne */}
@@ -870,7 +935,13 @@ function CalcForm({
           Moteurs
         </button>
         <span style={{ color: 'var(--text-muted)' }}>/</span>
-        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', fontWeight: 500 }}>
+        <span
+          style={{
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-primary)',
+            fontWeight: 500,
+          }}
+        >
           {descriptor.label}
         </span>
       </div>
@@ -914,7 +985,11 @@ function CalcForm({
                 <Select
                   key={field.key}
                   id={`field-${field.key}`}
-                  label={field.label + (field.unit ? ` (${field.unit})` : '') + (field.optional ? '' : ' *')}
+                  label={
+                    field.label +
+                    (field.unit ? ` (${field.unit})` : '') +
+                    (field.optional ? '' : ' *')
+                  }
                   value={formValues[field.key] ?? ''}
                   onChange={(e) => onFieldChange(field.key, e.target.value)}
                   error={formErrors[field.key]}
@@ -922,7 +997,9 @@ function CalcForm({
                 >
                   <option value="">— Choisir —</option>
                   {field.options!.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
                   ))}
                 </Select>
               );
@@ -932,7 +1009,11 @@ function CalcForm({
               <Input
                 key={field.key}
                 id={`field-${field.key}`}
-                label={field.label + (field.unit ? ` (${field.unit})` : '') + (field.optional ? '' : ' *')}
+                label={
+                  field.label +
+                  (field.unit ? ` (${field.unit})` : '') +
+                  (field.optional ? '' : ' *')
+                }
                 type={field.type === 'number' ? 'number' : 'text'}
                 value={formValues[field.key] ?? ''}
                 onChange={(e) => onFieldChange(field.key, e.target.value)}
@@ -973,7 +1054,7 @@ interface CalcOutputRow {
 
 function CalcResults({
   calc,
-  entitlements,
+  entitlements: _entitlements, // reçu en prop — câblage du gating affichage résultat prévu en P2
   resultRef,
   onEmitPv,
   isExpired,
@@ -1006,20 +1087,35 @@ function CalcResults({
         animation: 'fadeIn var(--dur-base) var(--ease-entrance)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 16,
+          marginBottom: 20,
+        }}
+      >
         <div>
-          <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+          <h2
+            style={{
+              fontSize: 'var(--text-lg)',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              margin: 0,
+            }}
+          >
             {calc.label}
           </h2>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
             <DomainTag domain={ENGINE_DOMAIN[calc.engineId] ?? 'road'} />
             <Badge
-              variant={isDone ? 'recalculable' : calc.status === 'ERROR' ? 'erreur' : 'neutre'}
+              variant={
+                isDone ? 'recalculable' : calc.status === 'ERROR' ? 'erreur' : 'neutre'
+              }
               label={STATUS_LABELS[calc.status]}
             />
-            {calc.pvId && (
-              <Badge variant="scelle" label="PV émis" />
-            )}
+            {calc.pvId && <Badge variant="scelle" label="PV émis" />}
           </div>
         </div>
 
@@ -1039,9 +1135,7 @@ function CalcResults({
       {/* Verdict */}
       {hasOutput && output?.verdict && (
         <div style={{ marginBottom: 16 }}>
-          <VerdictBanner
-            verdict={output.verdict === 'PASS' ? 'pass' : 'fail'}
-          />
+          <VerdictBanner verdict={output.verdict === 'PASS' ? 'pass' : 'fail'} />
         </div>
       )}
 
@@ -1064,7 +1158,12 @@ function CalcResults({
             aria-label="Résultats de calcul"
           >
             <thead>
-              <tr style={{ background: 'var(--surface-canvas)', borderBottom: '1px solid var(--border-subtle)' }}>
+              <tr
+                style={{
+                  background: 'var(--surface-canvas)',
+                  borderBottom: '1px solid var(--border-subtle)',
+                }}
+              >
                 <th
                   style={{
                     padding: '10px 14px',
@@ -1113,11 +1212,19 @@ function CalcResults({
                 <tr
                   key={i}
                   style={{
-                    borderBottom: i < output.rows!.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                    borderBottom:
+                      i < output.rows!.length - 1
+                        ? '1px solid var(--border-subtle)'
+                        : 'none',
                     transition: `background var(--dur-fast) var(--ease-state)`,
                   }}
-                  onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--row-hover-bg)'; }}
-                  onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.background = ''; }}
+                  onMouseOver={(e) => {
+                    (e.currentTarget as HTMLElement).style.background =
+                      'var(--row-hover-bg)';
+                  }}
+                  onMouseOut={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = '';
+                  }}
                 >
                   <td style={{ padding: '12px 14px', color: 'var(--text-primary)' }}>
                     {row.label}
@@ -1134,7 +1241,13 @@ function CalcResults({
                   >
                     {fmt(row.value)}
                   </td>
-                  <td style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>
+                  <td
+                    style={{
+                      padding: '12px 14px',
+                      color: 'var(--text-muted)',
+                      fontSize: 'var(--text-xs)',
+                    }}
+                  >
                     {row.unit}
                   </td>
                 </tr>
@@ -1188,9 +1301,13 @@ function PvRecap({ calc }: { calc: CalcResult }) {
           fontSize: 'var(--text-sm)',
         }}
       >
-        <div style={{ color: 'var(--text-secondary)', marginBottom: 4 }}>Calcul source</div>
+        <div style={{ color: 'var(--text-secondary)', marginBottom: 4 }}>
+          Calcul source
+        </div>
         <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{calc.label}</div>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}>
+        <div
+          style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)', marginTop: 2 }}
+        >
           Moteur : {calc.engineId} · Statut : {STATUS_LABELS[calc.status]}
         </div>
       </div>
@@ -1213,10 +1330,10 @@ function PvRecap({ calc }: { calc: CalcResult }) {
           borderLeft: '3px solid var(--accent-brand)',
         }}
       >
-        <strong>Note d'intégrité :</strong> Ce PV sera scellé par un code HMAC calculé
-        côté serveur. Le sceau atteste que les paramètres et résultats n'ont pas été
-        modifiés après émission. Il ne constitue pas une signature électronique qualifiée
-        au sens de la loi 2008-08.
+        <strong>{"Note d'intégrité :"}</strong>
+        {
+          " Ce PV sera scellé par un code HMAC calculé côté serveur. Le sceau atteste que les paramètres et résultats n'ont pas été modifiés après émission. Il ne constitue pas une signature électronique qualifiée au sens de la loi 2008-08."
+        }
       </div>
     </div>
   );
