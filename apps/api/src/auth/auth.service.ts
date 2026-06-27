@@ -26,6 +26,13 @@ interface UserRow {
   is_active: boolean;
 }
 
+// Etat de compte renvoye par auth_get_user_state (0009) : 1 ligne si le user
+// existe, 0 ligne s'il est introuvable (supprime depuis l'emission du refresh).
+interface UserStateRow {
+  user_id: string;
+  is_active: boolean;
+}
+
 /** Appartenance d'un user a une organisation (pour /auth/me). */
 export interface MembershipView {
   orgId: string;
@@ -116,21 +123,41 @@ export class AuthService {
 
   /**
    * Echange un refresh token valide contre une nouvelle paire (rotation des
-   * deux tokens). STATELESS pour le socle : pas de table de revocation.
-   * TODO(follow-up) : refresh DB-backed (table refresh_tokens sous RLS si
-   * portee tenant, ou table noyau hors-tenant + jti) pour rotation/revocation
-   * reelle (logout, vol de token). Voir points a challenger.
+   * deux tokens). Le refresh N'EST PLUS aveugle a l'etat du compte (M3, revue
+   * securite) : avant de reemettre, on REVALIDE en base que le user EXISTE ET
+   * est ACTIF. Sans cette verif, un compte desactive (is_active=false) ou
+   * supprime gardait un refresh exploitable jusqu'a expiration (~7 j) et
+   * continuait a obtenir des access tokens frais malgre la desactivation admin.
+   *
+   * La revalidation passe par la fonction SECURITY DEFINER auth_get_user_state
+   * (0009, owned roadsen_auth) : "users" etant sous RLS, c'est la seule lecture
+   * « a froid » sanctionnee (meme voie que le reste de l'auth hors tenant). Cette
+   * verif a lieu dans le MEME chemin que le rechargement des memberships frais
+   * (ADR 0010). Cout acceptable : le refresh n'a lieu qu'~toutes les 5 min.
+   *
+   * TODO(follow-up) : revocation reelle par jeton (table refresh_tokens + jti)
+   * pour le logout / vol de token. La verif d'etat ci-dessus ferme deja le trou
+   * du compte desactive ; un refresh token VOLE d'un compte ACTIF reste valide
+   * jusqu'a expiration tant que cette table n'existe pas. Documente, pas masque.
    */
   async refresh(refreshToken: string): Promise<TokenPair> {
     const sub = await this.tokens.verify(refreshToken, 'refresh');
     if (!sub) {
       throw new UnauthorizedException('Refresh token invalide');
     }
-    // On NE re-verifie pas l'existence/etat du user en base ici (lookup par id
-    // hors scope = nouvelle voie DEFINER). Le compromis stateless est assume :
-    // un compte desactive garde un refresh valide jusqu'a expiration. C'est le
-    // meme angle mort que tout JWT stateless ; la mitigation (revocation) est le
-    // follow-up DB-backed ci-dessus. Documente, pas masque.
+
+    // Revalidation d'etat « a froid » via DEFINER : 0 ligne = user supprime ;
+    // is_active=false = compte desactive. Les deux -> 401, AUCUN nouveau token.
+    const stateRows = await this.prisma.asAppRole(
+      (tx) => tx.$queryRaw<UserStateRow[]>`
+        SELECT user_id, is_active FROM auth_get_user_state(${sub}::uuid)
+      `,
+    );
+    const state = stateRows[0];
+    if (!state || !state.is_active) {
+      throw new UnauthorizedException('Refresh token invalide');
+    }
+
     return this.issueTokens(sub);
   }
 

@@ -280,6 +280,11 @@ describe('AuthService.refresh', () => {
 
   it('verifie le token AVEC le type refresh (pas access) puis emet une nouvelle paire', async () => {
     tokens.verify.mockResolvedValue('user-7');
+    // 1er $queryRaw : auth_get_user_state -> compte ACTIF et existant (M3).
+    // 2e $queryRaw : loadOrgClaims (auth_get_user_profile) -> aucune org.
+    prisma.$queryRaw
+      .mockResolvedValueOnce([{ user_id: 'user-7', is_active: true }])
+      .mockResolvedValueOnce([]);
     await expect(service.refresh('ok')).resolves.toEqual({
       accessToken: 'new-access',
       refreshToken: 'new-refresh',
@@ -289,6 +294,70 @@ describe('AuthService.refresh', () => {
     // La ligne mockee n'a pas d'org -> orgs = []. L'essentiel : signAccess est
     // bien appele avec le sub du refresh et une photo orgs (re)chargee, pas figee.
     expect(tokens.signAccess).toHaveBeenCalledWith('user-7', []);
+  });
+
+  // M3 — le refresh n'est plus aveugle a l'etat du compte. Un compte desactive
+  // ou supprime depuis l'emission du refresh ne doit plus reemettre de tokens.
+  describe('M3 — revalidation de l etat du compte au refresh', () => {
+    it('refresh d un user DESACTIVE (is_active=false) -> 401, AUCUN token emis', async () => {
+      tokens.verify.mockResolvedValue('user-off');
+      // auth_get_user_state renvoie le user mais is_active=false.
+      prisma.$queryRaw.mockResolvedValueOnce([
+        { user_id: 'user-off', is_active: false },
+      ]);
+
+      await expect(service.refresh('ok')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      // Aucun nouveau token : ni access ni refresh ne sont signes.
+      expect(tokens.signAccess).not.toHaveBeenCalled();
+      expect(tokens.signRefresh).not.toHaveBeenCalled();
+      // On NE va PAS jusqu'au rechargement des memberships : un seul $queryRaw
+      // (la verif d'etat) a court-circuite la suite.
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    });
+
+    it('refresh d un user SUPPRIME (auth_get_user_state -> 0 ligne) -> 401, AUCUN token', async () => {
+      tokens.verify.mockResolvedValue('user-gone');
+      // user supprime depuis l'emission du refresh -> zero ligne.
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+
+      await expect(service.refresh('ok')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(tokens.signAccess).not.toHaveBeenCalled();
+      expect(tokens.signRefresh).not.toHaveBeenCalled();
+    });
+
+    it('refresh d un user ACTIF -> tokens emis avec memberships FRAIS (ADR 0010)', async () => {
+      tokens.verify.mockResolvedValue('user-9');
+      prisma.$queryRaw
+        // 1) auth_get_user_state -> compte actif.
+        .mockResolvedValueOnce([{ user_id: 'user-9', is_active: true }])
+        // 2) loadOrgClaims -> 1 membership frais (rechargé, pas figé du token).
+        .mockResolvedValueOnce([
+          {
+            user_id: 'user-9',
+            email: 'u9@x.io',
+            full_name: 'U9',
+            platform_role: null,
+            org_id: 'o9',
+            org_name: 'Org 9',
+            org_slug: 'org-9',
+            membership_role: 'ENGINEER',
+          },
+        ]);
+
+      await expect(service.refresh('ok')).resolves.toEqual({
+        accessToken: 'new-access',
+        refreshToken: 'new-refresh',
+      });
+      // L'access est signe avec la photo FRAICHE des orgs (rechargee au refresh).
+      expect(tokens.signAccess).toHaveBeenCalledWith('user-9', [
+        { id: 'o9', slug: 'org-9', role: 'ENGINEER' },
+      ]);
+      expect(tokens.signRefresh).toHaveBeenCalledWith('user-9');
+    });
   });
 });
 

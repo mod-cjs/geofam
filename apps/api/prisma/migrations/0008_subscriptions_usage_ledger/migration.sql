@@ -27,12 +27,20 @@
 --
 --  CONTRAINTES POSTGRES MANAGE (lecons 0004/0007) — RESPECTEES :
 --    - AUCUN CREATE/ALTER ROLE ... BYPASSRLS ni NOSUPERUSER/NOBYPASSRLS.
---    - AUCUN OWNER TO (pas de changement de proprietaire). La fonction DEFINER
---      est creee par le proprietaire courant de la connexion de migration ; on
---      la REASSIGNE a roadsen_auth seulement si possible (cf. note §4), sinon on
---      documente. Pas de SET ROLE exigeant une appartenance non garantie.
---    - roadsen_app et roadsen_auth EXISTENT deja (migrations 0001/0007) : on ne
---      les recree pas, on ne change pas leurs attributs.
+--    - provision_subscription est REASSIGNEE a roadsen_auth par un `ALTER FUNCTION
+--      ... OWNER TO roadsen_auth` DUR (pas de bloc DO/EXCEPTION tolerant). LECON
+--      0004->0007 : un OWNER TO qui « echoue en silence » laisse la fonction owned
+--      par le user de migration ; en LOCAL ce user est superuser (BYPASSRLS
+--      implicite) donc le DEFINER « marche » et masque le defaut ; en PROD (Render,
+--      user NOBYPASSRLS) le DEFINER reste alors soumis a la RLS et l'INSERT « a
+--      froid » est REFUSE -> provisionnement d'abonnement casse alors que les tests
+--      locaux passaient au vert. On veut donc l'ECHEC FORT au deploy, pas le faux
+--      vert local : si l'OWNER TO ne peut aboutir, la migration DOIT casser.
+--    - Les PRE-REQUIS de cet OWNER TO (executant MEMBRE de roadsen_auth + CREATE
+--      sur le schema pour roadsen_auth) sont poses en 0004 ; on les RE-AFFIRME ici
+--      defensivement (idempotents) pour que 0008 reste self-contenu (§3bis).
+--    - roadsen_app et roadsen_auth EXISTENT deja (migrations 0001/0004/0007) : on
+--      ne les recree pas, on ne change pas leurs attributs.
 --
 --  MODELE DE SCOPING inchange : l'app pose `SET LOCAL app.current_org` par
 --  transaction (PrismaService.withTenant). Les policies appellent app_current_org()
@@ -156,11 +164,15 @@ CREATE TRIGGER "usage_ledger_no_delete"
 --  re-provisionner la meme org ne cree pas de doublon (la 1re ligne reste).
 --
 --  NB MANAGE : la fonction est creee par le proprietaire de la connexion de
---  migration. On la REASSIGNE a roadsen_auth (ALTER FUNCTION ... OWNER TO) si le
---  proprietaire de migration est membre de roadsen_auth (cas Render : le user
---  managed a recu GRANT roadsen_auth en 0007). Si l'OWNER TO echoue (droits),
---  jouer ce bloc en tant que role apte : voir note de deploiement du down.sql.
---  La fonction DOIT etre owned par roadsen_auth (BYPASSRLS) pour franchir la RLS.
+--  migration, puis REASSIGNEE a roadsen_auth par un OWNER TO DUR (cf. §3bis). Ce
+--  transfert N'EST PAS optionnel : il conditionne le franchissement de la RLS « a
+--  froid » (modele 0007 : owner roadsen_auth qui DETIENT le privilege identite +
+--  drapeau pose par la fonction). S'il echouait silencieusement, la fonction
+--  resterait owned par le user de migration : OK en local (superuser/BYPASSRLS),
+--  mais en prod NOBYPASSRLS l'INSERT serait refuse par la RLS -> provisionnement
+--  casse. On veut donc que la migration ECHOUE FORT plutot que de laisser passer
+--  un faux vert (lecon 0004->0007). Les pre-requis du OWNER TO sont re-affirmes
+--  en §3bis (GRANT roadsen_auth TO CURRENT_USER + CREATE sur le schema).
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION "provision_subscription"(
   p_org_id        uuid,
@@ -202,8 +214,28 @@ BEGIN
 END;
 $$;
 
--- La fonction DEFINER doit etre detenue par roadsen_auth (BYPASSRLS) pour
--- franchir la RLS « a froid ». Tentative de reassignation (no-op si deja owner).
+-- ---------------------------------------------------------------------
+-- 3bis) PRE-REQUIS du OWNER TO ci-dessous (defensifs, idempotents — patron 0004)
+--
+--  L'ALTER FUNCTION ... OWNER TO roadsen_auth exige (PG, executant non-superuser) :
+--    (a) que l'executant (CURRENT_USER = user de migration) soit MEMBRE de
+--        roadsen_auth (« must be able to SET ROLE roadsen_auth ») ;
+--    (b) que roadsen_auth ait CREATE sur le schema contenant l'objet.
+--  Les deux sont poses en 0004 et toujours en place a 0008 ; on les RE-AFFIRME ici
+--  (idempotents) pour que 0008 soit self-contenu et que l'OWNER TO ne puisse pas
+--  echouer pour un pre-requis manquant si 0008 est rejoue isolement. C'est le
+--  filet qui rend l'echec « fort » legitime : l'OWNER TO ne casse que si le
+--  transfert est reellement impossible, pas pour un GRANT oublie.
+-- ---------------------------------------------------------------------
+GRANT "roadsen_auth" TO CURRENT_USER;
+GRANT USAGE, CREATE ON SCHEMA public TO "roadsen_auth";
+
+-- La fonction DEFINER DOIT etre detenue par roadsen_auth pour franchir la RLS
+-- « a froid » (modele 0007). OWNER TO **DUR** : aucun DO/EXCEPTION tolerant. Un
+-- echec ICI doit CASSER la migration au deploy (cf. lecon 0004->0007 en en-tete) :
+-- une fonction restee owned par le user de migration « marche » en local superuser
+-- mais, en prod NOBYPASSRLS, ne franchit plus la RLS -> provisionnement casse en
+-- prod tout en passant au vert en local. Echec FORT > faux vert silencieux.
 ALTER FUNCTION "provision_subscription"(uuid, text, text[], timestamptz, timestamptz, integer)
   OWNER TO "roadsen_auth";
 
