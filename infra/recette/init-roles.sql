@@ -53,41 +53,53 @@ BEGIN
 END
 $$;
 
--- Accès au schéma et DML sur les tables tenant (migration 0001).
+-- Accès au schéma TO roadsen_app. DML SUR LES TABLES DE DONNÉES SEULEMENT.
+-- BARRIÈRE 1 (modèle 0007) : roadsen_app N'A PLUS de DML direct sur l'IDENTITÉ
+-- (users/memberships/organizations) — il ne les touche que via les DEFINER. Il
+-- garde le DML sur les tables de données (projects + calc_results/pv_counters/
+-- official_pvs côté 0006).
 GRANT USAGE ON SCHEMA public TO roadsen_app;
-GRANT SELECT, INSERT, UPDATE, DELETE
-  ON organizations, users, memberships, projects
-  TO roadsen_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON projects TO roadsen_app;
+-- Au cas où un GRANT identité résiduel (0001) subsisterait, on le RETIRE.
+REVOKE SELECT, INSERT, UPDATE, DELETE
+  ON organizations, users, memberships
+  FROM roadsen_app;
 -- Droits par défaut pour les futures tables créées par le propriétaire.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO roadsen_app;
 
 -- ---------------------------------------------------------------------------
--- 2) roadsen_auth — rôle des fonctions SECURITY DEFINER (migration 0004)
---    NOLOGIN     : aucune surface de connexion directe.
---    NOSUPERUSER : moindre privilège — pas de superuser.
---    BYPASSRLS   : INTENTIONNEL — ces fonctions lisent/écrivent à travers
---                  les tenants PAR CONCEPTION (login à froid, bootstrap d'org).
---                  Le BYPASSRLS est circonscrit aux 4 fonctions DEFINER auditées,
---                  avec search_path figé et EXECUTE révoqué à PUBLIC.
+-- 2) roadsen_auth — owner des DEFINER, NON-BYPASSRLS (modèle 0007).
+--
+--    HISTORIQUE : 0004 créait roadsen_auth ... BYPASSRLS. Or sur Postgres MANAGÉ
+--    (Render), l'utilisateur applicatif a CREATEROLE mais PAS BYPASSRLS :
+--    « CREATE ROLE ... BYPASSRLS » échoue (42501). C'était l'attribut BYPASSRLS,
+--    et lui seul, qui bloquait — PAS le CREATE ROLE.
+--
+--    MODÈLE 0007 : roadsen_auth reste, mais NON-BYPASSRLS. Il est :
+--      - propriétaire des 6 fonctions SECURITY DEFINER d'auth/bootstrap ;
+--      - SEUL détenteur du GRANT SELECT/INSERT sur les 3 tables d'IDENTITÉ.
+--    Le franchissement de la RLS d'identité ne vient PLUS de BYPASSRLS mais de la
+--    conjonction : (a) la fonction DEFINER s'exécute avec le privilège de table de
+--    roadsen_auth + (b) elle pose le drapeau fail-closed app.auth_bootstrap qui
+--    ouvre la branche RLS d'identité. Les deux sont requis. roadsen_app (qui peut
+--    poser le drapeau) N'A PAS le privilège de table -> ne lit/écrit rien.
+--    Les tables de DONNÉES restent org-scope strict, sans drapeau.
 -- ---------------------------------------------------------------------------
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'roadsen_auth') THEN
-    CREATE ROLE roadsen_auth NOLOGIN NOSUPERUSER BYPASSRLS;
+    CREATE ROLE roadsen_auth NOLOGIN NOSUPERUSER NOBYPASSRLS;
   ELSE
-    -- Garantit les attributs même si le rôle préexistait.
-    ALTER ROLE roadsen_auth NOLOGIN NOSUPERUSER BYPASSRLS;
+    -- garantit l'ABSENCE de BYPASSRLS même si le rôle préexistait (0004 partielle).
+    ALTER ROLE roadsen_auth NOLOGIN NOSUPERUSER NOBYPASSRLS;
   END IF;
 END
 $$;
 
--- Accès au schéma et aux tables nécessaires aux fonctions DEFINER.
+-- roadsen_auth : accès schéma + DML d'identité (ce que les DEFINER touchent).
 GRANT USAGE ON SCHEMA public TO roadsen_auth;
-GRANT SELECT, INSERT ON organizations, memberships TO roadsen_auth;
--- users : SELECT (auth_find_user_by_email, auth_get_platform_role,
--- auth_get_user_profile) + INSERT (provision_user, migration 0005).
-GRANT SELECT, INSERT ON users TO roadsen_auth;
+GRANT SELECT, INSERT ON organizations, memberships, users TO roadsen_auth;
 
 -- ---------------------------------------------------------------------------
 -- NOTE : GRANT EXECUTE sur les fonctions DEFINER
@@ -125,8 +137,8 @@ SELECT
 FROM pg_roles
 WHERE rolname IN ('roadsen_app', 'roadsen_auth')
 ORDER BY rolname;
--- Résultat attendu :
+-- Résultat attendu (modèle 0007) :
 --  rolname      | LOGIN | BYPASSRLS | SUPERUSER
 --  -------------|-------|-----------|----------
 --  roadsen_app  | f     | f         | f
---  roadsen_auth | f     | t         | f
+--  roadsen_auth | f     | f         | f   <-- NON-BYPASSRLS (différence vs 0004)

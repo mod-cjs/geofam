@@ -86,33 +86,48 @@ export class PvService {
           );
         }
 
-        // Coordonnees du tenant (slug + nom) + libelle projet — lisibles sous RLS.
-        const org = await tx.organization.findUnique({
-          where: { id: orgId },
-          select: { slug: true, name: true },
-        });
+        // Libelle projet — projects est une table de DONNEES (roadsen_app garde
+        // le DML) -> lecture directe sous RLS, inchangee.
         const project = await tx.project.findUnique({
           where: { id: args.projectId },
           select: { name: true },
         });
-        if (!org || !project) {
+        if (!project) {
           // Ne devrait pas arriver (FK), mais fail-closed plutot que sceller a vide.
-          throw new NotFoundException('Organisation ou projet introuvable.');
+          throw new NotFoundException('Projet introuvable.');
         }
 
-        // IDENTITE DE L'EMETTEUR (donnee SCELLEE — l'auteur fait partie de
-        // l'integrite du PV, pas un simple affichage). Lecture du profil de
-        // l'emetteur AUTHENTIFIE (args.userId = sub JWT verifie) : il est membre de
-        // l'org courante -> visible sous la RLS users (policy 0002/0004 :
-        // membership partage avec app_current_org()). On scelle son fullName.
-        const emitter = await tx.user.findUnique({
-          where: { id: args.userId },
-          select: { fullName: true },
-        });
-        // fullName est NON-NULL au schema ; fallback defensif si vide/illisible.
+        // IDENTITE A SCELLER (org + emetteur) — lecture via fonction DEFINER.
+        //
+        // MIGRATION 0007 : roadsen_app n'a PLUS de DML direct sur organizations /
+        // users (BARRIERE 1 anti-fuite identite). On lit donc le slug + nom de
+        // l'org ET le nom complet de l'emetteur en UNE fois via la fonction
+        // SECURITY DEFINER pv_emitter_context(p_org_id, p_user_id), owned par
+        // roadsen_auth (qui detient le privilege identite) et bornee au couple
+        // passe : orgId (deja prouvee par TenantGuard) + args.userId (sub JWT
+        // verifie). Le nom de l'org et le visa de l'emetteur sont des donnees
+        // SCELLEES (provenance du PV), pas un simple affichage.
+        const ctxRows = await tx.$queryRaw<
+          Array<{
+            org_slug: string;
+            org_name: string;
+            emitter_full_name: string | null;
+          }>
+        >`
+        SELECT org_slug, org_name, emitter_full_name
+        FROM pv_emitter_context(${orgId}::uuid, ${args.userId}::uuid)
+      `;
+        const ctx = ctxRows[0];
+        if (!ctx) {
+          // org ou emetteur introuvable (ne devrait pas arriver : FK + membership
+          // deja prouve). Fail-closed plutot que sceller a vide.
+          throw new NotFoundException('Organisation ou émetteur introuvable.');
+        }
+        const org = { slug: ctx.org_slug, name: ctx.org_name };
+        // full_name est NON-NULL au schema ; fallback defensif si vide/illisible.
         const userDisplayName =
-          emitter?.fullName && emitter.fullName.trim().length > 0
-            ? emitter.fullName.trim()
+          ctx.emitter_full_name && ctx.emitter_full_name.trim().length > 0
+            ? ctx.emitter_full_name.trim()
             : '';
 
         // sealedAt FIGE (ISO string) : c'est l'horodatage SCELLE du PV.

@@ -272,52 +272,60 @@ describe('Isolation multi-tenant RLS FORCE (projects + organizations + users)', 
     },
   );
 
-  // --- organizations (policy 0002 : id = app.current_org) -------------------
+  // --- IDENTITE (organizations / users) — MODELE 0007, BARRIERE 1 -----------
+  //
+  //  CHANGEMENT 0007 : roadsen_app n'a PLUS aucun privilege DML direct sur les
+  //  tables d'identite (users/memberships/organizations). Il ne les touche QUE
+  //  via les fonctions DEFINER (owned par roadsen_auth, NON-bypass). Une requete
+  //  ORDINAIRE sous roadsen_app sur ces tables est donc refusee AU NIVEAU
+  //  PRIVILEGE (42501), AVANT meme la RLS. C'est une barriere SUPPLEMENTAIRE :
+  //  poser le drapeau app.auth_bootstrap ne suffit pas (le privilege manque).
 
   guarded(
-    '5) organizations : org A ne voit QUE orgA, jamais orgB',
+    '5) organizations : roadsen_app SANS privilege -> lecture directe REFUSEE',
     async () => {
       await app!.query(`SET app.current_org = '${orgA}'`);
-      const { rows } = await app!.query<{ id: string }>(
-        'SELECT id FROM organizations',
+      await expect(app!.query('SELECT id FROM organizations')).rejects.toThrow(
+        /permission denied|insufficient privilege|denied for (table|relation)/i,
       );
-      expect(rows).toHaveLength(1);
-      expect(rows[0].id).toBe(orgA);
-      expect(rows.some((r) => r.id === orgB)).toBe(false);
     },
   );
 
   guarded(
-    '6) organizations : WITH CHECK refuse de creer une org pour un autre id',
+    '6) users : meme en POSANT le drapeau d auth, roadsen_app ne lit AUCUN hash',
     async () => {
-      // Sous orgA, tenter d'inserer orgB : le WITH CHECK (id = app.current_org)
-      // doit rejeter (id != orgA). Preuve que le runtime ne peut pas fabriquer
-      // d'organisation hors de son tenant courant.
+      // Tentative d'attaque : poser le drapeau de confiance a la main puis lire
+      // users. BARRIERE 1 (privilege) : refus avant la RLS -> aucun hash ne fuite.
       await app!.query(`SET app.current_org = '${orgA}'`);
-      await expect(
-        app!.query(
-          `INSERT INTO organizations (id, name, slug, "updatedAt") VALUES ($1,$2,$3,now())`,
-          [orgB, 'fraude', `fraude-${randomUUID().slice(0, 8)}`],
-        ),
-      ).rejects.toThrow();
+      await app!.query(`SET app.auth_bootstrap = 'on'`);
+      try {
+        await expect(
+          app!.query('SELECT id, password_hash FROM users'),
+        ).rejects.toThrow(
+          /permission denied|insufficient privilege|denied for (table|relation) users/i,
+        );
+      } finally {
+        await app!.query(`RESET app.auth_bootstrap`);
+      }
     },
   );
 
-  // --- users (policy 0002 : membership partage avec l'org courante) ---------
-
   guarded(
-    '7) users : org A ne voit QUE userA ; userB et son password_hash invisibles',
+    '7) users : lecture via la fonction DEFINER reste cloisonnee (login a froid)',
     async () => {
-      await app!.query(`SET app.current_org = '${orgA}'`);
-      const { rows } = await app!.query<{ id: string; password_hash: string }>(
-        'SELECT id, password_hash FROM users',
+      // La SEULE voie de lecture identite du runtime = les DEFINER. auth_find_
+      // user_by_email ne renvoie QUE l'utilisateur de l'email demande (deja en
+      // main), jamais un listing : on prouve qu'elle marche a froid ET ne fuite
+      // pas userB quand on demande userA.
+      await app!.query(`RESET app.current_org`);
+      const a = await app!.query<{ id: string }>(
+        `SELECT id FROM auth_find_user_by_email($1)`,
+        [`a-${userA.slice(0, 8)}@roadsen.test`],
       );
-      // Seul userA partage un membership avec orgA -> seul user visible.
-      expect(rows).toHaveLength(1);
-      expect(rows[0].id).toBe(userA);
-      // userB totalement invisible : ni la ligne, ni son hash ne fuitent.
-      expect(rows.some((r) => r.id === userB)).toBe(false);
-      expect(rows.some((r) => r.password_hash === 'hash-B-SECRET')).toBe(false);
+      expect(a.rows).toHaveLength(1);
+      expect(a.rows[0].id).toBe(userA);
+      // demander l'email de A ne revele jamais B
+      expect(a.rows.some((r) => r.id === userB)).toBe(false);
     },
   );
 

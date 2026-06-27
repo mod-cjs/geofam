@@ -44,25 +44,25 @@
 --      CASSE en prod, avant meme ce ticket. (Prouve empiriquement : la fonction
 --      DEFINER owned par un role non-bypass renvoie 0 ligne sans org pose.)
 --
---  CORRECTION 0004 (prod-safe, sans superuser) :
---    On cree un role DEDIE `roadsen_auth` — NOLOGIN, NOSUPERUSER, BYPASSRLS —
+--  CORRECTION 0004 (REVISEE — prod-safe, sans superuser NI BYPASSRLS) :
+--    On cree un role DEDIE `roadsen_auth` — NOLOGIN, NOSUPERUSER, **NOBYPASSRLS** —
 --    et on lui DONNE la propriete des 4 fonctions DEFINER d'auth/bootstrap.
---    Ces fonctions DOIVENT lire/ecrire a travers les tenants PAR CONCEPTION
---    (login a froid, bootstrap d'org) : leur accorder BYPASSRLS est le contour
---    LEGITIME et explicite de la RLS, et non un assouplissement de la policy.
---    `roadsen_auth` est NOLOGIN -> ce n'est JAMAIS une surface de connexion ;
---    il ne sert qu'a porter ces 4 fonctions auditees, search_path fige,
---    EXECUTE revoque a PUBLIC, accorde au seul `roadsen_app`. Le runtime
---    (`roadsen_app`) reste NOBYPASSRLS : il ne peut RIEN lire hors policy en
---    requete ordinaire ; il ne franchit la RLS QUE via ces 4 portes etroites.
---
---  Resultat prouve : en PROD-LIKE (owner non-superuser), login et provision_org
---  fonctionnent (les fonctions bypassent la RLS via leur owner BYPASSRLS dedie),
---  tandis qu'une requete tenant ordinaire sans SET LOCAL echoue FORT (RAISE).
+--    [HISTORIQUE] Ce role etait initialement cree en BYPASSRLS : cela "marchait"
+--    en local (superuser) mais ECHOUAIT a `CREATE ROLE ... BYPASSRLS` sur Render
+--    (user CREATEROLE non-superuser, 42501), bloquant toute la chaine. La revision
+--    le cree NOBYPASSRLS (creable en managed). Le franchissement de la RLS A FROID
+--    n'est donc PLUS porte par BYPASSRLS ici : il est retabli par la migration 0007
+--    via un DRAPEAU fail-closed (app.auth_bootstrap) + le privilege de table de
+--    roadsen_auth. ENTRE 0004 et 0007 le login a froid est inoperant (fonctions
+--    DEFINER soumises a la RLS, drapeau pas encore introduit) — SANS IMPORTANCE
+--    pendant `migrate deploy` (aucun trafic applicatif). L'etat FINAL de la chaine
+--    (apres 0007) = exactement ce que valide le PROOF (modele a 2 barrieres).
+--    `roadsen_auth` est NOLOGIN -> jamais une surface de connexion. EXECUTE des
+--    fonctions revoque a PUBLIC, accorde au seul `roadsen_app` (NOBYPASSRLS).
 --
 --  ADDITIVE : aucune table, aucune donnee modifiee. Reecrit 4 policies, cree
---  1 fonction (app_current_org) + 1 role (roadsen_auth), reattribue la propriete
---  de 4 fonctions existantes. N'edite PAS 0001/0002/0003.
+--  1 fonction (app_current_org, fail-closed BRUYANT) + 1 role (roadsen_auth),
+--  reattribue la propriete de 4 fonctions existantes. N'edite PAS 0001/0002/0003.
 --  Reversible : voir down.sql.
 --  A REVOIR EN BINOME dev-backend + qa-challenger (zone critique : isolation).
 -- =====================================================================
@@ -152,32 +152,37 @@ CREATE POLICY "tenant_isolation" ON "users"
   );
 
 -- ---------------------------------------------------------------------
--- 3) Role DEDIE roadsen_auth (NOLOGIN, NOSUPERUSER, BYPASSRLS) +
+-- 3) Role DEDIE roadsen_auth (NOLOGIN, NOSUPERUSER, **NOBYPASSRLS**) +
 --    reattribution des 4 fonctions DEFINER d'auth/bootstrap.
 --
---  POURQUOI : ces 4 fonctions lisent/ecrivent A FROID, AVANT tout contexte
---  tenant (login, resolution membership, role plateforme, bootstrap d'org).
---  Elles DOIVENT franchir la RLS par conception. En prod l'owner des objets
---  n'est pas superuser : sans owner BYPASSRLS dedie, FORCE RLS les soumettrait
---  aux policies et le RAISE de app_current_org() (ou simplement l'absence de
---  contexte) ferait echouer login et provisioning.
+--  REVISION (compat Postgres MANAGE — Render) : ce role etait initialement cree
+--  en BYPASSRLS. Or sur un Postgres managed, l'utilisateur applicatif a CREATEROLE
+--  mais PAS BYPASSRLS : « CREATE ROLE ... BYPASSRLS » echoue (42501) -> 0004
+--  s'appliquait en LOCAL (superuser) mais ECHOUAIT en prod, bloquant toute la
+--  chaine (0005 exige pourtant que roadsen_auth EXISTE). On cree donc desormais
+--  roadsen_auth en **NOBYPASSRLS** : creable sous un user CREATEROLE non-superuser.
 --
---  roadsen_auth NOLOGIN : aucune surface de connexion. BYPASSRLS : franchit la
---  RLS UNIQUEMENT au travers de ces 4 fonctions (auditees, perimetre minimal,
---  search_path fige, EXECUTE limite a roadsen_app). NOSUPERUSER : moindre
---  privilege strict — pas de DDL, pas de superpouvoir, juste le bypass RLS.
+--  CONSEQUENCE ASSUMEE (resolue par la migration 0007) : sans BYPASSRLS, les
+--  fonctions DEFINER owned par roadsen_auth sont soumises a la RLS et ne peuvent
+--  PAS lire/ecrire l'identite A FROID -> entre 0004 et 0007, le login/provisioning
+--  ne fonctionnent pas. C'est SANS IMPORTANCE pour le DEPLOIEMENT (aucun trafic
+--  applicatif ne passe pendant `migrate deploy`). La migration 0007 retablit le
+--  fonctionnement A FROID via un DRAPEAU FAIL-CLOSED (app.auth_bootstrap) reconnu
+--  par les policies d'identite + le privilege de table de roadsen_auth — modele
+--  final, SANS aucun BYPASSRLS. La chaine 0004->0005->0006->0007 converge donc
+--  vers EXACTEMENT l'etat valide par le PROOF (cf. en-tete 0007).
 --
---  Le runtime roadsen_app demeure NOBYPASSRLS : en requete ordinaire il reste
---  pleinement soumis a la RLS. La defense en profondeur tient : 4 portes
---  etroites DEFINER + RLS bruyante partout ailleurs.
+--  roadsen_auth NOLOGIN : aucune surface de connexion. NOSUPERUSER : moindre
+--  privilege. NOBYPASSRLS : plus aucun contournement de RLS par attribut de role.
+--  Le runtime roadsen_app demeure NOBYPASSRLS lui aussi.
 -- ---------------------------------------------------------------------
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'roadsen_auth') THEN
-    CREATE ROLE "roadsen_auth" NOLOGIN NOSUPERUSER BYPASSRLS;
+    CREATE ROLE "roadsen_auth" NOLOGIN NOSUPERUSER NOBYPASSRLS;
   ELSE
     -- garantit l'etat attendu meme si le role preexistait
-    ALTER ROLE "roadsen_auth" NOLOGIN NOSUPERUSER BYPASSRLS;
+    ALTER ROLE "roadsen_auth" NOLOGIN NOSUPERUSER NOBYPASSRLS;
   END IF;
 END
 $$;
@@ -189,7 +194,8 @@ GRANT SELECT, INSERT ON "organizations", "memberships" TO "roadsen_auth";
 GRANT SELECT ON "users" TO "roadsen_auth";
 
 -- Reattribution de la PROPRIETE des 4 fonctions au role dedie. Apres ALTER
--- OWNER, le DEFINER s'execute avec les droits (et le BYPASSRLS) de roadsen_auth.
+-- OWNER, le DEFINER s'execute avec les DROITS de roadsen_auth (NOBYPASSRLS apres
+-- revision : le franchissement RLS a froid sera assure par le drapeau de 0007).
 -- Les GRANT EXECUTE a roadsen_app poses en 0002/0003 restent valides (ils
 -- portent sur la fonction, pas sur le proprietaire).
 ALTER FUNCTION "provision_org"(text, text, uuid)            OWNER TO "roadsen_auth";
@@ -261,9 +267,10 @@ BEGIN
   PERFORM set_config('app.current_org', v_org_id::text, true);
 
   -- 1) creation de l'organisation : WITH CHECK satisfait (id = app.current_org).
-  --    NB owner roadsen_auth = BYPASSRLS : le WITH CHECK ne s'applique en fait
-  --    pas, mais on conserve la pose du GUC pour rester correct si l'owner
-  --    venait a perdre BYPASSRLS.
+  --    NB (revision NOBYPASSRLS) : owner roadsen_auth N'EST PLUS BYPASSRLS -> la
+  --    pose du GUC est NECESSAIRE pour satisfaire le WITH CHECK. A froid (sans
+  --    drapeau d'auth, avant 0007), cet INSERT serait toutefois refuse par la RLS
+  --    users/memberships : le fonctionnement a froid est retabli par 0007 (drapeau).
   INSERT INTO "organizations" ("id", "name", "slug", "updatedAt")
   VALUES (v_org_id, p_name, p_slug, CURRENT_TIMESTAMP);
 

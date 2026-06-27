@@ -15,11 +15,13 @@
  *          ne fuit pas vers la transaction B (org differente) sur la MEME
  *          connexion physique reutilisee.
  *   #42.5  Assert role DB : roadsen_app a rolbypassrls=false ET rolsuper=false.
- *   PIEGE  PROD-LIKE : login (auth_find_user_by_email) et provisioning
- *          (provision_org) fonctionnent SANS app.current_org pose, car les
- *          fonctions DEFINER sont owned par roadsen_auth (BYPASSRLS, NOLOGIN).
- *          On prouve aussi que roadsen_auth N'EST PAS une surface de login
- *          (NOLOGIN) et n'est PAS superuser.
+ *   PIEGE  PROD-LIKE (modele 0007, SANS BYPASSRLS) : login (auth_find_user_by_email)
+ *          et provisioning (provision_org) fonctionnent SANS app.current_org pose,
+ *          car les fonctions DEFINER posent le drapeau fail-closed
+ *          app.auth_bootstrap qui ouvre la branche RLS d'IDENTITE — plus aucun
+ *          role BYPASSRLS. On prouve aussi qu'aucun role auth dedie ne bypasse la
+ *          RLS (roadsen_auth supprime). Preuve sous owner NON-superuser SIMULE :
+ *          voir rls-no-bypassrls.e2e-spec.ts.
  *
  * Connexions (cf. rls-isolation.e2e-spec.ts) :
  *   - ADMIN_URL  = DATABASE_URL (superuser roadsen) : seed/teardown uniquement.
@@ -193,10 +195,13 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
   );
 
   guarded(
-    '#42.PIEGE roadsen_auth (owner DEFINER) : NOLOGIN, NON super, BYPASSRLS',
+    '#42.PIEGE (0007) roadsen_auth existe mais NON-BYPASSRLS, NON super, NOLOGIN',
     async () => {
-      // Le bypass RLS est porte par un role DEDIE, NON connectable (NOLOGIN) et
-      // NON superuser : surface minimale, jamais une porte de login.
+      // MODELE 0007 (correctif B1) : roadsen_auth est CONSERVE comme owner des
+      // DEFINER et SEUL detenteur du DML identite, mais il N'A PLUS BYPASSRLS
+      // (l'attribut incompatible avec le Postgres managed Render). Le bypass de la
+      // RLS d'identite vient desormais du drapeau app.auth_bootstrap + du privilege
+      // de table de roadsen_auth, JAMAIS de BYPASSRLS.
       const { rows } = await admin!.query<{
         rolcanlogin: boolean;
         rolsuper: boolean;
@@ -204,34 +209,52 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
       }>(
         `SELECT rolcanlogin, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'roadsen_auth'`,
       );
-      expect(rows).toHaveLength(1);
+      expect(rows).toHaveLength(1); // le role existe (owner des DEFINER)
+      expect(rows[0].rolbypassrls).toBe(false); // CLE : plus aucun BYPASSRLS
+      expect(rows[0].rolsuper).toBe(false);
       expect(rows[0].rolcanlogin).toBe(false); // NOLOGIN : pas une surface
-      expect(rows[0].rolsuper).toBe(false); // moindre privilege
-      expect(rows[0].rolbypassrls).toBe(true); // bypass legitime pour l'auth a froid
     },
   );
 
   guarded(
-    '#42.PIEGE owner : les 4 fonctions DEFINER sont OWNED par roadsen_auth',
+    '#42.PIEGE (0007) DEFINER owned par roadsen_auth (NON-bypass) ; roadsen_app SANS DML identite',
     async () => {
-      // GARDE-FOU CRITIQUE (revue adverse MAJEUR-3) : si l'ALTER OWNER de 0004
-      // n'avait pas pris, l'owner resterait roadsen (superuser). Les tests
-      // #42.PIEGE passeraient alors pour la MAUVAISE raison (bypass superuser au
-      // lieu du role dedie). On verifie donc explicitement le proprietaire reel
-      // via pg_proc.proowner. En CI comme en local, ces 4 fonctions DOIVENT
-      // appartenir a roadsen_auth, sinon le modele de securite n'est pas en place.
-      const { rows } = await admin!.query<{ proname: string; owner: string }>(
-        `SELECT p.proname, r.rolname AS owner
+      // 1) les 6 DEFINER sont owned par roadsen_auth, dont l'owner N'EST PAS bypass.
+      const { rows } = await admin!.query<{
+        proname: string;
+        owner: string;
+        owner_bypassrls: boolean;
+      }>(
+        `SELECT p.proname, r.rolname AS owner, r.rolbypassrls AS owner_bypassrls
          FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner
          WHERE p.proname IN (
-           'provision_org','auth_find_user_by_email',
-           'auth_user_has_membership','auth_get_platform_role'
+           'provision_org','provision_user','auth_find_user_by_email',
+           'auth_user_has_membership','auth_get_platform_role','auth_get_user_profile'
          )
          ORDER BY p.proname`,
       );
-      expect(rows).toHaveLength(4);
+      expect(rows).toHaveLength(6);
       for (const row of rows) {
         expect(row.owner).toBe('roadsen_auth');
+        expect(row.owner_bypassrls).toBe(false); // owner NON-bypass : barriere reelle
+      }
+
+      // 2) BARRIERE 1 : roadsen_app n'a AUCUN privilege DML sur les 3 tables
+      //    d'identite (sinon poser le drapeau lui suffirait a lire les hashes).
+      const { rows: priv } = await admin!.query<{ tbl: string; has: boolean }>(
+        `SELECT t.tbl,
+                bool_or(
+                  has_table_privilege('roadsen_app', t.tbl, 'SELECT') OR
+                  has_table_privilege('roadsen_app', t.tbl, 'INSERT') OR
+                  has_table_privilege('roadsen_app', t.tbl, 'UPDATE') OR
+                  has_table_privilege('roadsen_app', t.tbl, 'DELETE')
+                ) AS has
+         FROM (VALUES ('users'),('memberships'),('organizations')) AS t(tbl)
+         GROUP BY t.tbl`,
+      );
+      expect(priv).toHaveLength(3);
+      for (const p of priv) {
+        expect(p.has).toBe(false); // roadsen_app : zero DML sur l'identite
       }
     },
   );
@@ -342,9 +365,10 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
     '#42.PIEGE login : auth_find_user_by_email marche SANS app.current_org',
     async () => {
       // Le coeur du piege : cette lecture a lieu AVANT tout contexte tenant.
-      // Sous roadsen_app (NOBYPASSRLS), elle ne marche QUE parce que la fonction
-      // DEFINER est owned par roadsen_auth (BYPASSRLS). Si le RAISE de 0004 avait
-      // casse l'auth, ce test echouerait (0 ligne ou exception).
+      // Sous roadsen_app (NOBYPASSRLS), elle marche parce que la fonction DEFINER
+      // pose le drapeau fail-closed app.auth_bootstrap (modele 0007), qui ouvre la
+      // branche RLS d'identite — SANS aucun role BYPASSRLS. Si le RAISE / le
+      // drapeau avait casse l'auth, ce test echouerait (0 ligne ou exception).
       await app!.query(`RESET app.current_org`);
       const { rows } = await app!.query<{ id: string }>(
         `SELECT id FROM auth_find_user_by_email($1)`,
@@ -377,9 +401,9 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
   guarded(
     '#42.PIEGE provision_org : creation org+OWNER marche SANS app.current_org',
     async () => {
-      // provision_org pose lui-meme app.current_org (SET LOCAL interne) et est
-      // owned par roadsen_auth (BYPASSRLS) : il fonctionne a froid. Preuve que le
-      // RAISE de 0004 n'a pas casse le bootstrap.
+      // provision_org pose lui-meme app.current_org (SET LOCAL interne) ET le
+      // drapeau app.auth_bootstrap (modele 0007) : il fonctionne a froid SANS
+      // BYPASSRLS. Preuve que le bootstrap tient sous owner non-bypass.
       await app!.query(`RESET app.current_org`);
       const slug = `fc-prov-${randomUUID().slice(0, 8)}`;
       const { rows } = await app!.query<{ provision_org: string }>(

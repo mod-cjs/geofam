@@ -16,6 +16,17 @@ import { PrismaClient } from '@prisma/client';
  * Regle : tout acces a une table multi-tenant passe par `withTenant`.
  * En dehors d'une transaction scopee, RLS rend les lignes invisibles
  * (fail-closed : current_setting('app.current_org', true) = NULL).
+ *
+ * INVARIANT D'AUTH (migration 0007) : NE JAMAIS appeler une fonction DEFINER
+ * d'auth/bootstrap (auth_find_user_by_email, auth_user_has_membership,
+ * auth_get_platform_role, auth_get_user_profile, provision_user, provision_org)
+ * a l'INTERIEUR d'un `withTenant`. Ces fonctions posent un drapeau de confiance
+ * `app.auth_bootstrap` qui ouvre la branche RLS d'IDENTITE ; il est tx-local et
+ * referme avant leur RETURN. Appelees en AUTO-COMMIT (hors transaction, comme le
+ * fait AuthService via $queryRaw), le drapeau ne survit pas a l'appel. Les glisser
+ * dans la MEME transaction qu'une requete tenant exposerait une fenetre ou le
+ * drapeau pourrait etre actif pour d'autres requetes de la tx. AuthService lit donc
+ * l'identite HORS withTenant ; withTenant ne sert QU'aux tables de donnees tenant.
  */
 @Injectable()
 export class PrismaService
