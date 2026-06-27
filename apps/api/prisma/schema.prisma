@@ -56,8 +56,9 @@ model Organization {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  memberships Membership[]
-  projects    Project[]
+  memberships  Membership[]
+  projects     Project[]
+  subscription Subscription? // 1:1 logique en P1 (org_id UNIQUE cote subscriptions)
 
   @@map("organizations")
 }
@@ -175,6 +176,10 @@ model OfficialPv {
   inputCanonical   String   @map("input_canonical")
   output           Json     @db.JsonB
   scienceStatus    String   @map("science_status")
+  // VERDICT scelle (ADR 0012) : CONFORME / NON_CONFORME / NON_APPLICABLE. Copie
+  // denormalisee de la valeur SCELLEE dans input_canonical (verite = la canonique).
+  // Defaut DB 'NON_APPLICABLE' (migration 0008) ; l'app fournit toujours la valeur.
+  verdict          String   @default("NON_APPLICABLE")
   contentHash      String   @map("content_hash")
   hmac             String
   sealedAt         DateTime @map("sealed_at")
@@ -194,4 +199,55 @@ model PvCounter {
 
   @@id([orgId, year])
   @@map("pv_counters")
+}
+
+// ----------------------- Abonnements & ledger d'usage (ADR 0009/0011) -----------------------
+//
+//  subscriptions : 1 abonnement actif par org (org_id UNIQUE). usage_ledger :
+//  journal append-only de la consommation (la verite auditable). RLS FORCE +
+//  policies + FK composite + triggers d'immuabilite (usage_ledger) + GRANTs
+//  minimaux : portes par la migration SQL 0008 (Prisma seul ne les exprime pas).
+//  Voir prisma/migrations/0008_subscriptions_usage_ledger/migration.sql.
+
+// Abonnement d'une organisation. `entitlements` = engineId/features debloques
+// (STOCKE explicitement, derive du pack). `quota` NON-NULL fini (le decompte
+// atomique WHERE consommation < quota casserait sur NULL). `consommation` =
+// compteur materialise reconciliable par COUNT(*) du ledger.
+model Subscription {
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @unique @map("org_id") @db.Uuid
+  pack         String
+  entitlements String[]
+  dateDebut    DateTime @map("date_debut") @db.Timestamptz()
+  dateFin      DateTime @map("date_fin") @db.Timestamptz()
+  quota        Int
+  consommation Int      @default(0)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz()
+
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  ledger UsageLedger[]
+
+  @@unique([orgId, id]) // cible de la FK COMPOSITE (org_id, .) du ledger
+  @@index([orgId])
+  @@map("subscriptions")
+}
+
+// Journal d'usage APPEND-ONLY (immuable via triggers 0008 ; runtime sans
+// UPDATE/DELETE). FK COMPOSITE (orgId, subscriptionId) -> subscriptions(orgId, id) :
+// un ledger ne rattache que l'abonnement de SON tenant.
+model UsageLedger {
+  id             String   @id @default(uuid()) @db.Uuid
+  orgId          String   @map("org_id") @db.Uuid
+  subscriptionId String   @map("subscription_id") @db.Uuid
+  kind           String
+  refId          String?  @map("ref_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  subscription Subscription @relation(fields: [orgId, subscriptionId], references: [orgId, id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([orgId, subscriptionId])
+  @@map("usage_ledger")
 }

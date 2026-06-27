@@ -51,7 +51,8 @@ export class PieuxController {
     // reference jamais .output. Nomme clairement pour la recette STARFIRE.
     examples: {
       'pieu-cas-de-reference': {
-        summary: 'Pieu / fondation profonde — cas de référence (NF P 94-262, EC7)',
+        summary:
+          'Pieu / fondation profonde — cas de référence (NF P 94-262, EC7)',
         value: PIEUX_FIXTURES[0]?.input,
       },
     },

@@ -48,7 +48,8 @@ export class LaboController {
     // reference jamais .output. Nomme clairement pour la recette STARFIRE.
     examples: {
       'labo-cas-de-reference': {
-        summary: 'Essais labo & classification GTR — cas de référence (FASTLAB, NF P 11-300)',
+        summary:
+          'Essais labo & classification GTR — cas de référence (FASTLAB, NF P 11-300)',
         value: LABO_FIXTURES[0]?.input,
       },
     },

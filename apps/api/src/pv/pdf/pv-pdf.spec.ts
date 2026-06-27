@@ -10,13 +10,13 @@
  *     illisible -> LÈVE (pas de PDF dégradé).
  *   - scienceStatus est dans le canonique mais N'EST JAMAIS rendu (anti-fuite).
  */
+import type { OfficialPv } from '@prisma/client';
 import {
   canonicalize,
   sealContentHash,
   sealHmac,
   type SealableValue,
 } from '@roadsen/shared';
-import type { OfficialPv } from '@prisma/client';
 
 import { buildPvDocDefinition, collectPvPdfText, renderPvPdf } from './pv-pdf';
 
@@ -74,6 +74,7 @@ function makeSealedPv(
     inputCanonical: canonical,
     output: output,
     scienceStatus: overrides.scienceStatus ?? 'unsigned',
+    verdict: 'NON_APPLICABLE',
     contentHash: sealContentHash(canonical),
     hmac: sealHmac(canonical, SECRET),
     sealedAt: new Date(sealedAtIso),

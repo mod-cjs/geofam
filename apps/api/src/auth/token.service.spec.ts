@@ -69,7 +69,7 @@ describe('TokenService', () => {
     });
 
     it('signe effectivement en HS256 (en-tete alg=HS256)', async () => {
-      const token = await service.signAccess('user-1');
+      const token = await service.signAccess('user-1', []);
       const headerJson = Buffer.from(token.split('.')[0], 'base64').toString(
         'utf8',
       );
@@ -80,8 +80,41 @@ describe('TokenService', () => {
 
   describe('B — round-trip et discrimination de type', () => {
     it('signAccess puis verify(access) renvoie le sub', async () => {
-      const token = await service.signAccess('user-42');
+      const token = await service.signAccess('user-42', []);
       await expect(service.verify(token, 'access')).resolves.toBe('user-42');
+    });
+
+    it('signAccess embarque le claim `orgs` {id,slug,role} dans le payload (ADR 0010)', async () => {
+      const orgs = [
+        { id: 'o1', slug: 'org-1', role: 'OWNER' as const },
+        { id: 'o2', slug: 'org-2', role: 'ENGINEER' as const },
+      ];
+      const token = await service.signAccess('user-42', orgs);
+      const payloadJson = Buffer.from(token.split('.')[1], 'base64').toString(
+        'utf8',
+      );
+      const payload = JSON.parse(payloadJson) as {
+        typ: string;
+        orgs: typeof orgs;
+      };
+      expect(payload.typ).toBe('access');
+      expect(payload.orgs).toEqual(orgs);
+    });
+
+    it('le claim `orgs` falsifie sous un AUTRE secret est rejete au verify (ADR 0010 §4 T4)', async () => {
+      // Attaque « j ajoute une org a la main » : sans le vrai secret, l attaquant
+      // doit re-signer -> signature invalide -> rejet. Le pendant EDGE (jose,
+      // meme secret) rejette de meme une signature KO ; c est le meme verrou.
+      const foreign = new JwtService({});
+      const forged = await foreign.signAsync(
+        { typ: 'access', orgs: [{ id: 'x', slug: 'pirate', role: 'OWNER' }] },
+        {
+          secret: 'secret-de-l-attaquant',
+          algorithm: 'HS256',
+          subject: 'user-42',
+        },
+      );
+      await expect(service.verify(forged, 'access')).resolves.toBeNull();
     });
 
     it('signRefresh puis verify(refresh) renvoie le sub', async () => {
@@ -90,7 +123,7 @@ describe('TokenService', () => {
     });
 
     it('rejette (null) un access token presente comme refresh', async () => {
-      const access = await service.signAccess('user-42');
+      const access = await service.signAccess('user-42', []);
       await expect(service.verify(access, 'refresh')).resolves.toBeNull();
     });
 

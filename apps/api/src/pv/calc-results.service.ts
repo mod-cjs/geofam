@@ -12,6 +12,7 @@ import {
 } from '@roadsen/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { requireOrgId } from '../tenant/tenant-context';
 
 import { findEngineDispatch, SUPPORTED_ENGINE_SLUGS } from './engine-dispatch';
@@ -43,7 +44,10 @@ export interface PersistedCalcResult {
  */
 @Injectable()
 export class CalcResultsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly subscriptions: SubscriptionsService,
+  ) {}
 
   /**
    * Execute le moteur `engineSlug` sur `body` pour `projectId` et persiste le
@@ -128,7 +132,17 @@ export class CalcResultsService {
           'Projet introuvable dans cette organisation.',
         );
       }
-      return tx.calcResult.create({
+
+      // INSERT du calcul d'abord (on a son id pour tracer le ledger), puis
+      // DECOMPTE ATOMIQUE (ADR 0011 §3) — TOUT dans CETTE transaction tenant :
+      //  - le calcul a REUSSI (on n'arrive ici que sur envelope.ok) ;
+      //  - reserveUnit incremente conditionnellement le quota (WHERE consommation
+      //    < quota AND now() <= date_fin) et insere la ligne de ledger ;
+      //  - 0 ligne reservee -> 402 (QUOTA/EXPIRED) -> la tx ROLLBACK -> le calcul
+      //    n'est PAS persiste et RIEN n'est consomme (anti depassement + TM-5).
+      // L'ordre INSERT-puis-reserve est sans incidence sur l'atomicite (meme tx) ;
+      // il donne juste refId = id du calcul pour la tracabilite du ledger.
+      const row = await tx.calcResult.create({
         data: {
           orgId,
           projectId: args.projectId,
@@ -141,6 +155,15 @@ export class CalcResultsService {
         },
         select: { id: true },
       });
+
+      await this.subscriptions.reserveUnit(tx, {
+        orgId,
+        kind: 'CALC',
+        refId: row.id,
+        userId: args.userId,
+      });
+
+      return row;
     });
 
     return {

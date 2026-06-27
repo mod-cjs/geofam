@@ -536,6 +536,7 @@ function camelizePv(row: Record<string, unknown>): OfficialPv {
     inputCanonical: row.input_canonical as string,
     output: row.output as OfficialPv['output'],
     scienceStatus: row.science_status as string,
+    verdict: (row.verdict as string | undefined) ?? 'NON_APPLICABLE',
     contentHash: row.content_hash as string,
     hmac: row.hmac as string,
     sealedAt: row.sealed_at as Date,

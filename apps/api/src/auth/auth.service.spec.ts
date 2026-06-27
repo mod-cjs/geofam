@@ -33,6 +33,27 @@ function rawPgError(sqlState: string): Prisma.PrismaClientKnownRequestError {
 }
 
 /**
+ * Stub PrismaService pour les tests unitaires d'AuthService. Toutes les lectures
+ * d'identite « a froid » passent par `asAppRole((tx) => tx.$queryRaw...)` (cf.
+ * migration 0007). Le stub execute le callback avec un `tx` dont `$queryRaw` est
+ * LE MEME mock que `prisma.$queryRaw` -> les `mockResolvedValue(...)`/`mockRejectedValue(...)`
+ * des tests pilotent indifferemment les appels directs ET ceux via asAppRole.
+ */
+type PrismaStub = { $queryRaw: jest.Mock; asAppRole: jest.Mock };
+function makePrismaStub(): PrismaStub {
+  // Defaut [] : loadOrgClaims (login/refresh) appelle $queryRaw meme quand un
+  // test ne s'interesse pas aux memberships -> il doit recevoir un tableau (et
+  // non undefined). Les tests qui pilotent les lignes surchargent ce defaut.
+  const queryRaw = jest.fn().mockResolvedValue([]);
+  return {
+    $queryRaw: queryRaw,
+    asAppRole: jest.fn((fn: (tx: { $queryRaw: jest.Mock }) => unknown) =>
+      fn({ $queryRaw: queryRaw }),
+    ),
+  };
+}
+
+/**
  * Non-regression A3 — anti-timing / 401 generique au login.
  *
  * Trois causes d'echec (email inconnu, mauvais mdp, compte inactif) doivent
@@ -41,7 +62,7 @@ function rawPgError(sqlState: string): Prisma.PrismaClientKnownRequestError {
  * ou d'enumeration).
  */
 describe('AuthService.login', () => {
-  let prisma: { $queryRaw: jest.Mock };
+  let prisma: PrismaStub;
   let tokens: { signAccess: jest.Mock; signRefresh: jest.Mock };
   let service: AuthService;
 
@@ -53,7 +74,7 @@ describe('AuthService.login', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma = { $queryRaw: jest.fn() };
+    prisma = makePrismaStub();
     tokens = {
       signAccess: jest.fn().mockResolvedValue('access-token'),
       signRefresh: jest.fn().mockResolvedValue('refresh-token'),
@@ -154,8 +175,71 @@ describe('AuthService.login', () => {
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
       });
-      expect(tokens.signAccess).toHaveBeenCalledWith('user-1');
+      // signAccess recoit (userId, orgs). Ici les lignes mockees n'ont pas de
+      // org_id/org_slug -> orgs = [] (le claim `orgs` reste vide). signRefresh
+      // reste minimal (userId seul).
+      expect(tokens.signAccess).toHaveBeenCalledWith('user-1', []);
       expect(tokens.signRefresh).toHaveBeenCalledWith('user-1');
+    });
+
+    it('given un user multi-org : signe l access avec orgs = {id,slug,role} FRAIS (ADR 0010)', async () => {
+      // 1er appel $queryRaw : lookup de login (auth_find_user_by_email).
+      // 2e appel : loadOrgClaims (auth_get_user_profile) -> 2 memberships.
+      prisma.$queryRaw
+        .mockResolvedValueOnce([activeUser])
+        .mockResolvedValueOnce([
+          {
+            user_id: 'user-1',
+            email: 'u@x.io',
+            full_name: 'U',
+            platform_role: null,
+            org_id: 'o1',
+            org_name: 'Org 1',
+            org_slug: 'org-1',
+            membership_role: 'OWNER',
+          },
+          {
+            user_id: 'user-1',
+            email: 'u@x.io',
+            full_name: 'U',
+            platform_role: null,
+            org_id: 'o2',
+            org_name: 'Org 2',
+            org_slug: 'org-2',
+            membership_role: 'ENGINEER',
+          },
+        ]);
+      verifyPasswordMock.mockResolvedValue(true);
+
+      await service.login('u@x.io', 'bon');
+
+      // Le claim `orgs` est la PHOTO des memberships : id (= X-Org-Id), slug
+      // (= [orgSlug] URL), role (gating UI). PAS de nom d'org, pas d'email.
+      expect(tokens.signAccess).toHaveBeenCalledWith('user-1', [
+        { id: 'o1', slug: 'org-1', role: 'OWNER' },
+        { id: 'o2', slug: 'org-2', role: 'ENGINEER' },
+      ]);
+    });
+
+    it('given un user SANS membership : orgs = [] (claim vide, pas d erreur)', async () => {
+      prisma.$queryRaw
+        .mockResolvedValueOnce([activeUser])
+        .mockResolvedValueOnce([
+          {
+            user_id: 'user-1',
+            email: 'u@x.io',
+            full_name: 'U',
+            platform_role: 'SUPERADMIN',
+            org_id: null,
+            org_name: null,
+            org_slug: null,
+            membership_role: null,
+          },
+        ]);
+      verifyPasswordMock.mockResolvedValue(true);
+
+      await service.login('u@x.io', 'bon');
+      expect(tokens.signAccess).toHaveBeenCalledWith('user-1', []);
     });
   });
 });
@@ -164,7 +248,7 @@ describe('AuthService.login', () => {
  * Non-regression — refresh stateless.
  */
 describe('AuthService.refresh', () => {
-  let prisma: { $queryRaw: jest.Mock };
+  let prisma: PrismaStub;
   let tokens: {
     verify: jest.Mock;
     signAccess: jest.Mock;
@@ -174,7 +258,7 @@ describe('AuthService.refresh', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma = { $queryRaw: jest.fn() };
+    prisma = makePrismaStub();
     tokens = {
       verify: jest.fn(),
       signAccess: jest.fn().mockResolvedValue('new-access'),
@@ -201,7 +285,10 @@ describe('AuthService.refresh', () => {
       refreshToken: 'new-refresh',
     });
     expect(tokens.verify).toHaveBeenCalledWith('ok', 'refresh');
-    expect(tokens.signAccess).toHaveBeenCalledWith('user-7');
+    // Au refresh aussi, `orgs` est reconstruit a partir de la base (ADR 0010 §3).
+    // La ligne mockee n'a pas d'org -> orgs = []. L'essentiel : signAccess est
+    // bien appele avec le sub du refresh et une photo orgs (re)chargee, pas figee.
+    expect(tokens.signAccess).toHaveBeenCalledWith('user-7', []);
   });
 });
 
@@ -210,12 +297,12 @@ describe('AuthService.refresh', () => {
  * borne du conflit d'email (anti-enumeration).
  */
 describe('AuthService.provisionUser', () => {
-  let prisma: { $queryRaw: jest.Mock };
+  let prisma: PrismaStub;
   let service: AuthService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma = { $queryRaw: jest.fn() };
+    prisma = makePrismaStub();
     service = new AuthService(
       prisma as unknown as PrismaService,
       {} as unknown as TokenService,
@@ -272,12 +359,12 @@ describe('AuthService.provisionUser', () => {
  * (owner inexistant = 400 ; slug pris = 409 ; reste propage).
  */
 describe('AuthService.provisionOrg', () => {
-  let prisma: { $queryRaw: jest.Mock };
+  let prisma: PrismaStub;
   let service: AuthService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma = { $queryRaw: jest.fn() };
+    prisma = makePrismaStub();
     service = new AuthService(
       prisma as unknown as PrismaService,
       {} as unknown as TokenService,
@@ -310,12 +397,12 @@ describe('AuthService.provisionOrg', () => {
  * /auth/me — getProfile : agregation des memberships, user sans org, user absent.
  */
 describe('AuthService.getProfile', () => {
-  let prisma: { $queryRaw: jest.Mock };
+  let prisma: PrismaStub;
   let service: AuthService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma = { $queryRaw: jest.fn() };
+    prisma = makePrismaStub();
     service = new AuthService(
       prisma as unknown as PrismaService,
       {} as unknown as TokenService,

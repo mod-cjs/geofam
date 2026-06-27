@@ -50,7 +50,8 @@ export class RadierController {
     // reference jamais .output. Nomme clairement pour la recette STARFIRE.
     examples: {
       'radier-cas-de-reference': {
-        summary: 'Radier / plaque sur sol multicouche — cas de référence (GEOPLAQUE)',
+        summary:
+          'Radier / plaque sur sol multicouche — cas de référence (GEOPLAQUE)',
         value: RADIER_FIXTURES[0]?.input,
       },
     },

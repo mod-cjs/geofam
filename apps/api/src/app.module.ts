@@ -18,6 +18,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsModule } from './projects/projects.module';
 import { PvModule } from './pv/pv.module';
 import { RecetteAccessGuard } from './recette/recette-access.guard';
+import { SubscriptionGuard } from './subscriptions/subscription.guard';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
 
 @Module({
@@ -29,6 +31,7 @@ import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
     HealthModule,
     CalcModule,
     PvModule,
+    SubscriptionsModule,
     // Rate limiting GLOBAL (anti-abus). Seuil LARGE (60 req / 60 s par IP) :
     // raisonnable pour des endpoints de calcul, et assez haut pour ne pas
     // perturber les suites e2e (qui enchainent quelques requetes par cas).
@@ -45,14 +48,19 @@ import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
     //     a TOUTES les routes, @Public comprises : c'est une porte EXTERNE,
     //     independante de l'auth JWT.
     //  0bis) ThrottlerGuard — rate limiting (cf. ThrottlerModule ci-dessus).
-    //  1) JwtAuthGuard  — exige un access token verifie (sauf @Public).
-    //  2) TenantGuard   — prouve l'appartenance a l'org demandee, pose req.tenant.
-    //  3) RolesGuard    — applique @Roles (role tenant ou platformRole).
+    //  1) JwtAuthGuard      — exige un access token verifie (sauf @Public).
+    //  2) TenantGuard       — prouve l'appartenance a l'org demandee, pose req.tenant.
+    //  3) SubscriptionGuard — enforce l'abonnement (ADR 0011) : 403 module hors
+    //     pack / 402 expire|quota, UNIQUEMENT sur les routes @RequiresEntitlement
+    //     /@Consumes. Place APRES TenantGuard (org resolue) et AVANT RolesGuard.
+    //  4) RolesGuard        — applique @Roles (role tenant ou platformRole).
     // Deny-by-default : toute route non @Public exige un token ET une org membre.
+    // NB ORDRE : les APP_GUARD s'executent dans l'ordre de declaration ci-dessous.
     { provide: APP_GUARD, useClass: RecetteAccessGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: TenantGuard },
+    { provide: APP_GUARD, useClass: SubscriptionGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     // Execute le handler dans l'AsyncLocalStorage tenant (SET LOCAL + RLS) une
     // fois l'appartenance prouvee.

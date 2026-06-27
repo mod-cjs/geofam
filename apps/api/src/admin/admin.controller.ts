@@ -5,6 +5,7 @@ import { NoTenant, Roles } from '../auth/decorators';
 import type { CreateOrgDto, CreateUserDto } from '../auth/dto';
 import { createOrgSchema, createUserSchema } from '../auth/dto';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 /**
  * AdminController — back-office plateforme (onboarding SUPERADMIN).
@@ -31,7 +32,10 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 @NoTenant()
 @Roles('SUPERADMIN')
 export class AdminController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly subscriptions: SubscriptionsService,
+  ) {}
 
   /**
    * Cree un utilisateur. Renvoie 201 + l'id cree. Le mot de passe initial est
@@ -66,6 +70,20 @@ export class AdminController {
       body.slug,
       body.ownerUserId,
     );
+    // Provisionnement de l'abonnement (ADR 0009/0011, manuel P1) — si fourni.
+    // Idempotent cote base (ON CONFLICT org_id DO NOTHING) -> sans danger si la
+    // route est rejouee. Une org sans subscription reste creee (le calcul/PV sera
+    // barre en 403 NoSubscription tant qu'un abonnement n'est pas pose).
+    if (body.subscription) {
+      await this.subscriptions.provision({
+        orgId,
+        pack: body.subscription.pack,
+        entitlements: body.subscription.entitlements,
+        dateDebut: body.subscription.dateDebut,
+        dateFin: body.subscription.dateFin,
+        quota: body.subscription.quota,
+      });
+    }
     return { orgId };
   }
 }

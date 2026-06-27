@@ -47,6 +47,13 @@ export interface SealedContent {
   input: unknown;
   output: unknown;
   scienceStatus: string;
+  /**
+   * Verdict SCELLE (ADR 0012) : CONFORME / NON_CONFORME / NON_APPLICABLE. Champ
+   * de 1er niveau du contenu canonique. Le rendu du MARQUAGE NON CONFORME
+   * (bandeau + filigrane, ADR 0012 §2) consomme ce champ — suivi a faire cote
+   * presentation/PDF. Defaut 'NON_APPLICABLE' si absent (PV recette pre-0012).
+   */
+  verdict: string;
 }
 
 /**
@@ -753,6 +760,10 @@ function parseSealedStrict(canonical: string): SealedContent {
     // scienceStatus est dans le canonique mais N'EST JAMAIS rendu (anti-fuite).
     scienceStatus:
       typeof parsed.scienceStatus === 'string' ? parsed.scienceStatus : '',
+    // Verdict scelle (ADR 0012). Defaut neutre si absent (canonique recette
+    // pre-0012) -> le rendu ne casse pas ; un PV emis post-0012 le porte toujours.
+    verdict:
+      typeof parsed.verdict === 'string' ? parsed.verdict : 'NON_APPLICABLE',
   };
 }
 

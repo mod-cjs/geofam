@@ -6,13 +6,13 @@
  * / content_hash inchangé), anti-fuite confidentialité (coefficients de calage et
  * flags de branche masqués), fail-closed (hérité de pv-pdf.spec).
  */
+import type { OfficialPv } from '@prisma/client';
 import {
   canonicalize,
   sealContentHash,
   sealHmac,
   type SealableValue,
 } from '@roadsen/shared';
-import type { OfficialPv } from '@prisma/client';
 
 import { buildPvDocDefinition, collectPvPdfText } from './pv-pdf';
 import { COLORS } from './pv-pdf.theme';
@@ -95,6 +95,7 @@ function makeChausseePv(
     inputCanonical: canonical,
     output: output,
     scienceStatus: 'unsigned',
+    verdict: 'NON_APPLICABLE',
     contentHash: sealContentHash(canonical),
     hmac: sealHmac(canonical, SECRET),
     sealedAt: new Date(sealedAtIso),
@@ -128,6 +129,7 @@ function makeFallbackPv(): OfficialPv {
     inputCanonical: canonical,
     output: { qadm: 0.25, tassement: 0.012 },
     scienceStatus: 'unsigned',
+    verdict: 'NON_APPLICABLE',
     contentHash: sealContentHash(canonical),
     hmac: sealHmac(canonical, SECRET),
     sealedAt: new Date(sealedAtIso),

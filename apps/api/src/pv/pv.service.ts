@@ -15,9 +15,11 @@ import {
 } from '@roadsen/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { requireOrgId } from '../tenant/tenant-context';
 
 import { renderPvPdf } from './pdf/pv-pdf';
+import { resolveVerdict } from './verdict';
 
 /** PV officiel + verdict de verification du sceau (recalcule a la lecture). */
 export interface OfficialPvView {
@@ -51,7 +53,10 @@ export interface OfficialPvView {
  */
 @Injectable()
 export class PvService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly subscriptions: SubscriptionsService,
+  ) {}
 
   /**
    * Emet (ou renvoie, si deja emis) le PV officiel d'un calc_result du tenant.
@@ -156,9 +161,17 @@ export class PvService {
         const seq = Number(seqRows[0]?.allocate_pv_number ?? 0);
         const pvNumber = formatPvNumber(org.slug, year, seq);
 
+        // VERDICT (ADR 0012) — resolu depuis l'engineId scelle (registryId) et la
+        // sortie persistee. FAIL-CLOSED : resolveVerdict LEVE si un moteur a
+        // verdict booleen attendu (burmister/pieux) ne porte pas son drapeau ->
+        // pas de PV (on refuse de sceller un verdict indetermine). Le verdict
+        // entre dans le CONTENU CANONIQUE (champ de 1er niveau, scelle par le HMAC).
+        const verdict = resolveVerdict(calc.engineId, calc.output);
+
         // CONTENU CANONIQUE : tout ce qui est scelle. sealedAt = chaine ISO.
         const content: SealableValue = {
           pvNumber,
+          verdict,
           sealedAt: sealedAtIso,
           engineMeta: {
             engineId: calc.engineId,
@@ -188,6 +201,19 @@ export class PvService {
         const contentHash = sealContentHash(canonical);
         const hmac = sealHmac(canonical, secret);
 
+        // DECOMPTE ATOMIQUE (ADR 0011 §3, TM-8) — UNIQUEMENT sur l'EMISSION REELLE.
+        // On est ici APRES le check d'idempotence (existing renvoye plus haut) :
+        // une re-emission idempotente N'ATTEINT JAMAIS ce point -> AUCUN 2e quota
+        // brule (anti double-comptage). Le decompte est dans la MEME tx que
+        // l'INSERT : quota epuise/expire -> 402 -> ROLLBACK -> pas de PV, pas de
+        // conso. Une course (P2002) plus bas rollback AUSSI cette reservation.
+        await this.subscriptions.reserveUnit(tx, {
+          orgId,
+          kind: 'PV',
+          refId: args.calcResultId,
+          userId: args.userId,
+        });
+
         // INSERT de l'official_pv (immuable). Une course sur le meme calcul bute sur
         // UNIQUE(org_id, calc_result_id) -> P2002. ATTENTION : le rattrapage NE PEUT
         // PAS se faire ICI : le P2002 a deja AVORTE cette transaction (Postgres 25P02
@@ -209,6 +235,8 @@ export class PvService {
             inputCanonical: canonical,
             output: calc.output as object,
             scienceStatus: SCIENCE_STATUS,
+            // Copie denormalisee de la valeur SCELLEE (verite = input_canonical).
+            verdict,
             contentHash,
             hmac,
             sealedAt: new Date(sealedAtIso),

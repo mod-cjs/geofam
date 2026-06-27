@@ -12,6 +12,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { hashPassword, verifyPassword } from './password';
+import type { OrgClaim } from './token.service';
 import { TokenService } from './token.service';
 
 export interface TokenPair {
@@ -280,9 +281,46 @@ export class AuthService {
     };
   }
 
+  /**
+   * Charge la photo FRAICHE des memberships du user (id/slug/role), pour le
+   * claim `orgs` de l'access token (ADR 0010). Reutilise la fonction DEFINER
+   * auth_get_user_profile (deja la voie de getProfile) -> aucune nouvelle voie
+   * de lecture d'identite. Appele a CHAQUE login ET refresh : au refresh, `orgs`
+   * est donc reconstruit a partir de la base (mecanisme de fraicheur ADR 0010 §3).
+   *
+   * Un user sans aucun membership -> [] (claim `orgs` vide, pas d'erreur).
+   */
+  private async loadOrgClaims(userId: string): Promise<OrgClaim[]> {
+    const rows = await this.prisma.asAppRole(
+      (tx) => tx.$queryRaw<ProfileRow[]>`
+        SELECT user_id, email, full_name, platform_role,
+               org_id, org_name, org_slug, membership_role
+        FROM auth_get_user_profile(${userId}::uuid)
+      `,
+    );
+    // Une ligne par membership ; org_* NULL = user sans org (LEFT JOIN a vide).
+    // Test de VERITE (org_id && org_slug) plutot que `!== null` : robuste aux
+    // lignes sans ces cles. Un membership n'est retenu que s'il porte un id ET
+    // un slug exploitables (sinon il ne pourrait servir ni X-Org-Id ni l'URL).
+    return rows
+      .filter(
+        (r): r is ProfileRow & { org_id: string; org_slug: string } =>
+          Boolean(r.org_id) && Boolean(r.org_slug),
+      )
+      .map((r) => ({
+        id: r.org_id,
+        slug: r.org_slug,
+        role: r.membership_role as Role,
+      }));
+  }
+
   private async issueTokens(userId: string): Promise<TokenPair> {
+    // `orgs` chargees AVANT de signer l'access : photo fraiche a chaque emission
+    // (login ET refresh). Le refresh, lui, reste minimal (signRefresh n'a pas
+    // d'orgs) -> il ne fige aucune appartenance.
+    const orgs = await this.loadOrgClaims(userId);
     const [accessToken, refreshToken] = await Promise.all([
-      this.tokens.signAccess(userId),
+      this.tokens.signAccess(userId, orgs),
       this.tokens.signRefresh(userId),
     ]);
     return { accessToken, refreshToken };

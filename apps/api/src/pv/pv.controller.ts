@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Roles } from '../auth/decorators';
 import type { AuthedRequest } from '../auth/request-context';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { Consumes, RequiresEntitlement } from '../subscriptions/decorators';
 
 import type { PersistedCalcResult } from './calc-results.service';
 import { CalcResultsService } from './calc-results.service';
@@ -48,6 +49,13 @@ export class PvController {
    */
   @Post('calc/:engine')
   @Roles('OWNER', 'ADMIN', 'ENGINEER', 'TECHNICIAN', 'SUPERADMIN')
+  // Enforcement abonnement (ADR 0011) : le moteur (slug d'URL :engine) doit etre
+  // dans le pack (sinon 403), l'abo non expire et le quota non epuise (sinon 402).
+  // @Consumes('CALC') : un calcul REUSSI decremente le quota (decompte atomique
+  // dans runAndPersist, pas ici). L'entitlement est compare au SLUG d'URL, qui est
+  // aussi la cle des `modules` du contrat /me/entitlements (selecteur C-01 cote UI).
+  @RequiresEntitlement({ param: 'engine' })
+  @Consumes('CALC')
   @ApiOperation({
     summary:
       'Recalcul serveur PERSISTANT (surface tenant) : execute le moteur et stocke un calc_result org-scope.',
@@ -73,6 +81,12 @@ export class PvController {
    */
   @Post('calc-results/:id/pv')
   @Roles('OWNER', 'ADMIN', 'ENGINEER', 'SUPERADMIN')
+  // @Consumes('PV') : l'EMISSION REELLE d'un PV (1er scellement) decremente le
+  // quota. ATTENTION DOUBLE-COMPTAGE (TM-8) : la re-emission idempotente NE
+  // consomme PAS (le decompte est lie a l'INSERT effectif dans official_pvs, pas
+  // au passage de la route) — cf. PvService.emitFromCalc. Pas de @RequiresEntitlement
+  // ici : le moteur a deja ete entitle au calcul ; un PV ne re-verifie pas le module.
+  @Consumes('PV')
   @ApiOperation({
     summary:
       'Emet (ou renvoie si deja emis) le PV officiel scelle d un calc_result. Idempotent.',

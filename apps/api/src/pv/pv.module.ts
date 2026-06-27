@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+
 import { CalcResultsService } from './calc-results.service';
 import { PvController } from './pv.controller';
 import { PvService } from './pv.service';
@@ -14,6 +16,9 @@ import { PvService } from './pv.service';
  * (primitive de scellement de l'incrément A).
  */
 @Module({
+  // SubscriptionsModule : fournit SubscriptionsService (decompte atomique du
+  // quota a l'usage effectif — calcul/PV), injecte dans CalcResultsService/PvService.
+  imports: [SubscriptionsModule],
   controllers: [PvController],
   providers: [CalcResultsService, PvService],
   exports: [CalcResultsService, PvService],

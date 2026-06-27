@@ -37,6 +37,23 @@ export type CreateUserDto = z.infer<typeof createUserSchema>;
  * absent). slug borne au format kebab (lettres/chiffres/tirets) pour rester une
  * cle d'URL propre et eviter les surprises d'unicite.
  */
+/**
+ * Bloc abonnement OPTIONNEL a la creation d'org (ADR 0009/0011, provisionnement
+ * manuel SUPERADMIN en P1). Si fourni, l'abonnement est cree avec l'org (pack +
+ * modules debloques + fenetre de validite + quota fini). Dates en ISO 8601
+ * (coerce -> Date). quota entier >= 0 (NON-NULL : le decompte atomique WHERE
+ * consommation < quota casserait sur NULL). entitlements = liste des SLUGS de
+ * moteurs debloques (cle des `modules` de /me/entitlements et du selecteur C-01).
+ */
+export const subscriptionInputSchema = z.object({
+  pack: z.enum(['ROUTES', 'FONDATIONS', 'COMPLETE']),
+  entitlements: z.array(z.string().trim().min(1)).min(1),
+  dateDebut: z.coerce.date(),
+  dateFin: z.coerce.date(),
+  quota: z.number().int().min(0),
+});
+export type SubscriptionInputDto = z.infer<typeof subscriptionInputSchema>;
+
 export const createOrgSchema = z.object({
   name: z.string().trim().min(1).max(200),
   slug: z
@@ -48,5 +65,9 @@ export const createOrgSchema = z.object({
       message: 'slug invalide (kebab-case attendu : a-z, 0-9, tirets)',
     }),
   ownerUserId: z.string().uuid(),
+  // Optionnel : si absent, l'org est creee SANS abonnement (le SubscriptionGuard
+  // barrera alors tout calcul/PV en 403 NoSubscription tant qu'un abonnement
+  // n'est pas provisionne — fail-closed cote acces, coherent avec ADR 0011 §2.1).
+  subscription: subscriptionInputSchema.optional(),
 });
 export type CreateOrgDto = z.infer<typeof createOrgSchema>;
