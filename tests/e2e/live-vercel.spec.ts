@@ -57,19 +57,17 @@ async function login(page: Page) {
   await page.getByLabel('Adresse e-mail').fill(CREDS.email);
   await page.getByLabel('Mot de passe').fill(CREDS.password);
   await page.getByRole('button', { name: 'Se connecter' }).click();
-  // Course : soit on est redirigé (succès), soit une alerte d'erreur apparaît.
-  await Promise.race([
-    page.waitForURL(/\/app\/demo-starfire\/projets/, { timeout: 45_000 }).catch(() => {}),
-    page.getByRole('alert').waitFor({ state: 'visible', timeout: 45_000 }).catch(() => {}),
-  ]);
-  if (!/\/app\/demo-starfire\/projets/.test(page.url())) {
+  // Attendre la REDIRECTION vers l'app (= seul signal de succès fiable). Un échec
+  // se traduit par un timeout. NE PAS racer sur l'alerte : le conteneur role="alert"
+  // du formulaire est toujours présent/visible (même vide) → la course se résolvait
+  // instantanément et concluait à l'échec à tort (faux négatif).
+  try {
+    await page.waitForURL(/\/app\/demo-starfire\/projets/, { timeout: 60_000 });
+  } catch {
     const alertTxt = (await page.getByRole('alert').first().textContent().catch(() => '')) ?? '';
     await shot(page, 'B1-ECHEC-login');
     throw new Error(
-      `Login RÉEL échoué : on reste sur ${page.url()}. ` +
-        `Message d'alerte: « ${alertTxt.trim()} ». ` +
-        `Cause racine confirmée : le front déployé poste vers /v1/auth/login (404) ` +
-        `alors que le backend sert l'auth à la racine /auth/login (200).`,
+      `Login échoué : on reste sur ${page.url()}. Message d'alerte: « ${alertTxt.trim()} ».`,
     );
   }
 }
