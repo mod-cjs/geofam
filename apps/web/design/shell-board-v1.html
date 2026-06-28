@@ -1,0 +1,1961 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROADSEN — Board Visuel Shell SaaS v3</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    /* Surfaces */
+    --surface-nav: #22262b;
+    --surface-nav-hover: #2d3237;
+    --surface-canvas: #f7f6f4;
+    --surface-base: #ffffff;
+    --surface-alt: #eef0f1;
+
+    /* Texte */
+    --text-primary: #1f2329;
+    --text-secondary: #5c6168;
+    --text-muted: #8b9097;
+    --text-on-nav: #e8eaec;
+
+    /* Accents */
+    --accent-action: #a05226;
+    --accent-action-on-nav: #d9954e;
+    --accent-brand: #b86a2e;
+    --struct-petrole: #1f4e4a;
+
+    /* Strates logotype */
+    --strate-laterite: #b86a2e;
+    --strate-petrole: #1f4e4a;
+    --strate-asphalte: #22262b;
+
+    /* Bordures */
+    --border-subtle: rgba(255,255,255,0.08);
+    --border-default: #d1d5db;
+    --border-focus: #a05226;
+
+    /* Verdicts */
+    --verdict-pass-bg: #e9f1ec;
+    --verdict-pass-text: #2f6b46;
+    --verdict-pass-border: #2f6b46;
+    --verdict-fail-bg: #fbeceb;
+    --verdict-fail-text: #8b1a1a;
+    --verdict-fail-border: #8b1a1a;
+
+    /* Radius */
+    --radius-base: 4px;
+    --radius-sm: 3px;
+  }
+
+  body {
+    font-family: 'Geist', 'Inter', 'Segoe UI', system-ui, sans-serif;
+    background: #0e0d0c;
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── LAYOUT GLOBAL ─── */
+  .board {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 28px;
+    padding: 28px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  .board-title {
+    grid-column: 1 / -1;
+    color: #5c6168;
+    font-size: 11px;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    font-weight: 500;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #2a2a28;
+  }
+
+  .panel-label {
+    color: #5c6168;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
+
+  /* ─── FRAME (simule un écran) ─── */
+  .frame {
+    background: var(--surface-canvas);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px #2a2a28, 0 4px 32px rgba(0,0,0,0.5);
+    height: 580px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .frame-wide {
+    grid-column: 1 / -1;
+    height: 640px;
+  }
+
+  /* ─── SHELL STRUCTURE ─── */
+  .shell {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    height: 100%;
+  }
+
+  /* ─── SIDEBAR ─── */
+  .sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--surface-nav);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 0 1px var(--border-subtle);
+    overflow: hidden;
+  }
+
+  .sidebar-collapsed {
+    width: 64px;
+  }
+
+  /* Logotype */
+  .logo-area {
+    padding: 16px 16px 12px;
+    flex-shrink: 0;
+  }
+
+  .logo-wordmark {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .logo-strates {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex-shrink: 0;
+  }
+
+  .strate {
+    border-radius: 1px;
+    width: 26px;
+  }
+
+  .strate-1 { height: 3px; background: var(--strate-laterite); }
+  .strate-2 { height: 2px; background: var(--strate-petrole); }
+  .strate-3 { height: 1px; background: var(--strate-asphalte); border: 1px solid rgba(255,255,255,0.15); }
+
+  .logo-text {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: #e8eaec;
+    text-transform: uppercase;
+  }
+
+  /* Org Switcher */
+  .org-switcher {
+    padding: 0 8px 8px;
+    flex-shrink: 0;
+  }
+
+  .org-switcher-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border-radius: var(--radius-base);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: background 150ms;
+  }
+
+  .org-switcher-btn:hover {
+    background: var(--surface-nav-hover);
+  }
+
+  .org-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: var(--accent-brand);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+    letter-spacing: 0;
+  }
+
+  .org-info {
+    flex: 1;
+    text-align: left;
+    overflow: hidden;
+  }
+
+  .org-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-on-nav);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+  }
+
+  .org-role {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: block;
+  }
+
+  .org-chevron {
+    color: var(--text-muted);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+
+  /* Sidebar divider */
+  .sidebar-divider {
+    height: 1px;
+    background: var(--border-subtle);
+    margin: 4px 12px;
+    flex-shrink: 0;
+  }
+
+  /* Recents */
+  .recents-area {
+    padding: 6px 8px;
+    flex-shrink: 0;
+  }
+
+  .recent-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 8px;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    transition: background 150ms;
+  }
+
+  .recent-item:hover {
+    background: var(--surface-nav-hover);
+  }
+
+  .recent-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    overflow: hidden;
+  }
+
+  .recent-arrow {
+    font-size: 9px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .recent-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+  }
+
+  .recent-date {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+
+  /* Section label */
+  .section-label {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-muted);
+    padding: 10px 16px 4px;
+    flex-shrink: 0;
+  }
+
+  /* Nav items */
+  .nav-items {
+    padding: 0 8px;
+    flex-shrink: 0;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px;
+    height: 36px;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    transition: background 150ms;
+    position: relative;
+    text-decoration: none;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .nav-item:hover {
+    background: var(--surface-nav-hover);
+    color: var(--text-on-nav);
+  }
+
+  .nav-item.active {
+    background: rgba(31, 78, 74, 0.15);
+    color: var(--accent-action-on-nav);
+  }
+
+  .nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: var(--struct-petrole);
+  }
+
+  .nav-icon {
+    font-size: 15px;
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  /* Sidebar footer */
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 8px;
+    flex-shrink: 0;
+  }
+
+  .footer-settings, .footer-help {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    height: 36px;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 13px;
+    transition: background 150ms;
+  }
+
+  .footer-settings:hover, .footer-help:hover {
+    background: var(--surface-nav-hover);
+    color: var(--text-on-nav);
+  }
+
+  .sidebar-divider-footer {
+    height: 1px;
+    background: var(--border-subtle);
+    margin: 4px 0;
+  }
+
+  .user-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    transition: background 150ms;
+  }
+
+  .user-footer:hover {
+    background: var(--surface-nav-hover);
+  }
+
+  .user-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #2d3237;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-action-on-nav);
+    flex-shrink: 0;
+  }
+
+  .user-info {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .user-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-on-nav);
+    display: block;
+  }
+
+  .user-role {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: block;
+  }
+
+  .collapse-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 6px 8px;
+    margin-top: 4px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: var(--radius-base);
+    transition: background 150ms;
+  }
+
+  .collapse-btn:hover {
+    background: var(--surface-nav-hover);
+    color: var(--text-on-nav);
+  }
+
+  /* ─── TOPBAR ─── */
+  .topbar {
+    height: 48px;
+    background: var(--surface-nav);
+    box-shadow: 0 1px 0 0 var(--border-subtle);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .breadcrumb-seg {
+    font-size: 13px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .breadcrumb-seg.current {
+    color: var(--text-on-nav);
+    font-weight: 500;
+  }
+
+  .breadcrumb-sep {
+    color: #3a3f46;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+
+  .topbar-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface-nav-hover);
+    border: none;
+    box-shadow: 0 0 0 1px var(--border-subtle);
+    border-radius: var(--radius-base);
+    padding: 0 10px;
+    height: 30px;
+    width: 180px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .topbar-search span {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .topbar-search .kbd {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-muted);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .btn-primary {
+    height: 30px;
+    padding: 0 12px;
+    background: var(--accent-action);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-base);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: background 150ms;
+  }
+
+  .btn-primary:hover {
+    background: #b85e2d;
+  }
+
+  .btn-secondary {
+    height: 30px;
+    padding: 0 12px;
+    background: transparent;
+    color: var(--accent-action-on-nav);
+    border: 1px solid var(--struct-petrole);
+    border-radius: var(--radius-base);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 150ms;
+  }
+
+  .btn-secondary:hover {
+    background: rgba(31,78,74,0.15);
+  }
+
+  .topbar-icon-btn {
+    width: 30px;
+    height: 30px;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-base);
+    cursor: pointer;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: background 150ms;
+    position: relative;
+  }
+
+  .topbar-icon-btn:hover {
+    background: var(--surface-nav-hover);
+    color: var(--text-on-nav);
+  }
+
+  .notif-dot {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-brand);
+    border: 1.5px solid var(--surface-nav);
+  }
+
+  .topbar-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #2d3237;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-action-on-nav);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  /* ─── MAIN CONTENT ─── */
+  .main-content {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ─── VUE 1 : LISTE PROJETS ─── */
+  .content-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    background: var(--surface-canvas);
+  }
+
+  .content-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .content-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .content-subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+
+  /* Table */
+  .table-wrap {
+    background: var(--surface-base);
+    border-radius: 6px;
+    box-shadow: 0 0 0 1px var(--border-default);
+    overflow: hidden;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead {
+    background: var(--surface-alt);
+  }
+
+  th {
+    padding: 9px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-default);
+    white-space: nowrap;
+  }
+
+  th.num { text-align: right; }
+
+  td {
+    padding: 11px 14px;
+    font-size: 13px;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--surface-alt);
+    vertical-align: middle;
+  }
+
+  td.num {
+    font-family: 'Geist Mono', 'Fira Mono', 'Courier New', monospace;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tr:hover td {
+    background: rgba(31,78,74,0.03);
+  }
+
+  .project-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    display: block;
+  }
+
+  .project-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 1px;
+    display: block;
+  }
+
+  /* Domain tag */
+  .domain-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    background: var(--surface-alt);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  .domain-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot-ch { background: #b86a2e; }
+  .dot-fd { background: #1f4e4a; }
+  .dot-lb { background: #5c6168; }
+
+  /* Status badge */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .badge-calcule {
+    background: var(--surface-alt);
+    color: var(--struct-petrole);
+    box-shadow: 0 0 0 1px rgba(31,78,74,0.25);
+  }
+
+  .badge-brouillon {
+    background: var(--surface-alt);
+    color: var(--text-secondary);
+    box-shadow: 0 0 0 1px var(--border-default);
+  }
+
+  .badge-scelle {
+    background: var(--surface-nav);
+    color: #d9954e;
+    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .pv-count {
+    font-family: 'Geist Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .activity-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ─── VUE 2 : ESPACE PROJET ─── */
+  .project-band {
+    height: 44px;
+    background: var(--surface-base);
+    box-shadow: 0 1px 0 0 var(--border-default);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+
+  .project-band-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+  }
+
+  .project-band-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .project-band-dot {
+    color: var(--text-muted);
+  }
+
+  .project-tabs {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-left: auto;
+    height: 100%;
+  }
+
+  .project-tab {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 150ms;
+    white-space: nowrap;
+  }
+
+  .project-tab:hover {
+    color: var(--text-primary);
+  }
+
+  .project-tab.active {
+    color: var(--text-primary);
+    font-weight: 500;
+    border-bottom-color: var(--struct-petrole);
+  }
+
+  /* Master-detail */
+  .master-detail {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .calc-list {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--surface-canvas);
+    box-shadow: 1px 0 0 0 var(--border-default);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .calc-list-header {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-default);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .calc-list-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-secondary);
+  }
+
+  .btn-new-calc {
+    height: 24px;
+    padding: 0 8px;
+    background: transparent;
+    color: var(--accent-action);
+    border: 1px solid var(--accent-action);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .calc-item {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--surface-alt);
+    cursor: pointer;
+    transition: background 150ms;
+  }
+
+  .calc-item:hover {
+    background: rgba(31,78,74,0.04);
+  }
+
+  .calc-item.selected {
+    background: rgba(31,78,74,0.08);
+    box-shadow: inset 3px 0 0 var(--struct-petrole);
+  }
+
+  .calc-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+
+  .calc-item-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+  }
+
+  .calc-item-date {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: 'Geist Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+
+  /* ─── PANNEAU DETAIL ─── */
+  .detail-panel {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--surface-base);
+    padding: 20px;
+  }
+
+  .detail-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .detail-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .detail-meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 3px;
+  }
+
+  .detail-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    align-items: center;
+  }
+
+  /* Groupe petrole */
+  .result-group-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--struct-petrole);
+    padding: 0 0 6px;
+    border-bottom: 2px solid var(--struct-petrole);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* Table résultats */
+  .result-table-wrap {
+    background: var(--surface-base);
+    border-radius: var(--radius-base);
+    box-shadow: 0 0 0 1px var(--border-default);
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+
+  .result-table-wrap table th {
+    background: var(--surface-alt);
+  }
+
+  /* Verdicts */
+  .verdict-band {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 14px;
+    border-radius: var(--radius-base);
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .verdict-pass {
+    background: var(--verdict-pass-bg);
+    color: var(--verdict-pass-text);
+    box-shadow: 0 0 0 1px var(--verdict-pass-border);
+  }
+
+  .verdict-fail {
+    background: var(--verdict-fail-bg);
+    color: var(--verdict-fail-text);
+    box-shadow: 0 0 0 1px var(--verdict-fail-border);
+  }
+
+  .verdict-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .verdict-text {
+    flex: 1;
+  }
+
+  .verdict-value {
+    font-family: 'Geist Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* ─── SIDEBAR COLLAPSED ─── */
+  .sidebar-collapsed .logo-text { display: none; }
+  .sidebar-collapsed .org-info { display: none; }
+  .sidebar-collapsed .org-chevron { display: none; }
+  .sidebar-collapsed .org-switcher-btn { justify-content: center; padding: 8px; }
+  .sidebar-collapsed .nav-item span { display: none; }
+  .sidebar-collapsed .nav-item { justify-content: center; padding: 0; }
+  .sidebar-collapsed .nav-item::before { display: none; }
+  .sidebar-collapsed .section-label { display: none; }
+  .sidebar-collapsed .sidebar-divider { margin: 4px 8px; }
+  .sidebar-collapsed .recents-area { display: none; }
+  .sidebar-collapsed .footer-settings span { display: none; }
+  .sidebar-collapsed .footer-help span { display: none; }
+  .sidebar-collapsed .footer-settings { justify-content: center; padding: 0; }
+  .sidebar-collapsed .footer-help { justify-content: center; padding: 0; }
+  .sidebar-collapsed .user-info { display: none; }
+  .sidebar-collapsed .user-footer { justify-content: center; padding: 8px; }
+  .sidebar-collapsed .collapse-btn span { display: none; }
+  .sidebar-collapsed .collapse-btn { justify-content: center; }
+  .sidebar-collapsed .logo-area { padding: 16px 0 12px; display: flex; justify-content: center; }
+  .sidebar-collapsed .logo-strates { width: 20px; }
+  .sidebar-collapsed .strate { width: 20px; }
+  .sidebar-collapsed .nav-item.active::before { display: none; }
+  .sidebar-collapsed .nav-item.active {
+    box-shadow: inset 0 0 0 1px rgba(31,78,74,0.3);
+  }
+
+  /* ─── FRAME 3 : COLLAPSED VIGNETTE ─── */
+  .frame-collapsed {
+    height: auto;
+    min-height: 400px;
+    max-height: 480px;
+  }
+
+  /* ─── MISC ─── */
+  .mono {
+    font-family: 'Geist Mono', 'Fira Mono', 'Courier New', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hash-preview {
+    font-family: 'Geist Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+  }
+
+  .icon-lock {
+    font-size: 10px;
+  }
+
+  /* Caption board */
+  .board-caption {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    padding-top: 8px;
+    border-top: 1px solid #2a2a28;
+  }
+
+  .caption-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .caption-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .caption-label {
+    font-size: 10px;
+    color: #5c6168;
+    line-height: 1.4;
+  }
+
+  .caption-label strong {
+    display: block;
+    color: #8b9097;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  /* Token reference strip */
+  .token-strip {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 12px 0 4px;
+  }
+
+  .token-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 8px;
+    background: #1a1917;
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px #2a2a28;
+  }
+
+  .token-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .token-name {
+    font-family: 'Geist Mono', monospace;
+    font-size: 10px;
+    color: #5c6168;
+  }
+
+  .token-val {
+    font-family: 'Geist Mono', monospace;
+    font-size: 10px;
+    color: #3d4048;
+  }
+</style>
+</head>
+<body>
+
+<div class="board">
+
+  <!-- En-tête board -->
+  <div class="board-title">ROADSEN — Shell SaaS v3 &nbsp;·&nbsp; Board visuel &nbsp;·&nbsp; Identité v3 figée &nbsp;·&nbsp; Light-first</div>
+
+  <!-- Référence tokens -->
+  <div class="token-strip">
+    <div class="token-pill"><div class="token-swatch" style="background:#22262b"></div><span class="token-name">--surface-nav</span><span class="token-val">#22262b</span></div>
+    <div class="token-pill"><div class="token-swatch" style="background:#a05226"></div><span class="token-name">--accent-action</span><span class="token-val">#a05226</span></div>
+    <div class="token-pill"><div class="token-swatch" style="background:#d9954e"></div><span class="token-name">--accent-action-on-nav</span><span class="token-val">#d9954e</span></div>
+    <div class="token-pill"><div class="token-swatch" style="background:#1f4e4a"></div><span class="token-name">--struct-petrole</span><span class="token-val">#1f4e4a</span></div>
+    <div class="token-pill"><div class="token-swatch" style="background:#b86a2e"></div><span class="token-name">--accent-brand</span><span class="token-val">#b86a2e</span></div>
+    <div class="token-pill"><div class="token-swatch" style="background:#f7f6f4"></div><span class="token-name">--surface-canvas</span><span class="token-val">#f7f6f4</span></div>
+    <div class="token-pill"><div class="token-swatch" style="background:#2f6b46; border-color:#2f6b46"></div><span class="token-name">--verdict-pass</span><span class="token-val">#2f6b46</span></div>
+    <div class="token-pill"><div class="token-swatch" style="background:#8b1a1a; border-color:#8b1a1a"></div><span class="token-name">--verdict-fail</span><span class="token-val">#8b1a1a</span></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       VUE 1 : LISTE DE PROJETS
+  ═══════════════════════════════════════ -->
+
+  <div style="grid-column: 1 / -1;">
+    <div class="panel-label">Vue 1 — Shell complet &nbsp;/&nbsp; Liste de projets</div>
+    <div class="frame frame-wide">
+      <div class="shell">
+
+        <!-- SIDEBAR GLOBALE -->
+        <aside class="sidebar" aria-label="Navigation principale">
+          <!-- Logotype -->
+          <div class="logo-area">
+            <div class="logo-wordmark">
+              <div class="logo-strates">
+                <div class="strate strate-1"></div>
+                <div class="strate strate-2"></div>
+                <div class="strate strate-3"></div>
+              </div>
+              <span class="logo-text">ROADSEN</span>
+            </div>
+          </div>
+
+          <!-- Org Switcher -->
+          <div class="org-switcher">
+            <button class="org-switcher-btn" aria-haspopup="true" aria-expanded="false">
+              <div class="org-avatar">ST</div>
+              <div class="org-info">
+                <span class="org-name">STARFIRE TECHNOLOGY</span>
+                <span class="org-role">Admin</span>
+              </div>
+              <span class="org-chevron">&#9660;</span>
+            </button>
+          </div>
+
+          <div class="sidebar-divider"></div>
+
+          <!-- Recents -->
+          <div class="recents-area">
+            <div class="recent-item">
+              <div class="recent-label">
+                <span class="recent-arrow">&#8618;</span>
+                <span class="recent-name">RN2-PK45 Mbour-Fatick</span>
+              </div>
+              <span class="recent-date">2h</span>
+            </div>
+            <div class="recent-item">
+              <div class="recent-label">
+                <span class="recent-arrow">&#8618;</span>
+                <span class="recent-name">Fondations Bâtiment A</span>
+              </div>
+              <span class="recent-date">1j</span>
+            </div>
+          </div>
+
+          <div class="sidebar-divider"></div>
+
+          <!-- Espace de travail -->
+          <div class="section-label">Espace de travail</div>
+          <nav class="nav-items">
+            <a class="nav-item active" aria-current="page" href="#">
+              <span class="nav-icon">&#9782;</span>
+              <span>Mes projets</span>
+            </a>
+          </nav>
+
+          <div class="sidebar-divider"></div>
+
+          <!-- Ressources -->
+          <div class="section-label">Ressources</div>
+          <nav class="nav-items">
+            <a class="nav-item" href="#">
+              <span class="nav-icon">&#8801;</span>
+              <span>Bibliothèque de moteurs</span>
+            </a>
+          </nav>
+
+          <!-- Footer -->
+          <div class="sidebar-footer">
+            <div class="footer-settings">
+              <span class="nav-icon">&#9881;</span>
+              <span>Paramètres</span>
+            </div>
+            <div class="footer-help">
+              <span class="nav-icon">&#63;</span>
+              <span>Aide</span>
+            </div>
+            <div class="sidebar-divider-footer"></div>
+            <div class="user-footer">
+              <div class="user-avatar">MD</div>
+              <div class="user-info">
+                <span class="user-name">M. Oury Diallo</span>
+                <span class="user-role">Admin</span>
+              </div>
+            </div>
+            <button class="collapse-btn" aria-pressed="false" aria-label="Réduire la navigation">
+              <span class="nav-icon">&#9664;</span>
+              <span>Réduire la navigation</span>
+            </button>
+          </div>
+        </aside>
+
+        <!-- MAIN -->
+        <div class="main-content">
+          <!-- Topbar -->
+          <div class="topbar">
+            <div class="breadcrumb">
+              <span class="breadcrumb-seg current">Mes projets</span>
+            </div>
+            <button class="topbar-search" aria-label="Rechercher (Cmd+K)">
+              <span style="font-size:12px;color:#5c6168;">&#128269;</span>
+              <span>Rechercher…</span>
+              <span class="kbd">&#8984;K</span>
+            </button>
+            <div class="topbar-actions">
+              <button class="btn-primary">&#43; Nouveau projet</button>
+              <button class="topbar-icon-btn" aria-label="Notifications">
+                &#128276;
+                <span class="notif-dot"></span>
+              </button>
+              <div class="topbar-avatar" aria-label="Mon compte">MD</div>
+            </div>
+          </div>
+
+          <!-- Contenu -->
+          <div class="content-area">
+            <div class="content-header">
+              <div>
+                <div class="content-title">Mes projets</div>
+                <div class="content-subtitle">STARFIRE TECHNOLOGY SAS &nbsp;·&nbsp; 4 projets actifs</div>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Projet</th>
+                    <th>Domaine</th>
+                    <th class="num">PV scellés</th>
+                    <th>Statut</th>
+                    <th class="num">Dernière activité</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <span class="project-name">Route Mbour-Fatick — RN2-PK45</span>
+                      <span class="project-sub">Chaussée flexible / Burmister LCPC &nbsp;·&nbsp; Région de Fatick</span>
+                    </td>
+                    <td>
+                      <span class="domain-tag">
+                        <span class="domain-dot dot-ch"></span>
+                        CH. Chaussée
+                      </span>
+                    </td>
+                    <td class="num"><span class="pv-count">3</span></td>
+                    <td><span class="badge badge-calcule">Calculé</span></td>
+                    <td class="num">il y a 2 h</td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <span class="project-name">Fondations Bâtiment Administratif A</span>
+                      <span class="project-sub">Semelle filante / Terzaghi EC7 &nbsp;·&nbsp; Dakar-Plateau</span>
+                    </td>
+                    <td>
+                      <span class="domain-tag">
+                        <span class="domain-dot dot-fd"></span>
+                        FD. Fondation
+                      </span>
+                    </td>
+                    <td class="num"><span class="pv-count">1</span></td>
+                    <td><span class="badge badge-calcule">Calculé</span></td>
+                    <td class="num">il y a 1 j</td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <span class="project-name">Radier Entrepôt Logistique ZI Diamniadio</span>
+                      <span class="project-sub">Radier/plaque / GEOPLAQUE &nbsp;·&nbsp; Zone industrielle</span>
+                    </td>
+                    <td>
+                      <span class="domain-tag">
+                        <span class="domain-dot dot-fd"></span>
+                        FD. Fondation
+                      </span>
+                    </td>
+                    <td class="num"><span class="pv-count">0</span></td>
+                    <td><span class="badge badge-brouillon">Brouillon</span></td>
+                    <td class="num">il y a 3 j</td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <span class="project-name">Caractérisation GTR — Remblai RN1</span>
+                      <span class="project-sub">Laboratoire / FASTLAB-GTR &nbsp;·&nbsp; Thiès</span>
+                    </td>
+                    <td>
+                      <span class="domain-tag">
+                        <span class="domain-dot dot-lb"></span>
+                        LB. Laboratoire
+                      </span>
+                    </td>
+                    <td class="num"><span class="pv-count">0</span></td>
+                    <td><span class="badge badge-brouillon">Brouillon</span></td>
+                    <td class="num">il y a 5 j</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div><!-- /main-content -->
+
+      </div><!-- /shell -->
+    </div><!-- /frame -->
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       VUE 2 : ESPACE PROJET
+  ═══════════════════════════════════════ -->
+
+  <div style="grid-column: 1 / -1;">
+    <div class="panel-label">Vue 2 — Espace projet &nbsp;/&nbsp; Calculs &amp; verdicts &nbsp;/&nbsp; Route Mbour-Fatick RN2-PK45</div>
+    <div class="frame frame-wide">
+      <div class="shell">
+
+        <!-- SIDEBAR (même shell) -->
+        <aside class="sidebar" aria-label="Navigation principale">
+          <div class="logo-area">
+            <div class="logo-wordmark">
+              <div class="logo-strates">
+                <div class="strate strate-1"></div>
+                <div class="strate strate-2"></div>
+                <div class="strate strate-3"></div>
+              </div>
+              <span class="logo-text">ROADSEN</span>
+            </div>
+          </div>
+          <div class="org-switcher">
+            <button class="org-switcher-btn">
+              <div class="org-avatar">ST</div>
+              <div class="org-info">
+                <span class="org-name">STARFIRE TECHNOLOGY</span>
+                <span class="org-role">Admin</span>
+              </div>
+              <span class="org-chevron">&#9660;</span>
+            </button>
+          </div>
+          <div class="sidebar-divider"></div>
+          <div class="recents-area">
+            <div class="recent-item" style="background:rgba(31,78,74,0.08); box-shadow: inset 3px 0 0 var(--struct-petrole);">
+              <div class="recent-label">
+                <span class="recent-arrow">&#8618;</span>
+                <span class="recent-name" style="color:#d9954e;font-weight:500;">RN2-PK45 Mbour-Fatick</span>
+              </div>
+              <span class="recent-date">2h</span>
+            </div>
+            <div class="recent-item">
+              <div class="recent-label">
+                <span class="recent-arrow">&#8618;</span>
+                <span class="recent-name">Fondations Bâtiment A</span>
+              </div>
+              <span class="recent-date">1j</span>
+            </div>
+          </div>
+          <div class="sidebar-divider"></div>
+          <div class="section-label">Espace de travail</div>
+          <nav class="nav-items">
+            <a class="nav-item active" aria-current="page" href="#">
+              <span class="nav-icon">&#9782;</span>
+              <span>Mes projets</span>
+            </a>
+          </nav>
+          <div class="sidebar-divider"></div>
+          <div class="section-label">Ressources</div>
+          <nav class="nav-items">
+            <a class="nav-item" href="#">
+              <span class="nav-icon">&#8801;</span>
+              <span>Bibliothèque de moteurs</span>
+            </a>
+          </nav>
+          <div class="sidebar-footer">
+            <div class="footer-settings"><span class="nav-icon">&#9881;</span><span>Paramètres</span></div>
+            <div class="footer-help"><span class="nav-icon">&#63;</span><span>Aide</span></div>
+            <div class="sidebar-divider-footer"></div>
+            <div class="user-footer">
+              <div class="user-avatar">MD</div>
+              <div class="user-info">
+                <span class="user-name">M. Oury Diallo</span>
+                <span class="user-role">Admin</span>
+              </div>
+            </div>
+            <button class="collapse-btn" aria-pressed="false" aria-label="Réduire la navigation">
+              <span class="nav-icon">&#9664;</span>
+              <span>Réduire la navigation</span>
+            </button>
+          </div>
+        </aside>
+
+        <!-- MAIN PROJET -->
+        <div class="main-content">
+          <!-- Topbar projet -->
+          <div class="topbar">
+            <div class="breadcrumb">
+              <span class="breadcrumb-seg" style="cursor:pointer;">Mes projets</span>
+              <span class="breadcrumb-sep">/</span>
+              <span class="breadcrumb-seg" style="cursor:pointer;">RN2-PK45</span>
+              <span class="breadcrumb-sep">/</span>
+              <span class="breadcrumb-seg current">Burmister #3</span>
+            </div>
+            <button class="topbar-search">
+              <span style="font-size:12px;color:#5c6168;">&#128269;</span>
+              <span>Rechercher…</span>
+              <span class="kbd">&#8984;K</span>
+            </button>
+            <div class="topbar-actions">
+              <button class="btn-primary">&#43; Nouveau calcul</button>
+              <button class="topbar-icon-btn" aria-label="Notifications">&#128276;<span class="notif-dot"></span></button>
+              <div class="topbar-avatar">MD</div>
+            </div>
+          </div>
+
+          <!-- Bande projet fusionnée -->
+          <div class="project-band">
+            <span class="project-band-name">Route Mbour-Fatick — RN2-PK45</span>
+            <span class="badge badge-calcule">Calculé</span>
+            <span class="project-band-dot">&middot;</span>
+            <span class="project-band-meta">modifié il y a 2 h</span>
+            <div class="project-tabs">
+              <div class="project-tab">Vue d'ensemble</div>
+              <div class="project-tab active">Calculs</div>
+              <div class="project-tab">PV &amp; Livrables</div>
+              <div class="project-tab">Informations</div>
+            </div>
+          </div>
+
+          <!-- Master-detail -->
+          <div class="master-detail">
+
+            <!-- Liste calculs -->
+            <div class="calc-list">
+              <div class="calc-list-header">
+                <span class="calc-list-title">Calculs</span>
+                <button class="btn-new-calc">&#43; Nouveau</button>
+              </div>
+
+              <div class="calc-item">
+                <div class="calc-item-top">
+                  <span class="calc-item-name">Burmister #1</span>
+                  <span class="calc-item-date">3 j</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span class="domain-tag"><span class="domain-dot dot-ch"></span>CH. Chaussée</span>
+                  <span class="badge badge-calcule" style="font-size:10px;padding:1px 5px;">Calculé</span>
+                </div>
+              </div>
+
+              <div class="calc-item">
+                <div class="calc-item-top">
+                  <span class="calc-item-name">Burmister #2</span>
+                  <span class="calc-item-date">2 j</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span class="domain-tag"><span class="domain-dot dot-ch"></span>CH. Chaussée</span>
+                  <span class="badge badge-calcule" style="font-size:10px;padding:1px 5px;">Calculé</span>
+                </div>
+              </div>
+
+              <div class="calc-item selected">
+                <div class="calc-item-top">
+                  <span class="calc-item-name" style="color:#1f2329;font-weight:600;">Burmister #3</span>
+                  <span class="calc-item-date">2 h</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span class="domain-tag"><span class="domain-dot dot-ch"></span>CH. Chaussée</span>
+                  <span class="badge badge-calcule" style="font-size:10px;padding:1px 5px;">Calculé</span>
+                </div>
+              </div>
+
+              <div class="calc-item">
+                <div class="calc-item-top">
+                  <span class="calc-item-name">Labo sol support</span>
+                  <span class="calc-item-date">4 j</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <span class="domain-tag"><span class="domain-dot dot-lb"></span>LB. Laboratoire</span>
+                  <span class="badge badge-brouillon" style="font-size:10px;padding:1px 5px;">Brouillon</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Panneau détail -->
+            <div class="detail-panel">
+              <div class="detail-header">
+                <div>
+                  <div class="detail-title">Burmister LCPC — Dimensionnement chaussée flexible #3</div>
+                  <div class="detail-meta">
+                    <span class="domain-tag" style="vertical-align:middle;"><span class="domain-dot dot-ch"></span>CH. Chaussée</span>
+                    &nbsp;·&nbsp; Calculé serveur le 22/06/2026 à 14:37 &nbsp;·&nbsp; par M. Oury Diallo
+                  </div>
+                </div>
+                <div class="detail-actions">
+                  <button class="btn-secondary">&#8635; Recalculer</button>
+                  <button class="btn-primary" style="background:var(--accent-action);">
+                    &#128196; Émettre un PV scellé
+                  </button>
+                </div>
+              </div>
+
+              <!-- Paramètres d'entrée (compact) -->
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px;">
+                <div style="background:var(--surface-alt);border-radius:var(--radius-base);padding:10px 12px;box-shadow:0 0 0 1px var(--border-default);">
+                  <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-secondary);margin-bottom:4px;">Sol support</div>
+                  <div style="font-size:13px;font-weight:600;color:var(--text-primary);">Argile latéritique</div>
+                  <div style="font-size:11px;color:var(--text-muted);">CBR = 12 &nbsp;·&nbsp; E = 55 MPa</div>
+                </div>
+                <div style="background:var(--surface-alt);border-radius:var(--radius-base);padding:10px 12px;box-shadow:0 0 0 1px var(--border-default);">
+                  <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-secondary);margin-bottom:4px;">Trafic cumulé</div>
+                  <div style="font-family:'Geist Mono',monospace;font-variant-numeric:tabular-nums;font-size:15px;font-weight:700;color:var(--text-primary);">8,4 &times; 10<sup>6</sup></div>
+                  <div style="font-size:11px;color:var(--text-muted);">PL sur 20 ans &nbsp;·&nbsp; classe T3</div>
+                </div>
+                <div style="background:var(--surface-alt);border-radius:var(--radius-base);padding:10px 12px;box-shadow:0 0 0 1px var(--border-default);">
+                  <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-secondary);margin-bottom:4px;">Structure retenue</div>
+                  <div style="font-size:13px;font-weight:600;color:var(--text-primary);">BB 6 / GB 12 / GNT 30</div>
+                  <div style="font-size:11px;color:var(--text-muted);">cm &nbsp;·&nbsp; AGEROUTE 2015 cat. A</div>
+                </div>
+              </div>
+
+              <!-- Groupe résultats pétrole -->
+              <div class="result-group-label">
+                Résultats de dimensionnement &nbsp;&mdash;&nbsp; Méthode Burmister LCPC
+              </div>
+
+              <div class="result-table-wrap" style="margin-bottom:14px;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Couche</th>
+                      <th>Matériau</th>
+                      <th class="num">E (MPa)</th>
+                      <th class="num">&#957;</th>
+                      <th class="num">h (cm)</th>
+                      <th class="num">&#949;<sub>t</sub> admissible (&micro;def)</th>
+                      <th class="num">&#949;<sub>t</sub> calculée (&micro;def)</th>
+                      <th class="num">&#949;<sub>z</sub> sol (&micro;def)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>1 — Surface</td>
+                      <td>Béton bitumineux BB</td>
+                      <td class="num">5 400</td>
+                      <td class="num">0,35</td>
+                      <td class="num">6</td>
+                      <td class="num">—</td>
+                      <td class="num">—</td>
+                      <td class="num">—</td>
+                    </tr>
+                    <tr>
+                      <td>2 — Base</td>
+                      <td>Grave bitume GB</td>
+                      <td class="num">3 200</td>
+                      <td class="num">0,35</td>
+                      <td class="num">12</td>
+                      <td class="num">138</td>
+                      <td class="num" style="font-weight:600;color:var(--text-primary);">112</td>
+                      <td class="num">—</td>
+                    </tr>
+                    <tr>
+                      <td>3 — Fondation</td>
+                      <td>GNT classe B</td>
+                      <td class="num">180</td>
+                      <td class="num">0,30</td>
+                      <td class="num">30</td>
+                      <td class="num">—</td>
+                      <td class="num">—</td>
+                      <td class="num">—</td>
+                    </tr>
+                    <tr style="background:var(--surface-alt);">
+                      <td>4 — Sol support</td>
+                      <td>Argile latéritique</td>
+                      <td class="num">55</td>
+                      <td class="num">0,40</td>
+                      <td class="num">&#8734;</td>
+                      <td class="num">620</td>
+                      <td class="num">—</td>
+                      <td class="num" style="font-weight:700;color:var(--text-primary);">542</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Bandeau verdict 1 : déformation sol -->
+              <div class="verdict-band verdict-pass">
+                <span class="verdict-icon" aria-hidden="true">&#10003;</span>
+                <div class="verdict-text">
+                  <strong>Sol support — Déformation verticale admissible</strong>
+                  <div style="font-size:12px;font-weight:400;margin-top:1px;">&#949;<sub>z</sub> calculée &le; &#949;<sub>z</sub> admissible AGEROUTE 2015 &nbsp;·&nbsp; Critère Dormon &amp; Edwards</div>
+                </div>
+                <span class="verdict-value">542 / 620 &micro;def</span>
+              </div>
+
+              <!-- Bandeau verdict 2 : déformation enrobés -->
+              <div class="verdict-band verdict-pass">
+                <span class="verdict-icon" aria-hidden="true">&#10003;</span>
+                <div class="verdict-text">
+                  <strong>Grave bitume — Déformation de traction en sous-couche</strong>
+                  <div style="font-size:12px;font-weight:400;margin-top:1px;">&#949;<sub>t</sub> calculée &le; &#949;<sub>t</sub> admissible &nbsp;·&nbsp; Ratio = 106 % de la capacité résiduelle</div>
+                </div>
+                <span class="verdict-value">112 / 138 &micro;def</span>
+              </div>
+
+              <!-- Note ratio -->
+              <div style="background:var(--surface-alt);border-radius:var(--radius-base);padding:10px 14px;box-shadow:0 0 0 1px var(--border-default);margin-top:12px;display:flex;align-items:center;gap:12px;">
+                <div style="flex:1;">
+                  <div style="font-size:12px;font-weight:500;color:var(--text-primary);">Taux d'utilisation structure</div>
+                  <div style="font-size:11px;color:var(--text-muted);margin-top:1px;">Sol support : 87,4 % &nbsp;·&nbsp; Enrobés : 81,2 % &nbsp;·&nbsp; Marge dimensionnelle : conforme cat. A</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-family:'Geist Mono',monospace;font-variant-numeric:tabular-nums;font-size:20px;font-weight:700;color:var(--struct-petrole);">106 %</div>
+                  <div style="font-size:10px;color:var(--text-muted);">capacité résiduelle</div>
+                </div>
+              </div>
+
+            </div><!-- /detail-panel -->
+          </div><!-- /master-detail -->
+        </div><!-- /main-content -->
+      </div><!-- /shell -->
+    </div><!-- /frame -->
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       SIDEBAR COLLAPSED + PV LISTE
+  ═══════════════════════════════════════ -->
+
+  <!-- Vignette sidebar collapsed -->
+  <div>
+    <div class="panel-label">Sidebar — Mode réduit (64 px) &nbsp;·&nbsp; labels sr-only, tooltip au focus</div>
+    <div class="frame frame-collapsed" style="width:240px;">
+      <div class="shell" style="height:100%;">
+        <aside class="sidebar sidebar-collapsed" style="width:64px;" aria-label="Navigation principale">
+          <div class="logo-area">
+            <div class="logo-strates" style="width:20px;">
+              <div class="strate strate-1" style="width:20px;"></div>
+              <div class="strate strate-2" style="width:20px;"></div>
+              <div class="strate strate-3" style="width:20px;"></div>
+            </div>
+          </div>
+
+          <div class="org-switcher">
+            <button class="org-switcher-btn" style="justify-content:center;padding:6px;">
+              <div class="org-avatar">ST</div>
+            </button>
+          </div>
+
+          <div class="sidebar-divider"></div>
+
+          <nav class="nav-items">
+            <a class="nav-item active" aria-current="page" href="#" style="justify-content:center;padding:0;height:40px;" title="Mes projets">
+              <span class="nav-icon" style="width:auto;">&#9782;</span>
+              <span class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">Mes projets</span>
+            </a>
+          </nav>
+
+          <div class="sidebar-divider"></div>
+
+          <nav class="nav-items">
+            <a class="nav-item" href="#" style="justify-content:center;padding:0;height:40px;" title="Bibliothèque de moteurs">
+              <span class="nav-icon" style="width:auto;">&#8801;</span>
+              <span class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">Bibliothèque de moteurs</span>
+            </a>
+          </nav>
+
+          <div class="sidebar-footer">
+            <div class="footer-settings" style="justify-content:center;padding:0;height:40px;" title="Paramètres">
+              <span class="nav-icon" style="width:auto;">&#9881;</span>
+            </div>
+            <div class="footer-help" style="justify-content:center;padding:0;height:40px;" title="Aide">
+              <span class="nav-icon" style="width:auto;">&#63;</span>
+            </div>
+            <div class="sidebar-divider-footer"></div>
+            <div class="user-footer" style="justify-content:center;padding:8px;">
+              <div class="user-avatar">MD</div>
+            </div>
+            <button class="collapse-btn" style="justify-content:center;" aria-pressed="true" aria-label="Réduire la navigation">
+              <span class="nav-icon" style="width:auto;">&#9654;</span>
+            </button>
+          </div>
+        </aside>
+        <!-- Indication visuelle état collapsed -->
+        <div style="flex:1;background:var(--surface-canvas);display:flex;align-items:center;justify-content:center;padding:16px;">
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Aperçu</div>
+            <div style="font-size:12px;color:var(--text-secondary);line-height:1.6;">
+              Sidebar 64 px<br>
+              Labels <code style="font-size:10px;background:#eef0f1;padding:1px 4px;border-radius:2px;">sr-only</code><br>
+              Tooltip au hover/focus<br>
+              Strates logotype visibles<br>
+              Transition 220 ms ease
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PV & Livrables -->
+  <div>
+    <div class="panel-label">PV &amp; Livrables — Onglet projet &nbsp;·&nbsp; hash HMAC tronqué 8 car. visible</div>
+    <div class="frame frame-collapsed" style="height:auto;min-height:380px;">
+      <div class="shell" style="flex-direction:column;height:100%;">
+        <!-- Topbar mini -->
+        <div class="topbar" style="flex-shrink:0;">
+          <div class="breadcrumb">
+            <span class="breadcrumb-seg" style="cursor:pointer;">Mes projets</span>
+            <span class="breadcrumb-sep">/</span>
+            <span class="breadcrumb-seg" style="cursor:pointer;">RN2-PK45</span>
+            <span class="breadcrumb-sep">/</span>
+            <span class="breadcrumb-seg current">PV &amp; Livrables</span>
+          </div>
+          <div class="topbar-actions">
+            <button class="topbar-icon-btn">&#128276;<span class="notif-dot"></span></button>
+            <div class="topbar-avatar">MD</div>
+          </div>
+        </div>
+
+        <!-- Bande projet -->
+        <div class="project-band" style="flex-shrink:0;">
+          <span class="project-band-name">Route Mbour-Fatick — RN2-PK45</span>
+          <span class="badge badge-calcule">Calculé</span>
+          <span class="project-band-dot">&middot;</span>
+          <span class="project-band-meta">3 PV scellés</span>
+          <div class="project-tabs">
+            <div class="project-tab">Vue d'ensemble</div>
+            <div class="project-tab">Calculs</div>
+            <div class="project-tab active">PV &amp; Livrables</div>
+            <div class="project-tab">Informations</div>
+          </div>
+        </div>
+
+        <!-- Contenu PV -->
+        <div class="content-area" style="flex:1;padding:16px;">
+          <div class="content-header" style="margin-bottom:14px;">
+            <div>
+              <div class="content-title" style="font-size:14px;">Procès-verbaux scellés</div>
+              <div class="content-subtitle" style="font-size:12px;">Immuables après émission &nbsp;·&nbsp; Vérification d'intégrité en ligne</div>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Numéro PV</th>
+                  <th>Moteur source</th>
+                  <th>Émis le</th>
+                  <th>Hash HMAC</th>
+                  <th>Statut</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <div style="font-weight:600;font-size:12px;font-family:'Geist Mono',monospace;color:var(--text-primary);">PV-RDS-RN2PK45-000001</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Burmister #1 &nbsp;·&nbsp; CH. Chaussée</div>
+                  </td>
+                  <td style="font-size:12px;color:var(--text-secondary);">Burmister LCPC</td>
+                  <td style="font-family:'Geist Mono',monospace;font-variant-numeric:tabular-nums;font-size:11px;color:var(--text-secondary);">19/06/2026</td>
+                  <td><span class="hash-preview">a3f7c2d1</span></td>
+                  <td>
+                    <span class="badge badge-scelle">
+                      <span class="icon-lock" aria-hidden="true">&#128274;</span>
+                      Scellé
+                    </span>
+                  </td>
+                  <td>
+                    <div style="display:flex;gap:6px;">
+                      <button style="height:24px;padding:0 8px;background:transparent;color:var(--text-secondary);border:1px solid var(--border-default);border-radius:3px;font-size:11px;cursor:pointer;">PDF</button>
+                      <button style="height:24px;padding:0 8px;background:transparent;color:var(--struct-petrole);border:1px solid var(--struct-petrole);border-radius:3px;font-size:11px;cursor:pointer;">Vérifier</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div style="font-weight:600;font-size:12px;font-family:'Geist Mono',monospace;color:var(--text-primary);">PV-RDS-RN2PK45-000002</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Burmister #2 &nbsp;·&nbsp; CH. Chaussée</div>
+                  </td>
+                  <td style="font-size:12px;color:var(--text-secondary);">Burmister LCPC</td>
+                  <td style="font-family:'Geist Mono',monospace;font-variant-numeric:tabular-nums;font-size:11px;color:var(--text-secondary);">20/06/2026</td>
+                  <td><span class="hash-preview">e9b41f7a</span></td>
+                  <td>
+                    <span class="badge badge-scelle">
+                      <span class="icon-lock" aria-hidden="true">&#128274;</span>
+                      Scellé
+                    </span>
+                  </td>
+                  <td>
+                    <div style="display:flex;gap:6px;">
+                      <button style="height:24px;padding:0 8px;background:transparent;color:var(--text-secondary);border:1px solid var(--border-default);border-radius:3px;font-size:11px;cursor:pointer;">PDF</button>
+                      <button style="height:24px;padding:0 8px;background:transparent;color:var(--struct-petrole);border:1px solid var(--struct-petrole);border-radius:3px;font-size:11px;cursor:pointer;">Vérifier</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div style="font-weight:600;font-size:12px;font-family:'Geist Mono',monospace;color:var(--text-primary);">PV-RDS-RN2PK45-000003</div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Burmister #3 &nbsp;·&nbsp; CH. Chaussée</div>
+                  </td>
+                  <td style="font-size:12px;color:var(--text-secondary);">Burmister LCPC</td>
+                  <td style="font-family:'Geist Mono',monospace;font-variant-numeric:tabular-nums;font-size:11px;color:var(--text-secondary);">22/06/2026</td>
+                  <td><span class="hash-preview">7d2a5b8c</span></td>
+                  <td>
+                    <span class="badge badge-scelle">
+                      <span class="icon-lock" aria-hidden="true">&#128274;</span>
+                      Scellé
+                    </span>
+                  </td>
+                  <td>
+                    <div style="display:flex;gap:6px;">
+                      <button style="height:24px;padding:0 8px;background:transparent;color:var(--text-secondary);border:1px solid var(--border-default);border-radius:3px;font-size:11px;cursor:pointer;">PDF</button>
+                      <button style="height:24px;padding:0 8px;background:transparent;color:var(--struct-petrole);border:1px solid var(--struct-petrole);border-radius:3px;font-size:11px;cursor:pointer;">Vérifier</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Note intégrité -->
+          <div style="margin-top:12px;padding:9px 12px;background:var(--surface-alt);border-radius:var(--radius-base);box-shadow:0 0 0 1px var(--border-default);font-size:11px;color:var(--text-muted);line-height:1.5;">
+            Le hash affiché correspond aux 8 premiers caractères du HMAC-SHA256 du PV. La vérification d'intégrité s'effectue en ligne sur le serveur ROADSEN — jamais par comparaison visuelle du tronqué.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Légende board -->
+  <div class="board-caption">
+    <div class="caption-item">
+      <div class="caption-swatch" style="background:#22262b;box-shadow:0 0 0 1px #3a3f46;"></div>
+      <div class="caption-label"><strong>--surface-nav #22262b</strong>Asphalte — fond sidebar + topbar. Elevation zéro-offset : box-shadow 0 0 0 1px border-subtle.</div>
+    </div>
+    <div class="caption-item">
+      <div class="caption-swatch" style="background:#a05226;"></div>
+      <div class="caption-label"><strong>--accent-action #a05226</strong>Latérite — CTA sur fond canvas. Sur fond sombre : --accent-action-on-nav #d9954e (ratio AA 5,4:1).</div>
+    </div>
+    <div class="caption-item">
+      <div class="caption-swatch" style="background:#1f4e4a;"></div>
+      <div class="caption-label"><strong>--struct-petrole #1f4e4a</strong>Pétrole — nav active (underline 2px + barre 3px), sous-titre groupe résultats, bouton secondaire. Jamais pour un CTA principal.</div>
+    </div>
+    <div class="caption-item">
+      <div class="caption-swatch" style="background:#2f6b46;"></div>
+      <div class="caption-label"><strong>--verdict-pass #2f6b46</strong>Vert réservé aux verdicts de conformité uniquement (ADR 0008). Triple redondance : couleur + icône + texte.</div>
+    </div>
+    <div class="caption-item">
+      <div class="caption-swatch" style="background:#8b1a1a;"></div>
+      <div class="caption-label"><strong>--verdict-fail #8b1a1a</strong>Rouge réservé aux verdicts de non-conformité uniquement. Aucun usage décoratif autorisé.</div>
+    </div>
+    <div class="caption-item">
+      <div class="caption-swatch" style="background:linear-gradient(to bottom, #b86a2e 50%, #1f4e4a 50%);"></div>
+      <div class="caption-label"><strong>Barre de strates logotype</strong>3 px latérite / 2 px pétrole / 1 px asphalte. Visible en collapsed (strates seules, wordmark sr-only).</div>
+    </div>
+  </div>
+
+</div><!-- /board -->
+
+</body>
+</html>

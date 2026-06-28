@@ -10,11 +10,9 @@
  *
  * Sans ces variables, les tests s'auto-skippent proprement (pas de faux-vert).
  *
- * CONFIDENTIALITÉ DoD §8 : le test de bundle (ci-dessous) vérifie que le
- * bundle web compilé NE CONTIENT AUCUN marqueur moteur confidentiel.
+ * CONFIDENTIALITÉ DoD §8 : le contrôle de bundle est centralisé (unique) dans
+ * shell-parcours-coeur.spec.ts — pas de duplicata ici.
  */
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.E2E_BASE_URL;
@@ -116,53 +114,9 @@ test.describe('Page de test moteurs — /recette', () => {
 // Test de confidentialité — le bundle web ne contient aucun marqueur moteur
 // ---------------------------------------------------------------------------
 
-test.describe('Confidentialité DoD §8 — bundle web', () => {
-  /**
-   * Vérifie que le bundle Next.js compilé ne contient pas le marqueur confidentiel
-   * embarqué dans chaque moteur (__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__).
-   *
-   * Ce test est LOCAL (ne nécessite pas E2E_BASE_URL) : il lit le répertoire .next/.
-   * Il s'exécute uniquement si le build existe (pnpm build a été lancé).
-   *
-   * Pattern : cf. DoD §8 — contrôle de bundle CI.
-   */
-  test('le bundle web compilé ne contient aucun symbole moteur confidentiel', () => {
-    const nextBuildDir = path.resolve(
-      __dirname,
-      '../../apps/web/.next/static/chunks',
-    );
-
-    if (!fs.existsSync(nextBuildDir)) {
-      // Build non disponible : skip explicite (pas de faux-vert)
-      test.skip(
-        true,
-        "Build Next.js absent (.next/static/chunks) : lancer 'pnpm build' d'abord",
-      );
-      return;
-    }
-
-    const CONFIDENTIAL_MARKER = '__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__';
-    const ENGINE_SPECIFIER = '@roadsen/engines';
-
-    const jsFiles = fs
-      .readdirSync(nextBuildDir)
-      .filter((f) => f.endsWith('.js'));
-
-    expect(jsFiles.length).toBeGreaterThan(0);
-
-    for (const file of jsFiles) {
-      const content = fs.readFileSync(path.join(nextBuildDir, file), 'utf8');
-      expect(
-        content,
-        `Le fichier bundle ${file} contient le marqueur confidentiel moteur`,
-      ).not.toContain(CONFIDENTIAL_MARKER);
-      expect(
-        content,
-        `Le fichier bundle ${file} contient le specifier @roadsen/engines`,
-      ).not.toContain(ENGINE_SPECIFIER);
-    }
-  });
-});
+// Le contrôle de bundle confidentialité (DoD §8) est UNIQUE et centralisé dans
+// shell-parcours-coeur.spec.ts (avec le test négatif de non-inertie). Pas de
+// duplicata ici — un seul gate fait foi.
 
 // ---------------------------------------------------------------------------
 // Test de santé API directe (vérifie que l'endpoint recette existe bien)

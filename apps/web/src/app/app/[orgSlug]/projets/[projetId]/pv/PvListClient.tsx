@@ -1,0 +1,443 @@
+'use client';
+
+/**
+ * B-24/B-25 — Onglet PV & Livrables
+ * Liste des PV scellés + actions Télécharger + Vérifier intégrité
+ *
+ * Badge "Scellé" = fond asphalte + cadenas, jamais vert (ADR 0008)
+ * Vérification = appel serveur, jamais comparaison visuelle du hash tronqué
+ */
+
+import { Lock, Download, ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+
+import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Modal } from '@/components/ui/Modal';
+import { Skeleton } from '@/components/ui/Skeleton.client';
+import { useToast } from '@/components/ui/Toast';
+import { listPvs, verifyPv, downloadPvPdf } from '@/lib/api/client';
+import type { OfficialPv, VerifyPvResponse } from '@/lib/api/types';
+import { useOrgId } from '@/lib/org-context';
+
+function formatDate(iso: string): string {
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(iso));
+}
+
+interface PvListClientProps {
+  orgSlug: string;
+  projetId: string;
+}
+
+export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
+  const { addToast } = useToast();
+  const orgId = useOrgId(orgSlug);
+
+  const [pvs, setPvs] = useState<OfficialPv[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Modale vérification intégrité
+  const [verifyModal, setVerifyModal] = useState<{
+    pvId: string;
+    number: string;
+  } | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<VerifyPvResponse | null>(null);
+
+  // Téléchargement PDF
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const loadPvs = useCallback(async () => {
+    if (!orgId) {
+      setError('Organisation introuvable.');
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await listPvs(orgId, projetId);
+      setPvs(data);
+    } catch {
+      setError('Impossible de charger les PV.');
+    } finally {
+      setLoading(false);
+    }
+  }, [orgId, projetId]);
+
+  useEffect(() => {
+    loadPvs();
+  }, [loadPvs]);
+
+  async function handleVerify(pv: OfficialPv) {
+    setVerifyModal({ pvId: pv.id, number: pv.number });
+    setVerifyResult(null);
+    setVerifying(true);
+    try {
+      const result = await verifyPv(pv.id);
+      setVerifyResult(result);
+    } catch {
+      addToast({ type: 'error', message: 'Erreur lors de la vérification. Réessayez.' });
+      setVerifyModal(null);
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  async function handleDownload(pv: OfficialPv) {
+    setDownloadingId(pv.id);
+    try {
+      const blob = await downloadPvPdf(pv.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${pv.number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      addToast({ type: 'success', message: `${pv.number} téléchargé.` });
+    } catch {
+      addToast({ type: 'error', message: 'Erreur lors du téléchargement. Réessayez.' });
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  return (
+    <div style={{ padding: 24, maxWidth: 800, margin: '0 auto', width: '100%' }}>
+      <h2
+        style={{
+          fontSize: 'var(--text-lg)',
+          fontWeight: 600,
+          color: 'var(--text-primary)',
+          marginBottom: 20,
+        }}
+      >
+        PV & Livrables
+      </h2>
+
+      {/* Chargement */}
+      {loading && (
+        <div aria-busy="true" aria-label="Chargement des PV">
+          {[1, 2].map((i) => (
+            <Skeleton key={i} variant="row" style={{ marginBottom: 8, height: 80 }} />
+          ))}
+        </div>
+      )}
+
+      {/* Erreur */}
+      {!loading && error && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 12,
+            padding: 40,
+          }}
+        >
+          <AlertCircle
+            size={24}
+            strokeWidth={1.5}
+            aria-hidden="true"
+            style={{ color: 'var(--status-fail-tx)' }}
+          />
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+            {error}
+          </p>
+          <Button
+            variant="secondary"
+            size="sm"
+            iconLeft={<RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />}
+            onClick={loadPvs}
+          >
+            Réessayer
+          </Button>
+        </div>
+      )}
+
+      {/* Vide */}
+      {!loading && !error && pvs.length === 0 && (
+        <EmptyState
+          variant="blank"
+          title="Aucun PV émis"
+          description="Les PV apparaissent ici une fois un calcul scellé. Ouvrez l'onglet Calculs pour émettre un PV."
+        />
+      )}
+
+      {/* Liste des PV */}
+      {!loading && !error && pvs.length > 0 && (
+        <div
+          role="list"
+          aria-label="Liste des procès-verbaux scellés"
+          style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+        >
+          {pvs.map((pv) => (
+            <PvRow
+              key={pv.id}
+              pv={pv}
+              downloading={downloadingId === pv.id}
+              onDownload={() => handleDownload(pv)}
+              onVerify={() => handleVerify(pv)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Modale vérification intégrité (C-03) */}
+      <Modal
+        open={verifyModal !== null}
+        onClose={() => {
+          if (!verifying) {
+            setVerifyModal(null);
+            setVerifyResult(null);
+          }
+        }}
+        title={`Vérifier l'intégrité — ${verifyModal?.number ?? ''}`}
+        size="sm"
+        footer={
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={() => {
+              setVerifyModal(null);
+              setVerifyResult(null);
+            }}
+            disabled={verifying}
+          >
+            Fermer
+          </Button>
+        }
+      >
+        {verifying && (
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0' }}
+          >
+            <div
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: '50%',
+                border: '2px solid var(--border-default)',
+                borderTopColor: 'var(--struct-petrole)',
+                animation: 'spin 1s linear infinite',
+                flexShrink: 0,
+              }}
+              aria-hidden="true"
+            />
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+              Vérification en cours côté serveur…
+            </span>
+          </div>
+        )}
+
+        {!verifying && verifyResult && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 12,
+                padding: '12px 14px',
+                background: verifyResult.intact
+                  ? 'var(--status-pass-bg)'
+                  : 'var(--status-fail-bg)',
+                borderRadius: 'var(--radius-base)',
+              }}
+            >
+              <ShieldCheck
+                size={20}
+                strokeWidth={1.5}
+                aria-hidden="true"
+                style={{
+                  color: verifyResult.intact
+                    ? 'var(--status-pass-tx)'
+                    : 'var(--status-fail-tx)',
+                  flexShrink: 0,
+                }}
+              />
+              <div>
+                <div
+                  style={{
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: 500,
+                    color: verifyResult.intact
+                      ? 'var(--status-pass-tx)'
+                      : 'var(--status-fail-tx)',
+                  }}
+                >
+                  {verifyResult.intact
+                    ? 'Sceau vérifié — document intact'
+                    : 'Le sceau ne correspond pas — ce document a pu être altéré'}
+                </div>
+                <div
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--text-muted)',
+                    marginTop: 4,
+                  }}
+                >
+                  Vérifié le {formatDate(verifyResult.verifiedAt)} côté serveur
+                </div>
+              </div>
+            </div>
+
+            {/* Rappel légal */}
+            <p
+              style={{
+                fontSize: 'var(--text-xs)',
+                color: 'var(--text-muted)',
+                lineHeight: 1.6,
+                margin: 0,
+              }}
+            >
+              {
+                "Cette vérification confirme l'intégrité des données depuis le scellement. Elle ne constitue pas une signature électronique qualifiée (loi 2008-08)."
+              }
+            </p>
+          </div>
+        )}
+
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      </Modal>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Ligne PV
+// ---------------------------------------------------------------------------
+
+function PvRow({
+  pv,
+  downloading,
+  onDownload,
+  onVerify,
+}: {
+  pv: OfficialPv;
+  downloading: boolean;
+  onDownload: () => void;
+  onVerify: () => void;
+}) {
+  return (
+    <div
+      role="listitem"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16,
+        padding: '14px 16px',
+        background: 'var(--surface-base)',
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--elevation-card)',
+      }}
+    >
+      {/* Icône */}
+      <div
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 'var(--radius-base)',
+          background: 'var(--surface-nav)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        <Lock
+          size={16}
+          strokeWidth={1.5}
+          aria-hidden="true"
+          style={{ color: 'var(--text-on-nav)' }}
+        />
+      </div>
+
+      {/* Infos */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span
+            style={{
+              fontSize: 'var(--text-sm)',
+              fontWeight: 500,
+              color: 'var(--text-primary)',
+            }}
+          >
+            {pv.number}
+          </span>
+          {/* Badge Scellé */}
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 3,
+              padding: '1px 6px',
+              background: 'var(--surface-nav)',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: 11,
+              color: 'var(--text-on-nav)',
+              fontWeight: 500,
+            }}
+          >
+            <Lock size={10} strokeWidth={1.5} aria-hidden="true" />
+            Scellé
+          </span>
+        </div>
+        <div
+          style={{
+            fontSize: 'var(--text-xs)',
+            color: 'var(--text-secondary)',
+            marginTop: 2,
+          }}
+        >
+          {pv.engineId} · {pv.sealedBy} · {formatDate(pv.sealedAt)}
+        </div>
+        {/* Hash HMAC tronqué — 8 chars, visible mais sans légende explicative */}
+        <div
+          style={{
+            fontSize: 11,
+            fontFamily: 'var(--font-mono)',
+            fontVariantNumeric: 'tabular-nums',
+            color: 'var(--text-muted)',
+            marginTop: 4,
+          }}
+          title="Code d'intégrité HMAC (8 premiers caractères)"
+        >
+          {pv.hmacTruncated}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+        <Button
+          variant="ghost"
+          size="sm"
+          iconLeft={<ShieldCheck size={14} strokeWidth={1.5} aria-hidden="true" />}
+          onClick={onVerify}
+          aria-label={`Vérifier l'intégrité du PV ${pv.number}`}
+        >
+          Vérifier
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          iconLeft={<Download size={14} strokeWidth={1.5} aria-hidden="true" />}
+          loading={downloading}
+          onClick={onDownload}
+          aria-label={`Télécharger le PDF du PV ${pv.number}`}
+        >
+          Télécharger
+        </Button>
+      </div>
+    </div>
+  );
+}

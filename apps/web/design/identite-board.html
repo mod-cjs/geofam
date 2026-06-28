@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROADSEN — Board identité visuelle</title>
+<style>
+/* ============================================================
+   TOKENS
+   ============================================================ */
+:root {
+  /* Marque */
+  --c-asphalte:     #22262b;
+  --c-laterite:     #b86a2e;
+  --c-petrole:      #1f4e4a;
+
+  /* Surfaces */
+  --c-page:         #f7f6f4;
+  --c-zone:         #eef0f1;
+  --c-card:         #ffffff;
+
+  /* Texte */
+  --c-text:         #1f2329;
+  --c-text-sec:     #5c6168;
+  --c-text-att:     #8b9097;
+
+  /* Filets */
+  --c-border:       #e2e1de;
+  --c-border-2:     #d6d9d8;
+
+  /* Verdicts — usage EXCLUSIF statut */
+  --c-conforme-bg:  #e9f1ec;
+  --c-conforme-tx:  #2f6b46;
+  --c-ncf-bg:       #fbeceb;
+  --c-ncf-tx:       #b42318;
+
+  /* Tags domaine (pastilles neutres, famille marque) */
+  --c-tag-chaussees-bg:  #f0ebe5;
+  --c-tag-chaussees-dot: #b86a2e;
+  --c-tag-fondations-bg: #e5edec;
+  --c-tag-fondations-dot:#1f4e4a;
+  --c-tag-labo-bg:       #e9eaeb;
+  --c-tag-labo-dot:      #5c6168;
+
+  /* Typo */
+  --font: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "SF Mono", "Fira Mono", "Consolas", monospace;
+
+  /* Espacements */
+  --sp-xs:  4px;
+  --sp-s:   8px;
+  --sp-m:  16px;
+  --sp-l:  24px;
+  --sp-xl: 40px;
+
+  /* Radius */
+  --r-s:  4px;
+  --r-m:  6px;
+  --r-l: 10px;
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  background: var(--c-page);
+  color: var(--c-text);
+  font-size: 13.5px;
+  line-height: 1.55;
+  padding: var(--sp-xl) var(--sp-l);
+  max-width: 1020px;
+  margin: 0 auto;
+}
+
+/* ============================================================
+   UTILITAIRES
+   ============================================================ */
+.label-upper {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.1px;
+  color: var(--c-text-att);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--c-text-att);
+  margin-bottom: var(--sp-m);
+  padding-bottom: var(--sp-s);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.rule-note {
+  font-size: 11.5px;
+  color: var(--c-text-sec);
+  line-height: 1.6;
+  padding: var(--sp-s) 0;
+  border-top: 1px solid var(--c-border);
+}
+
+/* Board sections */
+.board-section {
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-l);
+  padding: var(--sp-l);
+  margin-bottom: var(--sp-l);
+}
+
+/* ============================================================
+   LOGOTYPE ROADSEN
+   ============================================================ */
+.logotype {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  user-select: none;
+}
+
+.logotype__wordmark {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 1.8px;
+  color: var(--c-asphalte);
+  line-height: 1;
+}
+
+.logotype__strates {
+  display: flex;
+  height: 3px;
+  width: 100%;
+  border-radius: 2px;
+  overflow: hidden;
+  gap: 0;
+}
+
+.logotype__strates span {
+  flex: 1;
+  display: block;
+}
+
+.strate-laterite { background: var(--c-laterite); }
+.strate-petrole  { background: var(--c-petrole); }
+.strate-asphalte { background: var(--c-asphalte); }
+
+/* Variante claire (barre d'app sur fond sombre) */
+.logotype--light .logotype__wordmark { color: #ffffff; }
+.logotype--light .strate-asphalte    { background: rgba(255,255,255,0.35); }
+
+/* ============================================================
+   TAGS DE DOMAINE
+   ============================================================ */
+.domain-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px 2px 6px;
+  border-radius: 20px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.domain-tag__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.domain-tag--chaussees {
+  background: var(--c-tag-chaussees-bg);
+  color: #6b3d1a;
+}
+.domain-tag--chaussees .domain-tag__dot { background: var(--c-tag-chaussees-dot); }
+
+.domain-tag--fondations {
+  background: var(--c-tag-fondations-bg);
+  color: var(--c-petrole);
+}
+.domain-tag--fondations .domain-tag__dot { background: var(--c-tag-fondations-dot); }
+
+.domain-tag--labo {
+  background: var(--c-tag-labo-bg);
+  color: var(--c-text-sec);
+}
+.domain-tag--labo .domain-tag__dot { background: var(--c-tag-labo-dot); }
+
+/* ============================================================
+   BADGES STATUT
+   ============================================================ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+
+.badge--conforme    { background: var(--c-conforme-bg); color: var(--c-conforme-tx); }
+.badge--ncf         { background: var(--c-ncf-bg);      color: var(--c-ncf-tx); }
+.badge--neutre      { background: var(--c-zone);         color: var(--c-text-sec); }
+.badge--scelle      { background: var(--c-zone);         color: var(--c-text); border: 1px solid var(--c-border-2); }
+
+/* ============================================================
+   SWATCHES
+   ============================================================ */
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-m);
+}
+
+.swatch-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 80px;
+}
+
+.swatch-block {
+  width: 80px;
+  height: 44px;
+  border-radius: var(--r-m);
+  border: 1px solid rgba(0,0,0,0.08);
+}
+
+.swatch-role {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--c-text-sec);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  line-height: 1.3;
+}
+
+.swatch-hex {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--c-text-att);
+}
+
+/* ============================================================
+   BARRE D'APPLICATION
+   ============================================================ */
+.app-bar {
+  background: var(--c-asphalte);
+  border-radius: var(--r-l) var(--r-l) 0 0;
+  padding: 0 var(--sp-m);
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-m);
+}
+
+.app-bar__left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-l);
+}
+
+.app-bar__org {
+  font-size: 12px;
+  color: rgba(255,255,255,0.55);
+  font-weight: 400;
+  border-left: 1px solid rgba(255,255,255,0.15);
+  padding-left: var(--sp-m);
+  white-space: nowrap;
+}
+
+.app-bar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-m);
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--c-laterite);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   ZONE PROJET
+   ============================================================ */
+.project-shell {
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-l);
+  overflow: hidden;
+  background: var(--c-page);
+}
+
+.project-header {
+  background: var(--c-card);
+  padding: var(--sp-m) var(--sp-l);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.breadcrumb {
+  font-size: 12px;
+  color: var(--c-text-att);
+  margin-bottom: 6px;
+}
+
+.breadcrumb a {
+  color: var(--c-laterite);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.breadcrumb a:hover { text-decoration: underline; }
+
+.project-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-s);
+  flex-wrap: wrap;
+}
+
+.project-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--c-asphalte);
+  line-height: 1.2;
+}
+
+/* Onglets */
+.tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 var(--sp-l);
+  background: var(--c-card);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.tab {
+  padding: 10px var(--sp-m);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-text-sec);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tab--active {
+  color: var(--c-laterite);
+  border-bottom-color: var(--c-laterite);
+  font-weight: 600;
+}
+
+/* ============================================================
+   TABLEAU DE RÉSULTATS
+   ============================================================ */
+.results-zone {
+  padding: var(--sp-l);
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.results-table thead th {
+  background: var(--c-zone);
+  color: var(--c-text-sec);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--c-border-2);
+}
+
+.results-table thead th.num { text-align: right; }
+
+.results-table tbody td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--c-border);
+  color: var(--c-text);
+  vertical-align: middle;
+}
+
+.results-table tbody td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.results-table tbody td.ratio {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.results-table tbody td.ratio--alert { color: var(--c-ncf-tx); font-weight: 600; }
+.results-table tbody td.ratio--ok    { color: var(--c-conforme-tx); }
+
+/* Sous-titre de groupe (pétrole) */
+.group-row td {
+  background: var(--c-petrole);
+  color: rgba(255,255,255,0.9);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  padding: 6px 10px;
+  border-bottom: none;
+}
+
+.param-name { color: var(--c-text); }
+.param-detail { display: block; font-size: 11px; color: var(--c-text-att); margin-top: 1px; }
+
+/* ============================================================
+   BANDEAUX VERDICT
+   ============================================================ */
+.verdict-banner {
+  border-radius: var(--r-m);
+  padding: 12px 16px;
+  margin: var(--sp-m) 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-m);
+}
+
+.verdict-banner--conforme {
+  background: var(--c-conforme-bg);
+  border: 1px solid #c2dfc9;
+}
+
+.verdict-banner--ncf {
+  background: var(--c-ncf-bg);
+  border: 1px solid #f0c4c1;
+}
+
+.verdict-banner__label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+.verdict-banner--conforme .verdict-banner__label { color: var(--c-conforme-tx); }
+.verdict-banner--ncf      .verdict-banner__label { color: var(--c-ncf-tx); }
+
+.verdict-banner__msg {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.verdict-banner--conforme .verdict-banner__msg { color: #234d31; }
+.verdict-banner--ncf      .verdict-banner__msg { color: #7a1911; }
+
+/* ============================================================
+   ZONE D'ACTIONS
+   ============================================================ */
+.action-zone {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-m);
+  flex-wrap: wrap;
+  padding: var(--sp-m) var(--sp-l) var(--sp-l);
+  border-top: 1px solid var(--c-border);
+}
+
+/* BOUTON PRIMAIRE — asphalte (action courante) */
+.btn-primary-asphalte {
+  background: var(--c-asphalte);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--r-m);
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  letter-spacing: 0.1px;
+  line-height: 1.4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* BOUTON PRIMAIRE — latérite (geste fort : Émettre PV) */
+.btn-primary-laterite {
+  background: var(--c-laterite);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--r-m);
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  letter-spacing: 0.1px;
+  line-height: 1.4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* BOUTON SECONDAIRE — pétrole ghost */
+.btn-secondary {
+  background: transparent;
+  color: var(--c-petrole);
+  border: 1px solid var(--c-petrole);
+  border-radius: var(--r-m);
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font);
+  cursor: pointer;
+  letter-spacing: 0.1px;
+  line-height: 1.4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ============================================================
+   MINI-LISTE PROJETS
+   ============================================================ */
+.project-list {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.project-list th {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  color: var(--c-text-att);
+  padding: 6px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--c-border-2);
+}
+
+.project-list td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--c-border);
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.project-list tr:last-child td { border-bottom: none; }
+
+.proj-name { font-weight: 500; color: var(--c-asphalte); }
+.proj-meta { font-size: 11.5px; color: var(--c-text-att); margin-top: 1px; }
+.proj-pv   { font-family: var(--font-mono); font-size: 12px; color: var(--c-text-sec); text-align: center; }
+.proj-date { font-size: 12px; color: var(--c-text-att); white-space: nowrap; }
+
+/* ============================================================
+   BLOC ARBITRAGE BOUTONS
+   ============================================================ */
+.arbitrage-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-m);
+}
+
+.arbitrage-card {
+  background: var(--c-zone);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-m);
+  padding: var(--sp-m);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-m);
+}
+
+.arbitrage-card__label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--c-text-att);
+}
+
+.arbitrage-card__usage {
+  font-size: 12px;
+  color: var(--c-text-sec);
+  line-height: 1.5;
+  margin-top: var(--sp-xs);
+}
+
+.arbitrage-card__decision {
+  font-size: 11.5px;
+  color: var(--c-text-att);
+  font-style: italic;
+}
+
+/* ============================================================
+   PIED
+   ============================================================ */
+.footer-rules {
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-l);
+  padding: var(--sp-m) var(--sp-l);
+}
+
+.footer-rules ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.footer-rules li {
+  font-size: 12px;
+  color: var(--c-text-sec);
+  padding-left: 12px;
+  position: relative;
+  line-height: 1.55;
+}
+
+.footer-rules li::before {
+  content: "—";
+  position: absolute;
+  left: 0;
+  color: var(--c-text-att);
+}
+
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     SECTION 1 — EN-TÊTE IDENTITÉ
+     ============================================================ -->
+<div class="board-section">
+  <div class="section-title">01 — Identité &amp; parti-pris</div>
+
+  <!-- Logotype -->
+  <div style="display:flex; align-items:flex-start; gap: 48px; flex-wrap:wrap; margin-bottom: 28px;">
+    <div>
+      <div class="label-upper" style="margin-bottom:10px;">Logotype</div>
+      <div class="logotype" style="margin-bottom:16px;">
+        <div class="logotype__wordmark">ROADSEN</div>
+        <div class="logotype__strates">
+          <span class="strate-laterite"></span>
+          <span class="strate-petrole"></span>
+          <span class="strate-asphalte"></span>
+        </div>
+      </div>
+      <div style="font-size:12px; color:var(--c-text-sec); max-width:240px; line-height:1.6;">
+        Barre de strates : latérite · pétrole · asphalte.<br>
+        Clin d'œil à la coupe de chaussée. Sobre, un trait.
+      </div>
+    </div>
+
+    <div>
+      <div class="label-upper" style="margin-bottom:10px;">Parti-pris directeur</div>
+      <div style="font-size:15px; font-weight:600; color:var(--c-asphalte); line-height:1.4; max-width:340px; margin-bottom:8px;">
+        Marque chaude. Interface froide.
+      </div>
+      <div style="font-size:12.5px; color:var(--c-text-sec); max-width:340px; line-height:1.65;">
+        La latérite porte l'émotion de marque et le geste fort (PV scellé).<br>
+        Le pétrole structure les données et l'information technique.<br>
+        L'asphalte ancre l'en-tête et les surfaces neutres.<br>
+        Le rouge et le vert sont <strong>réservés aux verdicts</strong> — jamais ailleurs.
+      </div>
+    </div>
+  </div>
+
+  <!-- Swatches -->
+  <div class="label-upper" style="margin-bottom:14px;">Palette de tokens</div>
+  <div class="swatches">
+
+    <!-- Marque -->
+    <div style="display:flex; flex-direction:column; gap:6px;">
+      <div class="label-upper" style="color:var(--c-laterite); font-size:9px;">Marque</div>
+      <div style="display:flex; gap:12px;">
+        <div class="swatch-item">
+          <div class="swatch-block" style="background:#22262b;"></div>
+          <div class="swatch-role">Asphalte<br>En-tête app</div>
+          <div class="swatch-hex">#22262b</div>
+        </div>
+        <div class="swatch-item">
+          <div class="swatch-block" style="background:#b86a2e;"></div>
+          <div class="swatch-role">Latérite<br>Accent fort</div>
+          <div class="swatch-hex">#b86a2e</div>
+        </div>
+        <div class="swatch-item">
+          <div class="swatch-block" style="background:#1f4e4a;"></div>
+          <div class="swatch-role">Pétrole<br>Structure</div>
+          <div class="swatch-hex">#1f4e4a</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Séparateur -->
+    <div style="width:1px; background:var(--c-border); margin:0 4px;"></div>
+
+    <!-- Surfaces -->
+    <div style="display:flex; flex-direction:column; gap:6px;">
+      <div class="label-upper" style="font-size:9px;">Surfaces</div>
+      <div style="display:flex; gap:12px;">
+        <div class="swatch-item">
+          <div class="swatch-block" style="background:#f7f6f4; border:1px solid #e2e1de;"></div>
+          <div class="swatch-role">Page</div>
+          <div class="swatch-hex">#f7f6f4</div>
+        </div>
+        <div class="swatch-item">
+          <div class="swatch-block" style="background:#eef0f1; border:1px solid #e2e1de;"></div>
+          <div class="swatch-role">Zone</div>
+          <div class="swatch-hex">#eef0f1</div>
+        </div>
+        <div class="swatch-item">
+          <div class="swatch-block" style="background:#ffffff; border:1px solid #e2e1de;"></div>
+          <div class="swatch-role">Carte</div>
+          <div class="swatch-hex">#ffffff</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Séparateur -->
+    <div style="width:1px; background:var(--c-border); margin:0 4px;"></div>
+
+    <!-- Texte -->
+    <div style="display:flex; flex-direction:column; gap:6px;">
+      <div class="label-upper" style="font-size:9px;">Texte</div>
+      <div style="display:flex; gap:12px;">
+        <div class="swatch-item">
+          <div class="swatch-block" style="background:#1f2329;"></div>
+          <div class="swatch-role">Principal</div>
+          <div class="swatch-hex">#1f2329</div>
+        </div>
+        <div class="swatch-item">
+          <div class="swatch-block" style="background:#5c6168;"></div>
+          <div class="swatch-role">Secondaire</div>
+          <div class="swatch-hex">#5c6168</div>
+        </div>
+        <div class="swatch-item">
+          <div class="swatch-block" style="background:#8b9097;"></div>
+          <div class="swatch-role">Atténué</div>
+          <div class="swatch-hex">#8b9097</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Séparateur -->
+    <div style="width:1px; background:var(--c-border); margin:0 4px;"></div>
+
+    <!-- Verdicts -->
+    <div style="display:flex; flex-direction:column; gap:6px;">
+      <div class="label-upper" style="color:var(--c-ncf-tx); font-size:9px;">Verdicts — usage exclusif</div>
+      <div style="display:flex; gap:12px;">
+        <div class="swatch-item">
+          <div class="swatch-block" style="background:#e9f1ec; border:1px solid #c2dfc9; display:flex; align-items:center; justify-content:center;">
+            <span style="font-size:10px; font-weight:700; color:#2f6b46;">CONF.</span>
+          </div>
+          <div class="swatch-role">Conforme<br>tx #2f6b46</div>
+          <div class="swatch-hex">bg #e9f1ec</div>
+        </div>
+        <div class="swatch-item">
+          <div class="swatch-block" style="background:#fbeceb; border:1px solid #f0c4c1; display:flex; align-items:center; justify-content:center;">
+            <span style="font-size:10px; font-weight:700; color:#b42318;">N. CONF.</span>
+          </div>
+          <div class="swatch-role">Non conf.<br>tx #b42318</div>
+          <div class="swatch-hex">bg #fbeceb</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ============================================================
+     SECTION 2 — ÉCRAN RÉEL : ESPACE PROJET
+     ============================================================ -->
+<div class="board-section" style="padding:0; overflow:hidden;">
+  <div style="padding: 14px 20px 10px 20px;">
+    <div class="section-title" style="margin-bottom:0;">02 — Écran réel : espace projet (calcul de dimensionnement)</div>
+  </div>
+
+  <!-- Shell applicatif -->
+  <div class="project-shell" style="margin: 0 20px 20px; border-radius: var(--r-l); overflow:hidden;">
+
+    <!-- Barre d'app -->
+    <div class="app-bar">
+      <div class="app-bar__left">
+        <div class="logotype logotype--light" style="gap:2px;">
+          <div class="logotype__wordmark" style="font-size:15px; letter-spacing:2px;">ROADSEN</div>
+          <div class="logotype__strates" style="height:2px;">
+            <span class="strate-laterite"></span>
+            <span class="strate-petrole"></span>
+            <span class="strate-asphalte"></span>
+          </div>
+        </div>
+        <div class="app-bar__org">STARFIRE TECHNOLOGY SAS</div>
+      </div>
+      <div class="app-bar__right">
+        <div class="avatar">MD</div>
+      </div>
+    </div>
+
+    <!-- En-tête projet -->
+    <div class="project-header">
+      <div class="breadcrumb">
+        <a href="#">Projets</a> &rsaquo; Route Mbour–Fatick
+      </div>
+      <div class="project-title-row">
+        <div class="project-title">Route Mbour–Fatick — Dimensionnement chaussée</div>
+        <div class="domain-tag domain-tag--chaussees">
+          <span class="domain-tag__dot"></span>
+          Chaussées
+        </div>
+      </div>
+    </div>
+
+    <!-- Onglets -->
+    <div class="tabs">
+      <div class="tab tab--active">Calcul</div>
+      <div class="tab">PV (3)</div>
+    </div>
+
+    <!-- Zone résultats -->
+    <div class="results-zone">
+
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th style="width:40%;">Paramètre</th>
+            <th class="num">Calculé</th>
+            <th class="num">Admissible</th>
+            <th class="num">Ratio</th>
+            <th style="text-align:center; width:130px;">Statut</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Groupe 1 -->
+          <tr class="group-row">
+            <td colspan="5">Vérifications de dimensionnement (Burmister-LCPC)</td>
+          </tr>
+          <tr>
+            <td>
+              <span class="param-name">Déformation sol support (&#949;<sub>z</sub>)</span>
+              <span class="param-detail">Couche de forme — profondeur 60 cm</span>
+            </td>
+            <td class="num">542 µdef</td>
+            <td class="num">511 µdef</td>
+            <td class="num ratio ratio--alert">106 %</td>
+            <td style="text-align:center;"><span class="badge badge--ncf">Non conforme</span></td>
+          </tr>
+          <tr>
+            <td>
+              <span class="param-name">Fatigue couches liées (&#949;<sub>t</sub>)</span>
+              <span class="param-detail">Interface GB3/GB4 — module E = 9 400 MPa</span>
+            </td>
+            <td class="num">119 µdef</td>
+            <td class="num">—</td>
+            <td class="num ratio">—</td>
+            <td style="text-align:center;"><span class="badge badge--neutre">En attente</span></td>
+          </tr>
+          <tr>
+            <td>
+              <span class="param-name">Déflexion de surface (d<sub>0</sub>)</span>
+              <span class="param-detail">Charge essieu 130 kN, pression 0,662 MPa</span>
+            </td>
+            <td class="num">38 µm</td>
+            <td class="num">42 µm</td>
+            <td class="num ratio ratio--ok">90 %</td>
+            <td style="text-align:center;"><span class="badge badge--conforme">Conforme</span></td>
+          </tr>
+
+          <!-- Groupe 2 -->
+          <tr class="group-row">
+            <td colspan="5">Couches de structure</td>
+          </tr>
+          <tr>
+            <td>
+              <span class="param-name">Béton bitumineux de surface (BB)</span>
+              <span class="param-detail">Épaisseur retenue</span>
+            </td>
+            <td class="num">6 cm</td>
+            <td class="num">—</td>
+            <td class="num ratio">—</td>
+            <td style="text-align:center;"><span class="badge badge--neutre">Information</span></td>
+          </tr>
+          <tr>
+            <td>
+              <span class="param-name">Grave bitume (GB3)</span>
+              <span class="param-detail">Épaisseur retenue</span>
+            </td>
+            <td class="num">20 cm</td>
+            <td class="num">—</td>
+            <td class="num ratio">—</td>
+            <td style="text-align:center;"><span class="badge badge--neutre">Information</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Bandeaux verdict -->
+      <div style="margin-top: 16px;">
+        <div class="verdict-banner verdict-banner--ncf">
+          <div class="verdict-banner__label">Non conforme</div>
+          <div class="verdict-banner__msg">
+            La déformation verticale du sol support (&epsilon;<sub>z</sub> = 542 µdef) dépasse le seuil admissible (511 µdef, N = 1,2 × 10<sup>6</sup> PL). Revoir l'épaisseur de la couche de forme ou le matériau de fondation avant d'émettre un PV.
+          </div>
+        </div>
+
+        <div class="verdict-banner verdict-banner--conforme">
+          <div class="verdict-banner__label">Conforme</div>
+          <div class="verdict-banner__msg">
+            La déflexion de surface (d<sub>0</sub> = 38 µm) est inférieure au critère admissible (42 µm). Ce paramètre satisfait aux exigences de la structure projetée.
+          </div>
+        </div>
+      </div>
+
+      <!-- Badges isolés -->
+      <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--c-border);">
+        <div class="label-upper" style="margin-bottom:10px;">Badges isolés (référence)</div>
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <span class="badge badge--scelle">Scellé</span>
+            <span style="font-size:10px; color:var(--c-text-att);">PV archivé</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <span class="badge badge--conforme">Conforme</span>
+            <span style="font-size:10px; color:var(--c-text-att);">Verdict positif</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <span class="badge badge--ncf">Non conforme</span>
+            <span style="font-size:10px; color:var(--c-text-att);">Verdict négatif</span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <span class="badge badge--neutre">En attente</span>
+            <span style="font-size:10px; color:var(--c-text-att);">Statut neutre</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zone d'action -->
+    <div class="action-zone">
+      <button class="btn-primary-laterite">Émettre un PV scellé</button>
+      <button class="btn-secondary">Recalculer</button>
+      <div style="margin-left:auto; font-size:11.5px; color:var(--c-text-att);">
+        Calcul serveur — résultat scellé HMAC-SHA256
+      </div>
+    </div>
+
+  </div><!-- /project-shell -->
+</div><!-- /section 2 -->
+
+
+<!-- ============================================================
+     SECTION 3 — MINI-LISTE DE PROJETS (tags domaine)
+     ============================================================ -->
+<div class="board-section">
+  <div class="section-title">03 — Mini-liste de projets (tag de domaine en contexte)</div>
+  <div style="font-size:12px; color:var(--c-text-sec); margin-bottom:14px; line-height:1.5;">
+    Le tag de domaine vit sur la ligne — pastille 6 px + libellé texte. Il n'affecte pas la surface de la carte.
+    Juger si la dose est trop présente, trop discrète, ou juste.
+  </div>
+
+  <div style="background:var(--c-card); border:1px solid var(--c-border); border-radius:var(--r-m); overflow:hidden;">
+    <table class="project-list">
+      <thead>
+        <tr>
+          <th style="width:45%;">Projet</th>
+          <th>Domaine</th>
+          <th style="text-align:center;">PV</th>
+          <th>Dernière activité</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div class="proj-name">Route Mbour–Fatick</div>
+            <div class="proj-meta">STARFIRE TECHNOLOGY SAS</div>
+          </td>
+          <td><div class="domain-tag domain-tag--chaussees"><span class="domain-tag__dot"></span>Chaussées</div></td>
+          <td class="proj-pv">3</td>
+          <td class="proj-date">22 juin 2026</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="proj-name">Immeuble R+5 — Plateau Dakar</div>
+            <div class="proj-meta">BET Structures Associés</div>
+          </td>
+          <td><div class="domain-tag domain-tag--fondations"><span class="domain-tag__dot"></span>Fondations</div></td>
+          <td class="proj-pv">1</td>
+          <td class="proj-date">19 juin 2026</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="proj-name">Carrière de Thiès — Classification GTR</div>
+            <div class="proj-meta">ONAS / Direction technique</div>
+          </td>
+          <td><div class="domain-tag domain-tag--labo"><span class="domain-tag__dot"></span>Sol &amp; labo</div></td>
+          <td class="proj-pv">0</td>
+          <td class="proj-date">15 juin 2026</td>
+        </tr>
+        <tr>
+          <td>
+            <div class="proj-name">Radier général — Hôpital Ziguinchor</div>
+            <div class="proj-meta">BET Géo-Sénégal</div>
+          </td>
+          <td><div class="domain-tag domain-tag--fondations"><span class="domain-tag__dot"></span>Fondations</div></td>
+          <td class="proj-pv">2</td>
+          <td class="proj-date">10 juin 2026</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     SECTION 4 — ARBITRAGE BOUTON PRIMAIRE
+     ============================================================ -->
+<div class="board-section">
+  <div class="section-title">04 — Arbitrage bouton primaire : asphalte vs latérite</div>
+  <div style="font-size:12px; color:var(--c-text-sec); margin-bottom:16px; line-height:1.5;">
+    Hypothèse directeur : asphalte pour toute action courante (sauvegarder, naviguer, exporter), latérite réservé au
+    geste fort et rare — « Émettre un PV scellé ». À valider à l'œil ci-dessous.
+  </div>
+
+  <div class="arbitrage-grid">
+
+    <!-- Option A — Asphalte -->
+    <div class="arbitrage-card">
+      <div>
+        <div class="arbitrage-card__label">Option A — Asphalte #22262b</div>
+        <div class="arbitrage-card__usage">Actions courantes, confirmations, navigation principale. Sobre, efficace, discret.</div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px; align-items:flex-start;">
+        <button class="btn-primary-asphalte">Émettre un PV scellé</button>
+        <button class="btn-primary-asphalte">Sauvegarder le calcul</button>
+        <button class="btn-primary-asphalte">Lancer le recalcul</button>
+      </div>
+
+      <!-- Contexte couleur : barre d'app asphalte, fond page -->
+      <div style="border:1px solid var(--c-border); border-radius:var(--r-s); overflow:hidden;">
+        <div style="background:var(--c-asphalte); height:28px; display:flex;align-items:center;padding:0 10px;">
+          <span style="font-size:11px; font-weight:600; color:white; letter-spacing:1.5px;">ROADSEN</span>
+        </div>
+        <div style="padding:10px; background:var(--c-page); display:flex; gap:8px; align-items:center;">
+          <button class="btn-primary-asphalte" style="font-size:11.5px; padding:6px 14px;">Émettre un PV scellé</button>
+          <button class="btn-secondary" style="font-size:11.5px; padding:6px 12px;">Recalculer</button>
+        </div>
+      </div>
+
+      <div class="arbitrage-card__decision">Contre-indication possible : asphalte en action = asphalte partout (barre + bouton fusionnent visuellement dans l'en-tête).</div>
+    </div>
+
+    <!-- Option B — Latérite -->
+    <div class="arbitrage-card">
+      <div>
+        <div class="arbitrage-card__label">Option B — Latérite #b86a2e</div>
+        <div class="arbitrage-card__usage">Geste fort uniquement (PV scellé). Les actions courantes restent asphalte. Le latérite signale l'importance.</div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px; align-items:flex-start;">
+        <button class="btn-primary-laterite">Émettre un PV scellé</button>
+        <button class="btn-primary-asphalte">Sauvegarder le calcul</button>
+        <button class="btn-primary-asphalte">Lancer le recalcul</button>
+      </div>
+
+      <!-- Contexte couleur -->
+      <div style="border:1px solid var(--c-border); border-radius:var(--r-s); overflow:hidden;">
+        <div style="background:var(--c-asphalte); height:28px; display:flex;align-items:center;padding:0 10px;">
+          <span style="font-size:11px; font-weight:600; color:white; letter-spacing:1.5px;">ROADSEN</span>
+        </div>
+        <div style="padding:10px; background:var(--c-page); display:flex; gap:8px; align-items:center;">
+          <button class="btn-primary-laterite" style="font-size:11.5px; padding:6px 14px;">Émettre un PV scellé</button>
+          <button class="btn-secondary" style="font-size:11.5px; padding:6px 12px;">Recalculer</button>
+        </div>
+      </div>
+
+      <div class="arbitrage-card__decision">Hypothèse retenue par le designer : la chaleur du latérite signale le geste engageant sans surcharger l'interface neutre. Action courante = asphalte, action forte = latérite.</div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ============================================================
+     SECTION 5 — RÈGLES DE GOUVERNANCE VISUELLE
+     ============================================================ -->
+<div class="footer-rules">
+  <div class="label-upper" style="margin-bottom:10px;">05 — Règles non négociables de cette identité</div>
+  <ul>
+    <li>Le rouge (#b42318) et le vert (#2f6b46) sont <strong>réservés aux verdicts de conformité</strong>. Ils n'apparaissent dans aucun autre rôle — ni lien, ni bouton, ni tag, ni décoration.</li>
+    <li>Le latérite (#b86a2e) et le pétrole (#1f4e4a) ne sont jamais confondus avec des couleurs de statut : ils portent la marque et la structure de données, jamais un jugement.</li>
+    <li>Le tag de domaine oriente l'utilisateur ; il ne repeint jamais une surface, un bouton, un tableau ou un PV. Son fond est désaturé (famille marque, basse saturation).</li>
+    <li>L'interface de travail (tableaux, données, badges) reste sur la palette froide. La chaleur est concentrée sur le logotype, les liens actifs et le bouton PV — pas distribuée sur l'UI.</li>
+  </ul>
+</div>
+
+</body>
+</html>

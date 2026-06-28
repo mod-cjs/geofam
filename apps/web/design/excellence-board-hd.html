@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROADSEN — Board excellence (haute fidélité)</title>
+<style>
+:root{
+  /* Surfaces */
+  --canvas:#f7f6f4; --base:#ffffff; --alt:#eef0f1;
+  /* Nav / structure */
+  --nav:#22262b; --petrole:#1f4e4a; --petrole-rgb:31,78,74;
+  /* Action / marque */
+  --action:#a05226; --action-hover:#8a4520; --action-dark:#d9954e; --brand:#b86a2e;
+  /* Texte (ratios AA corrigés) */
+  --text:#1f2329; --text-sec:#4a5158; --text-muted:#6b7077; --text-on-nav:#f7f6f4; --muted-on-nav:rgba(255,255,255,.55);
+  /* Verdicts (réservés) */
+  --pass-bg:#e9f1ec; --pass-fg:#2f6b46; --fail-bg:#fbeceb; --fail-fg:#8b1a1a;
+  /* Bordure / élévation */
+  --border:rgba(0,0,0,.08); --border-nav:rgba(255,255,255,.08);
+  --elev-static:0 0 0 1px var(--border);
+  --elev-float:0 2px 4px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.08);
+  /* États */
+  --selected-bg:rgba(31,78,74,.10); --row-hover:rgba(31,78,74,.045);
+  --nav-hover:rgba(255,255,255,.06); --nav-selected:rgba(255,255,255,.08);
+  /* Motion */
+  --dur-instant:100ms; --dur-fast:150ms; --dur-base:200ms;
+  --ease-entrance:cubic-bezier(.165,.84,.44,1);
+  --ease-exit:cubic-bezier(.55,0,1,.45);
+  --ease-state:cubic-bezier(.455,.03,.515,.955);
+  /* Geometrie */
+  --r-sm:3px; --r:4px; --r-lg:6px;
+  --font:'Geist','Inter',-apple-system,system-ui,sans-serif;
+  --mono:'Geist Mono','SF Mono','Cascadia Code',ui-monospace,monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--canvas);color:var(--text);font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;padding:32px;max-width:1320px;margin:0 auto}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;letter-spacing:0}
+.label-caps{font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:500;color:var(--text-muted)}
+.board-h{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted);font-weight:600;
+  margin:0 0 14px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.section{margin-bottom:32px}
+.icon{width:18px;height:18px;flex-shrink:0;stroke-width:1.5}
+.icon-16{width:16px;height:16px;flex-shrink:0;stroke-width:1.5}
+
+/* ===================== SHELL ===================== */
+.app{display:grid;grid-template-columns:240px 1fr;height:680px;border-radius:var(--r-lg);overflow:hidden;
+  box-shadow:var(--elev-static);background:var(--base)}
+
+/* --- Sidebar --- */
+.sidebar{background:var(--nav);color:var(--text-on-nav);display:flex;flex-direction:column;
+  --surface-current:var(--nav)}
+.sb-logo{padding:16px 16px 12px;display:flex;flex-direction:column;gap:5px}
+.sb-word{font-size:14px;font-weight:600;letter-spacing:.08em;color:#fff;line-height:1}
+.sb-strates{display:flex;width:74px;height:3px;border-radius:2px;overflow:hidden}
+.sb-strates i{display:block;flex:1}
+.s-clay{background:var(--brand)} .s-teal{background:var(--petrole)} .s-asph{background:rgba(255,255,255,.3)}
+
+.org{margin:0 8px 8px;padding:8px;border-radius:var(--r);display:flex;align-items:center;gap:8px;cursor:pointer;
+  transition:background-color var(--dur-fast) var(--ease-state)}
+.org:hover{background:var(--nav-hover)}
+.org-av{width:28px;height:28px;border-radius:var(--r);background:var(--brand);color:#fff;font-size:11px;
+  font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.org-meta{flex:1;min-width:0}
+.org-name{font-size:13px;font-weight:500;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.org-role{font-size:11px;color:var(--muted-on-nav)}
+.sep{height:1px;background:var(--border-nav);margin:8px 16px}
+.sb-sectlabel{padding:4px 16px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-on-nav);font-weight:500}
+.nav-list{display:flex;flex-direction:column;gap:1px;padding:0 8px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r);color:rgba(255,255,255,.82);
+  font-size:13px;cursor:pointer;text-decoration:none;position:relative;
+  transition:background-color var(--dur-fast) var(--ease-state),color var(--dur-fast) var(--ease-state)}
+.nav-item .icon{color:rgba(255,255,255,.6);transition:color var(--dur-fast) var(--ease-state)}
+.nav-item:hover{background:var(--nav-hover);color:#fff}
+.nav-item:hover .icon{color:rgba(255,255,255,.85)}
+.nav-item.active{background:var(--nav-selected);color:var(--action-dark);font-weight:500}
+.nav-item.active .icon{color:var(--action-dark)}
+.nav-item.active::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:2px;border-radius:1px;background:var(--petrole);box-shadow:0 0 0 .5px var(--action-dark)}
+.recent{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:var(--r);color:rgba(255,255,255,.7);
+  font-size:12px;cursor:pointer;transition:background-color var(--dur-fast) var(--ease-state)}
+.recent:hover{background:var(--nav-hover);color:#fff}
+.recent .dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.recent .rdate{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted-on-nav)}
+.sb-foot{margin-top:auto;padding:8px}
+.sb-user{display:flex;align-items:center;gap:8px;padding:8px;border-radius:var(--r);cursor:pointer;
+  transition:background-color var(--dur-fast) var(--ease-state)}
+.sb-user:hover{background:var(--nav-hover)}
+.sb-user .org-av{background:var(--petrole)}
+.collapse-btn{display:flex;align-items:center;gap:8px;padding:8px 10px;margin-top:4px;color:var(--muted-on-nav);
+  font-size:12px;cursor:pointer;border-radius:var(--r);transition:background-color var(--dur-fast) var(--ease-state)}
+.collapse-btn:hover{background:var(--nav-hover);color:#fff}
+
+/* --- Main --- */
+.main{display:flex;flex-direction:column;min-width:0;background:var(--canvas)}
+.topbar{height:48px;background:var(--nav);display:flex;align-items:center;gap:12px;padding:0 16px;
+  box-shadow:0 1px 0 0 var(--border-nav);--surface-current:var(--nav)}
+.crumb{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted-on-nav)}
+.crumb a{color:var(--muted-on-nav);text-decoration:none;transition:color var(--dur-fast) var(--ease-state)}
+.crumb a:hover{color:#fff}
+.crumb .cur{color:var(--text-on-nav);font-weight:500}
+.crumb .sl{color:rgba(255,255,255,.3)}
+.tb-spacer{flex:1}
+.cmdk{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:var(--r);
+  background:rgba(255,255,255,.07);color:var(--muted-on-nav);font-size:12px;cursor:pointer;min-width:200px;
+  transition:background-color var(--dur-fast) var(--ease-state)}
+.cmdk:hover{background:rgba(255,255,255,.12)}
+.cmdk .kbd{margin-left:auto;font-family:var(--mono);font-size:11px;background:rgba(255,255,255,.1);
+  padding:1px 5px;border-radius:3px}
+.tb-icon{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:var(--r);
+  color:rgba(255,255,255,.7);cursor:pointer;position:relative;transition:background-color var(--dur-fast) var(--ease-state)}
+.tb-icon:hover{background:rgba(255,255,255,.1);color:#fff}
+.tb-icon .bdg{position:absolute;top:6px;right:7px;width:6px;height:6px;border-radius:50%;background:var(--brand)}
+.tb-av{width:30px;height:30px;border-radius:50%;background:var(--brand);color:#fff;font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;cursor:pointer}
+
+/* --- Project band --- */
+.pband{height:44px;background:var(--base);border-bottom:1px solid var(--border);display:flex;align-items:center;
+  gap:12px;padding:0 20px}
+.pb-name{font-size:14px;font-weight:500;color:var(--text)}
+.pb-ref{font-family:var(--mono);font-size:12px;color:var(--text-muted)}
+.pb-mod{font-size:12px;color:var(--text-muted)}
+.ptabs{display:flex;gap:2px;margin-left:auto;height:100%}
+.ptab{display:flex;align-items:center;padding:0 12px;font-size:13px;color:var(--text-sec);cursor:pointer;
+  border-bottom:2px solid transparent;transition:color var(--dur-fast) var(--ease-state),border-color var(--dur-fast) var(--ease-state)}
+.ptab:hover{color:var(--text)}
+.ptab.active{color:var(--text);font-weight:500;border-bottom-color:var(--petrole)}
+
+/* --- Master-detail --- */
+.md{display:grid;grid-template-columns:280px 1fr;flex:1;min-height:0}
+.calc-list{background:var(--canvas);border-right:1px solid var(--border);padding:12px 8px;overflow:auto}
+.cl-head{display:flex;align-items:center;justify-content:space-between;padding:4px 8px 10px}
+.cl-item{display:flex;flex-direction:column;gap:3px;padding:9px 10px;border-radius:var(--r);cursor:pointer;
+  position:relative;transition:background-color var(--dur-fast) var(--ease-state)}
+.cl-item:hover{background:var(--row-hover)}
+.cl-item.sel{background:var(--selected-bg)}
+.cl-item.sel::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--petrole)}
+.cl-top{display:flex;align-items:center;gap:7px}
+.cl-prefix{font-size:11px;font-weight:600;color:var(--text-muted)}
+.cl-dot{width:6px;height:6px;border-radius:50%}
+.cl-title{font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cl-sub{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted)}
+.detail{padding:20px 24px;overflow:auto;background:var(--base)}
+
+/* badges */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:var(--r-sm)}
+.b-pass{background:var(--pass-bg);color:var(--pass-fg)}
+.b-fail{background:var(--fail-bg);color:var(--fail-fg)}
+.b-neutral{background:var(--alt);color:var(--text-sec)}
+.b-sealed{background:var(--nav);color:#fff;gap:5px}
+.b-recalc{background:transparent;color:var(--text-sec);box-shadow:inset 0 0 0 1px var(--border)}
+
+/* table */
+.rt{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+.rt thead th{background:var(--alt);color:var(--text-sec);font-size:11px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;padding:7px 10px;text-align:left;border-bottom:1px solid var(--border)}
+.rt thead th.r{text-align:right}
+.rt tbody td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.rt tbody tr{transition:background-color var(--dur-fast) var(--ease-state)}
+.rt tbody tr.data:hover{background:var(--row-hover)}
+.rt .grp td{background:var(--petrole);color:rgba(255,255,255,.92);font-size:11px;font-weight:600;
+  letter-spacing:.05em;text-transform:uppercase;padding:6px 10px;border:none}
+.pname{color:var(--text)} .pdet{display:block;font-size:11px;color:var(--text-muted);margin-top:1px}
+.r-alert{color:var(--fail-fg);font-weight:600} .r-ok{color:var(--pass-fg)}
+
+/* verdict banners */
+.vb{display:flex;gap:12px;padding:11px 14px;border-radius:var(--r);margin-top:12px}
+.vb-fail{background:var(--fail-bg);box-shadow:inset 3px 0 0 var(--fail-fg)}
+.vb-pass{background:var(--pass-bg);box-shadow:inset 3px 0 0 var(--pass-fg)}
+.vb .icon{margin-top:1px}
+.vb-fail .icon{color:var(--fail-fg)} .vb-pass .icon{color:var(--pass-fg)}
+.vb-lbl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.vb-fail .vb-lbl{color:var(--fail-fg)} .vb-pass .vb-lbl{color:var(--pass-fg)}
+.vb-msg{font-size:12.5px;line-height:1.5;margin-top:2px}
+.vb-fail .vb-msg{color:#7a1911} .vb-pass .vb-msg{color:#234d31}
+
+/* actions */
+.actions{display:flex;align-items:center;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
+.btn{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 16px;border-radius:var(--r);
+  font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;border:none;
+  transition:background-color var(--dur-fast) var(--ease-state),opacity var(--dur-instant) var(--ease-state)}
+.btn:focus-visible{outline:2px solid var(--petrole);outline-offset:2px}
+.btn-action{background:var(--action);color:#fff}
+.btn-action:hover{background:var(--action-hover)}
+.btn-sec{background:transparent;color:var(--petrole);box-shadow:inset 0 0 0 1px var(--petrole)}
+.btn-sec:hover{background:rgba(31,78,74,.06)}
+.hint{margin-left:auto;font-size:11px;color:var(--text-muted)}
+
+/* ===================== LOGIN ===================== */
+.login-wrap{display:flex;align-items:center;justify-content:center;height:420px;background:var(--canvas);
+  border-radius:var(--r-lg);box-shadow:var(--elev-static)}
+.login-card{width:380px;background:var(--base);border-radius:var(--r-lg);box-shadow:var(--elev-float);padding:32px}
+.lc-logo{display:flex;flex-direction:column;gap:5px;margin-bottom:6px}
+.lc-word{font-size:22px;font-weight:600;letter-spacing:.06em;color:var(--nav);line-height:1}
+.lc-strates{display:flex;width:120px;height:3px;border-radius:2px;overflow:hidden}
+.lc-strates i{flex:1}
+.lc-sub{font-size:13px;color:var(--text-muted);margin-bottom:24px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;font-weight:500;color:var(--text-sec);margin-bottom:6px}
+.field input{width:100%;height:38px;padding:0 12px;border-radius:var(--r);border:1px solid var(--border);
+  background:var(--base);font-family:var(--font);font-size:14px;color:var(--text);
+  transition:border-color var(--dur-fast) var(--ease-state),box-shadow var(--dur-fast) var(--ease-state)}
+.field input:focus{outline:none;border-color:var(--action);box-shadow:0 0 0 3px rgba(160,82,38,.12)}
+.btn-block{width:100%;height:40px;justify-content:center;margin-top:6px}
+.lc-foot{font-size:12px;color:var(--text-muted);margin-top:16px;text-align:center}
+
+/* ===================== ENCARTS ===================== */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.card{background:var(--base);border-radius:var(--r-lg);box-shadow:var(--elev-static);padding:20px}
+.mtoken{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.mtoken:last-child{border:none}
+.mtoken code{font-family:var(--mono);font-size:12px;color:var(--action);background:var(--alt);padding:2px 6px;border-radius:3px}
+.mtoken .bar{height:6px;background:var(--petrole);border-radius:3px;flex-shrink:0}
+.mtoken .desc{color:var(--text-sec);margin-left:auto;font-size:12px}
+.mi{padding:10px 0;border-bottom:1px solid var(--border)}
+.mi:last-child{border:none}
+.mi b{font-size:13px;color:var(--text)} .mi span{display:block;font-size:12px;color:var(--text-sec);margin-top:2px}
+.mi code{font-family:var(--mono);font-size:11px;color:var(--action)}
+.try{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:var(--r);
+  background:var(--action);color:#fff;font-size:13px;font-weight:500;cursor:pointer;border:none;
+  transition:background-color var(--dur-fast) var(--ease-state)}
+.try:hover{background:var(--action-hover)}
+.try:focus-visible{outline:2px solid var(--petrole);outline-offset:2px}
+.note{font-size:12px;color:var(--text-muted);line-height:1.6}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ 01 SHELL — Espace projet ============ -->
+<div class="section">
+  <p class="board-h">01 — Shell complet · espace projet · onglet Calculs (master-detail)</p>
+  <div class="app">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sb-logo">
+        <div class="sb-word">ROADSEN</div>
+        <div class="sb-strates"><i class="s-clay"></i><i class="s-teal"></i><i class="s-asph"></i></div>
+      </div>
+
+      <div class="org">
+        <div class="org-av">ST</div>
+        <div class="org-meta">
+          <div class="org-name">STARFIRE TECHNOLOGY</div>
+          <div class="org-role">Admin · changer ▾</div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+      <div class="sb-sectlabel">Récents</div>
+      <div class="nav-list">
+        <div class="recent"><span class="dot" style="background:var(--brand)"></span>Route Mbour–Fatick<span class="rdate">2h</span></div>
+        <div class="recent"><span class="dot" style="background:var(--petrole)"></span>Immeuble R+5 Plateau<span class="rdate">hier</span></div>
+      </div>
+
+      <div class="sep"></div>
+      <div class="sb-sectlabel">Espace de travail</div>
+      <div class="nav-list">
+        <a class="nav-item active">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          Mes projets
+        </a>
+      </div>
+      <div class="sep"></div>
+      <div class="sb-sectlabel">Ressources</div>
+      <div class="nav-list">
+        <a class="nav-item">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2 2 7l10 5 10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+          Bibliothèque de moteurs
+        </a>
+      </div>
+
+      <div class="sb-foot">
+        <div class="nav-list">
+          <a class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Paramètres</a>
+          <a class="nav-item"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>Aide</a>
+        </div>
+        <div class="sep"></div>
+        <div class="sb-user">
+          <div class="org-av">MD</div>
+          <div class="org-meta"><div class="org-name">M. O. Diallo</div><div class="org-role">Ingénieur</div></div>
+        </div>
+        <div class="collapse-btn">
+          <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m15 18-6-6 6-6"/></svg>
+          Réduire la navigation
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+      <div class="topbar">
+        <div class="crumb">
+          <a>Mes projets</a><span class="sl">/</span>
+          <a>RN2-PK45</a><span class="sl">/</span>
+          <span class="cur">Calcul Burmister #4</span>
+        </div>
+        <div class="tb-spacer"></div>
+        <div class="cmdk">
+          <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          Rechercher…<span class="kbd">⌘K</span>
+        </div>
+        <button class="btn btn-action" style="height:30px;padding:0 12px;font-size:12px">
+          <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>Nouveau calcul
+        </button>
+        <div class="tb-icon"><span class="bdg"></span><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>
+        <div class="tb-av">MD</div>
+      </div>
+
+      <!-- Project band -->
+      <div class="pband">
+        <span class="pb-name">Route Mbour–Fatick</span>
+        <span class="pb-ref">RN2-PK45</span>
+        <span class="badge b-fail" style="font-weight:600">Non conforme</span>
+        <span class="pb-mod">modifié il y a 2 h</span>
+        <div class="ptabs">
+          <div class="ptab">Vue d'ensemble</div>
+          <div class="ptab active">Calculs</div>
+          <div class="ptab">PV &amp; Livrables</div>
+          <div class="ptab">Informations</div>
+        </div>
+      </div>
+
+      <!-- master-detail -->
+      <div class="md">
+        <!-- liste -->
+        <div class="calc-list">
+          <div class="cl-head"><span class="label-caps">Calculs · 4</span>
+            <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)"><path d="M12 5v14M5 12h14"/></svg></div>
+          <div class="cl-item sel">
+            <div class="cl-top"><span class="cl-prefix">CH.</span><span class="cl-dot" style="background:var(--brand)"></span><span class="cl-title">Burmister #4 — corps de chaussée</span></div>
+            <div class="cl-sub"><span class="badge b-fail">Non conforme</span><span>· il y a 2 h</span></div>
+          </div>
+          <div class="cl-item">
+            <div class="cl-top"><span class="cl-prefix">CH.</span><span class="cl-dot" style="background:var(--brand)"></span><span class="cl-title">Burmister #3 — variante GB4</span></div>
+            <div class="cl-sub"><span class="badge b-pass">Conforme</span><span>· hier</span></div>
+          </div>
+          <div class="cl-item">
+            <div class="cl-top"><span class="cl-prefix">FD.</span><span class="cl-dot" style="background:var(--petrole)"></span><span class="cl-title">Terzaghi — semelle S2</span></div>
+            <div class="cl-sub"><span class="badge b-recalc">Recalculable</span><span>· 3 j</span></div>
+          </div>
+          <div class="cl-item">
+            <div class="cl-top"><span class="cl-prefix">FD.</span><span class="cl-dot" style="background:var(--petrole)"></span><span class="cl-title">Casagrande — pieu P7</span></div>
+            <div class="cl-sub"><span class="badge b-pass">Conforme</span><span>· 5 j</span></div>
+          </div>
+        </div>
+
+        <!-- detail -->
+        <div class="detail">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+            <h2 style="font-size:20px;font-weight:600;letter-spacing:0">Burmister #4 — corps de chaussée</h2>
+            <span class="badge b-recalc" style="margin-left:auto">Recalculable</span>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Méthode rationnelle — AGEROUTE 2015 · recalculé serveur</p>
+
+          <table class="rt">
+            <thead><tr><th style="width:42%">Paramètre</th><th class="r">Calculé</th><th class="r">Admissible</th><th class="r">Ratio</th><th style="width:120px">Statut</th></tr></thead>
+            <tbody>
+              <tr class="grp"><td colspan="5">Vérifications de dimensionnement</td></tr>
+              <tr class="data"><td><span class="pname">Déformation sol support (εz)</span><span class="pdet">Couche de forme — z = 60 cm</span></td>
+                <td class="num">542 µdef</td><td class="num">511 µdef</td><td class="num r-alert">106 %</td><td><span class="badge b-fail">Non conforme</span></td></tr>
+              <tr class="data"><td><span class="pname">Fatigue couches liées (εt)</span><span class="pdet">Interface GB3/GB4</span></td>
+                <td class="num">119 µdef</td><td class="num">—</td><td class="num">—</td><td><span class="badge b-neutral">En attente</span></td></tr>
+              <tr class="data"><td><span class="pname">Déflexion de surface (d₀)</span><span class="pdet">Essieu 130 kN — 0,662 MPa</span></td>
+                <td class="num">38 µm</td><td class="num">42 µm</td><td class="num r-ok">90 %</td><td><span class="badge b-pass">Conforme</span></td></tr>
+            </tbody>
+          </table>
+
+          <div class="vb vb-fail">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+            <div><div class="vb-lbl">Non conforme</div>
+              <div class="vb-msg">La déformation verticale du sol support (εz = 542 µdef) dépasse le seuil admissible (511 µdef, N = 1,2 × 10⁶ PL). Revoir l'épaisseur de la couche de forme avant d'émettre un PV.</div></div>
+          </div>
+          <div class="vb vb-pass">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6 9 17l-5-5"/></svg>
+            <div><div class="vb-lbl">Conforme</div>
+              <div class="vb-msg">La déflexion de surface (d₀ = 38 µm) est inférieure au critère admissible (42 µm).</div></div>
+          </div>
+
+          <div class="actions">
+            <button class="btn btn-sec">
+              <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.7L3 8"/><path d="M3 3v5h5"/></svg>Recalculer
+            </button>
+            <span class="hint">Émission de PV indisponible tant que le calcul n'est pas conforme</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 02 LOGIN ============ -->
+<div class="section">
+  <p class="board-h">02 — Connexion</p>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="lc-logo">
+        <div class="lc-word">ROADSEN</div>
+        <div class="lc-strates"><i class="s-clay"></i><i class="s-teal"></i><i class="s-asph" style="background:var(--nav)"></i></div>
+      </div>
+      <p class="lc-sub">Calcul géotechnique &amp; routier</p>
+      <div class="field"><label>Adresse e-mail</label><input type="email" placeholder="prenom@bureau.sn"></div>
+      <div class="field"><label>Mot de passe</label><input type="password" placeholder="••••••••••"></div>
+      <button class="btn btn-action btn-block">Se connecter</button>
+      <p class="lc-foot">Accès réservé aux membres de votre organisation.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 03 ENCARTS ============ -->
+<div class="section">
+  <p class="board-h">03 — Langage de mouvement &amp; micro-interactions</p>
+  <div class="grid2">
+    <div class="card">
+      <p class="label-caps" style="margin-bottom:10px">Tokens de motion</p>
+      <div class="mtoken"><code>--dur-instant</code><span class="bar" style="width:20px"></span><span class="desc">100 ms · focus, frappe</span></div>
+      <div class="mtoken"><code>--dur-fast</code><span class="bar" style="width:30px"></span><span class="desc">150 ms · hover, sorties</span></div>
+      <div class="mtoken"><code>--dur-base</code><span class="bar" style="width:40px"></span><span class="desc">200 ms · entrées, menus</span></div>
+      <div class="mtoken"><code>--ease-entrance</code><span class="desc" style="margin-left:auto">ease-out-quart</span></div>
+      <div class="mtoken"><code>--ease-state</code><span class="desc" style="margin-left:auto">ease-in-out</span></div>
+      <p class="note" style="margin-top:12px">Durée max 300 ms · seules <code style="font-family:var(--mono);font-size:11px">opacity</code> &amp; <code style="font-family:var(--mono);font-size:11px">transform</code> animées · actions haute fréquence = 0 ms · <code style="font-family:var(--mono);font-size:11px">prefers-reduced-motion</code> respecté.</p>
+    </div>
+    <div class="card">
+      <p class="label-caps" style="margin-bottom:10px">Micro-interactions (survole / focus ci-dessous)</p>
+      <div class="mi"><b>Bouton primaire</b><span>hover → fond <code>--action-hover</code> · <code>150ms ease-state</code></span>
+        <div style="margin-top:8px"><button class="try">Émettre un PV scellé</button></div></div>
+      <div class="mi"><b>Ligne de tableau</b><span>hover → <code>--row-hover</code> teinte pétrole 4,5 %</span></div>
+      <div class="mi"><b>Item de nav</b><span>actif = barre 2 px pétrole + label <code>--action-dark</code> (#d9954e, AA sur asphalte)</span></div>
+      <div class="mi"><b>Focus clavier (Tab)</b><span>anneau <code>2px petrole</code> + offset · <code>transition:none</code></span>
+        <div style="margin-top:8px"><button class="try" style="background:var(--petrole)">Tester le focus →</button></div></div>
+      <p class="note" style="margin-top:6px">Skeleton seulement si calcul &gt; 400 ms (timer annulé sinon) · résultat = <code>opacity+translateY(4px)</code> en 200 ms · Cmd+K apparition &lt; 100 ms.</p>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
