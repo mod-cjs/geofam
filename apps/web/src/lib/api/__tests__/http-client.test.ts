@@ -171,39 +171,52 @@ describe('adaptCalcResult — mapping input→params', () => {
 });
 
 describe('adaptOfficialPv — sealHash tronqué à 8 caractères', () => {
+  // Fixture alignée sur la forme RÉELLE du backend : tout sous `pv`, sceau = pv.hmac,
+  // numéro = pv.pvNumber, auteur = pv.userId, params = JSON.parse(pv.inputCanonical).
   const prismaPv: PrismaOfficialPv = {
-    id: 'pv_01',
-    number: 'PV-2026-0001',
-    orgId: 'org_01',
-    projectId: 'proj_01',
-    calcResultId: 'calc_01',
-    engineId: 'burmister',
-    sealHash: 'abcdef1234567890fullhashvalue',
-    sealedAt: '2026-01-01T00:00:00.000Z',
-    sealedBy: 'Amadou Diallo',
-    pdfUrl: null,
     pv: {
-      params: { layers: [] },
+      id: 'pv_01',
+      orgId: 'org_01',
+      calcResultId: 'calc_01',
+      projectId: 'proj_01',
+      pvNumber: 'PV-2026-0001',
+      userId: 'Amadou Diallo',
+      projectName: 'Test Project',
+      engineId: 'burmister',
+      engineVersion: '1.0.0',
+      engineSourceHash: 'sha256abc',
+      inputCanonical: JSON.stringify({ layers: [] }),
       output: { verdict: 'PASS' },
-      sealValid: true,
+      scienceStatus: 'OK',
+      verdict: 'PASS',
+      contentHash: 'contenthash01',
+      hmac: 'abcdef1234567890fullhashvalue',
+      sealedAt: '2026-01-01T00:00:00.000Z',
     },
+    sealValid: true,
   };
 
-  it('given un sealHash complet, then hmacTruncated contient les 8 premiers caractères uniquement', () => {
+  it('given un hmac complet, then hmacTruncated contient les 8 premiers caractères uniquement', () => {
     const result = adaptOfficialPv(prismaPv);
     expect(result.hmacTruncated).toBe('abcdef12');
     expect(result.hmacTruncated.length).toBe(8);
   });
 
-  it('given pdfUrl null, then pdfUrl est undefined', () => {
+  it('given pdfUrl absent du backend, then pdfUrl est undefined', () => {
     const result = adaptOfficialPv(prismaPv);
     expect(result.pdfUrl).toBeUndefined();
   });
 
-  it('given des données pv, then params et output sont extraits du snapshot', () => {
+  it('given inputCanonical JSON et output dans pv, then params et output sont extraits correctement', () => {
     const result = adaptOfficialPv(prismaPv);
+    // params = JSON.parse(pv.inputCanonical)
     expect(result.params).toEqual({ layers: [] });
+    // output = pv.output
     expect((result.output as { verdict?: string })?.verdict).toBe('PASS');
+    // number = pv.pvNumber
+    expect(result.number).toBe('PV-2026-0001');
+    // sealedBy = pv.userId
+    expect(result.sealedBy).toBe('Amadou Diallo');
   });
 });
 
@@ -570,18 +583,27 @@ describe('httpEmitPv — mapping retour', () => {
   });
 
   it('given un 200 avec PrismaOfficialPv, when httpEmitPv, then hmacTruncated est bien tronqué à 8 chars', async () => {
+    // Forme RÉELLE : tout imbriqué sous `pv`, sceau = pv.hmac.
     const rawPv: PrismaOfficialPv = {
-      id: 'pv_new',
-      number: 'PV-2026-0003',
-      orgId: 'org_01',
-      projectId: 'proj_01',
-      calcResultId: 'calc_01',
-      engineId: 'burmister',
-      sealHash: 'deadbeef1234567890abcdef',
-      sealedAt: new Date().toISOString(),
-      sealedBy: 'Amadou Diallo',
-      pdfUrl: null,
-      pv: { params: {}, output: { verdict: 'PASS' } },
+      pv: {
+        id: 'pv_new',
+        orgId: 'org_01',
+        calcResultId: 'calc_01',
+        projectId: 'proj_01',
+        pvNumber: 'PV-2026-0003',
+        userId: 'Amadou Diallo',
+        projectName: 'Test Project',
+        engineId: 'burmister',
+        engineVersion: '1.0.0',
+        engineSourceHash: 'sha256abc',
+        inputCanonical: '{}',
+        output: { verdict: 'PASS' },
+        scienceStatus: 'OK',
+        verdict: 'PASS',
+        contentHash: 'contenthash03',
+        hmac: 'deadbeef1234567890abcdef',
+        sealedAt: new Date().toISOString(),
+      },
     };
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(makeResponse(rawPv)));

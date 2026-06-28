@@ -86,6 +86,33 @@ export interface CreateProjectRequest {
 
 export type CalcStatus = 'DRAFT' | 'PENDING' | 'DONE' | 'ERROR';
 
+/**
+ * Ligne de résultat AFFICHABLE — contrat client-safe.
+ *
+ * Forme alignée sur `CalcOutputRow` consommé par CalculsClient ResultPanel
+ * ({ label, value, unit }). `status` porte le verdict PAR critère (fatigue,
+ * orniérage) ; optionnel — colonne « état » à câbler côté dev-frontend.
+ *
+ * Confidentialité DoD §8 : ces lignes ne contiennent QUE des grandeurs de
+ * RÉSULTAT d'ingénierie issues de la whitelist du moteur (cf. adapters.ts).
+ * Aucun intermédiaire confidentiel (contraintes brutes, coefficients de calage).
+ */
+export interface CalcOutputRow {
+  label: string;
+  value: number;
+  unit: string;
+  status?: 'ok' | 'fail';
+}
+
+/**
+ * Sortie moteur NORMALISÉE pour l'UI : verdict global + lignes affichables.
+ * C'est la seule forme que le ResultPanel lit (`output.verdict`, `output.rows`).
+ */
+export interface NormalizedCalcOutput {
+  verdict: 'PASS' | 'FAIL';
+  rows: CalcOutputRow[];
+}
+
 export interface CalcResult {
   id: string;
   projectId: string;

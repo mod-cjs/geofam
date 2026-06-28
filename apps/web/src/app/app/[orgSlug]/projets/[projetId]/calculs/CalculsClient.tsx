@@ -50,10 +50,30 @@ const fmt = (n: number, decimals = 4) =>
   new Intl.NumberFormat('fr-FR', { maximumFractionDigits: decimals }).format(n);
 
 function relDate(iso: string): string {
-  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return '—';
+  const d = Math.floor((Date.now() - t) / 86400000);
   if (d === 0) return 'auj.';
   if (d === 1) return 'hier';
   return `${d}j`;
+}
+
+/**
+ * Canonicalise l'engineId renvoyé par le backend (forme longue `chaussee-burmister`)
+ * vers la forme courte utilisée dans ENGINE_DOMAIN, ENGINE_GROUPS et les descripteurs.
+ * Fallback : l'id d'origine est retourné inchangé (pas de crash sur id inconnu).
+ */
+const ENGINE_ID_ALIAS: Record<string, string> = {
+  'chaussee-burmister': 'burmister',
+  'fondation-terzaghi': 'terzaghi',
+  'fondation-casagrande': 'casagrande',
+  'fondation-geoplaque': 'geoplaque',
+  'labo-pressiometre': 'pressiometre',
+  'labo-fastlab': 'fastlab',
+};
+
+function canonicalEngineId(id: string): string {
+  return ENGINE_ID_ALIAS[id] ?? id;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -462,7 +482,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <DomainTag
-                          domain={ENGINE_DOMAIN[calc.engineId] ?? 'road'}
+                          domain={ENGINE_DOMAIN[canonicalEngineId(calc.engineId)] ?? 'road'}
                           size="compact"
                         />
                         <Badge
@@ -1050,6 +1070,8 @@ interface CalcOutputRow {
   label: string;
   value: number;
   unit: string;
+  /** Verdict par critère (fatigue / orniérage) — absent sur les lignes purement numériques. */
+  status?: 'ok' | 'fail';
 }
 
 function CalcResults({
@@ -1069,10 +1091,12 @@ function CalcResults({
 }) {
   const output = calc.output as { verdict?: string; rows?: CalcOutputRow[] } | null;
   const isDone = calc.status === 'DONE';
-  const hasOutput = isDone && output != null;
+  // Garde stricte : un output dégénéré (null, {}, moteur non encore whitelisté)
+  // ne doit pas passer — seul un objet { verdict, rows[] } est affichable.
+  const hasOutput = isDone && output?.verdict != null && Array.isArray(output?.rows);
 
-  // CTA Émettre PV : présent SEULEMENT si statut=DONE et pas déjà un PV
-  const showEmitPv = isDone && !calc.pvId && !isExpired && !isQuotaExhausted;
+  // CTA Émettre PV : absent si output non affichable (on n'émet pas de PV aveugle)
+  const showEmitPv = isDone && hasOutput && !calc.pvId && !isExpired && !isQuotaExhausted;
 
   return (
     <div
@@ -1108,7 +1132,7 @@ function CalcResults({
             {calc.label}
           </h2>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
-            <DomainTag domain={ENGINE_DOMAIN[calc.engineId] ?? 'road'} />
+            <DomainTag domain={ENGINE_DOMAIN[canonicalEngineId(calc.engineId)] ?? 'road'} />
             <Badge
               variant={
                 isDone ? 'recalculable' : calc.status === 'ERROR' ? 'erreur' : 'neutre'
@@ -1205,6 +1229,21 @@ function CalcResults({
                 >
                   Unité
                 </th>
+                <th
+                  style={{
+                    padding: '10px 14px',
+                    textAlign: 'center',
+                    fontSize: 11,
+                    fontWeight: 500,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    color: 'var(--text-muted)',
+                    width: 52,
+                  }}
+                  aria-label="État du critère"
+                >
+                  État
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1250,6 +1289,31 @@ function CalcResults({
                   >
                     {row.unit}
                   </td>
+                  <td
+                    style={{ padding: '12px 14px', textAlign: 'center' }}
+                    aria-label={
+                      row.status === 'ok'
+                        ? 'Conforme'
+                        : row.status === 'fail'
+                          ? 'Non conforme'
+                          : undefined
+                    }
+                  >
+                    {row.status != null && (
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          background:
+                            row.status === 'ok'
+                              ? 'var(--status-pass-tx, #16a34a)'
+                              : 'var(--status-fail-tx, #dc2626)',
+                        }}
+                      />
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1257,15 +1321,23 @@ function CalcResults({
         </div>
       )}
 
-      {/* Calcul brouillon ou erreur */}
+      {/* Calcul sans résultat affichable — 3 cas distincts */}
       {!hasOutput && (
         <EmptyState
           variant="pre-calc"
-          title={calc.status === 'ERROR' ? 'Calcul en erreur' : 'Calcul non encore lancé'}
+          title={
+            calc.status === 'ERROR'
+              ? 'Calcul en erreur'
+              : isDone
+                ? 'Résultat non affichable pour ce moteur'
+                : 'Calcul non encore lancé'
+          }
           description={
             calc.status === 'ERROR'
               ? 'Ce calcul a rencontré une erreur. Vérifiez les paramètres et relancez.'
-              : 'Remplissez le formulaire et lancez le calcul pour voir les résultats.'
+              : isDone
+                ? 'Ce moteur ne produit pas encore de résultats affichables sur cette plateforme. Contactez le support si le problème persiste.'
+                : 'Remplissez le formulaire et lancez le calcul pour voir les résultats.'
           }
           minHeight={200}
         />

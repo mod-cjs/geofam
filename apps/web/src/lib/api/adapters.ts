@@ -11,6 +11,8 @@
 import type {
   CalcResult,
   CalcStatus,
+  CalcOutputRow,
+  NormalizedCalcOutput,
   OfficialPv,
   EntitlementsResponse,
   Project,
@@ -27,16 +29,26 @@ export interface PrismaCalcResult {
   projectId: string;
   orgId: string;
   engineId: string;
-  label: string;
-  domain: string;
-  status: string;
+  /**
+   * ⚠️ Forme RÉELLE du backend `GET /projects/:id/calc-results` :
+   * `status`/`label`/`domain`/`updatedAt` NE sont PAS renvoyés (clés réelles :
+   * userId, engineVersion, engineSourceHash, input, output, createdAt). On les
+   * déclare optionnels et on DÉRIVE ce qui manque (cf. adaptCalcResult), tout en
+   * restant compatible avec les fixtures de test qui les fournissent encore.
+   */
+  label?: string;
+  domain?: string;
+  status?: string;
+  userId?: string;
+  engineVersion?: string;
+  engineSourceHash?: string;
   /** Paramètres d'entrée du calcul */
   input: unknown;
   /** Résultat du moteur */
   output: unknown | null;
   pvId?: string | null;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
 }
 
 /** Forme RÉELLE du backend : tout est imbriqué sous `pv`, + `sealValid` au top-level. */
@@ -104,21 +116,182 @@ export interface BackendEntitlements {
 // CalcResult — input/output Prisma → params/output front
 // ---------------------------------------------------------------------------
 
+const CALC_STATUSES: readonly CalcStatus[] = ['DRAFT', 'PENDING', 'DONE', 'ERROR'];
+
+function isCalcStatus(v: unknown): v is CalcStatus {
+  return typeof v === 'string' && (CALC_STATUSES as readonly string[]).includes(v);
+}
+
+/**
+ * Statut DÉRIVÉ de la sortie (le backend ne renvoie pas de champ `status`) :
+ *  - sortie présente sans `erreur`   ⇒ DONE  (la science a abouti)
+ *  - sortie présente avec `erreur≠null` ⇒ ERROR (science levée, message borné)
+ *  - pas de sortie ⇒ statut backend s'il est fourni & valide, sinon neutre PENDING
+ */
+function deriveCalcStatus(raw: PrismaCalcResult): CalcStatus {
+  const out = raw.output;
+  if (out != null && typeof out === 'object') {
+    const erreur = (out as { erreur?: unknown }).erreur;
+    return erreur != null ? 'ERROR' : 'DONE';
+  }
+  if (isCalcStatus(raw.status)) return raw.status;
+  return 'PENDING';
+}
+
+/** engineId (forme canonique OU courte) → domaine de projet. Fallback prudent. */
+const ENGINE_TO_DOMAIN: Record<string, ProjectDomain> = {
+  'chaussee-burmister': 'CH',
+  burmister: 'CH',
+  terzaghi: 'FD',
+  casagrande: 'FD',
+  geoplaque: 'FD',
+  pressiometre: 'LB',
+  fastlab: 'LB',
+};
+
+function deriveDomain(raw: PrismaCalcResult): ProjectDomain {
+  if (raw.domain === 'CH' || raw.domain === 'FD' || raw.domain === 'LB') return raw.domain;
+  return ENGINE_TO_DOMAIN[raw.engineId] ?? 'CH';
+}
+
+/** Nombre fini, sinon null (garde-fou anti-NaN à l'affichage). */
+function finiteOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function pushRow(
+  rows: CalcOutputRow[],
+  label: string,
+  value: unknown,
+  unit: string,
+  status?: 'ok' | 'fail',
+): void {
+  const n = finiteOrNull(value);
+  if (n === null) return; // valeur absente/null/NaN → ligne omise (jamais de "NaN" affiché)
+  rows.push(status ? { label, value: n, unit, status } : { label, value: n, unit });
+}
+
+/**
+ * CONTRAT client-safe du moteur chaussee-burmister.
+ *
+ * Construit les lignes affichables UNIQUEMENT à partir des champs whitelistés
+ * par `BurmisterOutputSchema` (engines), qui sont déjà strippés côté serveur de
+ * tout intermédiaire confidentiel (tenseur de contraintes, coefficients de
+ * calage kr/ks/kc/Sh/b/ε₆, ABCD du propagateur). Défense en profondeur : même si
+ * un champ confidentiel survivait au strip serveur, il N'apparaîtrait PAS ici car
+ * on ne lit que des clés NOMMÉES (fail-closed — pas de copie d'objet brut).
+ *
+ * Inclus (grandeurs de RÉSULTAT d'ingénierie) : NE, épaisseurs, déformation/
+ * contrainte sollicitante vs admissible (fatigue + orniérage) + verdict/critère.
+ * Exclus : `famille` (libellé citant une §méthode — fail-closed, non rendu par le
+ * panneau ; réouverture = décision explicite), `warnings`/`erreur` (texte libre,
+ * canal séparé), `conforme` (porté par le verdict, pas une ligne numérique).
+ */
+function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
+  const rows: CalcOutputRow[] = [];
+
+  pushRow(rows, 'Trafic cumulé (NE)', o.NE, 'essieux éq.');
+  pushRow(rows, 'Épaisseur totale', o.epaisseurTotale, 'm');
+  pushRow(rows, 'Épaisseur de couches liées', o.epaisseurLiee, 'm');
+
+  const f = o.fatigue;
+  if (f != null && typeof f === 'object') {
+    const fa = f as { rigide?: unknown; valeur?: unknown; admissible?: unknown; ok?: unknown };
+    const rigide = fa.rigide === true;
+    const unit = rigide ? 'MPa' : 'μdef';
+    const fok: 'ok' | 'fail' = fa.ok === true ? 'ok' : 'fail';
+    pushRow(
+      rows,
+      rigide ? 'Contrainte sollicitante σ_t' : 'Déformation sollicitante ε_t',
+      fa.valeur,
+      unit,
+      fok,
+    );
+    pushRow(
+      rows,
+      rigide ? 'Contrainte admissible σ_t,adm' : 'Déformation admissible ε_t,adm',
+      fa.admissible,
+      unit,
+    );
+  }
+
+  const orn = o.ornierage;
+  if (orn != null && typeof orn === 'object') {
+    const oa = orn as { valeur?: unknown; admissible?: unknown; ok?: unknown };
+    const ok: 'ok' | 'fail' = oa.ok === true ? 'ok' : 'fail';
+    pushRow(rows, 'Déformation ε_z sollicitante (PSC)', oa.valeur, 'μdef', ok);
+    pushRow(rows, 'Déformation ε_z admissible', oa.admissible, 'μdef');
+  }
+
+  return rows;
+}
+
+/**
+ * Re-whiteliste un tableau de lignes : ne garde QUE `{label, value, unit, status?}`
+ * par ligne, jamais de spread du brut. Toute ligne incomplète/non finie est écartée.
+ */
+function sanitizeRows(rows: unknown): CalcOutputRow[] {
+  if (!Array.isArray(rows)) return [];
+  const out: CalcOutputRow[] = [];
+  for (const r of rows) {
+    if (r == null || typeof r !== 'object') continue;
+    const o = r as Record<string, unknown>;
+    const value = finiteOrNull(o.value);
+    if (value === null || typeof o.label !== 'string' || typeof o.unit !== 'string') continue;
+    const status = o.status === 'ok' || o.status === 'fail' ? o.status : undefined;
+    out.push(status ? { label: o.label, value, unit: o.unit, status } : { label: o.label, value, unit: o.unit });
+  }
+  return out;
+}
+
+/**
+ * Normalise la sortie moteur vers la forme attendue par l'UI ({verdict, rows}).
+ *
+ * STRICTEMENT FAIL-CLOSED (DoD §8) — ne renvoie JAMAIS l'objet brut : la sortie
+ * moteur peut contenir des intermédiaires/méthode/coefficients/warnings
+ * confidentiels, et tous les moteurs (terzaghi/casagrande/geoplaque/pressiometre/
+ * fastlab) sont sélectionnables.
+ *  - null / non-objet                         → null
+ *  - sortie BRUTE burmister (`conforme:boolean`) → {verdict, rows} whitelistées
+ *  - sortie déjà normalisée (`verdict:string` + `rows:[]`) → re-whitelistée via
+ *    `sanitizeRows` (re-projetée, jamais copiée telle quelle)
+ *  - moteur NON reconnu                        → null (AUCUNE donnée brute exposée)
+ *
+ * SUIVI Phase 1 : les moteurs fondations/labo afficheront « résultat non
+ * affichable » tant qu'un builder whitelisté dédié (`buildTerzaghiRows`…) n'existe
+ * pas — comportement correct (mieux vaut rien afficher que fuiter la science).
+ */
+function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
+  if (output == null || typeof output !== 'object') return null;
+  const o = output as Record<string, unknown>;
+  if (typeof o.conforme === 'boolean') {
+    return { verdict: o.conforme === true ? 'PASS' : 'FAIL', rows: buildBurmisterRows(o) };
+  }
+  if (typeof o.verdict === 'string' && Array.isArray(o.rows)) {
+    return { verdict: o.verdict === 'PASS' ? 'PASS' : 'FAIL', rows: sanitizeRows(o.rows) };
+  }
+  // Moteur non reconnu : fail-closed, aucune sortie brute ne traverse vers le navigateur.
+  return null;
+}
+
 export function adaptCalcResult(raw: PrismaCalcResult): CalcResult {
   return {
     id: raw.id,
     projectId: raw.projectId,
     orgId: raw.orgId,
     engineId: raw.engineId,
-    label: raw.label,
-    domain: raw.domain as ProjectDomain,
-    status: raw.status as CalcStatus,
+    // Le backend réel ne renvoie pas de `label` : repli sur l'engineId.
+    label: raw.label ?? raw.engineId,
+    domain: deriveDomain(raw),
+    // Le backend réel ne renvoie pas de `status` : on le DÉRIVE de la sortie.
+    status: deriveCalcStatus(raw),
     // Le backend nomme le champ "input", le front "params"
     params: (raw.input ?? {}) as Record<string, unknown>,
-    output: raw.output ?? null,
+    // Sortie normalisée client-safe ({verdict, rows}) — fail-closed.
+    output: normalizeOutput(raw.output),
     pvId: raw.pvId ?? undefined,
     createdAt: raw.createdAt,
-    updatedAt: raw.updatedAt,
+    updatedAt: raw.updatedAt ?? raw.createdAt,
   };
 }
 
