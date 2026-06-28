@@ -39,23 +39,28 @@ export interface PrismaCalcResult {
   updatedAt: string;
 }
 
+/** Forme RÉELLE du backend : tout est imbriqué sous `pv`, + `sealValid` au top-level. */
 export interface PrismaOfficialPv {
-  id: string;
-  number: string;
-  orgId: string;
-  projectId: string;
-  calcResultId: string;
-  engineId: string;
-  sealHash: string; // HMAC complet côté serveur
-  sealedAt: string;
-  sealedBy: string;
-  pdfUrl?: string | null;
-  /** Données snapshot : params + output du calcul au moment du scellement */
   pv: {
-    params: Record<string, unknown>;
+    id: string;
+    orgId: string;
+    calcResultId: string;
+    projectId: string;
+    pvNumber: string;
+    userId: string;
+    projectName: string;
+    engineId: string;
+    engineVersion: string;
+    engineSourceHash: string;
+    inputCanonical: string; // JSON canonique des entrées
     output: unknown;
-    sealValid?: boolean;
+    scienceStatus: string;
+    verdict: string;
+    contentHash: string;
+    hmac: string; // sceau HMAC complet (serveur)
+    sealedAt: string;
   };
+  sealValid?: boolean;
 }
 
 export interface PrismaProject {
@@ -126,20 +131,27 @@ export function adaptCalcResults(raws: PrismaCalcResult[]): CalcResult[] {
 // ---------------------------------------------------------------------------
 
 export function adaptOfficialPv(raw: PrismaOfficialPv): OfficialPv {
+  const p = raw.pv;
+  let params: Record<string, unknown> = {};
+  try {
+    params = JSON.parse(p.inputCanonical ?? '{}') as Record<string, unknown>;
+  } catch {
+    /* inputCanonical illisible : params vide, jamais de crash */
+  }
   return {
-    id: raw.id,
-    number: raw.number,
-    orgId: raw.orgId,
-    projectId: raw.projectId,
-    calcResultId: raw.calcResultId,
-    engineId: raw.engineId,
-    // On tronque à 8 caractères pour ne pas exposer le HMAC complet côté navigateur
-    hmacTruncated: raw.sealHash.slice(0, 8),
-    sealedAt: raw.sealedAt,
-    sealedBy: raw.sealedBy,
-    pdfUrl: raw.pdfUrl ?? undefined,
-    params: raw.pv?.params ?? {},
-    output: raw.pv?.output ?? null,
+    id: p.id,
+    number: p.pvNumber,
+    orgId: p.orgId,
+    projectId: p.projectId,
+    calcResultId: p.calcResultId,
+    engineId: p.engineId,
+    // 8 premiers caractères du HMAC (jamais le sceau complet côté navigateur)
+    hmacTruncated: (p.hmac ?? '').slice(0, 8),
+    sealedAt: p.sealedAt,
+    sealedBy: p.userId,
+    pdfUrl: undefined,
+    params,
+    output: p.output ?? null,
   };
 }
 
