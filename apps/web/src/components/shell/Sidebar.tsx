@@ -108,8 +108,20 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
   const [tooltipId, setTooltipId] = useState<string | null>(null);
   const tooltipTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  const user = getStoredUser() ?? { name: 'Utilisateur', email: '' };
-  const orgs: OrgClaim[] = getStoredOrgs();
+  // Valeurs hydratées après montage pour éviter les divergences SSR/client (#418).
+  // Les fonctions getStoredUser/getStoredOrgs lisent sessionStorage : null/[] côté
+  // serveur, valeur réelle côté client → mismatch garanti si appelées pendant le rendu.
+  const [user, setUser] = useState<{ name: string; email: string }>({
+    name: 'Utilisateur',
+    email: '',
+  });
+  const [orgs, setOrgs] = useState<OrgClaim[]>([]);
+  useEffect(() => {
+    const u = getStoredUser();
+    if (u) setUser(u);
+    setOrgs(getStoredOrgs());
+  }, []);
+
   const currentOrg = orgs.find((o) => o.slug === orgSlug);
 
   const [orgMenuOpen, setOrgMenuOpen] = useState(false);
@@ -648,10 +660,18 @@ interface SidebarProps {
 }
 
 export function Sidebar({ orgSlug }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem(SIDEBAR_STATE_KEY) === 'collapsed';
-  });
+  // Init à false (même valeur que le SSR) ; la préférence localStorage est lue
+  // après hydratation pour éviter l'erreur React #418.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(SIDEBAR_STATE_KEY) === 'collapsed') {
+        setCollapsed(true);
+      }
+    } catch {
+      /* storage indisponible */
+    }
+  }, []);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const toggleCollapse = useCallback(() => {

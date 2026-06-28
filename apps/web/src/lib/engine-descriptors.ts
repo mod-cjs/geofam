@@ -255,16 +255,19 @@ const terzaghiDescriptor: EngineDescriptor = {
       alphaSang: flat['alphaSang'] || undefined,
       sondage: [{
         z: flat['sondage_z'],
-        pl: flat['sondage_pl'] || undefined,
-        em: flat['sondage_em'] || undefined,
-        qc: flat['sondage_qc'] || undefined,
+        // Champs numériques optionnels : `|| undefined` transformerait un 0 légitime en absent.
+        // Pattern explicite : vide ou absent → undefined, sinon Number (préserve 0).
+        pl: flat['sondage_pl'] === '' || flat['sondage_pl'] == null ? undefined : Number(flat['sondage_pl']),
+        em: flat['sondage_em'] === '' || flat['sondage_em'] == null ? undefined : Number(flat['sondage_em']),
+        qc: flat['sondage_qc'] === '' || flat['sondage_qc'] == null ? undefined : Number(flat['sondage_qc']),
         al: undefined,
       }],
       charges: [{
         etat: flat['charge_etat'],
         fz: flat['charge_fz'],
-        fx: flat['charge_fx'] || undefined,
-        fy: flat['charge_fy'] || undefined,
+        // fx/fy : 0 est une valeur valide (pas d'effort horizontal) — `|| undefined` interdirait cette saisie.
+        fx: flat['charge_fx'] === '' || flat['charge_fx'] == null ? undefined : Number(flat['charge_fx']),
+        fy: flat['charge_fy'] === '' || flat['charge_fy'] == null ? undefined : Number(flat['charge_fy']),
       }],
     };
   },
@@ -333,12 +336,13 @@ const pressiometreDescriptor: EngineDescriptor = {
 // ---------------------------------------------------------------------------
 // Pieux — fondation profonde (NF P 94-262 / EC7)
 //
-// ID canonique : 'casagrande' (nom du fichier GeoSuite, cf. mémoire geosuite-engine-mapping).
-// Mapping : casagrande (entitlements/mock-data) = pieux (fonction métier).
+// ID canonique : 'pieux' = slug backend (dispatch + entitlements).
+// Moteur GeoSuite source : casagrande.js (cf. mémoire geosuite-engine-mapping).
+// registryId backend : 'fondation-profonde-pieux'.
 // ---------------------------------------------------------------------------
 
 const pieuxDescriptor: EngineDescriptor = {
-  id: 'casagrande',
+  id: 'pieux',
   label: 'Fondation profonde — pieux (NF P 94-262)',
   description: 'Calcul de portance et vérification ELU/ELS de pieux isolés ou en groupe.',
   norme: 'NF P 94-262 (EC7 DA2 NA France)',
@@ -464,12 +468,13 @@ const pieuxDescriptor: EngineDescriptor = {
 // ---------------------------------------------------------------------------
 // Radier / plaque sur sol élastique multicouche (EF)
 //
-// ID canonique : 'geoplaque' (nom du fichier GeoSuite GEOPLAQUE, cf. mémoire geosuite-engine-mapping).
-// Mapping : geoplaque (entitlements/mock-data) = radier/plaque EF (fonction métier).
+// ID canonique : 'radier' = slug backend (dispatch + entitlements).
+// Moteur GeoSuite source : GEOPLAQUE.js (cf. mémoire geosuite-engine-mapping).
+// registryId backend : 'radier-plaque'.
 // ---------------------------------------------------------------------------
 
 const radierDescriptor: EngineDescriptor = {
-  id: 'geoplaque',
+  id: 'radier',
   label: 'Radier / plaque sur sol élastique (EF)',
   description: "Tassements et diagnostics d'une fondation sur radier par éléments finis.",
   norme: 'Méthode Ménard — EF plaque de Winkler généralisé',
@@ -532,12 +537,13 @@ const radierDescriptor: EngineDescriptor = {
 // ---------------------------------------------------------------------------
 // FASTLAB — essais de labo & classification GTR (NF P 11-300)
 //
-// ID canonique : 'fastlab' (nom du fichier GeoSuite FASTLAB, cf. mémoire geosuite-engine-mapping).
-// Mapping : fastlab (entitlements/mock-data) = labo+GTR (fonction métier).
+// ID canonique : 'labo' = slug backend (dispatch + entitlements).
+// Moteur GeoSuite source : FASTLAB.js (cf. mémoire geosuite-engine-mapping).
+// registryId backend : 'labo-classification-gtr'.
 // ---------------------------------------------------------------------------
 
 const laboDescriptor: EngineDescriptor = {
-  id: 'fastlab',
+  id: 'labo',
   label: 'Labo & classification GTR (FASTLAB / NF P 11-300)',
   description: 'Classification GTR des sols à partir des résultats de laboratoire.',
   norme: 'NF P 11-300 (GTR)',

@@ -51,29 +51,65 @@ export interface PrismaCalcResult {
   updatedAt?: string;
 }
 
-/** Forme RÉELLE du backend : tout est imbriqué sous `pv`, + `sealValid` au top-level. */
-export interface PrismaOfficialPv {
-  pv: {
-    id: string;
-    orgId: string;
-    calcResultId: string;
-    projectId: string;
-    pvNumber: string;
-    userId: string;
-    projectName: string;
+/**
+ * Forme renvoyée par POST /projects/:projectId/calc/:engine — PersistedCalcResult.
+ *
+ * DIFFÉRENTE de la forme GET /calc-results (PrismaCalcResult) :
+ *  - `calcResultId` (pas `id`)
+ *  - `meta.engineId` (pas `engineId` direct)
+ *  - pas de `projectId`/`orgId`/`createdAt` (contexte passé à l'adaptateur)
+ *  - `ok: false` = échec moteur (rien persisté, calcResultId='')
+ */
+export interface BackendPersistedCalcResult {
+  calcResultId: string;
+  ok: boolean;
+  meta: {
     engineId: string;
     engineVersion: string;
-    engineSourceHash: string;
-    inputCanonical: string; // JSON canonique des entrées
-    output: unknown;
-    scienceStatus: string;
-    verdict: string;
-    contentHash: string;
-    hmac: string; // sceau HMAC complet (serveur)
-    sealedAt: string;
+    engineSourceHash?: string;
   };
+  output: unknown;
+}
+
+/**
+ * Champs communs du PV officiel (modèle Prisma OfficialPv sérialisé en JSON).
+ * Partagé par les deux formes de réponse (plate et imbriquée).
+ */
+export interface PrismaOfficialPvCore {
+  id: string;
+  orgId: string;
+  calcResultId: string;
+  projectId: string;
+  pvNumber: string;
+  userId: string;
+  projectName: string;
+  engineId: string;
+  engineVersion: string;
+  engineSourceHash?: string | null;
+  inputCanonical: string; // JSON canonique des entrées
+  output: unknown;
+  scienceStatus: string;
+  verdict?: string;
+  contentHash: string;
+  hmac: string; // sceau HMAC complet (serveur)
+  sealedAt: string;
+}
+
+/**
+ * Forme IMBRIQUÉE — retournée par GET /pvs/:id et GET /pvs (list).
+ * Le PV est sous `pv`, avec `sealValid` au top-level.
+ */
+export interface PrismaOfficialPv {
+  pv: PrismaOfficialPvCore;
   sealValid?: boolean;
 }
+
+/**
+ * Forme PLATE — retournée directement par POST /calc-results/:id/pv (emit).
+ * OfficialPv Prisma sérialisé sans enveloppe wrapper.
+ * Alias de PrismaOfficialPvCore (même structure).
+ */
+export type PrismaOfficialPvFlat = PrismaOfficialPvCore;
 
 export interface PrismaProject {
   id: string;
@@ -83,7 +119,11 @@ export interface PrismaProject {
   domain: string;
   createdAt: string;
   updatedAt: string;
-  createdBy: string;
+  /**
+   * Champ réel du backend : `createdById` (Prisma : created_by_id).
+   * ⚠️ PAS `createdBy` — bug #8.
+   */
+  createdById: string;
 }
 
 export interface BackendLoginResponse {
@@ -96,6 +136,23 @@ export interface BackendLoginResponse {
     email: string;
     name: string;
   };
+}
+
+/**
+ * Profil utilisateur renvoyé par GET /auth/me.
+ * Forme : { userId, email, fullName, platformRole, memberships }.
+ */
+export interface BackendUserProfile {
+  userId: string;
+  email: string;
+  fullName: string;
+  platformRole: string | null;
+  memberships: Array<{
+    orgId: string;
+    orgName: string;
+    orgSlug: string;
+    role: string;
+  }>;
 }
 
 export interface BackendEntitlements {
@@ -138,15 +195,40 @@ function deriveCalcStatus(raw: PrismaCalcResult): CalcStatus {
   return 'PENDING';
 }
 
-/** engineId (forme canonique OU courte) → domaine de projet. Fallback prudent. */
+/**
+ * Mapping engineId → domaine de projet.
+ *
+ * DEUX types de clés :
+ *  - registryId (ce que le backend stocke dans calc_results.engine_id et renvoie
+ *    dans PersistedCalcResult.meta.engineId) : forme canonique longue.
+ *  - slug URL (ce que le client envoie dans :engine, gardé pour compat fixtures).
+ *
+ * Table alignée sur engine-dispatch.ts (apps/api/src/pv/engine-dispatch.ts) :
+ *   burmister    → registryId chaussee-burmister       → CH
+ *   terzaghi     → registryId fondation-superficielle  → FD
+ *   pieux        → registryId fondation-profonde-pieux → FD
+ *   radier       → registryId radier-plaque            → FD
+ *   pressiometre → registryId pressiometre-menard      → LB
+ *   labo         → registryId labo-classification-gtr  → LB
+ *
+ * Anciens noms GeoSuite (casagrande, geoplaque, fastlab) supprimés :
+ * ils ne correspondent à aucun registryId ni slug supporté par le backend.
+ */
 const ENGINE_TO_DOMAIN: Record<string, ProjectDomain> = {
+  // registryIds (clés stables persistées en base — champ engine_id de calc_results)
   'chaussee-burmister': 'CH',
+  'fondation-superficielle': 'FD',
+  'fondation-profonde-pieux': 'FD',
+  'radier-plaque': 'FD',
+  'pressiometre-menard': 'LB',
+  'labo-classification-gtr': 'LB',
+  // URL slugs (:engine dans les routes backend) — compatibilité fixtures de test
   burmister: 'CH',
   terzaghi: 'FD',
-  casagrande: 'FD',
-  geoplaque: 'FD',
+  pieux: 'FD',
+  radier: 'FD',
   pressiometre: 'LB',
-  fastlab: 'LB',
+  labo: 'LB',
 };
 
 function deriveDomain(raw: PrismaCalcResult): ProjectDomain {
@@ -299,18 +381,101 @@ export function adaptCalcResults(raws: PrismaCalcResult[]): CalcResult[] {
   return raws.map(adaptCalcResult);
 }
 
+/**
+ * Adapte la réponse de POST /projects/:id/calc/:engine (PersistedCalcResult)
+ * vers CalcResult front.
+ *
+ * La forme PersistedCalcResult est DIFFÉRENTE de PrismaCalcResult (GET list) :
+ *  - `calcResultId` → `id`
+ *  - `meta.engineId` → `engineId`
+ *  - `projectId`/`orgId`/`params` ne sont pas dans la réponse → passés en `context`
+ *  - `ok: false` → status ERROR (rien persisté)
+ *
+ * Corrige le bug #2 : id/engineId/label/createdAt ne sont plus undefined après runCalc.
+ */
+export function adaptPersistedCalcResult(
+  raw: BackendPersistedCalcResult,
+  context: { orgId: string; projectId: string; params: Record<string, unknown> },
+): CalcResult {
+  const engineId = raw.meta.engineId;
+  const now = new Date().toISOString();
+
+  let status: CalcStatus;
+  if (!raw.ok) {
+    status = 'ERROR';
+  } else if (raw.output != null) {
+    status = 'DONE';
+  } else {
+    status = 'PENDING';
+  }
+
+  return {
+    id: raw.calcResultId,
+    projectId: context.projectId,
+    orgId: context.orgId,
+    engineId,
+    label: engineId,
+    domain: ENGINE_TO_DOMAIN[engineId] ?? 'CH',
+    status,
+    params: context.params,
+    output: normalizeOutput(raw.output),
+    pvId: undefined,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 // ---------------------------------------------------------------------------
-// OfficialPv — backend { pv, sealHash, sealValid } → type front
+// OfficialPv — robuste aux deux formes (plate emit / imbriquée list/get)
 // ---------------------------------------------------------------------------
 
-export function adaptOfficialPv(raw: PrismaOfficialPv): OfficialPv {
-  const p = raw.pv;
+/**
+ * Adapte un PV officiel vers le type front OfficialPv.
+ *
+ * Robuste aux DEUX formes de réponse backend :
+ *  - Forme IMBRIQUÉE (GET /pvs, GET /pvs/:id) : `{ pv: {...}, sealValid?: boolean }`
+ *  - Forme PLATE (POST /calc-results/:id/pv emit) : `OfficialPv` Prisma direct
+ *
+ * Détection : présence de la clé `pv` avec un objet = forme imbriquée,
+ * sinon forme plate.
+ *
+ * Corrige le bug #4 : raw.pv.id ne crash plus sur la forme plate emit.
+ *
+ * #20 — sealedBy : extrait identity.userDisplayName de inputCanonical si disponible
+ * (le nom d'émetteur est scellé dans le contenu canonique). Fallback = userId (UUID).
+ */
+export function adaptOfficialPv(raw: PrismaOfficialPv | PrismaOfficialPvFlat): OfficialPv {
+  // Détection de la forme
+  const isNested =
+    'pv' in raw &&
+    (raw as PrismaOfficialPv).pv != null &&
+    typeof (raw as PrismaOfficialPv).pv === 'object';
+
+  const p: PrismaOfficialPvCore = isNested
+    ? (raw as PrismaOfficialPv).pv
+    : (raw as PrismaOfficialPvFlat);
+
+  // Extraire params et, si possible, identity.userDisplayName depuis inputCanonical.
+  // `params` = l'ENTRÉE UTILISATEUR (sa propre donnée tenant, saisie dans le formulaire,
+  // transmise telle quelle au serveur). Ce n'est PAS un intermédiaire moteur confidentiel.
+  // Le contenu canonique peut inclure d'autres champs (pvNumber, verdict…) ; on expose
+  // l'objet entier pour l'affichage récapitulatif du PV — acceptable (données propres
+  // au tenant).
   let params: Record<string, unknown> = {};
+  let sealedBy: string = p.userId;
   try {
-    params = JSON.parse(p.inputCanonical ?? '{}') as Record<string, unknown>;
+    const canonical = JSON.parse(p.inputCanonical ?? '{}') as Record<string, unknown>;
+    params = canonical;
+    // #20 — Nom de l'émetteur depuis identity.userDisplayName (scellé dans la canonique)
+    const identity = canonical.identity as Record<string, unknown> | undefined;
+    const displayName = identity?.userDisplayName;
+    if (typeof displayName === 'string' && displayName.trim().length > 0) {
+      sealedBy = displayName.trim();
+    }
   } catch {
-    /* inputCanonical illisible : params vide, jamais de crash */
+    /* inputCanonical illisible : params vide, sealedBy = userId (UUID) */
   }
+
   return {
     id: p.id,
     number: p.pvNumber,
@@ -321,10 +486,15 @@ export function adaptOfficialPv(raw: PrismaOfficialPv): OfficialPv {
     // 8 premiers caractères du HMAC (jamais le sceau complet côté navigateur)
     hmacTruncated: (p.hmac ?? '').slice(0, 8),
     sealedAt: p.sealedAt,
-    sealedBy: p.userId,
+    sealedBy,
     pdfUrl: undefined,
     params,
-    output: p.output ?? null,
+    // MAJEUR-1 — output PV normalisé via le MÊME normalizeOutput fail-closed que
+    // adaptCalcResult. Garantit qu'aucun intermédiaire confidentiel (famille §4.2,
+    // propagateur, warnings, coefficients kc/kr/ks…) ne traverse vers le navigateur,
+    // même si la whitelist serveur avait laissé passer un champ inattendu.
+    // Sortie non reconnue → null (fail-closed).
+    output: normalizeOutput(p.output),
   };
 }
 
@@ -345,7 +515,8 @@ export function adaptProject(raw: PrismaProject): Project {
     domain: raw.domain as ProjectDomain,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
-    createdBy: raw.createdBy,
+    // #8 — le champ réel est `createdById` (Prisma: created_by_id), pas `createdBy`
+    createdBy: raw.createdById,
   };
 }
 
@@ -373,6 +544,19 @@ export function adaptLoginResponse(raw: BackendLoginResponse): LoginResponse {
     accessToken: raw.accessToken,
     refreshToken: raw.refreshToken,
     user: raw.user ?? { id: userId, email: '', name: '' },
+  };
+}
+
+/**
+ * Adapte le profil GET /auth/me vers la forme stockée en session.
+ * Mapping : userId→id, fullName→name, email→email.
+ * Compatibilité : Sidebar/Topbar/page Compte lisent `user.name` et `user.email`.
+ */
+export function adaptUserProfile(raw: BackendUserProfile): { id: string; email: string; name: string } {
+  return {
+    id: raw.userId,
+    email: raw.email,
+    name: raw.fullName,
   };
 }
 

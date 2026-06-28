@@ -14,7 +14,7 @@ import { useRef, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Field';
 import { Logotype } from '@/components/ui/Logotype';
-import { login } from '@/lib/api/client';
+import { login, getStoredOrgs } from '@/lib/api/client';
 
 interface FieldErrors {
   email?: string;
@@ -24,7 +24,7 @@ interface FieldErrors {
 export default function LoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnTo = searchParams.get('returnTo') || '/app/be-routes-dakar/projets';
+  const returnTo = searchParams.get('returnTo');
 
   const emailRef = useRef<HTMLInputElement>(null);
   const [email, setEmail] = useState('');
@@ -76,7 +76,12 @@ export default function LoginClient() {
       if (!process.env.NEXT_PUBLIC_API_BASE_URL) {
         document.cookie = 'roadsen_mock_auth=1; path=/; SameSite=Lax';
       }
-      router.push(returnTo);
+      // Destination : returnTo explicite → 1re org connue → racine (middleware redirige).
+      // Plus de slug mock codé en dur.
+      const orgs = getStoredOrgs();
+      const destination =
+        returnTo ?? (orgs[0]?.slug ? `/app/${orgs[0].slug}/projets` : '/');
+      router.push(destination);
     } catch (err: unknown) {
       const apiErr = err as { message?: string };
       setGlobalError(apiErr?.message ?? 'Une erreur est survenue. Réessayez.');

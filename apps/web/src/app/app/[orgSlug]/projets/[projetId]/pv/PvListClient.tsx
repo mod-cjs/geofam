@@ -65,9 +65,9 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
   const previewUrlRef = useRef<string | null>(null);
 
   const loadPvs = useCallback(async () => {
-    if (!orgId) {
-      setError('Organisation introuvable.');
-      setLoading(false);
+    if (orgId === null) {
+      // orgId encore en cours de résolution (mode réel : useEffect du hook) —
+      // on reste en état de chargement sans afficher d'erreur (Bug #17).
       return;
     }
     setLoading(true);

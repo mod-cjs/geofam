@@ -15,7 +15,7 @@ import type { Domain } from '@/components/ui/DomainTag';
 import { Skeleton } from '@/components/ui/Skeleton.client';
 import { listCalcResults, listPvs } from '@/lib/api/client';
 import type { CalcResult, OfficialPv } from '@/lib/api/types';
-import { resolveOrgId } from '@/lib/org-context';
+import { useOrgId } from '@/lib/org-context';
 
 /**
  * Mapping engineId → domaine sémantique.
@@ -38,26 +38,32 @@ interface Props {
 export default function OverviewPage({ params: paramsPromise }: Props) {
   const [orgSlug, setOrgSlug] = useState('');
   const [projetId, setProjetId] = useState('');
+  // useOrgId résout le slug via le hook (null jusqu'à montage en mode réel),
+  // ce qui aligne le comportement sur CalculsClient/PvListClient.
+  const orgId = useOrgId(orgSlug);
   const [calculs, setCalculs] = useState<CalcResult[]>([]);
   const [pvs, setPvs] = useState<OfficialPv[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Étape 1 : extraire les paramètres de route depuis la Promise.
   useEffect(() => {
     paramsPromise.then(({ orgSlug: s, projetId: p }) => {
       setOrgSlug(s);
       setProjetId(p);
-      const orgId = resolveOrgId(s);
-      if (!orgId) {
-        setLoading(false);
-        return;
-      }
-      Promise.all([listCalcResults(orgId, p), listPvs(orgId, p)]).then(([c, v]) => {
+    });
+  }, [paramsPromise]);
+
+  // Étape 2 : charger les données une fois orgId résolu.
+  useEffect(() => {
+    if (!orgId || !projetId) return;
+    Promise.all([listCalcResults(orgId, projetId), listPvs(orgId, projetId)]).then(
+      ([c, v]) => {
         setCalculs(c);
         setPvs(v);
         setLoading(false);
-      });
-    });
-  }, [paramsPromise]);
+      },
+    );
+  }, [orgId, projetId]);
 
   if (loading) {
     return (

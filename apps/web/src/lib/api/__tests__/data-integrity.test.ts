@@ -6,8 +6,8 @@
  *  - Isolation négative : listProjects(org_02) ne renvoie JAMAIS de données org_01.
  *    Devient ROUGE si un écran (ou le mock) cesse de filtrer par orgId.
  *  - Cohérence IDs moteurs : chaque engineId d'entitlements a un descripteur,
- *    et réciproquement (casagrande/geoplaque/fastlab inclus).
- *    Devient ROUGE si descripteurs et vocabulaire d'entitlements divergent (#7).
+ *    et réciproquement (slugs backend : pieux/radier/labo, correction #5).
+ *    Devient ROUGE si descripteurs et vocabulaire d'entitlements divergent.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -70,15 +70,18 @@ describe('Cohérence IDs moteurs — ENGINE_DESCRIPTORS ↔ entitlements', () =>
     expect([...descriptorIds].sort()).toEqual([...entitlementModules].sort());
   });
 
-  it('given le vocabulaire d entitlements, then casagrande/geoplaque/fastlab ont un descripteur (#7)', () => {
-    for (const id of ['casagrande', 'geoplaque', 'fastlab']) {
-      expect(descriptorIds).toContain(id);
+  it('given les slugs backend canoniques, then pieux/radier/labo ont un descripteur (correction #5)', () => {
+    // Les slugs backend (dispatch + entitlements) sont pieux/radier/labo.
+    // Les noms de fichiers GeoSuite (casagrande/geoplaque/fastlab) ne sont PAS des slugs.
+    for (const id of ['pieux', 'radier', 'labo']) {
+      expect(descriptorIds, `descripteur manquant pour le slug "${id}"`).toContain(id);
     }
   });
 
-  it('given les descripteurs, then aucun ne porte un ancien id (pieux/radier/labo) — anti-régression #7', () => {
-    for (const stale of ['pieux', 'radier', 'labo']) {
-      expect(descriptorIds, `id obsolète "${stale}" réintroduit`).not.toContain(stale);
+  it('given les descripteurs, then aucun ne porte un nom de fichier GeoSuite (casagrande/geoplaque/fastlab) — anti-régression #5', () => {
+    // Les noms de fichiers GeoSuite ne doivent pas apparaître comme IDs de descripteur.
+    for (const stale of ['casagrande', 'geoplaque', 'fastlab']) {
+      expect(descriptorIds, `nom GeoSuite "${stale}" utilisé comme id descripteur`).not.toContain(stale);
     }
   });
 });

@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/Skeleton.client';
 import { useToast } from '@/components/ui/Toast';
 import { getProject } from '@/lib/api/client';
 import type { Project } from '@/lib/api/types';
-import { resolveOrgId } from '@/lib/org-context';
+import { useOrgId } from '@/lib/org-context';
 
 interface Props {
   params: Promise<{ orgSlug: string; projetId: string }>;
@@ -26,32 +26,40 @@ function formatDate(iso: string): string {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'Africa/Dakar',
   }).format(new Date(iso));
 }
 
 export default function InfosPage({ params: paramsPromise }: Props) {
   const { addToast } = useToast();
+  const [orgSlug, setOrgSlug] = useState('');
+  const [projetId, setProjetId] = useState('');
+  // useOrgId résout le slug après montage (mode réel) ou immédiatement (mock).
+  const orgId = useOrgId(orgSlug);
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Étape 1 : extraire les paramètres de route depuis la Promise.
   useEffect(() => {
-    paramsPromise.then(({ orgSlug, projetId }) => {
-      const orgId = resolveOrgId(orgSlug);
-      if (!orgId) {
-        setLoading(false);
-        return;
-      }
-      getProject(orgId, projetId)
-        .then((p) => {
-          setProject(p);
-          setName(p.name);
-          setLoading(false);
-        })
-        .catch(() => setLoading(false));
+    paramsPromise.then(({ orgSlug: s, projetId: p }) => {
+      setOrgSlug(s);
+      setProjetId(p);
     });
   }, [paramsPromise]);
+
+  // Étape 2 : charger le projet une fois orgId résolu.
+  useEffect(() => {
+    if (!orgId || !projetId) return;
+    getProject(orgId, projetId)
+      .then((p) => {
+        setProject(p);
+        setName(p.name);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [orgId, projetId]);
 
   async function handleSave() {
     if (!project || !name.trim()) return;

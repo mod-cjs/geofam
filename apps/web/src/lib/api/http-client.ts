@@ -8,6 +8,7 @@
  *  - Auth : POST /auth/login, POST /auth/refresh, GET /auth/me
  *  - X-Org-Id : dérivé depuis les claims JWT (ADR 0010) — jamais valeur cliente brute
  *  - Refresh transparent sur 401 access-token expiré
+ *  - Refresh PROACTIF : timer planifié ~60 s avant l'expiration du JWT (#1)
  *  - Gestion 402 (EXPIRED|QUOTA) et 403 (MODULE_NOT_IN_PACK) : erreurs typées
  *  - Mapping Prisma → types front via adapters.ts
  *
@@ -16,18 +17,23 @@
 
 import {
   adaptLoginResponse,
+  adaptUserProfile,
   adaptEntitlements,
   adaptProject,
   adaptProjects,
   adaptCalcResult,
   adaptCalcResults,
+  adaptPersistedCalcResult,
   adaptOfficialPv,
   adaptOfficialPvs,
   type PrismaCalcResult,
   type PrismaOfficialPv,
+  type PrismaOfficialPvFlat,
   type PrismaProject,
   type BackendLoginResponse,
   type BackendEntitlements,
+  type BackendPersistedCalcResult,
+  type BackendUserProfile,
 } from './adapters';
 import type {
   LoginRequest,
@@ -65,7 +71,7 @@ const ORGS_KEY = 'roadsen_orgs';
 // + cookie JS-readable (pour le middleware Edge qui ne peut pas lire sessionStorage).
 //
 // Nom du cookie : `roadsen_access_token` — identique à la clé sessionStorage.
-// max-age=900 s (15 min) aligne sur la TTL type d'un access token.
+// max-age : aligné sur le `exp` réel du JWT (pas une valeur codée en dur — #1).
 // SameSite=Strict limite l'exposition CSRF.
 //
 // DETTE : avant mise en production, passer en cookie httpOnly via un Route Handler
@@ -75,10 +81,10 @@ const ORGS_KEY = 'roadsen_orgs';
 
 const TOKEN_COOKIE_NAME = ACCESS_TOKEN_KEY; // 'roadsen_access_token'
 
-function setTokenCookie(token: string): void {
+function setTokenCookie(token: string, maxAge = 900): void {
   if (typeof document === 'undefined') return;
   // JWT ne contient que des caractères base64url + points — pas besoin d'encodage URL.
-  document.cookie = `${TOKEN_COOKIE_NAME}=${token}; path=/; SameSite=Strict; max-age=900`;
+  document.cookie = `${TOKEN_COOKIE_NAME}=${token}; path=/; SameSite=Strict; max-age=${maxAge}`;
 }
 
 function clearTokenCookie(): void {
@@ -96,16 +102,79 @@ function getRefreshToken(): string | null {
   return sessionStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
+// ---------------------------------------------------------------------------
+// Refresh proactif — timer (#1)
+//
+// Après chaque storeTokens, on planifie un refresh ~60 s avant l'exp du JWT.
+// Si le refresh réussit, storeTokens est appelé à nouveau → le prochain timer
+// est automatiquement reprogrammé (pas de boucle explicite).
+// Si le refresh échoue, le timer s'arrête et le flux 401 transparent prend le relais.
+// ---------------------------------------------------------------------------
+
+let _proactiveRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+function cancelProactiveRefresh(): void {
+  if (_proactiveRefreshTimer !== null) {
+    clearTimeout(_proactiveRefreshTimer);
+    _proactiveRefreshTimer = null;
+  }
+}
+
+function scheduleProactiveRefresh(accessToken: string): void {
+  cancelProactiveRefresh();
+
+  const claims = decodeJwtPayload(accessToken);
+  if (!claims?.exp) return;
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const delaySec = claims.exp - nowSec - 60; // 60 s avant expiration
+
+  // Trop court pour être utile (< 5 s) : laisser le flux 401 gérer.
+  if (delaySec < 5) return;
+
+  // MINEUR-2 — Clamp à 2 147 483 s (~24,8 j) : setTimeout prend un int32 en ms.
+  // Un JWT avec exp très lointain (tests : 9999999999) dépasserait 2^31-1 ms et
+  // déclencherait immédiatement (overflow). On clampe plutôt que de sauter.
+  const delayMs = Math.min(delaySec * 1000, 2_147_483_000);
+
+  _proactiveRefreshTimer = setTimeout(() => {
+    _proactiveRefreshTimer = null;
+    // Si un refresh est déjà en cours (401 transparent), on le laisse finir.
+    if (_refreshing) {
+      void _refreshing;
+      return;
+    }
+    // Démarrer le refresh proactif ; doRefresh → storeTokens → reprogramme le suivant.
+    _refreshing = doRefresh().finally(() => {
+      _refreshing = null;
+    });
+  }, delayMs);
+}
+
 function storeTokens(accessToken: string, refreshToken: string): void {
   if (typeof window === 'undefined') return;
   sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
   sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-  // Poser aussi le cookie pour le middleware Edge (mode réel).
-  setTokenCookie(accessToken);
+
+  // #18 — Re-dériver et stocker les orgs depuis le nouveau token (après refresh inclus)
+  const claims = decodeJwtPayload(accessToken);
+  if (claims?.orgs) {
+    sessionStorage.setItem(ORGS_KEY, JSON.stringify(claims.orgs));
+  }
+
+  // #1 — max-age du cookie aligné sur exp réel du JWT (pas un 900 codé en dur)
+  const nowSec = Math.floor(Date.now() / 1000);
+  const maxAge = claims?.exp ? Math.max(0, claims.exp - nowSec) : 900;
+  setTokenCookie(accessToken, maxAge);
+
+  // #1 — Planifier le refresh proactif ~60 s avant expiration
+  scheduleProactiveRefresh(accessToken);
 }
 
 function clearTokens(): void {
   if (typeof window === 'undefined') return;
+  // Annuler le timer proactif avant de vider la session
+  cancelProactiveRefresh();
   sessionStorage.removeItem(ACCESS_TOKEN_KEY);
   sessionStorage.removeItem(REFRESH_TOKEN_KEY);
   sessionStorage.removeItem(USER_KEY);
@@ -269,15 +338,22 @@ export async function httpLogin(req: LoginRequest): Promise<LoginResponse> {
     body: JSON.stringify(req),
   });
   const adapted = adaptLoginResponse(raw);
+  // storeTokens gère maintenant : orgs JWT (#18) + cookie max-age réel (#1) + timer proactif (#1)
   storeTokens(adapted.accessToken, raw.refreshToken);
-  // Stocker user et orgs (décodés du JWT)
+
+  // #9 — Récupérer le profil complet via GET /auth/me et stocker name/email réels.
+  // Sidebar/Topbar/page Compte lisent user.name et user.email depuis USER_KEY.
   if (typeof window !== 'undefined') {
-    sessionStorage.setItem(USER_KEY, JSON.stringify(adapted.user));
-    const claims = decodeJwtPayload(adapted.accessToken);
-    if (claims?.orgs) {
-      sessionStorage.setItem(ORGS_KEY, JSON.stringify(claims.orgs));
+    try {
+      const profile = await apiFetch<BackendUserProfile>('/auth/me');
+      sessionStorage.setItem(USER_KEY, JSON.stringify(adaptUserProfile(profile)));
+    } catch {
+      // /auth/me indisponible : stocker le user dérivé du JWT (email/name vides,
+      // seront mis à jour au prochain login ou rechargement).
+      sessionStorage.setItem(USER_KEY, JSON.stringify(adapted.user));
     }
   }
+
   return adapted;
 }
 
@@ -388,7 +464,10 @@ export async function httpRunCalc(
   projectId: string,
   req: CalcRequest,
 ): Promise<CalcResult> {
-  const raw = await apiFetch<PrismaCalcResult>(
+  // #2 — Le backend renvoie PersistedCalcResult (pas PrismaCalcResult) :
+  // { calcResultId, ok, meta: { engineId, ... }, output }
+  // On utilise adaptPersistedCalcResult (contexte orgId/projectId/params fourni ici).
+  const raw = await apiFetch<BackendPersistedCalcResult>(
     `/projects/${projectId}/calc/${req.engineId}`,
     {
       method: 'POST',
@@ -400,7 +479,11 @@ export async function httpRunCalc(
   );
   // Invalider le cache entitlements : un calcul consomme du quota
   invalidateEntCache(orgId);
-  return adaptCalcResult(raw);
+  return adaptPersistedCalcResult(raw, {
+    orgId,
+    projectId,
+    params: req.params as Record<string, unknown>,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -433,7 +516,9 @@ export async function httpEmitPv(
   projectId: string,
   req: EmitPvRequest,
 ): Promise<OfficialPv> {
-  const raw = await apiFetch<PrismaOfficialPv>(
+  // #4 — Le backend renvoie OfficialPv Prisma DIRECT (forme plate), pas { pv, sealValid }.
+  // Les routes GET /pvs et GET /pvs/:id renvoient la forme imbriquée { pv, sealValid }.
+  const raw = await apiFetch<PrismaOfficialPvFlat>(
     `/projects/${projectId}/calc-results/${req.calcResultId}/pv`,
     {
       method: 'POST',
@@ -443,7 +528,7 @@ export async function httpEmitPv(
   );
   // Invalider le cache entitlements : un PV peut consommer du quota
   invalidateEntCache(orgId);
-  return adaptOfficialPv(raw);
+  return adaptOfficialPv(raw as unknown as PrismaOfficialPv);
 }
 
 export async function httpVerifyPv(

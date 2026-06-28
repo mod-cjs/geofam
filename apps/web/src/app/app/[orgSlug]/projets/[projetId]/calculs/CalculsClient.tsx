@@ -61,17 +61,25 @@ function relDate(iso: string): string {
 }
 
 /**
- * Canonicalise l'engineId renvoyé par le backend (forme longue `chaussee-burmister`)
- * vers la forme courte utilisée dans ENGINE_DOMAIN, ENGINE_GROUPS et les descripteurs.
+ * Canonicalise l'engineId renvoyé par le backend (registryId long, ex. 'chaussee-burmister')
+ * vers le slug métier court utilisé dans ENGINE_DOMAIN, ENGINE_GROUPS et les descripteurs.
+ * Les slugs métier sont les clés de dispatch backend (burmister/terzaghi/pressiometre/pieux/radier/labo).
  * Fallback : l'id d'origine est retourné inchangé (pas de crash sur id inconnu).
  */
 const ENGINE_ID_ALIAS: Record<string, string> = {
+  // Formes registryId réelles (meta.engineId persisté par le backend)
   'chaussee-burmister': 'burmister',
+  'fondation-superficielle': 'terzaghi',
+  'pressiometre-menard': 'pressiometre',
+  'fondation-profonde-pieux': 'pieux',
+  'radier-plaque': 'radier',
+  'labo-classification-gtr': 'labo',
+  // Alias legacy (données éventuellement persistées avant correction du mapping)
   'fondation-terzaghi': 'terzaghi',
-  'fondation-casagrande': 'casagrande',
-  'fondation-geoplaque': 'geoplaque',
+  'fondation-casagrande': 'pieux',
+  'fondation-geoplaque': 'radier',
   'labo-pressiometre': 'pressiometre',
-  'labo-fastlab': 'fastlab',
+  'labo-fastlab': 'labo',
 };
 
 function canonicalEngineId(id: string): string {
@@ -85,14 +93,14 @@ const STATUS_LABELS: Record<string, string> = {
   ERROR: 'Erreur',
 };
 
-// Mapping engineId → Domain
+// Mapping slug métier → Domain (clés = slugs backend canoniques)
 const ENGINE_DOMAIN: Record<string, Domain> = {
   burmister: 'road',
   pressiometre: 'lab',
-  fastlab: 'lab',
+  labo: 'lab',
   terzaghi: 'foundation',
-  casagrande: 'foundation',
-  geoplaque: 'foundation',
+  pieux: 'foundation',
+  radier: 'foundation',
 };
 
 interface CalculsClientProps {
@@ -135,9 +143,9 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   const [mobileDrillDown, setMobileDrillDown] = useState(false);
 
   const loadData = useCallback(async () => {
-    if (!orgId) {
-      setListError('Organisation introuvable.');
-      setLoadingList(false);
+    if (orgId === null) {
+      // orgId encore en cours de résolution (mode réel : useEffect du hook) —
+      // on reste en état de chargement sans afficher d'erreur (Bug #17).
       return;
     }
     setLoadingList(true);
@@ -175,7 +183,12 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     if (!desc) return;
     setPanel({ mode: 'form', engineId, descriptor: desc });
     setFormValues(initFormValues(desc));
-    setCalcLabel('');
+    // Pré-remplissage du libellé : évite le blocage silencieux (Bug #3)
+    const shortDate = new Date().toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: 'short',
+    });
+    setCalcLabel(`${desc.label} — ${shortDate}`);
     setFormErrors({});
   }
 
@@ -207,11 +220,19 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
         }
       }
     }
-    if (!calcLabel.trim()) {
-      errors['_label'] = 'Libellé requis';
-    }
+    // Note : le libellé est pré-rempli à la sélection du moteur ; si l'utilisateur
+    // l'a effacé, l'appel API utilise descriptor.label comme fallback (voir ci-dessous).
+    // On ne bloque PAS la soumission sur le libellé seul — le backend ne l'exige pas.
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
+      // Scroll + focus vers le premier champ en erreur pour une visibilité immédiate
+      const firstKey = Object.keys(errors)[0];
+      const elId = `field-${firstKey}`;
+      setTimeout(() => {
+        const el = document.getElementById(elId);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        (el as HTMLInputElement | null)?.focus();
+      }, 0);
       return;
     }
 
@@ -767,12 +788,12 @@ const ENGINE_GROUPS: Array<{ id: Domain; label: string; engines: string[] }> = [
   {
     id: 'foundation',
     label: 'Fondations',
-    engines: ['terzaghi', 'casagrande', 'geoplaque'],
+    engines: ['terzaghi', 'pieux', 'radier'],
   },
   {
     id: 'lab',
     label: 'Sol & Labo',
-    engines: ['pressiometre', 'fastlab'],
+    engines: ['pressiometre', 'labo'],
   },
 ];
 

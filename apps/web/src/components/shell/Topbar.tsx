@@ -12,7 +12,7 @@ import { Breadcrumb } from '@/components/ui/Breadcrumb';
 import { Kbd } from '@/components/ui/Kbd';
 import { useCommandPalette } from '@/components/ui/CommandPalette';
 import { getStoredUser } from '@/lib/api/client';
-import type { ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 
 interface TopbarProps {
   orgSlug: string;
@@ -25,7 +25,13 @@ interface TopbarProps {
 export function Topbar({ orgSlug, ctaSlot, breadcrumbItems }: TopbarProps) {
   const pathname = usePathname();
   const { openPalette } = useCommandPalette();
-  const user = getStoredUser() ?? { name: 'U' };
+  // Valeur hydratée après montage — même init que SSR (getStoredUser retourne null
+  // côté serveur), mise à jour en useEffect pour éviter l'erreur React #418.
+  const [user, setUser] = useState<{ name: string }>({ name: 'U' });
+  useEffect(() => {
+    const u = getStoredUser();
+    if (u) setUser(u);
+  }, []);
 
   // Fil d'Ariane par défaut depuis le pathname
   const defaultBreadcrumb = buildDefaultBreadcrumb(pathname, orgSlug);

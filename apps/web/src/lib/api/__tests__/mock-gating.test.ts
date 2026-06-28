@@ -32,9 +32,9 @@ describe('getMockEntitlements', () => {
       expect(e.serverTime).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 
-    it('given scénario actif, then les 6 modules sont déverrouillés', () => {
+    it('given scénario actif, then les 6 modules sont déverrouillés (slugs backend canoniques)', () => {
       const e = getMockEntitlements('active');
-      const expected = ['burmister', 'pressiometre', 'terzaghi', 'casagrande', 'geoplaque', 'fastlab'];
+      const expected = ['burmister', 'pressiometre', 'terzaghi', 'pieux', 'radier', 'labo'];
       for (const m of expected) {
         expect(e.modules).toContain(m);
       }
@@ -69,9 +69,9 @@ describe('getMockEntitlements', () => {
       expect(e.expired).toBe(false);
       // En module-locked, seul burmister (chaussées) est disponible
       expect(e.modules).toContain('burmister');
-      // Les moteurs fondations ne sont pas dans la liste
+      // Les moteurs fondations ne sont pas dans la liste (pack ROUTES = chaussées seulement)
       expect(e.modules).not.toContain('terzaghi');
-      expect(e.modules).not.toContain('casagrande');
+      expect(e.modules).not.toContain('pieux');
     });
   });
 

@@ -76,7 +76,7 @@ export function getMockEntitlements(scenario: DemoScenario, orgId = 'org_01'): E
       return {
         ...base,
         pack: 'COMPLETE',
-        modules: ['burmister', 'terzaghi', 'casagrande', 'geoplaque', 'pressiometre', 'fastlab'],
+        modules: ['burmister', 'terzaghi', 'pressiometre', 'pieux', 'radier', 'labo'],
         expiresAt: iso(-30),
         expired: true,
         quota: { limit: 500, used: 487, remaining: 13 },
@@ -86,7 +86,7 @@ export function getMockEntitlements(scenario: DemoScenario, orgId = 'org_01'): E
       return {
         ...base,
         pack: 'COMPLETE',
-        modules: ['burmister', 'terzaghi', 'casagrande', 'geoplaque', 'pressiometre', 'fastlab'],
+        modules: ['burmister', 'terzaghi', 'pressiometre', 'pieux', 'radier', 'labo'],
         expiresAt: iso(180),
         expired: false,
         quota: { limit: 500, used: 500, remaining: 0 },
@@ -107,7 +107,7 @@ export function getMockEntitlements(scenario: DemoScenario, orgId = 'org_01'): E
       return {
         ...base,
         pack: 'COMPLETE',
-        modules: ['burmister', 'terzaghi', 'casagrande', 'geoplaque', 'pressiometre', 'fastlab'],
+        modules: ['burmister', 'terzaghi', 'pressiometre', 'pieux', 'radier', 'labo'],
         expiresAt: iso(180),
         expired: false,
         quota: { limit: 500, used: 137, remaining: 363 },
