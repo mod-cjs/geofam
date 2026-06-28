@@ -72,7 +72,9 @@ export interface PrismaProject {
 export interface BackendLoginResponse {
   accessToken: string;
   refreshToken: string;
-  user: {
+  // Le backend /auth/login réel ne renvoie PAS de `user` (id = claim `sub` du JWT,
+  // email/name via /auth/me). Optionnel pour ne pas casser l'adaptation.
+  user?: {
     id: string;
     email: string;
     name: string;
@@ -171,14 +173,21 @@ export function adaptProjects(raws: PrismaProject[]): Project[] {
 // ---------------------------------------------------------------------------
 
 export function adaptLoginResponse(raw: BackendLoginResponse): LoginResponse {
+  // ⚠️ Le backend ne renvoie pas de `user` : lire `raw.user.*` sans garde levait une
+  // exception → storeTokens jamais atteint → cookie jamais posé → login bloqué (rebond
+  // /login). On dérive l'id depuis le claim `sub` du JWT ; email/name via /auth/me ensuite.
+  let userId = '';
+  try {
+    const part = raw.accessToken.split('.')[1] ?? '';
+    const json = atob(part.replace(/-/g, '+').replace(/_/g, '/'));
+    userId = ((JSON.parse(json) as { sub?: string })?.sub ?? '') as string;
+  } catch {
+    /* token illisible : id vide, le login passe quand même */
+  }
   return {
     accessToken: raw.accessToken,
     refreshToken: raw.refreshToken,
-    user: {
-      id: raw.user.id,
-      email: raw.user.email,
-      name: raw.user.name,
-    },
+    user: raw.user ?? { id: userId, email: '', name: '' },
   };
 }
 
