@@ -392,7 +392,9 @@ export async function httpRunCalc(
     `/projects/${projectId}/calc/${req.engineId}`,
     {
       method: 'POST',
-      body: JSON.stringify({ label: req.label, params: req.params }),
+      // Le backend valide le body avec un schéma Zod strict contre l'input moteur à la racine.
+      // Toute clé inconnue (ex. { label, params }) → rejet 400 "Entrée hors-contrat moteur".
+      body: JSON.stringify(req.params),
       orgId,
     },
   );
@@ -444,8 +446,23 @@ export async function httpEmitPv(
   return adaptOfficialPv(raw);
 }
 
-export async function httpVerifyPv(pvId: string): Promise<VerifyPvResponse> {
-  return apiFetch<VerifyPvResponse>(`/pvs/${pvId}/verify`);
+export async function httpVerifyPv(
+  orgId: string,
+  projectId: string,
+  pvId: string,
+): Promise<VerifyPvResponse> {
+  // Il n'existe pas de route /pvs/:id/verify.
+  // La vérification d'intégrité = lire GET /projects/:projectId/pvs/:pvId
+  // et exploiter le champ `sealValid` renvoyé par le backend.
+  const raw = await apiFetch<PrismaOfficialPv>(
+    `/projects/${projectId}/pvs/${pvId}`,
+    { orgId },
+  );
+  return {
+    pvId: raw.pv.id,
+    intact: raw.sealValid ?? false,
+    verifiedAt: new Date().toISOString(),
+  };
 }
 
 export async function httpDownloadPvPdf(

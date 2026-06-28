@@ -427,12 +427,16 @@ export async function emitPv(
   return newPv;
 }
 
-export async function verifyPv(_pvId: string): Promise<VerifyPvResponse> {
-  if (_USE_REAL_BACKEND) return httpVerifyPv(_pvId);
+export async function verifyPv(
+  orgId: string,
+  projectId: string,
+  pvId: string,
+): Promise<VerifyPvResponse> {
+  if (_USE_REAL_BACKEND) return httpVerifyPv(orgId, projectId, pvId);
 
   await delay(500);
   return {
-    pvId: _pvId,
+    pvId,
     intact: true,
     verifiedAt: new Date().toISOString(),
   };

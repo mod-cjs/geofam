@@ -35,6 +35,8 @@ import {
   httpListProjects,
   httpGetCalcResult,
   httpEmitPv,
+  httpVerifyPv,
+  httpDownloadPvPdf,
 } from '../http-client';
 
 // ---------------------------------------------------------------------------
@@ -641,5 +643,244 @@ describe('httpGetCalcResult — chemin négatif', () => {
       statusCode: 404,
       reason: 'NOT_FOUND',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug A — httpRunCalc : body = req.params à la racine (pas d'enveloppe {label,params})
+// ---------------------------------------------------------------------------
+
+describe('httpRunCalc — contrat body (Bug A)', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    sessionStorage.setItem('roadsen_access_token', 'fake.token');
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+  });
+
+  it('given un calcul lancé, when httpRunCalc, then fetch est appelé avec req.params directement comme body (sans enveloppe label/params)', async () => {
+    const prismaCalc: PrismaCalcResult = {
+      id: 'calc_body_test',
+      projectId: 'proj_01',
+      orgId: 'org_01',
+      engineId: 'burmister',
+      label: 'Test body',
+      domain: 'CH',
+      status: 'DONE',
+      input: { layers: [{ h: 0.12 }] },
+      output: { verdict: 'PASS', NE: 1000000 },
+      pvId: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const mockFetch = vi.fn().mockResolvedValueOnce(makeResponse(prismaCalc));
+    vi.stubGlobal('fetch', mockFetch);
+
+    const inputParams = { layers: [{ mat: 'BBSG1', E: 5400, nu: 0.35, h: 0.06 }] };
+    await httpRunCalc('org_01', 'proj_01', {
+      engineId: 'burmister',
+      label: 'Ne doit pas être dans le body',
+      params: inputParams,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [, callOptions] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const sentBody = JSON.parse(callOptions.body as string) as unknown;
+
+    // Le body doit être req.params directement — pas d'enveloppe { label, params }
+    expect((sentBody as Record<string, unknown>)['label']).toBeUndefined();
+    expect((sentBody as Record<string, unknown>)['params']).toBeUndefined();
+    expect((sentBody as Record<string, unknown>)['layers']).toEqual(inputParams.layers);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug B — httpDownloadPvPdf : URL avec projectId dans le path, X-Org-Id dans l'en-tête
+// ---------------------------------------------------------------------------
+
+describe('httpDownloadPvPdf — contrat URL + headers (Bug B)', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    sessionStorage.setItem('roadsen_access_token', 'fake.token');
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+  });
+
+  it('given un téléchargement PDF, when httpDownloadPvPdf, then fetch est appelé avec le bon path et X-Org-Id', async () => {
+    const mockFetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      blob: async () => new Blob(['%PDF'], { type: 'application/pdf' }),
+    } as unknown as Response);
+    vi.stubGlobal('fetch', mockFetch);
+
+    await httpDownloadPvPdf('org_01', 'proj_42', 'pv_99');
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+    // Le path doit inclure projectId et pvId
+    expect(url).toContain('/projects/proj_42/pvs/pv_99/pdf');
+    // L'en-tête X-Org-Id doit être posé
+    const headers = options.headers as Record<string, string>;
+    expect(headers['X-Org-Id']).toBe('org_01');
+  });
+
+  it('given un 404, when httpDownloadPvPdf, then rejette avec statusCode 404', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        blob: async () => new Blob(),
+      } as unknown as Response),
+    );
+    await expect(httpDownloadPvPdf('org_01', 'proj_42', 'pv_inexistant')).rejects.toMatchObject({
+      statusCode: 404,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug C — httpVerifyPv : GET /projects/:id/pvs/:id (pas /pvs/:id/verify), mappe sealValid→intact
+// ---------------------------------------------------------------------------
+
+describe('httpVerifyPv — contrat endpoint + mapping sealValid (Bug C)', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    sessionStorage.setItem('roadsen_access_token', 'fake.token');
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+  });
+
+  it('given un appel de vérification, when httpVerifyPv, then fetch appelle GET /projects/:id/pvs/:id (pas /pvs/:id/verify)', async () => {
+    const rawPv: PrismaOfficialPv = {
+      pv: {
+        id: 'pv_01',
+        orgId: 'org_01',
+        calcResultId: 'calc_01',
+        projectId: 'proj_01',
+        pvNumber: 'PV-2026-0001',
+        userId: 'Amadou Diallo',
+        projectName: 'Test',
+        engineId: 'burmister',
+        engineVersion: '1.0.0',
+        engineSourceHash: 'sha',
+        inputCanonical: '{}',
+        output: { verdict: 'PASS' },
+        scienceStatus: 'OK',
+        verdict: 'PASS',
+        contentHash: 'ch01',
+        hmac: 'abcdef1234567890',
+        sealedAt: '2026-01-01T00:00:00.000Z',
+      },
+      sealValid: true,
+    };
+
+    const mockFetch = vi.fn().mockResolvedValueOnce(makeResponse(rawPv));
+    vi.stubGlobal('fetch', mockFetch);
+
+    await httpVerifyPv('org_01', 'proj_01', 'pv_01');
+
+    const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
+    // Doit appeler /projects/proj_01/pvs/pv_01 — PAS /pvs/pv_01/verify
+    expect(url).toContain('/projects/proj_01/pvs/pv_01');
+    expect(url).not.toContain('/verify');
+  });
+
+  it('given sealValid=true dans la réponse, when httpVerifyPv, then intact=true dans VerifyPvResponse', async () => {
+    const rawPv: PrismaOfficialPv = {
+      pv: {
+        id: 'pv_02',
+        orgId: 'org_01',
+        calcResultId: 'calc_01',
+        projectId: 'proj_01',
+        pvNumber: 'PV-2026-0002',
+        userId: 'Amadou Diallo',
+        projectName: 'Test',
+        engineId: 'burmister',
+        engineVersion: '1.0.0',
+        engineSourceHash: 'sha',
+        inputCanonical: '{}',
+        output: {},
+        scienceStatus: 'OK',
+        verdict: 'PASS',
+        contentHash: 'ch02',
+        hmac: 'deadbeef12345678',
+        sealedAt: '2026-01-01T00:00:00.000Z',
+      },
+      sealValid: true,
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(makeResponse(rawPv)));
+
+    const result = await httpVerifyPv('org_01', 'proj_01', 'pv_02');
+    expect(result.pvId).toBe('pv_02');
+    expect(result.intact).toBe(true);
+    expect(result.verifiedAt).toBeTruthy(); // timestamp ISO présent
+  });
+
+  it('given sealValid=false dans la réponse, when httpVerifyPv, then intact=false (ne forge pas de faux vrai)', async () => {
+    const rawPv: PrismaOfficialPv = {
+      pv: {
+        id: 'pv_03',
+        orgId: 'org_01',
+        calcResultId: 'calc_01',
+        projectId: 'proj_01',
+        pvNumber: 'PV-2026-0003',
+        userId: 'Amadou Diallo',
+        projectName: 'Test',
+        engineId: 'burmister',
+        engineVersion: '1.0.0',
+        engineSourceHash: 'sha',
+        inputCanonical: '{}',
+        output: {},
+        scienceStatus: 'OK',
+        verdict: 'PASS',
+        contentHash: 'ch03',
+        hmac: 'cafebabe12345678',
+        sealedAt: '2026-01-01T00:00:00.000Z',
+      },
+      sealValid: false,
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(makeResponse(rawPv)));
+
+    const result = await httpVerifyPv('org_01', 'proj_01', 'pv_03');
+    expect(result.intact).toBe(false);
+  });
+
+  it('given sealValid absent (champ optionnel), when httpVerifyPv, then intact=false par défaut (fail-closed)', async () => {
+    const rawPv: PrismaOfficialPv = {
+      pv: {
+        id: 'pv_04',
+        orgId: 'org_01',
+        calcResultId: 'calc_01',
+        projectId: 'proj_01',
+        pvNumber: 'PV-2026-0004',
+        userId: 'Amadou Diallo',
+        projectName: 'Test',
+        engineId: 'burmister',
+        engineVersion: '1.0.0',
+        engineSourceHash: 'sha',
+        inputCanonical: '{}',
+        output: {},
+        scienceStatus: 'OK',
+        verdict: 'PASS',
+        contentHash: 'ch04',
+        hmac: 'ffffffff12345678',
+        sealedAt: '2026-01-01T00:00:00.000Z',
+      },
+      // sealValid intentionnellement absent
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(makeResponse(rawPv)));
+
+    const result = await httpVerifyPv('org_01', 'proj_01', 'pv_04');
+    // sealValid ?? false → doit valoir false (jamais "intact" par défaut)
+    expect(result.intact).toBe(false);
   });
 });

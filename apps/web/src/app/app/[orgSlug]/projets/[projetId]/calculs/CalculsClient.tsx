@@ -24,12 +24,14 @@ import {
   AlertCircle,
   Loader2,
   FileCheck2,
+  Info,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useCallback, type FormEvent } from 'react';
 
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { DomainTag } from '@/components/ui/DomainTag';
 import type { Domain } from '@/components/ui/DomainTag';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -41,7 +43,7 @@ import { VerdictBanner } from '@/components/ui/VerdictBanner';
 import { listCalcResults, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type { CalcResult, EntitlementsResponse } from '@/lib/api/types';
 import { findDescriptor } from '@/lib/engine-descriptors';
-import type { EngineDescriptor } from '@/lib/engine-descriptors';
+import type { EngineDescriptor, FieldDescriptor } from '@/lib/engine-descriptors';
 
 import { useOrgId } from '@/lib/org-context';
 
@@ -183,16 +185,26 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     if (panel.mode !== 'form') return;
     const { engineId, descriptor } = panel;
 
-    // Validation basique des champs requis
+    // Validation côté client — cohérente avec le schéma Zod backend (DoD §8 : pas de calcul ici)
     const errors: Record<string, string> = {};
     for (const f of descriptor.fields) {
       if (f.type === 'section' || f.optional) continue;
       const v = formValues[f.key];
       if (v === undefined || v === '') {
         errors[f.key] = 'Champ requis';
+        continue;
       }
-      if (f.type === 'number' && v !== '' && isNaN(Number(v))) {
-        errors[f.key] = 'Valeur numérique attendue';
+      if (f.type === 'number') {
+        if (isNaN(Number(v))) {
+          errors[f.key] = 'Valeur numérique attendue';
+        } else {
+          const n = Number(v);
+          if (f.min !== undefined && n < f.min) {
+            errors[f.key] = `Valeur minimale : ${f.min}${f.unit ? ' ' + f.unit : ''}`;
+          } else if (f.max !== undefined && n > f.max) {
+            errors[f.key] = `Valeur maximale : ${f.max}${f.unit ? ' ' + f.unit : ''}`;
+          }
+        }
       }
     }
     if (!calcLabel.trim()) {
@@ -914,6 +926,60 @@ function EngineSelector({
 // Formulaire de saisie dynamique (Lot 3 — depuis engine-descriptors)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Tooltip d'aide par champ — expose unit / example / hint / bornes (Bug E2)
+// ---------------------------------------------------------------------------
+
+function buildFieldTooltipContent(field: FieldDescriptor): string | null {
+  const parts: string[] = [];
+  if (field.unit) parts.push(`Unité : ${field.unit}`);
+  if (field.example !== undefined && field.example !== '')
+    parts.push(`Exemple : ${field.example}`);
+  if (field.min !== undefined && field.max !== undefined)
+    parts.push(`Plage : ${field.min} – ${field.max}${field.unit ? ' ' + field.unit : ''}`);
+  else if (field.min !== undefined)
+    parts.push(`Min : ${field.min}${field.unit ? ' ' + field.unit : ''}`);
+  else if (field.max !== undefined)
+    parts.push(`Max : ${field.max}${field.unit ? ' ' + field.unit : ''}`);
+  if (field.hint) parts.push(field.hint);
+  return parts.length > 0 ? parts.join('\n') : null;
+}
+
+function FieldHelpButton({ field }: { field: FieldDescriptor }) {
+  const content = buildFieldTooltipContent(field);
+  if (!content) return null;
+  return (
+    <Tooltip
+      content={
+        <span style={{ whiteSpace: 'pre-line', display: 'block', maxWidth: 260 }}>
+          {content}
+        </span>
+      }
+      position="left"
+    >
+      <button
+        type="button"
+        aria-label={`Aide pour le champ ${field.label}`}
+        style={{
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--text-muted)',
+          padding: '2px 4px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          borderRadius: 'var(--radius-sm)',
+          transition: `color var(--dur-fast) var(--ease-state)`,
+        }}
+        onMouseOver={(e) => ((e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)')}
+        onMouseOut={(e) => ((e.currentTarget as HTMLElement).style.color = 'var(--text-muted)')}
+      >
+        <Info size={12} strokeWidth={1.5} aria-hidden="true" />
+      </button>
+    </Tooltip>
+  );
+}
+
 function CalcForm({
   descriptor,
   formValues,
@@ -933,6 +999,27 @@ function CalcForm({
   onSubmit: (e?: FormEvent) => void;
   onBack: () => void;
 }) {
+  // Validation au blur d'un champ numérique — cohérente avec le check submit (Bug E1)
+  function makeOnValidate(field: FieldDescriptor) {
+    return (value: string): { error?: string; warning?: string } | void => {
+      if (!field.optional && (value === '' || value === undefined)) {
+        return { error: 'Champ requis' };
+      }
+      if (field.type === 'number' && value !== '') {
+        if (isNaN(Number(value))) {
+          return { error: 'Valeur numérique attendue' };
+        }
+        const n = Number(value);
+        if (field.min !== undefined && n < field.min) {
+          return { error: `Valeur minimale : ${field.min}${field.unit ? ' ' + field.unit : ''}` };
+        }
+        if (field.max !== undefined && n > field.max) {
+          return { error: `Valeur maximale : ${field.max}${field.unit ? ' ' + field.unit : ''}` };
+        }
+      }
+    };
+  }
+
   return (
     <div style={{ padding: 24, maxWidth: 640, margin: '0 auto', width: '100%' }}>
       {/* Fil d'Ariane interne */}
@@ -1002,48 +1089,57 @@ function CalcForm({
 
             if (field.type === 'select' && field.options) {
               return (
-                <Select
-                  key={field.key}
+                <div key={field.key} style={{ position: 'relative' }}>
+                  <Select
+                    id={`field-${field.key}`}
+                    label={
+                      field.label +
+                      (field.unit ? ` (${field.unit})` : '') +
+                      (field.optional ? '' : ' *')
+                    }
+                    value={formValues[field.key] ?? ''}
+                    onChange={(e) => onFieldChange(field.key, e.target.value)}
+                    error={formErrors[field.key]}
+                    hint={field.hint}
+                  >
+                    <option value="">— Choisir —</option>
+                    {field.options!.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <span style={{ position: 'absolute', top: 0, right: 0 }}>
+                    <FieldHelpButton field={field} />
+                  </span>
+                </div>
+              );
+            }
+
+            return (
+              <div key={field.key} style={{ position: 'relative' }}>
+                <Input
                   id={`field-${field.key}`}
                   label={
                     field.label +
                     (field.unit ? ` (${field.unit})` : '') +
                     (field.optional ? '' : ' *')
                   }
+                  type={field.type === 'number' ? 'number' : 'text'}
                   value={formValues[field.key] ?? ''}
                   onChange={(e) => onFieldChange(field.key, e.target.value)}
                   error={formErrors[field.key]}
                   hint={field.hint}
-                >
-                  <option value="">— Choisir —</option>
-                  {field.options!.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </Select>
-              );
-            }
-
-            return (
-              <Input
-                key={field.key}
-                id={`field-${field.key}`}
-                label={
-                  field.label +
-                  (field.unit ? ` (${field.unit})` : '') +
-                  (field.optional ? '' : ' *')
-                }
-                type={field.type === 'number' ? 'number' : 'text'}
-                value={formValues[field.key] ?? ''}
-                onChange={(e) => onFieldChange(field.key, e.target.value)}
-                error={formErrors[field.key]}
-                hint={field.hint}
-                min={field.min}
-                max={field.max}
-                step={field.step ?? (field.type === 'number' ? 'any' : undefined)}
-                required={!field.optional}
-              />
+                  min={field.min}
+                  max={field.max}
+                  step={field.step ?? (field.type === 'number' ? 'any' : undefined)}
+                  required={!field.optional}
+                  onValidate={makeOnValidate(field)}
+                />
+                <span style={{ position: 'absolute', top: 0, right: 0 }}>
+                  <FieldHelpButton field={field} />
+                </span>
+              </div>
             );
           })}
 

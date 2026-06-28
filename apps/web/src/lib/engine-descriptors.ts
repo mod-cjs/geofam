@@ -76,22 +76,22 @@ const burmisterDescriptor: EngineDescriptor = {
     { key: 'projet', label: 'Référence projet', type: 'text', example: 'Structure test', optional: true },
     // Trafic
     { key: '_section_trafic', label: 'Trafic', type: 'section' },
-    { key: 'traffic_T', label: 'TMJA poids lourds (PL/j/sens)', type: 'number', example: 150, min: 0, max: 1000000, unit: 'PL/j/sens' },
-    { key: 'traffic_C', label: "Coefficient d'agressivité moyen (CAM)", type: 'number', example: 0.9, min: 0, max: 100 },
+    { key: 'traffic_T', label: 'TMJA poids lourds (PL/j/sens)', type: 'number', example: 150, min: 0, max: 1000000, unit: 'PL/j/sens', hint: 'Trafic moyen journalier annuel de poids lourds, par sens de circulation.' },
+    { key: 'traffic_C', label: "Coefficient d'agressivité moyen (CAM)", type: 'number', example: 0.9, min: 0, max: 100, hint: "Rapport à l'essieu de référence 13 t (AGEROUTE). Indicatif : 0.5 trafic léger, 0.9 trafic ordinaire, 1.5 trafic lourd." },
     { key: 'traffic_N', label: 'Durée de service', type: 'number', example: 20, min: 1, max: 100, unit: 'ans' },
-    { key: 'traffic_tau', label: 'Taux de croissance annuel', type: 'number', example: 4.0, min: -50, max: 50, unit: '%' },
-    { key: 'traffic_dir', label: 'Coefficient directionnel f_dir', type: 'number', example: 1.0, min: 0, max: 2 },
-    { key: 'traffic_tv', label: 'Coefficient de répartition transversale f_tv', type: 'number', example: 1.0, min: 0, max: 2 },
+    { key: 'traffic_tau', label: 'Taux de croissance annuel', type: 'number', example: 4.0, min: -50, max: 50, unit: '%', hint: "Taux d'augmentation annuelle du trafic PL. 0 = trafic constant. Valeur négative admise." },
+    { key: 'traffic_dir', label: 'Coefficient directionnel f_dir', type: 'number', example: 1.0, min: 0, max: 2, hint: "Fraction du trafic sur le sens le plus chargé. 1.0 si voie unique ; 0.5 à 0.6 sur route à 2 voies bidirectionnelles." },
+    { key: 'traffic_tv', label: 'Coefficient de répartition transversale f_tv', type: 'number', example: 1.0, min: 0, max: 2, hint: 'Fraction du trafic sur la voie de rive (voie la plus chargée). 1.0 par défaut pour une seule voie PL.' },
     // Charge
     { key: '_section_charge', label: 'Charge (jumelage)', type: 'section' },
-    { key: 'load_p', label: 'Pression de contact', type: 'number', example: 0.662, min: 0.01, max: 5, unit: 'MPa' },
-    { key: 'load_a', label: 'Rayon de la surface chargée', type: 'number', example: 0.125, min: 0.01, max: 1, unit: 'm' },
-    { key: 'load_d', label: 'Entraxe du jumelage', type: 'number', example: 0.375, min: 0, max: 2, unit: 'm' },
+    { key: 'load_p', label: 'Pression de contact', type: 'number', example: 0.662, min: 0.01, max: 5, unit: 'MPa', hint: 'Pression standard : 0.662 MPa pour essieu de référence 13 t (AGEROUTE 2015).' },
+    { key: 'load_a', label: 'Rayon de la surface chargée', type: 'number', example: 0.125, min: 0.01, max: 1, unit: 'm', hint: 'Rayon du cercle équivalent pour une demi-charge d\'essieu. Valeur standard : 0.125 m.' },
+    { key: 'load_d', label: 'Entraxe du jumelage', type: 'number', example: 0.375, min: 0, max: 2, unit: 'm', hint: 'Distance entre centres des deux pneumatiques jumelés. 0.375 m = standard essieu 13 t.' },
     // Plateforme support
     { key: '_section_psc', label: 'Plateforme support (PSC)', type: 'section' },
-    { key: 'subgrade_cls', label: 'Classe PSC', type: 'text', example: 'PF2', optional: true },
-    { key: 'subgrade_E', label: 'Module E du support', type: 'number', example: 50, min: 1, max: 60000, unit: 'MPa' },
-    { key: 'subgrade_nu', label: 'Coefficient de Poisson ν', type: 'number', example: 0.35, min: 0.1, max: 0.5 },
+    { key: 'subgrade_cls', label: 'Classe PSC', type: 'text', example: 'PF2', optional: true, hint: 'Classe de plateforme support : PF1, PF2, PF3 ou PF4 (AGEROUTE 2015). Facultatif — informatif uniquement.' },
+    { key: 'subgrade_E', label: 'Module E du support', type: 'number', example: 50, min: 1, max: 60000, unit: 'MPa', hint: 'Module de déformation de la plateforme support : PF1 = 20 MPa, PF2 = 50 MPa, PF3 = 120 MPa, PF4 = 200 MPa (AGEROUTE 2015).' },
+    { key: 'subgrade_nu', label: 'Coefficient de Poisson ν', type: 'number', example: 0.35, min: 0.1, max: 0.5, hint: 'Valeur usuelle : 0.35 pour sols grenus, 0.40–0.45 pour sols fins saturés.' },
     // Couche 1
     { key: '_section_couche1', label: 'Couche 1 (surface)', type: 'section' },
     { key: 'layer1_mat', label: 'Matériau', type: 'select', example: 'BBSG1', options: [
@@ -219,7 +219,7 @@ const terzaghiDescriptor: EngineDescriptor = {
     { key: 'nappe', label: 'Profondeur nappe', type: 'number', example: '', optional: true, unit: 'm', hint: '0 ou vide = absente' },
     { key: 'gAvant', label: 'Poids volumique avant fondation γ', type: 'number', example: 18, unit: 'kN/m³', optional: true },
     { key: 'gApres', label: 'Poids volumique après fondation γ', type: 'number', example: 20, unit: 'kN/m³', optional: true },
-    { key: 'alphaSang', label: 'Coefficient α Ménard', type: 'number', example: 0.33, optional: true },
+    { key: 'alphaSang', label: 'Coefficient α Ménard', type: 'number', example: 0.33, optional: true, hint: 'Coefficient rhéologique de Ménard selon catégorie de sol : argile = 0.33, sable = 0.5, craie = 0.5, grave = 1.0.' },
     // Sondage (une ligne)
     { key: '_section_sondage', label: 'Sondage in situ (profondeur 1)', type: 'section' },
     { key: 'sondage_z', label: 'Profondeur z', type: 'number', example: 1.5, unit: 'm' },

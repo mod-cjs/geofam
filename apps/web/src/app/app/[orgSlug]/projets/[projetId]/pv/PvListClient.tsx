@@ -2,14 +2,15 @@
 
 /**
  * B-24/B-25 — Onglet PV & Livrables
- * Liste des PV scellés + actions Télécharger + Vérifier intégrité
+ * Liste des PV scellés + actions Aperçu / Télécharger / Vérifier intégrité
  *
  * Badge "Scellé" = fond asphalte + cadenas, jamais vert (ADR 0008)
- * Vérification = appel serveur, jamais comparaison visuelle du hash tronqué
+ * Vérification = appel serveur GET /projects/:id/pvs/:pvId, champ sealValid
+ * Aperçu PDF = blob URL dans une modale avec iframe, révoquée à la fermeture
  */
 
-import { Lock, Download, ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { Lock, Download, ShieldCheck, AlertCircle, RefreshCw, Eye } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -54,6 +55,15 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
   // Téléchargement PDF
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
+  // Aperçu PDF (Bug F) — blob URL révoquée à la fermeture
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [previewModal, setPreviewModal] = useState<{
+    blobUrl: string;
+    number: string;
+    pvId: string;
+  } | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
+
   const loadPvs = useCallback(async () => {
     if (!orgId) {
       setError('Organisation introuvable.');
@@ -76,12 +86,21 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
     loadPvs();
   }, [loadPvs]);
 
+  // Nettoyage de la blob URL si le composant est démonté pendant un aperçu
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    };
+  }, []);
+
   async function handleVerify(pv: OfficialPv) {
     setVerifyModal({ pvId: pv.id, number: pv.number });
     setVerifyResult(null);
     setVerifying(true);
     try {
-      const result = await verifyPv(pv.id);
+      // Bug C : on passe orgId et projectId — la vérification lit
+      // GET /projects/:projectId/pvs/:pvId et exploite sealValid.
+      const result = await verifyPv(orgId!, projetId, pv.id);
       setVerifyResult(result);
     } catch {
       addToast({ type: 'error', message: 'Erreur lors de la vérification. Réessayez.' });
@@ -94,21 +113,44 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
   async function handleDownload(pv: OfficialPv) {
     setDownloadingId(pv.id);
     try {
-      const blob = await downloadPvPdf(pv.id);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${pv.number}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Bug B : orgId et projetId requis en mode réel
+      const blob = await downloadPvPdf(pv.id, orgId ?? undefined, projetId);
+      triggerBlobDownload(blob, `${pv.number}.pdf`);
       addToast({ type: 'success', message: `${pv.number} téléchargé.` });
     } catch {
       addToast({ type: 'error', message: 'Erreur lors du téléchargement. Réessayez.' });
     } finally {
       setDownloadingId(null);
     }
+  }
+
+  // Bug F — Aperçu PDF dans une modale
+  async function handlePreview(pv: OfficialPv) {
+    setPreviewingId(pv.id);
+    try {
+      const blob = await downloadPvPdf(pv.id, orgId ?? undefined, projetId);
+      const url = URL.createObjectURL(blob);
+      previewUrlRef.current = url;
+      setPreviewModal({ blobUrl: url, number: pv.number, pvId: pv.id });
+    } catch {
+      addToast({ type: 'error', message: 'Impossible de charger l\'aperçu PDF. Réessayez.' });
+    } finally {
+      setPreviewingId(null);
+    }
+  }
+
+  function closePreview() {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setPreviewModal(null);
+  }
+
+  async function handlePreviewDownload() {
+    if (!previewModal) return;
+    const pv = pvs.find((p) => p.id === previewModal.pvId);
+    if (pv) await handleDownload(pv);
   }
 
   return (
@@ -186,7 +228,9 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
               key={pv.id}
               pv={pv}
               downloading={downloadingId === pv.id}
+              previewing={previewingId === pv.id}
               onDownload={() => handleDownload(pv)}
+              onPreview={() => handlePreview(pv)}
               onVerify={() => handleVerify(pv)}
             />
           ))}
@@ -309,8 +353,61 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
 
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </Modal>
+
+      {/* Modale aperçu PDF (Bug F) */}
+      <Modal
+        open={previewModal !== null}
+        onClose={closePreview}
+        title={`Aperçu — ${previewModal?.number ?? ''}`}
+        size="lg"
+        footer={
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', width: '100%' }}>
+            <Button variant="ghost" size="md" onClick={closePreview}>
+              Fermer
+            </Button>
+            <Button
+              variant="secondary"
+              size="md"
+              iconLeft={<Download size={14} strokeWidth={1.5} aria-hidden="true" />}
+              loading={downloadingId === previewModal?.pvId}
+              onClick={handlePreviewDownload}
+            >
+              Télécharger
+            </Button>
+          </div>
+        }
+      >
+        {previewModal && (
+          <iframe
+            src={previewModal.blobUrl}
+            title={`Aperçu PDF — ${previewModal.number}`}
+            style={{
+              width: '100%',
+              height: 560,
+              border: 'none',
+              borderRadius: 'var(--radius-base)',
+              background: 'var(--surface-canvas)',
+            }}
+          />
+        )}
+      </Modal>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ---------------------------------------------------------------------------
@@ -320,12 +417,16 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
 function PvRow({
   pv,
   downloading,
+  previewing,
   onDownload,
+  onPreview,
   onVerify,
 }: {
   pv: OfficialPv;
   downloading: boolean;
+  previewing: boolean;
   onDownload: () => void;
+  onPreview: () => void;
   onVerify: () => void;
 }) {
   return (
@@ -426,6 +527,16 @@ function PvRow({
           aria-label={`Vérifier l'intégrité du PV ${pv.number}`}
         >
           Vérifier
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          iconLeft={<Eye size={14} strokeWidth={1.5} aria-hidden="true" />}
+          loading={previewing}
+          onClick={onPreview}
+          aria-label={`Aperçu PDF du PV ${pv.number}`}
+        >
+          Aperçu
         </Button>
         <Button
           variant="secondary"
