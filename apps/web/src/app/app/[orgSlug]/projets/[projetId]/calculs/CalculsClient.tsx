@@ -51,13 +51,20 @@ import { useOrgId } from '@/lib/org-context';
 const fmt = (n: number, decimals = 4) =>
   new Intl.NumberFormat('fr-FR', { maximumFractionDigits: decimals }).format(n);
 
-function relDate(iso: string): string {
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return '—';
-  const d = Math.floor((Date.now() - t) / 86400000);
-  if (d === 0) return 'auj.';
-  if (d === 1) return 'hier';
-  return `${d}j`;
+/**
+ * Date relative calculée côté client uniquement (useEffect après montage).
+ * Évite le #418 : Date.now() au rendu SSR ≠ client selon l'horloge.
+ */
+function ClientRelativeDate({ iso }: { iso: string }) {
+  const [label, setLabel] = useState<string | null>(null);
+  useEffect(() => {
+    const t = new Date(iso).getTime();
+    if (!Number.isFinite(t)) { setLabel('—'); return; }
+    const d = Math.floor((Date.now() - t) / 86400000);
+    setLabel(d === 0 ? 'auj.' : d === 1 ? 'hier' : `${d}j`);
+  }, [iso]);
+  if (label === null) return null;
+  return <>{label}</>;
 }
 
 /**
@@ -560,7 +567,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                         }}
                       >
                         <span>{calc.engineId}</span>
-                        <span>{relDate(calc.updatedAt)}</span>
+                        <span><ClientRelativeDate iso={calc.updatedAt} /></span>
                       </div>
                     </button>
                   </li>

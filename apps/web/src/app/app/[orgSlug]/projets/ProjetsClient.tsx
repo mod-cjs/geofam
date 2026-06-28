@@ -20,12 +20,19 @@ import { listProjects, createProject } from '@/lib/api/client';
 import type { Project, ProjectDomain } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 
-function formatRelative(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const d = Math.floor(diff / 86400000);
-  if (d === 0) return "aujourd'hui";
-  if (d === 1) return 'hier';
-  return `il y a ${d} j`;
+/**
+ * Date relative calculée côté client uniquement (useEffect après montage).
+ * Le SSR retourne null → texte vide, évitant le #418 causé par Date.now() au rendu.
+ */
+function ClientRelativeDate({ iso }: { iso: string }) {
+  const [label, setLabel] = useState<string | null>(null);
+  useEffect(() => {
+    const diff = Date.now() - new Date(iso).getTime();
+    const d = Math.floor(diff / 86400000);
+    setLabel(d === 0 ? "aujourd'hui" : d === 1 ? 'hier' : `il y a ${d} j`);
+  }, [iso]);
+  if (label === null) return null;
+  return <>{label}</>;
 }
 
 interface ProjetsClientProps {
@@ -400,7 +407,7 @@ function ProjectRow({ project, onClick }: { project: Project; onClick: () => voi
           textAlign: 'right',
         }}
       >
-        {formatRelative(project.updatedAt)}
+        <ClientRelativeDate iso={project.updatedAt} />
       </div>
     </div>
   );

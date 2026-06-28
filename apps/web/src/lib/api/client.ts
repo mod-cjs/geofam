@@ -442,6 +442,48 @@ export async function verifyPv(
   };
 }
 
+/**
+ * Génère un PDF minimal valide avec offsets xref calculés dynamiquement.
+ * Permet au viewer PDF du navigateur d'afficher une page blanche avec le numéro de PV
+ * plutôt qu'une erreur "Failed to load PDF" causée par du texte brut.
+ *
+ * Nota : ceci est uniquement utilisé en mode mock (pas de vrai backend).
+ */
+function makeMockPvPdf(pvId: string): Blob {
+  const pageText = `PV ROADSEN - ID: ${pvId} - Apercu de demonstration`;
+  // Flux PDF (contenu de la page)
+  const stream = `BT /F1 11 Tf 40 720 Td (${pageText}) Tj ET`;
+  const streamLen = stream.length;
+
+  // Objets PDF
+  const o1 = '1 0 obj\n<</Type/Catalog/Pages 2 0 R>>\nendobj\n';
+  const o2 = '2 0 obj\n<</Type/Pages/Kids[3 0 R]/Count 1>>\nendobj\n';
+  const o3 =
+    '3 0 obj\n<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]' +
+    '/Contents 4 0 R/Resources<</Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>>>>>>>\nendobj\n';
+  const o4 = `4 0 obj\n<</Length ${streamLen}>>\nstream\n${stream}\nendstream\nendobj\n`;
+
+  const header = '%PDF-1.4\n';
+  const off1 = header.length;
+  const off2 = off1 + o1.length;
+  const off3 = off2 + o2.length;
+  const off4 = off3 + o3.length;
+  const body = header + o1 + o2 + o3 + o4;
+  const xrefStart = body.length;
+
+  const pad = (n: number) => n.toString().padStart(10, '0');
+  const xref =
+    'xref\n0 5\n' +
+    '0000000000 65535 f \n' +
+    `${pad(off1)} 00000 n \n` +
+    `${pad(off2)} 00000 n \n` +
+    `${pad(off3)} 00000 n \n` +
+    `${pad(off4)} 00000 n \n`;
+  const trailer = `trailer\n<</Size 5/Root 1 0 R>>\nstartxref\n${xrefStart}\n%%EOF\n`;
+
+  return new Blob([body + xref + trailer], { type: 'application/pdf' });
+}
+
 export async function downloadPvPdf(
   pvId: string,
   orgId?: string,
@@ -460,6 +502,7 @@ export async function downloadPvPdf(
 
   await delay(800);
   // Mock PDF — en prod : fetch GET /projects/:id/pvs/:pvId/pdf
-  const content = `PV SCELLÉ — ROADSEN\nID: ${pvId}\nCeci est un aperçu de démonstration.`;
-  return new Blob([content], { type: 'application/pdf' });
+  // Le mock génère un PDF minimal valide (offsets xref calculés dynamiquement)
+  // pour que le viewer du navigateur affiche quelque chose (pas du texte brut).
+  return makeMockPvPdf(pvId);
 }

@@ -28,6 +28,8 @@ function formatDate(iso: string): string {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    // timeZone déterministe → SSR (UTC) et client (fuseau local) produisent le même texte (#418)
+    timeZone: 'Africa/Dakar',
   }).format(new Date(iso));
 }
 
@@ -379,6 +381,7 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
       >
         {previewModal && (
           <iframe
+            data-testid="pv-preview-iframe"
             src={previewModal.blobUrl}
             title={`Aperçu PDF — ${previewModal.number}`}
             style={{

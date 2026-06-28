@@ -171,6 +171,32 @@ test.describe('D-01 — Parcours cœur : login → projets → calcul → PV', (
     await expect(page.getByRole('button', { name: /télécharger/i }).first()).toBeVisible();
   });
 
+  test('given l onglet PV, when je clique Aperçu, then une modale s ouvre avec une iframe portant une blob URL (B-25)', async ({
+    page,
+  }) => {
+    await page.goto(BASE_URL + '/app/be-routes-dakar/projets/proj_01/pv?demo=active');
+
+    // Attendre la liste des PV
+    await expect(page.getByText(/scellé/i).first()).toBeVisible({ timeout: 8000 });
+
+    // Cliquer sur le bouton Aperçu du premier PV (aria-label stable même pendant loading)
+    const aperçuBtn = page.getByRole('button', { name: /aperçu pdf du pv/i }).first();
+    await expect(aperçuBtn).toBeVisible({ timeout: 5000 });
+    await aperçuBtn.click();
+
+    // La modale doit s'ouvrir (role=dialog)
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 6000 });
+
+    // L'iframe doit être présente avec un src blob: (mock delay = 800ms, timeout généreux)
+    const iframe = page.getByTestId('pv-preview-iframe');
+    await expect(iframe).toBeVisible({ timeout: 5000 });
+    await expect(iframe).toHaveAttribute('src', /^blob:/);
+
+    // Fermeture : Échap ferme la modale
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 3000 });
+  });
+
   test('given la navigation clavier, when j active le skip-link, then le focus va sur #main', async ({
     page,
   }) => {
