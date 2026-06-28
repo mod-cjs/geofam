@@ -60,7 +60,31 @@ const ORGS_KEY = 'roadsen_orgs';
 
 // ---------------------------------------------------------------------------
 // Stockage des tokens
+//
+// Double stockage : sessionStorage (pour l'en-tête Authorization côté client)
+// + cookie JS-readable (pour le middleware Edge qui ne peut pas lire sessionStorage).
+//
+// Nom du cookie : `roadsen_access_token` — identique à la clé sessionStorage.
+// max-age=900 s (15 min) aligne sur la TTL type d'un access token.
+// SameSite=Strict limite l'exposition CSRF.
+//
+// DETTE : avant mise en production, passer en cookie httpOnly via un Route Handler
+// proxy (l'en-tête Authorization serait alors injecté côté serveur, éliminant
+// toute exposition JS du token). Documenté dans ADR 0010.
 // ---------------------------------------------------------------------------
+
+const TOKEN_COOKIE_NAME = ACCESS_TOKEN_KEY; // 'roadsen_access_token'
+
+function setTokenCookie(token: string): void {
+  if (typeof document === 'undefined') return;
+  // JWT ne contient que des caractères base64url + points — pas besoin d'encodage URL.
+  document.cookie = `${TOKEN_COOKIE_NAME}=${token}; path=/; SameSite=Strict; max-age=900`;
+}
+
+function clearTokenCookie(): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${TOKEN_COOKIE_NAME}=; path=/; SameSite=Strict; max-age=0`;
+}
 
 function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -76,6 +100,8 @@ function storeTokens(accessToken: string, refreshToken: string): void {
   if (typeof window === 'undefined') return;
   sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
   sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  // Poser aussi le cookie pour le middleware Edge (mode réel).
+  setTokenCookie(accessToken);
 }
 
 function clearTokens(): void {
@@ -84,6 +110,8 @@ function clearTokens(): void {
   sessionStorage.removeItem(REFRESH_TOKEN_KEY);
   sessionStorage.removeItem(USER_KEY);
   sessionStorage.removeItem(ORGS_KEY);
+  // Effacer le cookie middleware.
+  clearTokenCookie();
 }
 
 // ---------------------------------------------------------------------------

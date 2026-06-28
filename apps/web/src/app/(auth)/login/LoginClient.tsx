@@ -69,9 +69,10 @@ export default function LoginClient() {
     setLoading(true);
     try {
       await login({ email, password });
-      // En mode mock : pose un cookie indicateur pour les middlewares demo.
-      // En mode réel (NEXT_PUBLIC_API_BASE_URL posée) : le serveur gère les
-      // cookies httpOnly via Set-Cookie ; on ne pose rien côté client.
+      // En mode mock : pose un cookie indicateur pour le middleware demo.
+      // En mode réel (NEXT_PUBLIC_API_BASE_URL posée) : http-client.ts a déjà posé
+      // le cookie `roadsen_access_token` via storeTokens() — le middleware Edge
+      // le lira pour vérifier le JWT. Rien à faire ici.
       if (!process.env.NEXT_PUBLIC_API_BASE_URL) {
         document.cookie = 'roadsen_mock_auth=1; path=/; SameSite=Lax';
       }
