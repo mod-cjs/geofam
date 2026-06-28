@@ -1,0 +1,138 @@
+# render.yaml — Render Blueprint ROADSEN
+# Infrastructure managée : API NestJS + Web Next.js + PostgreSQL
+# Région : Frankfurt (EU) — cohérent avec hébergement hors-Sénégal / conformité CDP loi 2008-12.
+#
+# ACTIONS HUMAINES REQUISES DANS LE DASHBOARD RENDER (liste en fin de fichier).
+#
+# Ce fichier déclare la STRUCTURE. Il ne crée rien tant qu'il n'est pas lié
+# à un compte Render via le Blueprint dans l'interface (New → Blueprint).
+# Aucune ressource facturable n'est provisionnée par la rédaction de ce fichier.
+
+services:
+  # ---------------------------------------------------------------------------
+  # API — NestJS (@roadsen/api)
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: roadsen-api
+    runtime: node
+    region: frankfurt
+    plan: starter # ~$7/mois — à passer en "standard" si besoin de RAM/CPU
+
+    # Render clone le dépôt entier puis exécute les commandes depuis rootDir.
+    rootDir: 05-Plateforme
+
+    buildCommand: npm install -g pnpm@9.12.0 && pnpm install --frozen-lockfile && pnpm --filter @roadsen/api build
+
+    # Le serveur NestJS écoute sur le port fourni par Render ($PORT).
+    # main.ts doit lire process.env.PORT (NestJS le fait via app.listen(process.env.PORT ?? 3001)).
+    startCommand: pnpm --filter @roadsen/api start:prod
+
+    healthCheckPath: /health
+
+    envVars:
+      # Injectée automatiquement depuis la base gérée déclarée ci-dessous.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: roadsen-db
+          property: connectionString
+
+      # Secrets à saisir manuellement dans le dashboard (sync:false).
+      # Ne jamais committer de valeur réelle ici.
+      - key: JWT_SECRET
+        sync: false # ACTION HUMAINE : saisir dans Dashboard → roadsen-api → Environment
+
+      - key: PV_SIGNING_SECRET
+        sync: false # ACTION HUMAINE : saisir dans Dashboard → roadsen-api → Environment
+
+      # Variables non-secrètes
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: '3001' # Render override avec sa propre valeur $PORT au runtime ; laisser ici pour référence
+
+  # ---------------------------------------------------------------------------
+  # Web — Next.js (@roadsen/web)
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: roadsen-web
+    runtime: node
+    region: frankfurt
+    plan: starter
+
+    rootDir: 05-Plateforme
+
+    buildCommand: npm install -g pnpm@9.12.0 && pnpm install --frozen-lockfile && pnpm --filter @roadsen/web build
+
+    # Next.js standalone ou next start — dépend de la config output dans next.config.
+    # Si output:'standalone' est configuré : node apps/web/.next/standalone/server.js
+    # Sinon (défaut) : pnpm --filter @roadsen/web start
+    startCommand: pnpm --filter @roadsen/web start
+
+    healthCheckPath: /
+
+    envVars:
+      # URL publique de l'API — à renseigner une fois roadsen-api déployé et son URL connue.
+      - key: NEXT_PUBLIC_API_URL
+        sync: false # ACTION HUMAINE : https://<roadsen-api>.onrender.com
+
+      - key: NODE_ENV
+        value: production
+
+  # ---------------------------------------------------------------------------
+  # Base de données — PostgreSQL managée
+  # ---------------------------------------------------------------------------
+databases:
+  - name: roadsen-db
+    databaseName: roadsen
+    user: roadsen
+    region: frankfurt
+    plan: starter # ~$7/mois (256 Mo RAM, 1 Go disque) — suffisant pour Phase 1
+
+
+    # Backups automatiques inclus dans le plan starter (quotidiens, rétention 7 jours).
+    # Pour RPO < 24h ou rétention > 7j : passer en plan "standard" (~$20/mois).
+    # Restauration testée manuellement : Dashboard → roadsen-db → Backups → Restore.
+
+# ---------------------------------------------------------------------------
+# LISTE DES ACTIONS HUMAINES RESTANTES (à effectuer dans le dashboard Render)
+# ---------------------------------------------------------------------------
+# 1. CRÉER LE COMPTE RENDER
+#    https://render.com — compte MouhammadouOD / ryhow99@gmail.com
+#    Connecter le dépôt GitHub privé MouhammadouOD/roadsen (autoriser Render GitHub App).
+#
+# 2. PROVISIONNER VIA BLUEPRINT
+#    Dashboard → New → Blueprint → sélectionner le dépôt → branche main → ce fichier render.yaml.
+#    Render crée : roadsen-api (web), roadsen-web (web), roadsen-db (PostgreSQL).
+#
+# 3. SAISIR LES SECRETS (Dashboard → Service → Environment)
+#    roadsen-api :
+#      - JWT_SECRET        : clé aléatoire longue (openssl rand -hex 64)
+#      - PV_SIGNING_SECRET : clé aléatoire longue (openssl rand -hex 64)
+#    roadsen-web :
+#      - NEXT_PUBLIC_API_URL : URL publique de roadsen-api (ex. https://roadsen-api.onrender.com)
+#
+# 4. CONFIGURER LES DEPLOY HOOKS DANS GITHUB (secrets du dépôt)
+#    Dashboard → roadsen-api → Settings → Deploy Hooks → copier l'URL → GitHub Settings →
+#      Secrets → Actions → RENDER_DEPLOY_HOOK_API
+#    Idem pour roadsen-web → RENDER_DEPLOY_HOOK_WEB
+#    Ces hooks sont consommés par .github/workflows/ci.yml (job deploy-preprod).
+#
+# 5. VÉRIFIER LA SANTÉ POST-DÉPLOIEMENT
+#    - https://<roadsen-api>.onrender.com/health → 200 OK
+#    - https://<roadsen-web>.onrender.com/       → 200 OK
+#    - Logs Render (Dashboard → Service → Logs) sans erreur de migration Prisma.
+#
+# 6. TESTER LA RESTAURATION DE SAUVEGARDE (à faire dans le mois suivant la mise en prod)
+#    Dashboard → roadsen-db → Backups → sélectionner un backup → Restore vers une base
+#    roadsen-db-test → vérifier que les données sont cohérentes → supprimer roadsen-db-test.
+#
+# ---------------------------------------------------------------------------
+# COÛTS RÉCURRENTS (estimés, plans starter, HT)
+# ---------------------------------------------------------------------------
+# roadsen-api (web starter)   : ~$7/mois
+# roadsen-web (web starter)   : ~$7/mois
+# roadsen-db  (pg starter)    : ~$7/mois
+# Total infra Render          : ~$21/mois (~$252/an)
+# Frais PayDunya              : proportionnels au CA (Phase 2, hors Phase 1)
+# ---------------------------------------------------------------------------

@@ -3,7 +3,23 @@
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
+  "setupFiles": ["<rootDir>/jest-e2e.setup.ts"],
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
-  }
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": {
+          "module": "commonjs",
+          "moduleResolution": "node",
+          "resolvePackageJsonExports": false
+        }
+      }
+    ]
+  },
+  "moduleNameMapper": {
+    "^@roadsen/shared$": "<rootDir>/../../../packages/shared/src/index.ts",
+    "^@roadsen/engines$": "<rootDir>/../../../packages/engines/src/index.ts",
+    "^(\\.{1,2}/.*)\\.js$": "$1"
+  },
+  "testTimeout": 30000
 }

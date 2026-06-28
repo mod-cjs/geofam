@@ -1,0 +1,190 @@
+# render.yaml — Render Blueprint ROADSEN
+# Environnement courant : RECETTE (API + Swagger pour validation STARFIRE)
+# Région : Frankfurt (EU) — cohérent avec hébergement hors-Sénégal / conformité
+# CDP loi 2008-12.
+#
+# ÉTIQUETTE : @recette / @science-unsigned
+# Données TEST UNIQUEMENT. Aucune donnée client réelle ne transite en recette.
+#
+# Surface recette : API NestJS seule (pas d'UI front). STARFIRE rejoue ses
+# cas-tests via Swagger (/docs exposé par ROADSEN_EXPOSE_DOCS=1).
+#
+# Extension future : ajouter roadsen-web (Next.js) + roadsen-db-prod ici
+# au jalon MJ-6 (cas-tests STARFIRE conformes → prod).
+#
+# Ce fichier déclare la STRUCTURE. Il ne provisionne rien tant qu'il n'est
+# pas lié à un compte Render via New → Blueprint dans l'interface.
+#
+# ACTIONS HUMAINES REQUISES : voir liste en fin de fichier.
+
+services:
+  # ---------------------------------------------------------------------------
+  # API — NestJS (@roadsen/api) — recette
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: roadsen-api-recette
+    runtime: node
+    region: frankfurt
+    plan: free # plan gratuit : s'endort apres ~15 min d'inactivite (cold start ~50s a la 1ere requete). Passer a 'starter' (~7$/mois) pour eviter les mises en veille.
+
+    # Render clone le dépôt entier depuis la racine du repo ;
+    # rootDir indique le sous-répertoire à utiliser comme CWD pour
+    # buildCommand et startCommand. Le package.json racine workspace
+    # (pnpm-workspace.yaml) se trouve dans 05-Plateforme/.
+    rootDir: 05-Plateforme
+
+    # --- buildCommand ---
+    # À CONFIRMER après §0 build-pkgs (packaging @roadsen/engines + @roadsen/shared).
+    # corepack active pnpm@9.12.0 (Node 20 l'embarque nativement).
+    # `pnpm install --frozen-lockfile` reproduit exactement le lockfile.
+    # `turbo run build --filter=@roadsen/api...` compile les dépendances workspace
+    # amont (@roadsen/shared, @roadsen/engines) AVANT l'API (dependsOn ^build).
+    # Le prebuild de l'API (prisma generate) régénère le client Prisma.
+    buildCommand: >-
+      corepack enable &&
+      corepack prepare pnpm@9.12.0 --activate &&
+      pnpm install --frozen-lockfile --prod=false &&
+      pnpm exec turbo run build --filter=@roadsen/api...
+
+    # --- startCommand ---
+    # apps/api/package.json : "start:prod": "node dist/main"
+    # À CONFIRMER après §0 build-pkgs : node apps/api/dist/main.js doit exister.
+    startCommand: node apps/api/dist/main.js # À CONFIRMER (§0 build-pkgs)
+
+    # Route de santé versionnée : @Version('1') → GET /v1/health → { status:'ok' }
+    # @Public, non-tenant (HealthController). Render sonde cette URL après déploiement.
+    healthCheckPath: /v1/health
+
+    # preDeployCommand : exécuté APRÈS le build, AVANT le swap zero-downtime.
+    # En cas d'échec la migration stoppe le déploiement → aucun traffic shift.
+    # prisma migrate deploy applique les migrations en attente de façon idempotente.
+    preDeployCommand: >-
+      corepack enable &&
+      corepack prepare pnpm@9.12.0 --activate &&
+      pnpm --filter @roadsen/api exec prisma migrate deploy
+
+    envVars:
+      # DATABASE_URL : injectée automatiquement depuis la base déclarée ci-dessous.
+      # Render injecte la connection string complète (utilisateur managé `roadsen`).
+      # Le runtime NestJS (Prisma) l'utilise directement.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: roadsen-db-recette
+          property: connectionString
+
+      # JWT_SECRET : secret de signature/vérification des tokens JWT.
+      # Lire dans token.service.ts via requiredEnv('JWT_SECRET') au boot.
+      # Absence → échec dur au démarrage (fail-fast).
+      # Générer : openssl rand -hex 64
+      # ACTION HUMAINE : saisir dans Dashboard → roadsen-api-recette → Environment
+      - key: JWT_SECRET
+        sync: false
+
+      # PV_SIGNING_SECRET : clé de scellement des procès-verbaux (pipeline PV).
+      # Générer : openssl rand -hex 64
+      # ACTION HUMAINE : saisir dans Dashboard → roadsen-api-recette → Environment
+      - key: PV_SIGNING_SECRET
+        sync: false
+
+      # RECETTE_API_KEY : clé d'accès à l'API de recette.
+      # Communiquer à STARFIRE via canal sécurisé (hors email).
+      # Utilisation côté client : en-tête HTTP X-Recette-Key: <valeur>.
+      # Générer : openssl rand -hex 32
+      # ACTION HUMAINE : saisir dans Dashboard → roadsen-api-recette → Environment
+      - key: RECETTE_API_KEY
+        sync: false
+
+      # NODE_ENV=production : active assertNoDevHeadersInProd() au boot
+      # (app.config.ts). La voie en-têtes dev (x-org-id / x-user-id) est
+      # bloquée — refus de boot si ROADSEN_DEV_HEADERS=1 est présent avec
+      # NODE_ENV=production (défense en profondeur isolation multi-tenant).
+      - key: NODE_ENV
+        value: production
+
+      # NODE_VERSION : épingle Node 20 LTS chez Render (Render détecte
+      # aussi .node-version / .nvmrc si présents dans rootDir).
+      - key: NODE_VERSION
+        value: '20'
+
+      # ROADSEN_EXPOSE_DOCS=1 : expose /docs + /docs-json en production.
+      # Nécessaire pour que STARFIRE rejoue ses cas-tests via Swagger.
+      # À révoquer (retirer ou passer à '0') lors du passage en prod finale.
+      - key: ROADSEN_EXPOSE_DOCS
+        value: '1'
+
+      # ROADSEN_DEV_HEADERS : ABSENT INTENTIONNELLEMENT.
+      # Sa présence avec NODE_ENV=production provoque un échec dur au boot
+      # (assertNoDevHeadersInProd, app.config.ts). Son absence = attendu.
+
+      # SHADOW_DATABASE_URL : ABSENT. Requis uniquement pour `prisma migrate dev`
+      # (environnement de développement local). prisma migrate deploy (recette)
+      # n'en a pas besoin.
+
+  # ---------------------------------------------------------------------------
+  # Base de données — PostgreSQL 16 managée (recette)
+  # ---------------------------------------------------------------------------
+databases:
+  - name: roadsen-db-recette
+    databaseName: roadsen_recette
+    user: roadsen
+    region: frankfurt
+    plan: free # plan gratuit : base TEMPORAIRE, supprimee par Render apres ~30 jours. Donnees de TEST uniquement. Passer a 'starter' (~7$/mois) pour la perenniser.
+
+
+    # ⚠️ Plan free : PAS de backups automatiques + EXPIRATION ~30 jours (la base est
+    # supprimee). Donnees recette = TEST UNIQUEMENT ; valider STARFIRE dans la fenetre,
+    # ou passer en 'starter' (backups quotidiens, retention 7 j) si la recette dure.
+    # Supprimer cette base après validation STARFIRE.
+
+# ---------------------------------------------------------------------------
+# ACTIONS HUMAINES REQUISES (dashboard Render)
+# ---------------------------------------------------------------------------
+#
+# 1. COMPTE & DÉPÔT
+#    https://render.com → connecter le dépôt GitHub privé (Render GitHub App).
+#
+# 2. BRANCHE RECETTE
+#    Le hook pre-push bloque le push direct sur main (scripts/pre-push).
+#    ACTION : créer la branche `recette` localement, puis la pousser :
+#      git checkout -b recette
+#      git push -u origin recette
+#    Dans le dashboard Blueprint : sélectionner la branche `recette`.
+#    Chaque `git push origin recette` déclenche un redéploiement Render.
+#
+# 3. BLUEPRINT
+#    Dashboard → New → Blueprint → sélectionner le dépôt → branche recette
+#    → Render détecte 05-Plateforme/render.yaml (rootDir).
+#    ⚠️ Render cherche render.yaml à la racine du repo OU dans le répertoire
+#    indiqué au scan. Si le Blueprint ne le trouve pas automatiquement,
+#    pointer manuellement vers 05-Plateforme/render.yaml.
+#    Render crée : roadsen-api-recette (web) + roadsen-db-recette (PostgreSQL).
+#
+# 4. SECRETS (Dashboard → roadsen-api-recette → Environment → Add Secret)
+#    - JWT_SECRET        : openssl rand -hex 64
+#    - PV_SIGNING_SECRET : openssl rand -hex 64
+#    - RECETTE_API_KEY   : openssl rand -hex 32  → communiquer à STARFIRE
+#
+# 5. RÔLES POSTGRESQL (si l'utilisateur managé Render n'a pas CREATEROLE)
+#    Les migrations 0001 et 0004 créent roadsen_app (NOLOGIN, NOBYPASSRLS)
+#    et roadsen_auth (NOLOGIN, NOSUPERUSER, BYPASSRLS) via des blocs DO
+#    idempotents. Si prisma migrate deploy échoue sur CREATE ROLE (erreur
+#    « permission denied to create role »), exécuter manuellement le script
+#    fallback AVANT de relancer le déploiement :
+#      Dashboard → roadsen-db-recette → Shell → coller le contenu de
+#      infra/recette/init-roles.sql
+#    Voir infra/recette/RUNBOOK.md pour le détail complet.
+#
+# 6. SANTÉ POST-DÉPLOIEMENT (cf. RUNBOOK.md pour les commandes curl)
+#    a. GET  /v1/health              → 200  { "status": "ok" }
+#    b. GET  /docs                   → 200  Swagger UI chargée
+#    c. POST /calc/terzaghi          → 200  enveloppe { ok: true, output: {...} }
+#       Header : X-Recette-Key: <RECETTE_API_KEY>
+#
+# ---------------------------------------------------------------------------
+# COÛTS RÉCURRENTS RECETTE (estimés HT, plans starter)
+# ---------------------------------------------------------------------------
+# roadsen-api-recette (web starter)    : ~$7/mois
+# roadsen-db-recette  (pg starter)     : ~$7/mois
+# Total recette Render                 : ~$14/mois
+# → Suspendre / supprimer après validation STARFIRE pour économiser.
+# ---------------------------------------------------------------------------

@@ -9,4 +9,16 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     exit 1
   fi
 done
+
+# Filet anti-régression (DoD §9) : gate RAPIDE avant tout push (lint · typecheck ·
+# unit · e2e backend + isolation). Le gate COMPLET (build Next, confidentialité
+# DoD §8, Playwright) reste la porte de merge via /review-pr. CI Actions bloquée
+# (facturation) -> ce hook en tient lieu localement.
+# Bypass ponctuel (WIP/urgence) : git push --no-verify
+ROOT="$(git rev-parse --show-toplevel)"
+echo "→ Gate de validation rapide (lint · typecheck · unit · e2e+isolation)…"
+if ! bash "$ROOT/scripts/review-gate.sh" --fast; then
+  echo "⛔  Gate ROUGE — push bloqué (anti-régression). Corrige, ou bypass : git push --no-verify"
+  exit 1
+fi
 exit 0

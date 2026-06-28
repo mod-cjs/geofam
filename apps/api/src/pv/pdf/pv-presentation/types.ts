@@ -1,0 +1,120 @@
+/**
+ * MODÈLE DE PRÉSENTATION du PV (#71) — interface OPTIONNELLE par moteur.
+ *
+ * Le renderer détecte : modèle présent -> présentation MÉTIER riche (bandeau
+ * verdict, structure en couches, vérifications dimensionnantes, unités) ; absent
+ * -> FALLBACK table clé-valeur propre. Les 6 moteurs marchent en Phase 1 ; seule
+ * la chaussée a son modèle riche pour l'instant.
+ *
+ * CONFIDENTIALITÉ (DoD §8) : le modèle ne fait que (a) TRADUIRE des libellés et
+ * (b) un calcul TRIVIAL (taux de travail = valeur/admissible). Il N'AJOUTE AUCUN
+ * champ moteur ; il ne présente QUE des champs déjà dans la sortie scellée
+ * whitelistée.
+ *
+ * FAIL-CLOSED (B-1, DoD §8) : la voie riche est une VRAIE WHITELIST. Seuls les
+ * champs EXPLICITEMENT mappés (structure/groups/criteria/verdict) sont rendus ;
+ * AUCUN champ non mappé n'est affiché automatiquement. `hiddenKeys` documente en
+ * plus les champs sciemment masqués (bruit, flags de branche de méthode,
+ * coefficients de calage). La garantie « ne jamais OMETTRE silencieusement » est
+ * tenue par un TEST DE COMPLÉTUDE (toute clé scellée = mappée OU masquée, sinon
+ * test ROUGE), pas par un rendu fourre-tout sur le document.
+ *
+ * EXTERNALISÉ : la config (libellés/unités/groupes/format) vit dans un fichier
+ * dédié par moteur (ex. pv-presentation/chaussee.ts) pour que STARFIRE confirme /
+ * ajuste les libellés science SANS toucher au renderer.
+ */
+
+/** Chemin pointé vers une valeur de la donnée scellée (ex. "fatigue.valeur"). */
+export type FieldPath = string;
+
+/**
+ * Format d'affichage PAR GRANDEUR. `decimals` = nombre de décimales (après
+ * nettoyage du bruit binaire) ; `unit` = unité affichée (ex. "MPa", "cm", "µdef").
+ * `scale` = facteur d'échelle d'AFFICHAGE (ex. 100 pour m->cm) — la valeur SCELLÉE
+ * reste inchangée, on ne formate qu'à l'affichage. `thousands` = séparateur de
+ * milliers (espace fine) pour les grands adimensionnels (NE).
+ */
+export interface NumberFormat {
+  decimals?: number;
+  unit?: string;
+  scale?: number;
+  thousands?: boolean;
+  /** Notation scientifique « 1,47×10⁶ » (pour NE par ex.). Prioritaire sur thousands. */
+  scientific?: boolean;
+}
+
+/** Un champ affiché dans un groupe : chemin + libellé + format optionnel. */
+export interface PresentedField {
+  path: FieldPath;
+  label: string;
+  /** Si absent, on cherche dans `numberFormat[path]` puis on tombe en intérim. */
+  format?: NumberFormat;
+  /** Valeur littérale de repli si le champ est absent (ex. note « auto »). */
+  fallbackText?: string;
+}
+
+/** Un groupe d'entrées/résultats (sous-titre + champs). */
+export interface PresentedGroup {
+  title: string;
+  fields: PresentedField[];
+}
+
+/**
+ * Définition de la TABLE STRUCTURE (couches haut->bas + sol support). Chaque
+ * colonne pointe un sous-chemin de l'élément de couche ; le sol support (subgrade)
+ * forme la dernière ligne « semi-infini ».
+ */
+export interface StructureTableSpec {
+  title: string;
+  /** Chemin du tableau de couches dans l'entrée (ex. "layers"). */
+  layersPath: FieldPath;
+  /** Chemin du sol support (ex. "subgrade"). */
+  subgradePath: FieldPath;
+  /** Colonnes : en-tête + sous-chemin relatif à la couche + format. */
+  columns: Array<{
+    header: string;
+    /** Sous-clé dans l'élément de couche / subgrade (ex. "mat", "E", "nu", "h"). */
+    key: string;
+    format?: NumberFormat;
+    align?: 'left' | 'right';
+  }>;
+  /** Libellé de la cellule « épaisseur » du sol support (semi-infini). */
+  subgradeThicknessLabel: string;
+}
+
+/** Critère dimensionnant mis en avant dans le bandeau verdict. */
+export interface CriterionSpec {
+  label: string;
+  /** Chemins valeur sollicitante / admissible (ex. "fatigue.valeur"). */
+  valuePath: FieldPath;
+  admissiblePath: FieldPath;
+  format?: NumberFormat;
+}
+
+/**
+ * MODÈLE DE PRÉSENTATION complet d'un moteur.
+ */
+export interface PresentationModel {
+  /** Libellé moteur lisible (ex. « Dimensionnement de chaussée (AGEROUTE 2015) »). */
+  engineLabel: string;
+  /** Phrase d'objet rédigée (gabarit ; {projet} remplacé par le libellé projet). */
+  objectSentence: string;
+  /** Verdict global : booléen scellé -> libellés (consommé par le bandeau). */
+  verdict: {
+    key: FieldPath; // ex. "conforme"
+    labelTrue: string; // « CONFORME »
+    labelFalse: string; // « NON CONFORME »
+  };
+  /** Critères dimensionnants (fatigue/orniérage) du bandeau + table vérifications. */
+  criteria: CriterionSpec[];
+  /** Table structure (couches + sol support). Optionnelle. */
+  structure?: StructureTableSpec;
+  /** Groupes d'entrées NON-structure (trafic, charge…). */
+  inputGroups: PresentedGroup[];
+  /** Groupes de résultats hors verdict/critères (famille, épaisseurs, NE…). */
+  resultGroups: PresentedGroup[];
+  /** Chemins MASQUÉS (bruit + confidentialité fail-closed). */
+  hiddenKeys: FieldPath[];
+  /** Formats par chemin (fallback si un champ n'a pas de format inline). */
+  numberFormat: Record<FieldPath, NumberFormat>;
+}

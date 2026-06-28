@@ -1,0 +1,35 @@
+name: Gitleaks — détection de secrets
+
+# Porte bloquante : échoue si un secret est détecté dans le code ou l'historique
+# poussé sur cette branche/PR.
+# Workflow séparé de ci.yml (indépendant, fail-fast isolé).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, 'chore/**', 'feat/**', 'fix/**', 'refactor/**']
+
+jobs:
+  gitleaks:
+    name: Scan secrets (Gitleaks)
+    runs-on: ubuntu-latest
+
+    # Permissions minimales : lecture seule du dépôt.
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch complet de l'historique pour détecter les secrets supprimés
+          # mais présents dans des commits antérieurs du push.
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE non requis pour les dépôts privés en mode OSS.
+          # Si le dépôt devient public ou que le plan l'exige, ajouter :
+          #   GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

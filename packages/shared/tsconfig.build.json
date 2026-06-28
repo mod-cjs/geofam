@@ -1,0 +1,31 @@
+{
+  // Build de DISTRIBUTION de @roadsen/shared (emet du JS + .d.ts dans dist/).
+  //
+  // Le code source est ecrit en ESM NodeNext (specifiers `./x.js`), mais le
+  // CONSOMMATEUR de production est apps/api (NestJS) qui compile et tourne en
+  // CommonJS (`require`). On EMET donc du CommonJS pour que le require() de l'API
+  // resolve le package compile sans friction ESM/CJS. Les specifiers `./x.js`
+  // restent valides : tsc en module CommonJS les transforme en require('./x.js')
+  // pointant vers les fichiers .js emis ici.
+  //
+  // Les tests (vitest) ne passent PAS par ce build : ils resolvent le `src/*.ts`
+  // via la condition d'export CUSTOM "roadsen-source" (activee par vitest
+  // resolve.conditions ; cf. package.json#exports et vitest.shared.ts), donc ce
+  // repointage de `main` vers dist ne touche pas la resolution de test.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmit": false,
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    // Build de prod/CI = one-shot ; l'incremental (herite de la base) ferait
+    // sauter l'emission si un .tsbuildinfo subsiste alors que dist/ a ete purge.
+    "incremental": false
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/*.spec.ts"]
+}

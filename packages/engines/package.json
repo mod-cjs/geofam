@@ -1,0 +1,35 @@
+{
+  "name": "@roadsen/engines",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "//": "CONFIDENTIEL — server-only (DoD 8), jamais importe par apps/web. FAIL-CLOSED : la SEULE condition pointant vers le SOURCE .ts moteur est `roadsen-source`, condition CUSTOM activee EXCLUSIVEMENT par nos runners de test (vitest resolve.conditions / jest --conditions). AUCUNE condition honoree par un bundler navigateur (Next/Turbopack posent 'development'/'production'/'browser', PAS 'roadsen-source') ne resout le .ts. On n'expose NI 'development' NI 'source' (Vite/certains bundlers les honorent) : tout build web tombe sur le dist CJS — et de toute facon ESLint + le controle de bundle interdisent l'import cote web.",
+      "roadsen-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && node -e \"require('fs').writeFileSync('dist/package.json', JSON.stringify({type:'commonjs'}))\"",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@roadsen/shared": "workspace:*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^28.0.3",
+    "jsdom": "^29.1.1",
+    "vitest": "^2.1.9"
+  }
+}

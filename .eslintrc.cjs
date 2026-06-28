@@ -81,11 +81,28 @@ module.exports = {
       },
     },
     {
-      /* Tests : on assouplit quelques regles bruyantes. */
-      files: ['**/*.test.ts', '**/*.spec.ts', '**/*.e2e.ts', '**/tests/**'],
+      /* Tests : on assouplit quelques regles bruyantes. Couvre aussi la
+         convention NestJS e2e (`*.e2e-spec.ts` + dossier `test/`). */
+      files: [
+        '**/*.test.ts',
+        '**/*.spec.ts',
+        '**/*.e2e.ts',
+        '**/*.e2e-spec.ts',
+        '**/tests/**',
+        '**/test/**',
+      ],
       rules: {
         '@typescript-eslint/no-explicit-any': 'off',
         'no-console': 'off',
+      },
+    },
+    {
+      /* NestJS (apps/api) : l'injection de dependances repose sur des imports
+         VALEUR (metadonnee de type du constructeur). `consistent-type-imports`
+         convertirait ces imports en `import type`, casser la DI au boot. */
+      files: ['apps/api/**/*.ts'],
+      rules: {
+        '@typescript-eslint/consistent-type-imports': 'off',
       },
     },
   ],

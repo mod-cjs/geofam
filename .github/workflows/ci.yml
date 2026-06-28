@@ -18,8 +18,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "22"
-  PNPM_VERSION: "9.12.0"
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9.12.0'
 
 jobs:
   # ---------------------------------------------------------------
@@ -40,17 +40,75 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Lint (inclut le garde-fou confidentialite moteurs)
         run: pnpm lint
+      - name: Test negatif du garde-fou moteurs->web (DoD 8, 1ere barriere)
+        # Prouve que le garde-fou ESLint bloque REELLEMENT un import moteur depuis le front.
+        # Sans ce test, une regression de config (ex. flat config ESLint 9 ignorant le
+        # .eslintrc.cjs racine) rendrait le garde-fou muet sans que personne ne le voie.
+        run: |
+          set +e
+          mkdir -p apps/web/src/__guardcheck__
+          printf "import '@roadsen/engines';\nexport const x = 1;\n" > apps/web/src/__guardcheck__/forbidden.ts
+          pnpm --filter @roadsen/web lint
+          code=$?
+          rm -rf apps/web/src/__guardcheck__
+          if [ "$code" -eq 0 ]; then
+            echo "::error::Le garde-fou moteurs->web NE bloque PAS l import @roadsen/engines (DoD 8 inactive)"; exit 1
+          fi
+          echo "OK : le garde-fou bloque bien l import moteur depuis le front"
       - name: Typecheck
         run: pnpm typecheck
       - name: Build
         run: pnpm build
-      - name: Controle de confidentialite (aucun code moteur dans le bundle client)
-        # Preuve (au-dela du lint) : le code moteur ne doit jamais partir au navigateur.
+      - name: Convention marqueur moteur (chaque moteur DOIT embarquer le marqueur)
+        # Le controle de bundle ci-dessous grep un MARQUEUR texte stable. Il n a de
+        # valeur que si TOUT moteur l embarque reellement. On force la convention :
+        # tout fichier de packages/engines/src (hors marker.ts) doit contenir le
+        # marqueur. Sinon un moteur sans marqueur pourrait fuiter sans declencher l alarme.
         run: |
-          if grep -rIl -e "@roadsen/engines" -e "ROADSEN_ENGINE" apps/web/.next/static 2>/dev/null; then
-            echo "::error::Code moteur detecte dans le bundle client (apps/web/.next/static)"; exit 1
+          set +e
+          src="packages/engines/src"
+          [ -d "$src" ] || { echo "OK : pas encore de moteurs"; exit 0; }
+          fail=0
+          while IFS= read -r f; do
+            case "$f" in */marker.ts|*/.gitkeep) continue;; esac
+            if ! grep -Iq "ENGINE_BUNDLE_MARKER\|__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__" "$f"; then
+              echo "::error file=$f::Moteur sans marqueur de confidentialite (importe/reference ENGINE_BUNDLE_MARKER)"; fail=1
+            fi
+          done < <(find "$src" -type f \( -name "*.ts" -o -name "*.tsx" \))
+          [ "$fail" -eq 0 ] && echo "OK : tous les moteurs embarquent le marqueur" || exit 1
+      - name: Controle de confidentialite (aucun code moteur dans le bundle CLIENT)
+        # 2e barriere (la 1ere est le garde-fou ESLint ci-dessus). On grep UNIQUEMENT
+        # ce qui part au navigateur (.next/static), pas .next/server (SSR legitime, et
+        # qui ne ship pas au client) — sinon faux positif bloquant. On cherche le
+        # specifier de package ET le MARQUEUR texte stable (un nom de symbole est
+        # minifie, pas une chaine litterale). Convention : packages/engines/README.md.
+        run: |
+          if grep -rIl -e "@roadsen/engines" -e "__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__" apps/web/.next/static 2>/dev/null; then
+            echo "::error::Code/marqueur moteur detecte dans le bundle navigateur (apps/web/.next/static)"; exit 1
           fi
-          echo "OK : aucun symbole moteur dans le bundle client"
+          echo "OK : aucun symbole ni marqueur moteur dans le bundle navigateur"
+      - name: Garde-fou migrations destructrices (revue obligatoire)
+        # Une migration qui DROP/TRUNCATE peut detruire des donnees tenant en prod
+        # (deploy auto sur main). On refuse tout DDL destructeur SAUF s il porte le
+        # marqueur de revue explicite (revue ingenieur-securite documentee dans la PR) :
+        #   -- ROADSEN-MIGRATION-REVIEWED: <raison + qui a valide>
+        # On ne scanne QUE les migrations MONTANTES (migration.sql) : les down.sql
+        # (rollbacks, appliques manuellement) contiennent legitimement des DROP et
+        # ne sont jamais joues par migrate deploy.
+        run: |
+          set +e
+          mig_dir="apps/api/prisma/migrations"
+          [ -d "$mig_dir" ] || { echo "OK : pas de migrations"; exit 0; }
+          fail=0
+          while IFS= read -r f; do
+            if grep -IniE "drop +(table|column|schema|constraint|index|type|sequence|view)|truncate|delete +from|alter +table .* drop" "$f" >/dev/null 2>&1; then
+              if ! grep -Iq "ROADSEN-MIGRATION-REVIEWED:" "$f"; then
+                echo "::error file=$f::DDL destructeur sans marqueur de revue. Ajoute '-- ROADSEN-MIGRATION-REVIEWED: <raison>' apres revue ingenieur-securite (revue GitHub requise via CODEOWNERS)."
+                fail=1
+              fi
+            fi
+          done < <(find "$mig_dir" -name "migration.sql")
+          [ "$fail" -eq 0 ] && echo "OK : aucune migration destructrice non revue" || exit 1
 
   unit:
     name: Tests unitaires
@@ -72,7 +130,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage
-          path: "**/coverage/**"
+          path: '**/coverage/**'
           if-no-files-found: ignore
 
   integration:
@@ -91,9 +149,9 @@ jobs:
           --health-cmd "pg_isready -U roadsen -d roadsen_ci"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: "postgresql://roadsen:roadsen_ci@localhost:5432/roadsen_ci?schema=public"
-      JWT_SECRET: "ci-only-secret"
-      PV_SIGNING_SECRET: "ci-only-pv-secret"
+      DATABASE_URL: 'postgresql://roadsen:roadsen_ci@localhost:5432/roadsen_ci?schema=public'
+      JWT_SECRET: 'ci-only-secret'
+      PV_SIGNING_SECRET: 'ci-only-pv-secret'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -106,7 +164,52 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Migrations Prisma (deploy)
         run: pnpm --filter @roadsen/api prisma migrate deploy
-      - name: Tests integration + isolation multi-tenant
+      - name: Provisionne le role applicatif roadsen_app (prod-like)
+        # La migration 0001 cree roadsen_app NOLOGIN NOBYPASSRLS + GRANTs DML.
+        # En prod (Render) ce role est non-proprietaire et non-superuser : c'est
+        # LUI qui doit subir RLS FORCE. On lui donne juste un LOGIN + mot de passe
+        # JETABLE de CI pour pouvoir s'y connecter et PROUVER l'isolation sur le
+        # role de prod-like (et non sur le proprietaire 'roadsen', trop puissant).
+        env:
+          PGPASSWORD: roadsen_ci
+        run: |
+          psql -h localhost -U roadsen -d roadsen_ci -v ON_ERROR_STOP=1 \
+            -c "ALTER ROLE roadsen_app LOGIN PASSWORD 'ci_only';"
+      - name: Garde-fou anti-derive RLS (toute table org_id => RLS+FORCE+policy)
+        # SEUL vrai garde-fou contre l'oubli de RLS sur une FUTURE table : toute
+        # table portant une colonne 'org_id' DOIT avoir relrowsecurity ET
+        # relforcerowsecurity ET au moins une policy. Sinon CI rouge. Independant
+        # du role : on l interroge en tant que proprietaire (catalogue systeme).
+        env:
+          PGPASSWORD: roadsen_ci
+        run: |
+          set -euo pipefail
+          missing=$(psql -h localhost -U roadsen -d roadsen_ci -At -v ON_ERROR_STOP=1 -c "
+            SELECT string_agg(
+                     c.relname || ' (' ||
+                       CASE WHEN NOT c.relrowsecurity      THEN 'RLS off ' ELSE '' END ||
+                       CASE WHEN NOT c.relforcerowsecurity THEN 'FORCE off ' ELSE '' END ||
+                       CASE WHEN p.cnt = 0                 THEN 'no policy' ELSE '' END ||
+                     ')', ', ')
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'org_id' AND a.attnum > 0 AND NOT a.attisdropped
+            LEFT JOIN (SELECT polrelid, count(*) cnt FROM pg_policy GROUP BY polrelid) p ON p.polrelid = c.oid
+            WHERE n.nspname = 'public' AND c.relkind = 'r'
+              AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity OR COALESCE(p.cnt,0) = 0);
+          ")
+          if [ -n "$missing" ]; then
+            echo "::error::Table(s) avec org_id sans RLS FORCE + policy : $missing"
+            exit 1
+          fi
+          echo "OK : toutes les tables a org_id ont RLS + FORCE + policy"
+      - name: Tests integration + isolation multi-tenant (role roadsen_app)
+        # On EXECUTE l'isolation avec le role APPLICATIF (NOBYPASSRLS), pas le
+        # proprietaire : c'est la seule maniere de prouver que FORCE/NOBYPASSRLS
+        # tiennent sur un role prod-like. RLS_TEST_DATABASE_URL prime sur
+        # DATABASE_URL dans le spec. L'anti-skip rend "0 cas execute" = rouge.
+        env:
+          RLS_TEST_DATABASE_URL: 'postgresql://roadsen_app:ci_only@localhost:5432/roadsen_ci?schema=public'
         run: pnpm --filter @roadsen/api test:integration
 
   # ---------------------------------------------------------------
@@ -136,7 +239,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: "**/playwright-report/**"
+          path: '**/playwright-report/**'
           if-no-files-found: ignore
 
   deploy-preprod:

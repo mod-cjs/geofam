@@ -1,0 +1,253 @@
+// =====================================================================
+//  ROADSEN — schema.prisma  (PostgreSQL, multi-tenant SaaS)
+//
+//  Socle minimal (issue #38). Sous-ensemble REEL de la conception
+//  (02-Conception/schema.prisma) : juste de quoi prouver l'isolation
+//  multi-tenant de bout en bout (Organization → Membership → Project).
+//
+//  Conventions (alignees sur la conception) :
+//   - Toute table METIER porte orgId NON-NULL (pivot d'isolation, FK -> organizations).
+//   - PK uuid ; mapping snake_case via @@map / @map.
+//   - Prisma seul NE garantit PAS l'isolation : la 1ere migration SQL
+//     active RLS (ENABLE + FORCE) + policies. Voir
+//     prisma/migrations/0001_init_rls/migration.sql.
+//   - L'app pose `SET LOCAL app.current_org = '<uuid>'` par transaction.
+//     RLS = filet ; le guard applicatif = defense en profondeur.
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+// ----------------------- Identite / tenant / RBAC -----------------------
+
+enum OrgStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+// Role AU SEIN d'un tenant (porte par Membership).
+enum Role {
+  OWNER
+  ADMIN
+  ENGINEER // ingenieur
+  TECHNICIAN // technicien-sondeur
+  VIEWER
+}
+
+// Role PLATEFORME (transverse, hors tenant) — back-office STARFIRE.
+enum PlatformRole {
+  SUPERADMIN
+  SUPPORT
+}
+
+model Organization {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String    @unique
+  status    OrgStatus @default(ACTIVE)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  memberships  Membership[]
+  projects     Project[]
+  subscription Subscription? // 1:1 logique en P1 (org_id UNIQUE cote subscriptions)
+
+  @@map("organizations")
+}
+
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  email        String        @unique
+  passwordHash String?       @map("password_hash")
+  fullName     String        @map("full_name")
+  platformRole PlatformRole? @map("platform_role")
+  isActive     Boolean       @default(true) @map("is_active")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  memberships Membership[]
+
+  @@map("users")
+}
+
+// User x Organization + role tenant. Un utilisateur peut appartenir a
+// plusieurs organisations ; le couple (orgId, userId) est unique.
+model Membership {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      Role
+  createdAt DateTime @default(now()) @map("created_at")
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+  @@index([orgId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+// ----------------------- Table metier porteuse de donnees -----------------------
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+// Table metier minimale, presente uniquement pour PROUVER l'isolation
+// (un tenant ne voit jamais les projets d'un autre, RLS + guard).
+model Project {
+  id          String        @id @default(uuid()) @db.Uuid
+  orgId       String        @map("org_id") @db.Uuid
+  name        String
+  status      ProjectStatus @default(DRAFT)
+  createdById String        @map("created_by_id") @db.Uuid
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  calcs    CalcResult[]
+
+  @@unique([orgId, id]) // cible de FK COMPOSITE (org_id, .) des tables enfant (0006)
+  @@index([orgId])
+  @@index([orgId, status])
+  @@map("projects")
+}
+
+// ----------------------- Pipeline PV : calcul -> PV scelle (#63, incr. A) -----------------------
+//
+//  calc_results : calcul org-scope MUTABLE/jetable (recalcul serveur). official_pvs :
+//  PV OFFICIEL IMMUABLE et AUTOPORTANT (copie figee de ce qui a ete scelle).
+//  RLS FORCE + policies + triggers d'immuabilite + numerotation : portes par la
+//  migration SQL 0006 (Prisma seul ne les exprime pas). Voir
+//  prisma/migrations/0006_pv_seal_core/migration.sql.
+
+// Calcul persiste (jetable). input/output = JSON projete/whiteliste (jamais de champ
+// libre : la projection cote @roadsen/shared strippe les intermediaires avant stockage).
+model CalcResult {
+  id               String   @id @default(uuid()) @db.Uuid
+  orgId            String   @map("org_id") @db.Uuid
+  projectId        String   @map("project_id") @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  engineId         String   @map("engine_id")
+  engineVersion    String   @map("engine_version")
+  engineSourceHash String?  @map("engine_source_hash")
+  input            Json     @db.JsonB
+  output           Json     @db.JsonB
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  // FK COMPOSITE (orgId, projectId) -> projects(orgId, id) : un calcul ne reference
+  // qu'un projet de SON tenant (anti cross-tenant, cf. NOTE §4 de 0004).
+  project Project @relation(fields: [orgId, projectId], references: [orgId, id], onDelete: Cascade)
+
+  @@unique([orgId, id]) // org-coherence de l'id local
+  @@index([orgId])
+  @@index([orgId, projectId])
+  @@map("calc_results")
+}
+
+// PV OFFICIEL : AUTOPORTANT (copie figee de tout le contenu scelle) et IMMUABLE
+// (triggers BEFORE UPDATE/DELETE en 0006 ; aucun privilege UPDATE/DELETE pour le
+// runtime). Pas de FK vivante vers projects/calc_results : le PV survit a leur
+// suppression. calcResultId / projectId sont conserves comme reference/identite
+// FIGEE (sans relation Prisma). input_canonical = chaine canonique exacte scellee ;
+// content_hash = SHA-256 ; hmac = HMAC-SHA256 (clé PV_SIGNING_SECRET, jamais en base).
+model OfficialPv {
+  id               String   @id @default(uuid()) @db.Uuid
+  orgId            String   @map("org_id") @db.Uuid
+  calcResultId     String   @map("calc_result_id") @db.Uuid
+  projectId        String   @map("project_id") @db.Uuid
+  pvNumber         String   @map("pv_number")
+  userId           String   @map("user_id") @db.Uuid
+  projectName      String   @map("project_name")
+  engineId         String   @map("engine_id")
+  engineVersion    String   @map("engine_version")
+  engineSourceHash String?  @map("engine_source_hash")
+  inputCanonical   String   @map("input_canonical")
+  output           Json     @db.JsonB
+  scienceStatus    String   @map("science_status")
+  // VERDICT scelle (ADR 0012) : CONFORME / NON_CONFORME / NON_APPLICABLE. Copie
+  // denormalisee de la valeur SCELLEE dans input_canonical (verite = la canonique).
+  // Defaut DB 'NON_APPLICABLE' (migration 0008) ; l'app fournit toujours la valeur.
+  verdict          String   @default("NON_APPLICABLE")
+  contentHash      String   @map("content_hash")
+  hmac             String
+  sealedAt         DateTime @map("sealed_at")
+
+  @@unique([orgId, pvNumber]) // numero unique par org
+  @@unique([orgId, calcResultId]) // idempotence d'emission : 1 calcul -> 1 PV
+  @@index([orgId])
+  @@map("official_pvs")
+}
+
+// Compteur de numerotation PAR ORG et PAR ANNEE (PV-RDS-{slug}-{YYYY}-{NNNNNN}).
+// Incremente atomiquement par allocate_pv_number(year) (0006), sous RLS FORCE.
+model PvCounter {
+  orgId   String @map("org_id") @db.Uuid
+  year    Int
+  lastSeq BigInt @default(0) @map("last_seq")
+
+  @@id([orgId, year])
+  @@map("pv_counters")
+}
+
+// ----------------------- Abonnements & ledger d'usage (ADR 0009/0011) -----------------------
+//
+//  subscriptions : 1 abonnement actif par org (org_id UNIQUE). usage_ledger :
+//  journal append-only de la consommation (la verite auditable). RLS FORCE +
+//  policies + FK composite + triggers d'immuabilite (usage_ledger) + GRANTs
+//  minimaux : portes par la migration SQL 0008 (Prisma seul ne les exprime pas).
+//  Voir prisma/migrations/0008_subscriptions_usage_ledger/migration.sql.
+
+// Abonnement d'une organisation. `entitlements` = engineId/features debloques
+// (STOCKE explicitement, derive du pack). `quota` NON-NULL fini (le decompte
+// atomique WHERE consommation < quota casserait sur NULL). `consommation` =
+// compteur materialise reconciliable par COUNT(*) du ledger.
+model Subscription {
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @unique @map("org_id") @db.Uuid
+  pack         String
+  entitlements String[]
+  dateDebut    DateTime @map("date_debut") @db.Timestamptz()
+  dateFin      DateTime @map("date_fin") @db.Timestamptz()
+  quota        Int
+  consommation Int      @default(0)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz()
+
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  ledger UsageLedger[]
+
+  @@unique([orgId, id]) // cible de la FK COMPOSITE (org_id, .) du ledger
+  @@index([orgId])
+  @@map("subscriptions")
+}
+
+// Journal d'usage APPEND-ONLY (immuable via triggers 0008 ; runtime sans
+// UPDATE/DELETE). FK COMPOSITE (orgId, subscriptionId) -> subscriptions(orgId, id) :
+// un ledger ne rattache que l'abonnement de SON tenant.
+model UsageLedger {
+  id             String   @id @default(uuid()) @db.Uuid
+  orgId          String   @map("org_id") @db.Uuid
+  subscriptionId String   @map("subscription_id") @db.Uuid
+  kind           String
+  refId          String?  @map("ref_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  subscription Subscription @relation(fields: [orgId, subscriptionId], references: [orgId, id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([orgId, subscriptionId])
+  @@map("usage_ledger")
+}

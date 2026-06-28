@@ -1,0 +1,39 @@
+{
+  // Build de DISTRIBUTION de @roadsen/engines (emet du JS + .d.ts dans dist/).
+  //
+  // Meme logique que @roadsen/shared : consommateur de prod = apps/api (NestJS,
+  // CommonJS). On emet du CommonJS pour que le require() de l'API resolve les
+  // moteurs compiles. Les tests (vitest) restent sur le src TS via la condition
+  // d'export CUSTOM "roadsen-source" (test-only ; aucun bundler web ne l'honore).
+  //
+  // On EXCLUT les *.test.ts / *.spec.ts ET les `equivalence-harness.ts` (ces
+  // derniers utilisent `import.meta.url` + jsdom, incompatibles avec une emission
+  // CommonJS et inutiles en prod). On CONSERVE en revanche les `test-fixtures.ts`
+  // (jeux d'ENTREES canoniques re-exportes par chaque index — *_FIXTURES — et
+  // consommes par l'e2e API : ce sont des donnees, pas de la science) ainsi que
+  // les moteurs (engine.ts) et le marqueur (marker.ts). Le marqueur litteral
+  // `__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__` doit SURVIVRE a la compilation
+  // (tsc ne reecrit pas le contenu des chaines).
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmit": false,
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    // Build de prod/CI = one-shot ; l'incremental (herite de la base) ferait
+    // sauter l'emission si un .tsbuildinfo subsiste alors que dist/ a ete purge.
+    "incremental": false
+  },
+  "include": ["src"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "src/**/equivalence-harness.ts"
+  ]
+}

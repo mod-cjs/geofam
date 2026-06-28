@@ -1,0 +1,21 @@
+# CODEOWNERS — revue obligatoire sur les zones critiques ROADSEN.
+#
+# Effet REEL seulement si la "branch protection" GitHub exige la revue des
+# CODEOWNERS sur main (Settings > Branches > Require review from Code Owners).
+# Sinon ce fichier n est qu indicatif. C est le complement humain du garde-fou
+# CI : le marqueur "-- ROADSEN-MIGRATION-REVIEWED:" est auto-editable, donc la
+# vraie preuve de revue est l approbation GitHub d un Code Owner ci-dessous.
+
+# Par defaut : le titulaire.
+*                                   @MouhammadouOD
+
+# Migrations de schema (destruction de donnees tenant possible) — revue requise.
+/apps/api/prisma/migrations/        @MouhammadouOD
+
+# Moteurs confidentiels (coeur de PI) — toute modif = revue.
+/packages/engines/                  @MouhammadouOD
+
+# Garde-fous de confidentialite / CI — ne pas affaiblir sans revue.
+/.github/workflows/                 @MouhammadouOD
+/apps/web/eslint.config.mjs         @MouhammadouOD
+/.eslintrc.cjs                      @MouhammadouOD
