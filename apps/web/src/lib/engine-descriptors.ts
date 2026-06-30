@@ -257,17 +257,17 @@ const terzaghiDescriptor: EngineDescriptor = {
         z: flat['sondage_z'],
         // Champs numériques optionnels : `|| undefined` transformerait un 0 légitime en absent.
         // Pattern explicite : vide ou absent → undefined, sinon Number (préserve 0).
-        pl: flat['sondage_pl'] === '' || flat['sondage_pl'] == null ? undefined : Number(flat['sondage_pl']),
-        em: flat['sondage_em'] === '' || flat['sondage_em'] == null ? undefined : Number(flat['sondage_em']),
-        qc: flat['sondage_qc'] === '' || flat['sondage_qc'] == null ? undefined : Number(flat['sondage_qc']),
+        pl: Number.isFinite(Number(flat['sondage_pl'])) ? Number(flat['sondage_pl']) : undefined,
+        em: Number.isFinite(Number(flat['sondage_em'])) ? Number(flat['sondage_em']) : undefined,
+        qc: Number.isFinite(Number(flat['sondage_qc'])) ? Number(flat['sondage_qc']) : undefined,
         al: undefined,
       }],
       charges: [{
         etat: flat['charge_etat'],
         fz: flat['charge_fz'],
         // fx/fy : 0 est une valeur valide (pas d'effort horizontal) — `|| undefined` interdirait cette saisie.
-        fx: flat['charge_fx'] === '' || flat['charge_fx'] == null ? undefined : Number(flat['charge_fx']),
-        fy: flat['charge_fy'] === '' || flat['charge_fy'] == null ? undefined : Number(flat['charge_fy']),
+        fx: Number.isFinite(Number(flat['charge_fx'])) ? Number(flat['charge_fx']) : undefined,
+        fy: Number.isFinite(Number(flat['charge_fy'])) ? Number(flat['charge_fy']) : undefined,
       }],
     };
   },
