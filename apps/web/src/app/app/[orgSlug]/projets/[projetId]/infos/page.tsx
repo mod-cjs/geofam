@@ -27,7 +27,7 @@ function formatDate(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
     timeZone: 'Africa/Dakar',
-  }).format(new Date(iso));
+  }).format(new Date(iso)).replace(/[\u202F\u00A0]/g, ' '); // espace ICU déterministe (anti #418)
 }
 
 export default function InfosPage({ params: paramsPromise }: Props) {

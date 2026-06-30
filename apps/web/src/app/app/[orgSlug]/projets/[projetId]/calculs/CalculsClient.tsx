@@ -49,7 +49,9 @@ import { useOrgId } from '@/lib/org-context';
 
 // Formatage numérique fr-FR
 const fmt = (n: number, decimals = 4) =>
-  new Intl.NumberFormat('fr-FR', { maximumFractionDigits: decimals }).format(n);
+  new Intl.NumberFormat('fr-FR', { maximumFractionDigits: decimals })
+    .format(n)
+    .replace(/[\u202F\u00A0]/g, ' '); // normalise l'espace ICU SSR/navigateur (anti #418)
 
 /**
  * Date relative calculée côté client uniquement (useEffect après montage).

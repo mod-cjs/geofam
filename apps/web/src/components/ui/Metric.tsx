@@ -25,7 +25,12 @@ export type MetricVariant = "isolated" | "table" | "unavailable" | "out-of-range
 /** Helper formatage — défini une fois, jamais répliqué inline */
 export function fmt(n: number, decimals = 4): string {
   if (!isFinite(n) || isNaN(n)) return "—"; // '—'
-  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: decimals }).format(n);
+  // .replace : l'espace fine ICU (U+202F/U+00A0) diffère entre Node SSR et le
+  // navigateur selon la version ICU → mismatch d'hydratation (#418). On normalise
+  // en espace simple, déterministe partout.
+  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: decimals })
+    .format(n)
+    .replace(/[\u202F\u00A0]/g, " ");
 }
 
 interface MetricProps extends HTMLAttributes<HTMLSpanElement> {

@@ -30,7 +30,7 @@ function formatDate(iso: string): string {
     minute: '2-digit',
     // timeZone déterministe → SSR (UTC) et client (fuseau local) produisent le même texte (#418)
     timeZone: 'Africa/Dakar',
-  }).format(new Date(iso));
+  }).format(new Date(iso)).replace(/[\u202F\u00A0]/g, ' '); // espace ICU déterministe (anti #418)
 }
 
 interface PvListClientProps {
