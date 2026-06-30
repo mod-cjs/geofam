@@ -308,6 +308,64 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
   return rows;
 }
 
+/** Libellés d'état-limite (affichage). */
+const TERZAGHI_ETAT_LABEL: Record<string, string> = {
+  ELU_F: 'ELU fond.',
+  ELU_A: 'ELU acc.',
+  ELS_C: 'ELS car.',
+  ELS_F: 'ELS fréq.',
+  ELS_QP: 'ELS q.perm.',
+};
+
+/**
+ * CONTRAT client-safe du moteur terzaghi (fondation superficielle, NF P 94-261).
+ * Lit UNIQUEMENT les champs de RÉSULTAT whitelistés par `TerzaghiOutputSchema`
+ * (par cas = charge × état-limite) : Rtot, qRvd, taux, portanceOk, Rhd, tauxH,
+ * glissementOk, tassement(s). Exclus : `warnings`/`erreur` (texte libre, canal
+ * séparé), `idx`/`invalide` (internes). Aucune copie d'objet brut (clés nommées
+ * seulement, fail-closed — cohérent avec buildBurmisterRows / DoD §8).
+ */
+function buildTerzaghiRows(o: Record<string, unknown>): CalcOutputRow[] {
+  const rows: CalcOutputRow[] = [];
+  const cas = Array.isArray(o.cas) ? o.cas : [];
+  for (const item of cas) {
+    if (item == null || typeof item !== 'object') continue;
+    const c = item as Record<string, unknown>;
+    if (c.invalide === true) continue;
+    const et = typeof c.etat === 'string' ? (TERZAGHI_ETAT_LABEL[c.etat] ?? c.etat) : '—';
+    const pOk: 'ok' | 'fail' = c.portanceOk === true ? 'ok' : 'fail';
+    pushRow(rows, `${et} — résistance Rᵥ;d`, c.Rtot, 'kN', pOk);
+    pushRow(rows, `${et} — contrainte adm. q_Rv;d`, c.qRvd, 'kPa');
+    const taux = finiteOrNull(c.taux);
+    if (taux !== null) rows.push({ label: `${et} — taux de mobilisation`, value: taux * 100, unit: '%', status: pOk });
+    if (c.Rhd != null) {
+      const gOk: 'ok' | 'fail' = c.glissementOk === true ? 'ok' : 'fail';
+      pushRow(rows, `${et} — résistance au glissement R_h;d`, c.Rhd, 'kN', gOk);
+      const tH = finiteOrNull(c.tauxH);
+      if (tH !== null) rows.push({ label: `${et} — taux glissement`, value: tH * 100, unit: '%', status: gOk });
+    }
+    pushRow(rows, `${et} — tassement`, c.tassement, 'mm');
+    pushRow(rows, `${et} — tassement (Schmertmann)`, c.tassementSchmertmann, 'mm');
+    pushRow(rows, `${et} — tassement œdométrique`, c.tassementOed, 'mm');
+  }
+  return rows;
+}
+
+/** Verdict global terzaghi : tous les cas valides portants (et stables au glissement si évalué). */
+function terzaghiVerdict(o: Record<string, unknown>): 'PASS' | 'FAIL' {
+  const cas = Array.isArray(o.cas) ? o.cas : [];
+  const valid = cas.filter(
+    (c): c is Record<string, unknown> =>
+      c != null && typeof c === 'object' && (c as Record<string, unknown>).invalide !== true,
+  );
+  if (valid.length === 0) return 'FAIL';
+  return valid.every(
+    (c) => c.portanceOk === true && (c.glissementOk === undefined || c.glissementOk === true),
+  )
+    ? 'PASS'
+    : 'FAIL';
+}
+
 /**
  * Re-whiteliste un tableau de lignes : ne garde QUE `{label, value, unit, status?}`
  * par ligne, jamais de spread du brut. Toute ligne incomplète/non finie est écartée.
@@ -351,6 +409,10 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
   }
   if (typeof o.verdict === 'string' && Array.isArray(o.rows)) {
     return { verdict: o.verdict === 'PASS' ? 'PASS' : 'FAIL', rows: sanitizeRows(o.rows) };
+  }
+  // terzaghi (fondation superficielle) : sortie {cas:[…]} → whitelist par cas
+  if (Array.isArray(o.cas)) {
+    return { verdict: terzaghiVerdict(o), rows: buildTerzaghiRows(o) };
   }
   // Moteur non reconnu : fail-closed, aucune sortie brute ne traverse vers le navigateur.
   return null;
