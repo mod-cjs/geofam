@@ -150,6 +150,10 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
 
   // Drill-down mobile
   const [mobileDrillDown, setMobileDrillDown] = useState(false);
+  // Rendu client-only : la page est data-driven (orgId/entitlements résolus au
+  // montage) → on évite tout mismatch d'hydratation SSR/client (#418).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const loadData = useCallback(async () => {
     if (orgId === null) {
@@ -332,6 +336,12 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     panel.mode === 'result' || panel.mode === 'view' ? panel.calc : null;
   const isExpired = entitlements?.expired ?? false;
   const isQuotaExhausted = !isExpired && (entitlements?.quota.remaining ?? 1) <= 0;
+
+  // Tant que non monté (SSR + 1er rendu client), on rend un placeholder stable →
+  // SSR et hydratation identiques, plus de #418 ni de page blanche.
+  if (!mounted) {
+    return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement des calculs" />;
+  }
 
   return (
     <div
