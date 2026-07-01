@@ -223,11 +223,17 @@ export function buildPvDocDefinition(pv: OfficialPv): TDocumentDefinitions {
  * de la donnée SCELLÉE uniquement (CRIT-1 préservé).
  */
 function buildBody(sealed: SealedContent): Content[] {
-  const model = findPresentationModel(sealed.engineMeta.engineId);
+  const engineId = sealed.engineMeta.engineId;
+  const model = findPresentationModel(engineId);
   if (model) {
     return renderRichBody(sealed, model);
   }
-  // FALLBACK : table clé-valeur propre (sans lignes-bruit), input puis output.
+  // Présentation métier dédiée fondation superficielle (terzaghi) — note de calcul
+  // structurée (bandeau verdict + entrées + vérifications par cas), pas un vidage.
+  if (engineId === 'fondation-superficielle') {
+    return buildFondationBody(sealed);
+  }
+  // FALLBACK générique : table clé-valeur propre (sans lignes-bruit), input puis output.
   return [
     sectionTitle('Données d’entrée'),
     buildKeyValueTable(sealed.input, 'Aucune donnée d’entrée enregistrée.'),
@@ -237,6 +243,318 @@ function buildBody(sealed: SealedContent): Content[] {
     // figé dans input_canonical au scellement. Le PDF NE RE-RÉDIGE PAS.
     buildKeyValueTable(sealed.output, 'Aucun résultat enregistré.'),
   ];
+}
+
+// ---------------------------------------------------------------------------
+// Présentation « fondation superficielle » (terzaghi / NF P 94-261)
+// ---------------------------------------------------------------------------
+// CONFIDENTIALITÉ (DoD §8) : lecture par clés NOMMÉES uniquement (fail-closed) ;
+// la sortie est déjà whitelistée par TerzaghiOutputSchema au calcul ; l'entrée est
+// la donnée de l'utilisateur. Aucun champ non nommé n'est rendu.
+
+const FDN_FORME: Record<string, string> = {
+  filante: 'Semelle filante',
+  carree: 'Semelle carrée',
+  rect: 'Semelle rectangulaire',
+  circ: 'Semelle circulaire',
+};
+const FDN_SOL: Record<string, string> = {
+  argiles: 'Argiles',
+  sables: 'Sables',
+  craies: 'Craies',
+  marnes: 'Marnes',
+  roches: 'Roches',
+};
+const FDN_ESSAI: Record<string, string> = {
+  pressio: 'Pressiomètre Ménard',
+  penetro: 'Pénétromètre statique (CPT)',
+  labo: 'Paramètres de laboratoire (c–φ)',
+};
+const FDN_ETAT: Record<string, string> = {
+  ELU_F: 'ELU fondamental',
+  ELU_A: 'ELU accidentel',
+  ELS_C: 'ELS caractéristique',
+  ELS_F: 'ELS fréquent',
+  ELS_QP: 'ELS quasi-permanent',
+};
+
+/** Nombre → texte fr-FR (espaces normalisées), sinon « — ». */
+function fdnNum(v: unknown, decimals: number, unit?: string): string {
+  const n =
+    typeof v === 'number'
+      ? v
+      : typeof v === 'string' && v.trim() !== ''
+        ? Number(v)
+        : NaN;
+  if (!Number.isFinite(n)) return '—';
+  const s = n
+    .toLocaleString('fr-FR', { maximumFractionDigits: decimals })
+    .replace(/[  ]/g, ' ');
+  return unit ? `${s} ${unit}` : s;
+}
+
+function fdnFirstFinite(...vals: unknown[]): number | null {
+  for (const v of vals) if (typeof v === 'number' && Number.isFinite(v)) return v;
+  return null;
+}
+
+function fdnSubTitle(label: string): Content {
+  return { text: label, style: 'groupRow', margin: [0, 8, 0, 3] };
+}
+
+function fdnHead(text: string, align: 'left' | 'right' | 'center' = 'left'): TableCell {
+  return { text, style: 'tableHead', alignment: align };
+}
+
+function buildFondationVerdictBanner(verdict: string): Content {
+  const v =
+    verdict === 'CONFORME'
+      ? { label: 'CONFORME', fill: COLORS.navy }
+      : verdict === 'NON_CONFORME'
+        ? { label: 'NON CONFORME', fill: COLORS.alert }
+        : { label: 'NON APPLICABLE', fill: COLORS.muted };
+  return {
+    margin: [0, 10, 0, 6],
+    table: {
+      widths: ['*'],
+      body: [
+        [
+          {
+            text: `Verdict : ${v.label}`,
+            color: COLORS.white,
+            bold: true,
+            fontSize: 12,
+            fillColor: v.fill,
+            margin: [12, 8, 12, 8],
+          },
+        ],
+      ],
+    },
+    layout: { hLineWidth: () => 0, vLineWidth: () => 0 },
+  };
+}
+
+function buildFondationBody(sealed: SealedContent): Content[] {
+  const input = (sealed.input ?? {}) as Record<string, unknown>;
+  const output = (sealed.output ?? {}) as Record<string, unknown>;
+  const body: Content[] = [];
+
+  body.push(buildFondationVerdictBanner(sealed.verdict));
+
+  // 1) ENTRÉES — géométrie & sol (table clé/valeur)
+  body.push(sectionTitle('Données d’entrée'));
+  const geo: TableCell[][] = [[fdnHead('Paramètre'), fdnHead('Valeur', 'right')]];
+  const kv = (p: string, val: string): void => {
+    geo.push([
+      { text: p, style: 'cell' },
+      { text: val, style: 'cell', alignment: 'right' },
+    ]);
+  };
+  kv('Forme de la fondation', FDN_FORME[String(input.forme)] ?? String(input.forme ?? '—'));
+  kv('Largeur B', fdnNum(input.B, 2, 'm'));
+  if (input.L != null && input.L !== '') kv('Longueur L', fdnNum(input.L, 2, 'm'));
+  kv('Profondeur d’encastrement D', fdnNum(input.D, 2, 'm'));
+  kv('Catégorie de sol', FDN_SOL[String(input.solCat)] ?? String(input.solCat ?? '—'));
+  kv('Type d’essai', FDN_ESSAI[String(input.essai)] ?? String(input.essai ?? '—'));
+  kv('Poids volumique γ (avant travaux)', fdnNum(input.gAvant, 1, 'kN/m³'));
+  kv('Poids volumique γ (après travaux)', fdnNum(input.gApres, 1, 'kN/m³'));
+  body.push({
+    table: { headerRows: 1, widths: ['*', 'auto'], body: geo },
+    layout: FINE_TABLE_LAYOUT,
+    margin: [0, 2, 0, 4],
+  });
+
+  // Profil de sondage
+  const sondage = (Array.isArray(input.sondage) ? input.sondage : []).filter(
+    isPlainObject,
+  ) as Record<string, unknown>[];
+  if (sondage.length > 0) {
+    const sb: TableCell[][] = [
+      [
+        fdnHead('Profondeur z', 'right'),
+        fdnHead('pl* (MPa)', 'right'),
+        fdnHead('EM (MPa)', 'right'),
+        fdnHead('qc (MPa)', 'right'),
+      ],
+    ];
+    for (const s of sondage) {
+      sb.push([
+        { text: fdnNum(s.z, 2, 'm'), style: 'cell', alignment: 'right' },
+        { text: fdnNum(s.pl, 2), style: 'cell', alignment: 'right' },
+        { text: fdnNum(s.em, 1), style: 'cell', alignment: 'right' },
+        { text: fdnNum(s.qc, 1), style: 'cell', alignment: 'right' },
+      ]);
+    }
+    body.push(fdnSubTitle('Profil de sondage'));
+    body.push({
+      table: { headerRows: 1, widths: ['*', '*', '*', '*'], body: sb },
+      layout: FINE_TABLE_LAYOUT,
+      margin: [0, 2, 0, 4],
+    });
+  }
+
+  // Cas de charge
+  const charges = (Array.isArray(input.charges) ? input.charges : []).filter(
+    isPlainObject,
+  ) as Record<string, unknown>[];
+  if (charges.length > 0) {
+    const cb: TableCell[][] = [
+      [
+        fdnHead('État-limite'),
+        fdnHead('Fz (kN)', 'right'),
+        fdnHead('Fx (kN)', 'right'),
+        fdnHead('Fy (kN)', 'right'),
+      ],
+    ];
+    for (const c of charges) {
+      cb.push([
+        { text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'), style: 'cell' },
+        { text: fdnNum(c.fz, 0), style: 'cell', alignment: 'right' },
+        { text: fdnNum(c.fx, 0), style: 'cell', alignment: 'right' },
+        { text: fdnNum(c.fy, 0), style: 'cell', alignment: 'right' },
+      ]);
+    }
+    body.push(fdnSubTitle('Cas de charge'));
+    body.push({
+      table: { headerRows: 1, widths: ['*', '*', '*', '*'], body: cb },
+      layout: FINE_TABLE_LAYOUT,
+      margin: [0, 2, 0, 4],
+    });
+  }
+
+  // 2) RÉSULTATS — vérifications par cas
+  body.push(sectionTitle('Résultats — vérifications'));
+  const cas = (Array.isArray(output.cas) ? output.cas : []).filter(
+    (c) => isPlainObject(c) && (c as Record<string, unknown>).invalide !== true,
+  ) as Record<string, unknown>[];
+
+  if (cas.length === 0) {
+    body.push({
+      text: 'Aucun cas de vérification exploitable.',
+      style: 'cellMuted',
+      margin: [0, 2, 0, 6],
+    });
+  } else {
+    // Portance (toujours)
+    const rb: TableCell[][] = [
+      [
+        fdnHead('État-limite'),
+        fdnHead('Résistance Rᵥ;d (kN)', 'right'),
+        fdnHead('Contrainte q_Rv;d (kPa)', 'right'),
+        fdnHead('Taux', 'right'),
+        fdnHead('Portance', 'center'),
+      ],
+    ];
+    for (const c of cas) {
+      const ok = c.portanceOk === true;
+      const taux =
+        typeof c.taux === 'number' && Number.isFinite(c.taux)
+          ? `${Math.round(c.taux * 100)} %`
+          : '—';
+      rb.push([
+        { text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'), style: 'cell' },
+        { text: fdnNum(c.Rtot, 1), style: 'cell', alignment: 'right' },
+        { text: fdnNum(c.qRvd, 1), style: 'cell', alignment: 'right' },
+        { text: taux, style: 'cell', alignment: 'right' },
+        {
+          text: ok ? '✓ OK' : '✗ NON',
+          style: 'cell',
+          alignment: 'center',
+          bold: true,
+          color: ok ? COLORS.navy : COLORS.alert,
+        },
+      ]);
+    }
+    body.push({
+      table: { headerRows: 1, widths: ['*', 'auto', 'auto', 'auto', 'auto'], body: rb },
+      layout: FINE_TABLE_LAYOUT,
+      margin: [0, 2, 0, 4],
+    });
+
+    // Glissement (si évalué sur ≥1 cas)
+    const glissCas = cas.filter((c) => c.Rhd != null);
+    if (glissCas.length > 0) {
+      const gb: TableCell[][] = [
+        [
+          fdnHead('État-limite'),
+          fdnHead('Résistance R_h;d (kN)', 'right'),
+          fdnHead('Taux', 'right'),
+          fdnHead('Glissement', 'center'),
+        ],
+      ];
+      for (const c of glissCas) {
+        const gok = c.glissementOk === true;
+        const tH =
+          typeof c.tauxH === 'number' && Number.isFinite(c.tauxH)
+            ? `${Math.round(c.tauxH * 100)} %`
+            : '—';
+        gb.push([
+          { text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'), style: 'cell' },
+          { text: fdnNum(c.Rhd, 1), style: 'cell', alignment: 'right' },
+          { text: tH, style: 'cell', alignment: 'right' },
+          {
+            text: gok ? '✓ OK' : '✗ NON',
+            style: 'cell',
+            alignment: 'center',
+            bold: true,
+            color: gok ? COLORS.navy : COLORS.alert,
+          },
+        ]);
+      }
+      body.push(fdnSubTitle('Vérification au glissement'));
+      body.push({
+        table: { headerRows: 1, widths: ['*', 'auto', 'auto', 'auto'], body: gb },
+        layout: FINE_TABLE_LAYOUT,
+        margin: [0, 2, 0, 4],
+      });
+    }
+
+    // Tassements (si calculés sur ≥1 cas)
+    const tassCas = cas.filter(
+      (c) =>
+        c.tassement != null ||
+        c.tassementSchmertmann != null ||
+        c.tassementOed != null ||
+        c.tassementElastique != null,
+    );
+    if (tassCas.length > 0) {
+      const tb: TableCell[][] = [
+        [fdnHead('État-limite'), fdnHead('Tassement estimé (mm)', 'right')],
+      ];
+      for (const c of tassCas) {
+        const t = fdnFirstFinite(
+          c.tassement,
+          c.tassementSchmertmann,
+          c.tassementOed,
+          c.tassementElastique,
+        );
+        tb.push([
+          { text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'), style: 'cell' },
+          { text: fdnNum(t, 1), style: 'cell', alignment: 'right' },
+        ]);
+      }
+      body.push(fdnSubTitle('Estimation des tassements'));
+      body.push({
+        table: { headerRows: 1, widths: ['*', 'auto'], body: tb },
+        layout: FINE_TABLE_LAYOUT,
+        margin: [0, 2, 0, 4],
+      });
+    }
+  }
+
+  // Avertissements (déjà rédigés/whitelistés côté moteur)
+  const warnings = output.warnings;
+  if (Array.isArray(warnings) && warnings.length > 0) {
+    body.push(fdnSubTitle('Avertissements'));
+    body.push({
+      text: warnings.map((w) => String(w)).join(' · '),
+      style: 'cellMuted',
+      color: COLORS.accent,
+      margin: [0, 2, 0, 4],
+    });
+  }
+
+  return body;
 }
 
 // ---------------------------------------------------------------------------
