@@ -236,6 +236,15 @@ function buildBody(sealed: SealedContent): Content[] {
   if (engineId === 'fondation-profonde-pieux') {
     return buildFonProfondeBody(sealed);
   }
+  if (engineId === 'radier-plaque') {
+    return buildRadierBody(sealed);
+  }
+  if (engineId === 'labo-classification-gtr') {
+    return buildLaboBody(sealed);
+  }
+  if (engineId === 'pressiometre-menard') {
+    return buildPressiometreBody(sealed);
+  }
   // FALLBACK générique : table clé-valeur propre (sans lignes-bruit), input puis output.
   return [
     sectionTitle('Données d’entrée'),
@@ -686,6 +695,146 @@ function buildFonProfondeBody(sealed: SealedContent): Content[] {
     });
   }
 
+  return body;
+}
+
+// ---------------------------------------------------------------------------
+// Présentations « analyse » (radier / labo GTR / pressiomètre) — extraction &
+// classification, SANS verdict de conformité. Clés nommées (fail-closed, DoD §8).
+// ---------------------------------------------------------------------------
+
+/** Bandeau neutre pour les moteurs d'analyse (pas de CONFORME/NON CONFORME). */
+function buildAnalyseBanner(): Content {
+  return {
+    margin: [0, 10, 0, 6],
+    table: {
+      widths: ['*'],
+      body: [
+        [
+          {
+            text: 'Résultat d’analyse — extraction / classification (sans verdict de conformité)',
+            color: COLORS.textSec2,
+            fontSize: 9,
+            fillColor: COLORS.groupFill,
+            margin: [12, 7, 12, 7],
+          },
+        ],
+      ],
+    },
+    layout: { hLineWidth: () => 0, vLineWidth: () => 0 },
+  };
+}
+
+/** Ajoute une ligne (label/valeur) à un corps de table si la valeur n'est pas « — ». */
+function fdnKvRow(rows: TableCell[][], label: string, value: string): void {
+  if (value === '—' || value === '') return;
+  rows.push([
+    { text: label, style: 'cell' },
+    { text: value, style: 'cell', alignment: 'right' },
+  ]);
+}
+
+function buildRadierBody(sealed: SealedContent): Content[] {
+  const o = (sealed.output ?? {}) as Record<string, unknown>;
+  const body: Content[] = [];
+  body.push(buildAnalyseBanner());
+  body.push(sectionTitle('Déflexions & distorsions'));
+  const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
+  fdnKvRow(t, 'Déflexion maximale w_max', fdnNum(o.wMax, 2, 'mm'));
+  fdnKvRow(t, 'Déflexion minimale w_min', fdnNum(o.wMin, 2, 'mm'));
+  fdnKvRow(t, 'Déflexion différentielle', fdnNum(o.diff, 2, 'mm'));
+  fdnKvRow(t, 'Distorsion angulaire gouvernante β', fdnNum(o.betaGov, 2, '‰'));
+  fdnKvRow(t, 'Nombre de radiers', fdnNum(o.nRafts, 0));
+  if (t.length > 1) {
+    body.push({
+      table: { headerRows: 1, widths: ['*', 'auto'], body: t },
+      layout: FINE_TABLE_LAYOUT,
+      margin: [0, 2, 0, 4],
+    });
+  }
+  return body;
+}
+
+function buildLaboBody(sealed: SealedContent): Content[] {
+  const o = (sealed.output ?? {}) as Record<string, unknown>;
+  const body: Content[] = [];
+  body.push(buildAnalyseBanner());
+
+  // Classe GTR (résultat principal)
+  body.push(sectionTitle('Classification GTR (NF P 11-300)'));
+  const cl = o.classe;
+  let classe = '';
+  if (cl != null && typeof cl === 'object') {
+    const c = cl as Record<string, unknown>;
+    const fam = typeof c.fam === 'string' ? c.fam : '';
+    const code = c.code != null && c.code !== '' ? String(c.code) : '';
+    classe = (fam + code).trim();
+  }
+  body.push({
+    text: classe ? `Classe : ${classe}` : 'Classe non déterminée.',
+    fontSize: classe ? 13 : 9,
+    bold: !!classe,
+    color: classe ? COLORS.navy : COLORS.muted,
+    margin: [0, 2, 0, 6],
+  });
+
+  // Paramètres d'identification
+  const t: TableCell[][] = [[fdnHead('Paramètre'), fdnHead('Valeur', 'right')]];
+  fdnKvRow(t, 'Dmax', fdnNum(o.dmax, 0, 'mm'));
+  fdnKvRow(t, 'Passant à 80 µm', fdnNum(o.p80, 0, '%'));
+  fdnKvRow(t, 'Passant à 2 mm', fdnNum(o.p2, 0, '%'));
+  fdnKvRow(t, 'Limite de liquidité w_L', fdnNum(o.wl, 0, '%'));
+  fdnKvRow(t, 'Limite de plasticité w_P', fdnNum(o.wp, 0, '%'));
+  fdnKvRow(t, 'Indice de plasticité I_P', fdnNum(o.ip, 0));
+  fdnKvRow(t, 'Valeur au bleu VBS', fdnNum(o.vbs, 2));
+  fdnKvRow(t, 'Indice CBR', fdnNum(o.cbr, 0));
+  if (t.length > 1) {
+    body.push(sectionTitle('Paramètres d’identification'));
+    body.push({
+      table: { headerRows: 1, widths: ['*', 'auto'], body: t },
+      layout: FINE_TABLE_LAYOUT,
+      margin: [0, 2, 0, 4],
+    });
+  }
+  return body;
+}
+
+function buildPressiometreBody(sealed: SealedContent): Content[] {
+  const o = (sealed.output ?? {}) as Record<string, unknown>;
+  const body: Content[] = [];
+  body.push(buildAnalyseBanner());
+
+  body.push(sectionTitle('Résultats de dépouillement'));
+  const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
+  fdnKvRow(t, 'Pression limite p_L', fdnNum(o.pL, 2, 'MPa'));
+  fdnKvRow(t, 'Pression limite nette p_L*', fdnNum(o.pLNette, 2, 'MPa'));
+  fdnKvRow(t, 'Pression de fluage nette p_f*', fdnNum(o.pfNette, 2, 'MPa'));
+  fdnKvRow(t, 'Module pressiométrique E_M', fdnNum(o.EM, 1, 'MPa'));
+  fdnKvRow(t, 'Rapport E_M / p_L*', fdnNum(o.ratioEMpL, 1));
+  if (t.length > 1) {
+    body.push({
+      table: { headerRows: 1, widths: ['*', 'auto'], body: t },
+      layout: FINE_TABLE_LAYOUT,
+      margin: [0, 2, 0, 4],
+    });
+  }
+
+  // Classification du sol (résultats textuels)
+  const cat = typeof o.categorieLibelle === 'string' ? o.categorieLibelle : '';
+  const cons = typeof o.consolidation === 'string' ? o.consolidation : '';
+  if (cat || cons) {
+    const ct: TableCell[][] = [[fdnHead('Paramètre'), fdnHead('Valeur', 'right')]];
+    if (cat) fdnKvRow(ct, 'Catégorie de sol', cat);
+    if (cons) fdnKvRow(ct, 'État de consolidation', cons);
+    if (ct.length > 1) {
+      body.push(sectionTitle('Classification du sol'));
+      body.push({
+        table: { headerRows: 1, widths: ['*', 'auto'], body: ct },
+        layout: FINE_TABLE_LAYOUT,
+        margin: [0, 2, 0, 4],
+      });
+    }
+  }
   return body;
 }
 
