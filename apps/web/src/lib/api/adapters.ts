@@ -367,6 +367,41 @@ function terzaghiVerdict(o: Record<string, unknown>): 'PASS' | 'FAIL' {
 }
 
 /**
+ * CONTRAT client-safe du moteur pieux (fondation profonde, NF P 94-262 / EC7).
+ * Lit UNIQUEMENT les résultats whitelistés par PieuxOutputSchema : résistances
+ * (Rb;k, Rs;k, Rc;k, Rc;d), sollicitation ELU, taux (calculé Fd/Rc;d), tassement ELS,
+ * + vérifications par combinaison. Exclut warnings/erreur + échos non numériques.
+ * Clés nommées uniquement (fail-closed, DoD §8).
+ */
+function buildPieuxRows(o: Record<string, unknown>): CalcOutputRow[] {
+  const rows: CalcOutputRow[] = [];
+  const okElu: 'ok' | 'fail' = o.allOk === true ? 'ok' : 'fail';
+  pushRow(rows, 'Résistance de pointe Rb;k', o.RbK, 'kN');
+  pushRow(rows, 'Résistance de frottement Rs;k', o.RsK, 'kN');
+  pushRow(rows, 'Résistance caractéristique Rc;k', o.RcK, 'kN');
+  pushRow(rows, 'Résistance de calcul Rc;d', o.RcD, 'kN');
+  pushRow(rows, 'Sollicitation ELU Fd', o.FduELU, 'kN', okElu);
+  const fd = finiteOrNull(o.FduELU);
+  const rcd = finiteOrNull(o.RcD);
+  if (fd !== null && rcd !== null && rcd !== 0) {
+    rows.push({ label: 'Taux de mobilisation ELU', value: (fd / rcd) * 100, unit: '%', status: okElu });
+  }
+  pushRow(rows, 'Tassement estimé (ELS)', o.tassementELS, 'mm');
+  const verifs = Array.isArray(o.verifications) ? o.verifications : [];
+  for (const v of verifs) {
+    if (v == null || typeof v !== 'object') continue;
+    const c = v as Record<string, unknown>;
+    const nom = typeof c.nom === 'string' ? c.nom : 'Vérification';
+    const fdv = finiteOrNull(c.Fd);
+    const rdv = finiteOrNull(c.Rd);
+    const st: 'ok' | 'fail' = fdv !== null && rdv !== null && fdv <= rdv ? 'ok' : 'fail';
+    pushRow(rows, `${nom} — sollicitation Fd`, c.Fd, 'kN', st);
+    pushRow(rows, `${nom} — résistance Rd`, c.Rd, 'kN');
+  }
+  return rows;
+}
+
+/**
  * Re-whiteliste un tableau de lignes : ne garde QUE `{label, value, unit, status?}`
  * par ligne, jamais de spread du brut. Toute ligne incomplète/non finie est écartée.
  */
@@ -413,6 +448,10 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
   // terzaghi (fondation superficielle) : sortie {cas:[…]} → whitelist par cas
   if (Array.isArray(o.cas)) {
     return { verdict: terzaghiVerdict(o), rows: buildTerzaghiRows(o) };
+  }
+  // pieux (fondation profonde) : verdict global booléen `allOk` + résistances
+  if (typeof o.allOk === 'boolean') {
+    return { verdict: o.allOk === true ? 'PASS' : 'FAIL', rows: buildPieuxRows(o) };
   }
   // Moteur non reconnu : fail-closed, aucune sortie brute ne traverse vers le navigateur.
   return null;
