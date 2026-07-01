@@ -50,7 +50,22 @@ const BOOLEAN_VERDICT_FIELD: Readonly<Record<string, string>> = {
  * @throws VerdictIndeterminableError si un moteur a verdict booleen attendu ne
  *         porte pas un booleen exploitable (fail-closed : pas de PV sans verdict).
  */
+/**
+ * Moteurs a verdict AGREGE PAR CAS (verifications multi-etats-limites) : le verdict
+ * global est CONFORME si TOUS les cas valides passent la portance (et le glissement
+ * quand il est evalue), sinon NON_CONFORME. Conclusion de conformite standard
+ * (NF P 94-261 / EC7 : une fondation est conforme si toutes ses verifications
+ * ELU/ELS passent). Decision titulaire (01/07/2026) : terzaghi porte un verdict
+ * global (front + PV coherents) au lieu de NON_APPLICABLE.
+ */
+const CASES_VERDICT_ENGINES: ReadonlySet<string> = new Set([
+  'fondation-superficielle',
+]);
+
 export function resolveVerdict(engineId: string, output: unknown): PvVerdict {
+  if (CASES_VERDICT_ENGINES.has(engineId)) {
+    return resolveCasesVerdict(engineId, output);
+  }
   const field = BOOLEAN_VERDICT_FIELD[engineId];
   if (field === undefined) {
     // Moteur sans verdict global de conformite : NON_APPLICABLE (explicite, scelle).
@@ -69,4 +84,40 @@ export function resolveVerdict(engineId: string, output: unknown): PvVerdict {
     throw new VerdictIndeterminableError(engineId);
   }
   return value ? 'CONFORME' : 'NON_CONFORME';
+}
+
+/**
+ * Verdict agrege par cas (terzaghi). FAIL-CLOSED : si `cas` absent, vide, ou un cas
+ * valide ne porte pas un `portanceOk` booleen exploitable, on LEVE (pas de PV sans
+ * verdict determine). CONFORME ssi tous les cas valides passent portance ET
+ * glissement (quand evalue) ; sinon NON_CONFORME.
+ */
+function resolveCasesVerdict(engineId: string, output: unknown): PvVerdict {
+  if (typeof output !== 'object' || output === null) {
+    throw new VerdictIndeterminableError(engineId);
+  }
+  const cas = (output as Record<string, unknown>).cas;
+  if (!Array.isArray(cas)) {
+    throw new VerdictIndeterminableError(engineId);
+  }
+  const valid = cas.filter(
+    (c): c is Record<string, unknown> =>
+      c !== null &&
+      typeof c === 'object' &&
+      (c as Record<string, unknown>).invalide !== true,
+  );
+  if (valid.length === 0) {
+    throw new VerdictIndeterminableError(engineId);
+  }
+  for (const c of valid) {
+    if (typeof c.portanceOk !== 'boolean') {
+      throw new VerdictIndeterminableError(engineId);
+    }
+  }
+  const allOk = valid.every(
+    (c) =>
+      c.portanceOk === true &&
+      (c.glissementOk === undefined || c.glissementOk === true),
+  );
+  return allOk ? 'CONFORME' : 'NON_CONFORME';
 }

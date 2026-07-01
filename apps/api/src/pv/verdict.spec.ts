@@ -41,7 +41,6 @@ describe('resolveVerdict', () => {
 
   describe('moteurs SANS verdict global -> NON_APPLICABLE (explicite, scelle)', () => {
     it.each([
-      'fondation-superficielle',
       'radier-plaque',
       'pressiometre-menard',
       'labo-classification-gtr',
@@ -50,6 +49,46 @@ describe('resolveVerdict', () => {
       expect(resolveVerdict(engineId, { quelconque: 1 })).toBe<PvVerdict>(
         'NON_APPLICABLE',
       );
+    });
+  });
+
+  describe('fondation superficielle (terzaghi) — verdict agrege par cas', () => {
+    it('tous les cas portants -> CONFORME', () => {
+      expect(
+        resolveVerdict('fondation-superficielle', {
+          cas: [{ portanceOk: true }, { portanceOk: true, glissementOk: true }],
+        }),
+      ).toBe<PvVerdict>('CONFORME');
+    });
+
+    it('un cas non portant -> NON_CONFORME', () => {
+      expect(
+        resolveVerdict('fondation-superficielle', {
+          cas: [{ portanceOk: true }, { portanceOk: false }],
+        }),
+      ).toBe<PvVerdict>('NON_CONFORME');
+    });
+
+    it('glissement en echec -> NON_CONFORME', () => {
+      expect(
+        resolveVerdict('fondation-superficielle', {
+          cas: [{ portanceOk: true, glissementOk: false }],
+        }),
+      ).toBe<PvVerdict>('NON_CONFORME');
+    });
+
+    it('FAIL-CLOSED : cas absent -> leve', () => {
+      expect(() =>
+        resolveVerdict('fondation-superficielle', { quelconque: 1 }),
+      ).toThrow(VerdictIndeterminableError);
+    });
+
+    it('FAIL-CLOSED : portanceOk non-booleen -> leve', () => {
+      expect(() =>
+        resolveVerdict('fondation-superficielle', {
+          cas: [{ portanceOk: 'oui' }],
+        }),
+      ).toThrow(VerdictIndeterminableError);
     });
   });
 
