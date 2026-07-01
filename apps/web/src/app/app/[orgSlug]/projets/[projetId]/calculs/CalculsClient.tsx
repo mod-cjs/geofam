@@ -1332,10 +1332,27 @@ function CalcResults({
         )}
       </div>
 
-      {/* Verdict */}
-      {hasOutput && output?.verdict && (
+      {/* Verdict (conformité) — pass/fail uniquement */}
+      {hasOutput && (output?.verdict === 'PASS' || output?.verdict === 'FAIL') && (
         <div style={{ marginBottom: 16 }}>
           <VerdictBanner verdict={output.verdict === 'PASS' ? 'pass' : 'fail'} />
+        </div>
+      )}
+      {/* Moteur d'analyse/extraction : bandeau informatif (pas de conformité) */}
+      {hasOutput && output?.verdict === 'NA' && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '12px 16px',
+            background: 'var(--surface-canvas)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          Résultat d’analyse — ce moteur produit une extraction / classification, sans
+          verdict de conformité.
         </div>
       )}
 
@@ -1454,7 +1471,7 @@ function CalcResults({
                       color: 'var(--text-primary)',
                     }}
                   >
-                    {fmt(row.value)}
+                    {typeof row.value === 'number' ? fmt(row.value) : row.value}
                   </td>
                   <td
                     style={{

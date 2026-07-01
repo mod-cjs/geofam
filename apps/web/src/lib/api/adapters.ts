@@ -401,6 +401,67 @@ function buildPieuxRows(o: Record<string, unknown>): CalcOutputRow[] {
   return rows;
 }
 
+/** Ligne TEXTUELLE (résultat non numérique : classe, catégorie…). Vide → ignorée. */
+function pushText(rows: CalcOutputRow[], label: string, value: unknown, unit = ''): void {
+  if (typeof value !== 'string' || value.trim() === '') return;
+  rows.push({ label, value: value.trim(), unit });
+}
+
+/**
+ * radier / plaque sur sol multicouche (EF) — déflexions & distorsions.
+ * Moteur d'analyse (pas de verdict de conformité). Clés nommées (fail-closed §8).
+ */
+function buildRadierRows(o: Record<string, unknown>): CalcOutputRow[] {
+  const rows: CalcOutputRow[] = [];
+  pushRow(rows, 'Déflexion maximale w_max', o.wMax, 'mm');
+  pushRow(rows, 'Déflexion minimale w_min', o.wMin, 'mm');
+  pushRow(rows, 'Déflexion différentielle', o.diff, 'mm');
+  pushRow(rows, 'Distorsion angulaire gouvernante β', o.betaGov, '‰');
+  pushRow(rows, 'Nombre de radiers', o.nRafts, '');
+  return rows;
+}
+
+/**
+ * labo — classification GTR (NF P 11-300) + paramètres d'identification.
+ * La classe est un RÉSULTAT textuel. Clés nommées (fail-closed §8).
+ */
+function buildLaboRows(o: Record<string, unknown>): CalcOutputRow[] {
+  const rows: CalcOutputRow[] = [];
+  const cl = o.classe;
+  if (cl != null && typeof cl === 'object') {
+    const c = cl as Record<string, unknown>;
+    const fam = typeof c.fam === 'string' ? c.fam : '';
+    const code = c.code != null && c.code !== '' ? String(c.code) : '';
+    const label = (fam + code).trim();
+    if (label) rows.push({ label: 'Classe GTR', value: label, unit: '' });
+  }
+  pushRow(rows, 'Dmax', o.dmax, 'mm');
+  pushRow(rows, 'Passant à 80 µm', o.p80, '%');
+  pushRow(rows, 'Passant à 2 mm', o.p2, '%');
+  pushRow(rows, 'Limite de liquidité w_L', o.wl, '%');
+  pushRow(rows, 'Limite de plasticité w_P', o.wp, '%');
+  pushRow(rows, 'Indice de plasticité I_P', o.ip, '');
+  pushRow(rows, 'Valeur au bleu VBS', o.vbs, '');
+  pushRow(rows, 'Indice CBR', o.cbr, '');
+  return rows;
+}
+
+/**
+ * pressiomètre Ménard — dépouillement (p_L, E_M, catégorie de sol).
+ * `categorieLibelle`/`consolidation` = résultats textuels. Clés nommées (fail-closed §8).
+ */
+function buildPressiometreRows(o: Record<string, unknown>): CalcOutputRow[] {
+  const rows: CalcOutputRow[] = [];
+  pushRow(rows, 'Pression limite p_L', o.pL, 'MPa');
+  pushRow(rows, 'Pression limite nette p_L*', o.pLNette, 'MPa');
+  pushRow(rows, 'Pression de fluage nette p_f*', o.pfNette, 'MPa');
+  pushRow(rows, 'Module pressiométrique E_M', o.EM, 'MPa');
+  pushRow(rows, 'Rapport E_M / p_L*', o.ratioEMpL, '');
+  pushText(rows, 'Catégorie de sol', o.categorieLibelle);
+  pushText(rows, 'État de consolidation', o.consolidation);
+  return rows;
+}
+
 /**
  * Re-whiteliste un tableau de lignes : ne garde QUE `{label, value, unit, status?}`
  * par ligne, jamais de spread du brut. Toute ligne incomplète/non finie est écartée.
@@ -452,6 +513,18 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
   // pieux (fondation profonde) : verdict global booléen `allOk` + résistances
   if (typeof o.allOk === 'boolean') {
     return { verdict: o.allOk === true ? 'PASS' : 'FAIL', rows: buildPieuxRows(o) };
+  }
+  // radier (plaque/sol multicouche) : déflexions/distorsions — pas de verdict (NA)
+  if (typeof o.betaGov === 'number' || 'nRafts' in o) {
+    return { verdict: 'NA', rows: buildRadierRows(o) };
+  }
+  // labo (classification GTR) : classe + paramètres — pas de verdict (NA)
+  if (o.classe != null && typeof o.classe === 'object') {
+    return { verdict: 'NA', rows: buildLaboRows(o) };
+  }
+  // pressiomètre Ménard (dépouillement) : pL/EM/catégorie — pas de verdict (NA)
+  if ('categorie' in o && ('pL' in o || 'ratioEMpL' in o)) {
+    return { verdict: 'NA', rows: buildPressiometreRows(o) };
   }
   // Moteur non reconnu : fail-closed, aucune sortie brute ne traverse vers le navigateur.
   return null;

@@ -99,7 +99,8 @@ export type CalcStatus = 'DRAFT' | 'PENDING' | 'DONE' | 'ERROR';
  */
 export interface CalcOutputRow {
   label: string;
-  value: number;
+  /** number = grandeur formatée ; string = résultat textuel (classe, catégorie…). */
+  value: number | string;
   unit: string;
   status?: 'ok' | 'fail';
 }
@@ -109,7 +110,8 @@ export interface CalcOutputRow {
  * C'est la seule forme que le ResultPanel lit (`output.verdict`, `output.rows`).
  */
 export interface NormalizedCalcOutput {
-  verdict: 'PASS' | 'FAIL';
+  /** 'NA' = moteur d'extraction/classification (pas de verdict de conformité). */
+  verdict: 'PASS' | 'FAIL' | 'NA';
   rows: CalcOutputRow[];
 }
 
