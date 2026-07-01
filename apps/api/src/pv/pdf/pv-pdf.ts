@@ -233,6 +233,9 @@ function buildBody(sealed: SealedContent): Content[] {
   if (engineId === 'fondation-superficielle') {
     return buildFondationBody(sealed);
   }
+  if (engineId === 'fondation-profonde-pieux') {
+    return buildFonProfondeBody(sealed);
+  }
   // FALLBACK générique : table clé-valeur propre (sans lignes-bruit), input puis output.
   return [
     sectionTitle('Données d’entrée'),
@@ -548,6 +551,135 @@ function buildFondationBody(sealed: SealedContent): Content[] {
     body.push(fdnSubTitle('Avertissements'));
     body.push({
       text: warnings.map((w) => String(w)).join(' · '),
+      style: 'cellMuted',
+      color: COLORS.accent,
+      margin: [0, 2, 0, 4],
+    });
+  }
+
+  return body;
+}
+
+// ---------------------------------------------------------------------------
+// Présentation « fondation profonde » (pieux / NF P 94-262, EC7)
+// ---------------------------------------------------------------------------
+const PIEUX_METH: Record<string, string> = {
+  pmt: 'Pressiomètre Ménard (PMT)',
+  cpt: 'Pénétromètre statique (CPT)',
+  cphi: 'Paramètres de laboratoire (c–φ)',
+};
+const PIEUX_SENS: Record<string, string> = {
+  comp: 'Compression',
+  trac: 'Traction',
+};
+
+function buildFonProfondeBody(sealed: SealedContent): Content[] {
+  const output = (sealed.output ?? {}) as Record<string, unknown>;
+  const body: Content[] = [];
+
+  body.push(buildFondationVerdictBanner(sealed.verdict));
+
+  // 1) Caractéristiques du pieu (échos d'entrée whitelistés)
+  body.push(sectionTitle('Caractéristiques du pieu'));
+  const geo: TableCell[][] = [[fdnHead('Paramètre'), fdnHead('Valeur', 'right')]];
+  const kv = (p: string, val: string): void => {
+    geo.push([
+      { text: p, style: 'cell' },
+      { text: val, style: 'cell', alignment: 'right' },
+    ]);
+  };
+  kv('Diamètre / largeur B', fdnNum(output.B, 2, 'm'));
+  kv('Profondeur de base D', fdnNum(output.D, 2, 'm'));
+  kv('Catégorie de pieu', fdnNum(output.categorie, 0));
+  kv('Méthode de portance', PIEUX_METH[String(output.methode)] ?? String(output.methode ?? '—'));
+  kv('Sens de sollicitation', PIEUX_SENS[String(output.sens)] ?? String(output.sens ?? '—'));
+  body.push({
+    table: { headerRows: 1, widths: ['*', 'auto'], body: geo },
+    layout: FINE_TABLE_LAYOUT,
+    margin: [0, 2, 0, 4],
+  });
+
+  // 2) Résistances de calcul
+  body.push(sectionTitle('Résistances de calcul'));
+  const rb: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
+  const rr = (p: string, v: unknown): void => {
+    const n = fdnNum(v, 1, 'kN');
+    if (n !== '—') rb.push([{ text: p, style: 'cell' }, { text: n, style: 'cell', alignment: 'right' }]);
+  };
+  rr('Résistance de pointe Rb;k', output.RbK);
+  rr('Résistance de frottement Rs;k', output.RsK);
+  rr('Résistance caractéristique Rc;k', output.RcK);
+  rr('Résistance de calcul Rc;d', output.RcD);
+  rr('Résistance de fluage Rc;cr;k', output.RcrK);
+  body.push({
+    table: { headerRows: 1, widths: ['*', 'auto'], body: rb },
+    layout: FINE_TABLE_LAYOUT,
+    margin: [0, 2, 0, 4],
+  });
+
+  // 3) Sollicitations & vérification
+  body.push(sectionTitle('Sollicitations & vérification'));
+  const okElu = output.allOk === true;
+  const sb: TableCell[][] = [
+    [
+      fdnHead('Combinaison'),
+      fdnHead('Sollicitation Fd (kN)', 'right'),
+      fdnHead('Résistance (kN)', 'right'),
+      fdnHead('Vérif.', 'center'),
+    ],
+  ];
+  const checkRow = (nom: string, fd: unknown, rd: unknown): void => {
+    const f = typeof fd === 'number' && Number.isFinite(fd) ? fd : null;
+    const r = typeof rd === 'number' && Number.isFinite(rd) ? rd : null;
+    if (f === null && r === null) return;
+    const ok = f !== null && r !== null ? f <= r : okElu;
+    sb.push([
+      { text: nom, style: 'cell' },
+      { text: fdnNum(fd, 0), style: 'cell', alignment: 'right' },
+      { text: fdnNum(rd, 0), style: 'cell', alignment: 'right' },
+      {
+        text: ok ? '✓ OK' : '✗ NON',
+        style: 'cell',
+        alignment: 'center',
+        bold: true,
+        color: ok ? COLORS.navy : COLORS.alert,
+      },
+    ]);
+  };
+  const verifs = Array.isArray(output.verifications) ? output.verifications : [];
+  if (verifs.length > 0) {
+    for (const v of verifs) {
+      if (v === null || typeof v !== 'object') continue;
+      const c = v as Record<string, unknown>;
+      checkRow(typeof c.nom === 'string' ? c.nom : 'Vérification', c.Fd, c.Rd);
+    }
+  } else {
+    // Combinaisons standard depuis les échos scellés.
+    checkRow('ELU — portance (DA2)', output.FduELU, output.RcD);
+    checkRow('ELS caractéristique — fluage', output.FdCar, output.RcrCar);
+    checkRow('ELS quasi-permanent — fluage', output.FdQp, output.RcrQp);
+  }
+  if (sb.length > 1) {
+    body.push({
+      table: { headerRows: 1, widths: ['*', 'auto', 'auto', 'auto'], body: sb },
+      layout: FINE_TABLE_LAYOUT,
+      margin: [0, 2, 0, 4],
+    });
+  }
+
+  // 4) Tassement ELS (si estimé)
+  const tass = fdnNum(output.tassementELS, 1, 'mm');
+  if (tass !== '—') {
+    body.push(fdnSubTitle('Tassement (ELS)'));
+    body.push({ text: tass, style: 'cell', margin: [0, 2, 0, 4] });
+  }
+
+  // Avertissements
+  const w = output.warnings;
+  if (Array.isArray(w) && w.length > 0) {
+    body.push(fdnSubTitle('Avertissements'));
+    body.push({
+      text: w.map((x) => String(x)).join(' · '),
       style: 'cellMuted',
       color: COLORS.accent,
       margin: [0, 2, 0, 4],
