@@ -677,6 +677,10 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
             }}
             onSubmit={handleRunCalc}
             onBack={() => setPanel({ mode: 'select-engine' })}
+            onLoadScenario={(scenario) => {
+              setFormValues((prev) => ({ ...prev, ...scenario }));
+              setFormErrors({});
+            }}
           />
         )}
 
@@ -1029,6 +1033,7 @@ function CalcForm({
   onFieldChange,
   onSubmit,
   onBack,
+  onLoadScenario,
 }: {
   descriptor: EngineDescriptor;
   formValues: Record<string, string>;
@@ -1038,6 +1043,7 @@ function CalcForm({
   onFieldChange: (key: string, value: string) => void;
   onSubmit: (e?: FormEvent) => void;
   onBack: () => void;
+  onLoadScenario: (scenario: Record<string, string>) => void;
 }) {
   // Validation au blur d'un champ numérique — cohérente avec le check submit (Bug E1)
   function makeOnValidate(field: FieldDescriptor) {
@@ -1092,6 +1098,40 @@ function CalcForm({
           {descriptor.label}
         </span>
       </div>
+
+      {descriptor.scenarios && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            marginBottom: 16,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+          }}
+        >
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+            Jeux d’essai :
+          </span>
+          {descriptor.scenarios.conforme && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onLoadScenario(descriptor.scenarios!.conforme!)}
+            >
+              Cas conforme
+            </Button>
+          )}
+          {descriptor.scenarios.nonConforme && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onLoadScenario(descriptor.scenarios!.nonConforme!)}
+            >
+              Cas non conforme
+            </Button>
+          )}
+        </div>
+      )}
 
       <form onSubmit={onSubmit} noValidate>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

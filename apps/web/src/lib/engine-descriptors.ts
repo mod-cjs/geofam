@@ -61,6 +61,15 @@ export interface EngineDescriptor {
    * déjà converties en nombres par le formulaire générique.
    */
   buildPayload: (flat: Record<string, unknown>) => unknown;
+  /**
+   * Jeux d'essai préchargeables (facilite les tests) : chaque scénario est un
+   * ensemble de valeurs de champ (clés `flat`) appliquées sur les exemples, pour
+   * produire un cas CONFORME ou NON CONFORME. Optionnel (moteurs à verdict).
+   */
+  scenarios?: {
+    conforme?: Record<string, string>;
+    nonConforme?: Record<string, string>;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +183,10 @@ const burmisterDescriptor: EngineDescriptor = {
       },
     };
   },
+  scenarios: {
+    conforme: { traffic_T: '10', layer1_h: '0.08', layer2_h: '0.20', layer3_h: '0.40' },
+    nonConforme: { traffic_T: '150', layer1_h: '0.06', layer2_h: '0.10', layer3_h: '0.20' },
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -270,6 +283,10 @@ const terzaghiDescriptor: EngineDescriptor = {
         fy: Number.isFinite(Number(flat['charge_fy'])) ? Number(flat['charge_fy']) : undefined,
       }],
     };
+  },
+  scenarios: {
+    conforme: { charge_fz: '500' },
+    nonConforme: { charge_fz: '8000' },
   },
 };
 
@@ -462,6 +479,10 @@ const pieuxDescriptor: EngineDescriptor = {
       layers,
       cpt: { step: 0.2, pts: [] },
     };
+  },
+  scenarios: {
+    conforme: { c_G: '150', c_Q: '50' },
+    nonConforme: { c_G: '800', c_Q: '200' },
   },
 };
 
