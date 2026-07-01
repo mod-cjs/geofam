@@ -740,10 +740,12 @@ function buildRadierBody(sealed: SealedContent): Content[] {
   body.push(buildAnalyseBanner());
   body.push(sectionTitle('Déflexions & distorsions'));
   const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
-  fdnKvRow(t, 'Tassement maximal w_max', fdnNum(o.wMax, 3, 'm'));
-  fdnKvRow(t, 'Tassement minimal w_min', fdnNum(o.wMin, 3, 'm'));
-  fdnKvRow(t, 'Tassement différentiel', fdnNum(o.diff, 3, 'm'));
-  fdnKvRow(t, 'Distorsion angulaire gouvernante β', fdnNum(o.betaGov, 5, 'rad'));
+  // Moteur radier : tassements en mm, distorsion en ‰ (cohérent physique ;
+  // le commentaire du contrat de sortie dit m/rad — erroné, à recaler STARFIRE).
+  fdnKvRow(t, 'Tassement maximal w_max', fdnNum(o.wMax, 2, 'mm'));
+  fdnKvRow(t, 'Tassement minimal w_min', fdnNum(o.wMin, 2, 'mm'));
+  fdnKvRow(t, 'Tassement différentiel', fdnNum(o.diff, 2, 'mm'));
+  fdnKvRow(t, 'Distorsion angulaire gouvernante β', fdnNum(o.betaGov, 2, '‰'));
   fdnKvRow(t, 'Nombre de radiers', fdnNum(o.nRafts, 0));
   if (t.length > 1) {
     body.push({
