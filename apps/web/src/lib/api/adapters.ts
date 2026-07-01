@@ -413,10 +413,13 @@ function pushText(rows: CalcOutputRow[], label: string, value: unknown, unit = '
  */
 function buildRadierRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
-  pushRow(rows, 'Tassement maximal w_max', o.wMax, 'm');
-  pushRow(rows, 'Tassement minimal w_min', o.wMin, 'm');
-  pushRow(rows, 'Tassement différentiel', o.diff, 'm');
-  pushRow(rows, 'Distorsion angulaire gouvernante β', o.betaGov, 'rad');
+  // NB : le moteur radier renvoie les tassements en mm et la distorsion en ‰ —
+  // cohérent avec la physique (radier 10×6 m, 2000 kN, sol E=20 MPa → ~11 mm).
+  // Le COMMENTAIRE du contrat de sortie (m/rad) est erroné (à recaler avec STARFIRE).
+  pushRow(rows, 'Tassement maximal w_max', o.wMax, 'mm');
+  pushRow(rows, 'Tassement minimal w_min', o.wMin, 'mm');
+  pushRow(rows, 'Tassement différentiel', o.diff, 'mm');
+  pushRow(rows, 'Distorsion angulaire gouvernante β', o.betaGov, '‰');
   pushRow(rows, 'Nombre de radiers', o.nRafts, '');
   return rows;
 }
