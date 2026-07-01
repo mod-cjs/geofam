@@ -413,9 +413,14 @@ function pushText(rows: CalcOutputRow[], label: string, value: unknown, unit = '
  */
 function buildRadierRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
-  // NB : le moteur radier renvoie les tassements en mm et la distorsion en ‰ —
-  // cohérent avec la physique (radier 10×6 m, 2000 kN, sol E=20 MPa → ~11 mm).
-  // Le COMMENTAIRE du contrat de sortie (m/rad) est erroné (à recaler avec STARFIRE).
+  // UNITÉS radier — TRANCHÉ (preuve : physique + solveModel de référence identique au bit
+  // près à notre port + cohérence inter-cas). Le solveur sort ses déplacements
+  // NUMÉRIQUEMENT en mm (piège d'unité E-en-MPa × charges-en-kN × géométrie-en-m) → les
+  // tassements sont en mm et la distorsion (Δw/L) en ‰ (= 10⁻³ rad). Vérifié sur cas SANS
+  // singularité (radier 6×6, charge surfacique 50 kPa, limon E=8 MPa → wMax=6,25 mm ; 6,25 m
+  // ou 6251 mm seraient physiquement impossibles). NB : l'annotation « m/rad » du contrat
+  // décrit l'unité SI VISÉE, pas la sortie numérique ; l'outil GEOPLAQUE_V10 du client
+  // affiche wMax*1000 (sur-rapport ×1000) — on ne le copie pas.
   pushRow(rows, 'Tassement maximal w_max', o.wMax, 'mm');
   pushRow(rows, 'Tassement minimal w_min', o.wMin, 'mm');
   pushRow(rows, 'Tassement différentiel', o.diff, 'mm');
