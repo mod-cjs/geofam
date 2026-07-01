@@ -24,14 +24,12 @@ import {
   AlertCircle,
   Loader2,
   FileCheck2,
-  Info,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, useCallback, type FormEvent } from 'react';
+import { useEffect, useRef, useState, useCallback, type FormEvent, type ReactNode } from 'react';
 
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Tooltip } from '@/components/ui/Tooltip';
 import { DomainTag } from '@/components/ui/DomainTag';
 import type { Domain } from '@/components/ui/DomainTag';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -967,62 +965,138 @@ function EngineSelector({
 }
 
 // ---------------------------------------------------------------------------
-// Formulaire de saisie dynamique (Lot 3 — depuis engine-descriptors)
+// Helpers pour le formulaire structuré en cartes de section
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Tooltip d'aide par champ — expose unit / example / hint / bornes (Bug E2)
-// ---------------------------------------------------------------------------
+interface SectionGroup {
+  section: FieldDescriptor;
+  fields: FieldDescriptor[];
+}
 
-function buildFieldTooltipContent(field: FieldDescriptor): string | null {
+/** Regroupe les champs du descripteur par section (type:'section'). */
+function groupFieldsBySection(fields: FieldDescriptor[]): {
+  preamble: FieldDescriptor[];
+  sections: SectionGroup[];
+} {
+  const preamble: FieldDescriptor[] = [];
+  const sections: SectionGroup[] = [];
+  let current: SectionGroup | null = null;
+  for (const f of fields) {
+    if (f.type === 'section') {
+      current = { section: f, fields: [] };
+      sections.push(current);
+    } else if (current !== null) {
+      current.fields.push(f);
+    } else {
+      preamble.push(f);
+    }
+  }
+  return { preamble, sections };
+}
+
+/**
+ * Construit le texte d'aide inline d'un champ :
+ * — le hint fourni par l'expert, s'il existe
+ * — sinon, unité + exemple + plage comme fallback informatif
+ */
+function buildInlineHelp(field: FieldDescriptor): string | undefined {
+  if (field.hint) return field.hint;
   const parts: string[] = [];
   if (field.unit) parts.push(`Unité : ${field.unit}`);
   if (field.example !== undefined && field.example !== '')
-    parts.push(`Exemple : ${field.example}`);
+    parts.push(`Ex. : ${field.example}${field.unit ? ' ' + field.unit : ''}`);
   if (field.min !== undefined && field.max !== undefined)
-    parts.push(`Plage : ${field.min} – ${field.max}${field.unit ? ' ' + field.unit : ''}`);
+    parts.push(`Plage : ${field.min}–${field.max}${field.unit ? ' ' + field.unit : ''}`);
   else if (field.min !== undefined)
     parts.push(`Min : ${field.min}${field.unit ? ' ' + field.unit : ''}`);
   else if (field.max !== undefined)
     parts.push(`Max : ${field.max}${field.unit ? ' ' + field.unit : ''}`);
-  if (field.hint) parts.push(field.hint);
-  return parts.length > 0 ? parts.join('\n') : null;
+  return parts.length > 0 ? parts.join(' · ') : undefined;
 }
 
-function FieldHelpButton({ field }: { field: FieldDescriptor }) {
-  const content = buildFieldTooltipContent(field);
-  if (!content) return null;
+/**
+ * Carte de section repliable/dépliable.
+ * Les sections marquées `advanced: true` sont repliées par défaut.
+ */
+function SectionCard({
+  section,
+  children,
+}: {
+  section: FieldDescriptor;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(!section.advanced);
+
   return (
-    <Tooltip
-      content={
-        <span style={{ whiteSpace: 'pre-line', display: 'block', maxWidth: 260 }}>
-          {content}
-        </span>
-      }
-      position="left"
+    <div
+      style={{
+        background: 'var(--surface-canvas)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: 'var(--radius-lg)',
+        overflow: 'hidden',
+      }}
     >
       <button
         type="button"
-        aria-label={`Aide pour le champ ${field.label}`}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
         style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          width: '100%',
+          padding: '10px 14px',
           background: 'none',
           border: 'none',
+          borderBottom: open ? '1px solid var(--border-subtle)' : 'none',
           cursor: 'pointer',
-          color: 'var(--text-muted)',
-          padding: '2px 4px',
-          display: 'inline-flex',
-          alignItems: 'center',
-          borderRadius: 'var(--radius-sm)',
-          transition: `color var(--dur-fast) var(--ease-state)`,
+          textAlign: 'left',
+          gap: 8,
         }}
-        onMouseOver={(e) => ((e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)')}
-        onMouseOut={(e) => ((e.currentTarget as HTMLElement).style.color = 'var(--text-muted)')}
       >
-        <Info size={12} strokeWidth={1.5} aria-hidden="true" />
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            color: 'var(--text-muted)',
+          }}
+        >
+          {section.label}
+        </span>
+        <span
+          aria-hidden="true"
+          style={{
+            fontSize: 13,
+            color: 'var(--text-muted)',
+            lineHeight: 1,
+            flexShrink: 0,
+            userSelect: 'none',
+          }}
+        >
+          {open ? '▾' : '▸'}
+        </span>
       </button>
-    </Tooltip>
+      {open && (
+        <div
+          style={{
+            padding: 16,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '12px 16px',
+          }}
+        >
+          {children}
+        </div>
+      )}
+    </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Formulaire de saisie dynamique (Lot 3 — depuis engine-descriptors)
+// ---------------------------------------------------------------------------
 
 function CalcForm({
   descriptor,
@@ -1066,8 +1140,68 @@ function CalcForm({
     };
   }
 
+  const { preamble, sections } = groupFieldsBySection(descriptor.fields);
+
+  /**
+   * Rendu d'un champ individuel.
+   * inGrid=true : les champs text prennent toute la largeur de la grille 2 colonnes.
+   */
+  function renderField(field: FieldDescriptor, inGrid: boolean) {
+    const inlineHelp = buildInlineHelp(field);
+    const wideStyle = inGrid && field.type === 'text' ? { gridColumn: '1 / -1' } : undefined;
+
+    if (field.type === 'select' && field.options) {
+      return (
+        <div key={field.key} style={wideStyle}>
+          <Select
+            id={`field-${field.key}`}
+            label={
+              field.label +
+              (field.unit ? ` (${field.unit})` : '') +
+              (field.optional ? '' : ' *')
+            }
+            value={formValues[field.key] ?? ''}
+            onChange={(e) => onFieldChange(field.key, e.target.value)}
+            error={formErrors[field.key]}
+            hint={inlineHelp}
+          >
+            <option value="">— Choisir —</option>
+            {field.options.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+      );
+    }
+
+    return (
+      <div key={field.key} style={wideStyle}>
+        <Input
+          id={`field-${field.key}`}
+          label={
+            field.label +
+            (field.unit ? ` (${field.unit})` : '') +
+            (field.optional ? '' : ' *')
+          }
+          type={field.type === 'number' ? 'number' : 'text'}
+          value={formValues[field.key] ?? ''}
+          onChange={(e) => onFieldChange(field.key, e.target.value)}
+          error={formErrors[field.key]}
+          hint={inlineHelp}
+          min={field.min}
+          max={field.max}
+          step={field.step ?? (field.type === 'number' ? 'any' : undefined)}
+          required={!field.optional}
+          onValidate={makeOnValidate(field)}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div style={{ padding: 24, maxWidth: 640, margin: '0 auto', width: '100%' }}>
+    <div style={{ padding: 24, maxWidth: 720, margin: '0 auto', width: '100%' }}>
       {/* Fil d'Ariane interne */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
         <button
@@ -1110,7 +1244,7 @@ function CalcForm({
           }}
         >
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-            Jeux d’essai :
+            Jeux d&apos;essai :
           </span>
           {descriptor.scenarios.conforme && (
             <Button
@@ -1134,7 +1268,7 @@ function CalcForm({
       )}
 
       <form onSubmit={onSubmit} noValidate>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Libellé du calcul */}
           <Input
             id="calc-label"
@@ -1147,81 +1281,19 @@ function CalcForm({
             autoFocus
           />
 
-          {/* Champs du descripteur */}
-          {descriptor.fields.map((field) => {
-            if (field.type === 'section') {
-              return (
-                <div
-                  key={field.key}
-                  style={{
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 600,
-                    color: 'var(--struct-petrole)',
-                    paddingBottom: 8,
-                    borderBottom: '1px solid var(--border-subtle)',
-                    marginTop: 8,
-                  }}
-                >
-                  {field.label}
-                </div>
-              );
-            }
+          {/* Champs hors section (références, libellés) — rendus à pleine largeur */}
+          {preamble.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {preamble.map((f) => renderField(f, false))}
+            </div>
+          )}
 
-            if (field.type === 'select' && field.options) {
-              return (
-                <div key={field.key} style={{ position: 'relative' }}>
-                  <Select
-                    id={`field-${field.key}`}
-                    label={
-                      field.label +
-                      (field.unit ? ` (${field.unit})` : '') +
-                      (field.optional ? '' : ' *')
-                    }
-                    value={formValues[field.key] ?? ''}
-                    onChange={(e) => onFieldChange(field.key, e.target.value)}
-                    error={formErrors[field.key]}
-                    hint={field.hint}
-                  >
-                    <option value="">— Choisir —</option>
-                    {field.options!.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </Select>
-                  <span style={{ position: 'absolute', top: 0, right: 0 }}>
-                    <FieldHelpButton field={field} />
-                  </span>
-                </div>
-              );
-            }
-
-            return (
-              <div key={field.key} style={{ position: 'relative' }}>
-                <Input
-                  id={`field-${field.key}`}
-                  label={
-                    field.label +
-                    (field.unit ? ` (${field.unit})` : '') +
-                    (field.optional ? '' : ' *')
-                  }
-                  type={field.type === 'number' ? 'number' : 'text'}
-                  value={formValues[field.key] ?? ''}
-                  onChange={(e) => onFieldChange(field.key, e.target.value)}
-                  error={formErrors[field.key]}
-                  hint={field.hint}
-                  min={field.min}
-                  max={field.max}
-                  step={field.step ?? (field.type === 'number' ? 'any' : undefined)}
-                  required={!field.optional}
-                  onValidate={makeOnValidate(field)}
-                />
-                <span style={{ position: 'absolute', top: 0, right: 0 }}>
-                  <FieldHelpButton field={field} />
-                </span>
-              </div>
-            );
-          })}
+          {/* Sections en cartes repliables avec grille 2 colonnes */}
+          {sections.map((group) => (
+            <SectionCard key={group.section.key} section={group.section}>
+              {group.fields.map((f) => renderField(f, true))}
+            </SectionCard>
+          ))}
 
           {/* Bouton calcul */}
           <Button
@@ -1351,7 +1423,7 @@ function CalcResults({
             color: 'var(--text-secondary)',
           }}
         >
-          Résultat d’analyse — ce moteur produit une extraction / classification, sans
+          Résultat d&apos;analyse — ce moteur produit une extraction / classification, sans
           verdict de conformité.
         </div>
       )}
