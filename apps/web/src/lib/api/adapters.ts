@@ -344,9 +344,9 @@ function buildTerzaghiRows(o: Record<string, unknown>): CalcOutputRow[] {
       const tH = finiteOrNull(c.tauxH);
       if (tH !== null) rows.push({ label: `${et} — taux glissement`, value: tH * 100, unit: '%', status: gOk });
     }
-    pushRow(rows, `${et} — tassement`, c.tassement, 'mm');
-    pushRow(rows, `${et} — tassement (Schmertmann)`, c.tassementSchmertmann, 'mm');
-    pushRow(rows, `${et} — tassement œdométrique`, c.tassementOed, 'mm');
+    pushRow(rows, `${et} — tassement`, c.tassement, 'm');
+    pushRow(rows, `${et} — tassement (Schmertmann)`, c.tassementSchmertmann, 'm');
+    pushRow(rows, `${et} — tassement œdométrique`, c.tassementOed, 'm');
   }
   return rows;
 }
@@ -413,10 +413,10 @@ function pushText(rows: CalcOutputRow[], label: string, value: unknown, unit = '
  */
 function buildRadierRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
-  pushRow(rows, 'Déflexion maximale w_max', o.wMax, 'mm');
-  pushRow(rows, 'Déflexion minimale w_min', o.wMin, 'mm');
-  pushRow(rows, 'Déflexion différentielle', o.diff, 'mm');
-  pushRow(rows, 'Distorsion angulaire gouvernante β', o.betaGov, '‰');
+  pushRow(rows, 'Tassement maximal w_max', o.wMax, 'm');
+  pushRow(rows, 'Tassement minimal w_min', o.wMin, 'm');
+  pushRow(rows, 'Tassement différentiel', o.diff, 'm');
+  pushRow(rows, 'Distorsion angulaire gouvernante β', o.betaGov, 'rad');
   pushRow(rows, 'Nombre de radiers', o.nRafts, '');
   return rows;
 }
@@ -452,9 +452,9 @@ function buildLaboRows(o: Record<string, unknown>): CalcOutputRow[] {
  */
 function buildPressiometreRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
-  pushRow(rows, 'Pression limite p_L', o.pL, 'MPa');
-  pushRow(rows, 'Pression limite nette p_L*', o.pLNette, 'MPa');
-  pushRow(rows, 'Pression de fluage nette p_f*', o.pfNette, 'MPa');
+  pushRow(rows, 'Pression limite p_L', o.pL, 'bar');
+  pushRow(rows, 'Pression limite nette p_L*', o.pLNette, 'bar');
+  pushRow(rows, 'Pression de fluage nette p_f*', o.pfNette, 'bar');
   pushRow(rows, 'Module pressiométrique E_M', o.EM, 'MPa');
   pushRow(rows, 'Rapport E_M / p_L*', o.ratioEMpL, '');
   pushText(rows, 'Catégorie de sol', o.categorieLibelle);
