@@ -36,6 +36,9 @@ export default function InfosPage({ params: paramsPromise }: Props) {
   const [projetId, setProjetId] = useState('');
   // useOrgId résout le slug après montage (mode réel) ou immédiatement (mock).
   const orgId = useOrgId(orgSlug);
+  // Rendu client-only : évite le mismatch d'hydratation (#418).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
@@ -78,6 +81,10 @@ export default function InfosPage({ params: paramsPromise }: Props) {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (!mounted) {
+    return <div style={{ padding: 24 }} aria-busy="true" />;
   }
 
   if (loading) {

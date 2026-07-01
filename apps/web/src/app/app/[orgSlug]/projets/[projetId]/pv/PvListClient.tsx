@@ -41,6 +41,9 @@ interface PvListClientProps {
 export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
   const { addToast } = useToast();
   const orgId = useOrgId(orgSlug);
+  // Rendu client-only : page data-driven → pas de mismatch d'hydratation (#418).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const [pvs, setPvs] = useState<OfficialPv[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,6 +156,10 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
     if (!previewModal) return;
     const pv = pvs.find((p) => p.id === previewModal.pvId);
     if (pv) await handleDownload(pv);
+  }
+
+  if (!mounted) {
+    return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement des PV" />;
   }
 
   return (
