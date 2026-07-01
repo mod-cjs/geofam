@@ -531,7 +531,7 @@ function buildFondationBody(sealed: SealedContent): Content[] {
     );
     if (tassCas.length > 0) {
       const tb: TableCell[][] = [
-        [fdnHead('État-limite'), fdnHead('Tassement estimé (mm)', 'right')],
+        [fdnHead('État-limite'), fdnHead('Tassement estimé (m)', 'right')],
       ];
       for (const c of tassCas) {
         const t = fdnFirstFinite(
@@ -542,7 +542,7 @@ function buildFondationBody(sealed: SealedContent): Content[] {
         );
         tb.push([
           { text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'), style: 'cell' },
-          { text: fdnNum(t, 1), style: 'cell', alignment: 'right' },
+          { text: fdnNum(t, 3), style: 'cell', alignment: 'right' },
         ]);
       }
       body.push(fdnSubTitle('Estimation des tassements'));
@@ -740,10 +740,10 @@ function buildRadierBody(sealed: SealedContent): Content[] {
   body.push(buildAnalyseBanner());
   body.push(sectionTitle('Déflexions & distorsions'));
   const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
-  fdnKvRow(t, 'Déflexion maximale w_max', fdnNum(o.wMax, 2, 'mm'));
-  fdnKvRow(t, 'Déflexion minimale w_min', fdnNum(o.wMin, 2, 'mm'));
-  fdnKvRow(t, 'Déflexion différentielle', fdnNum(o.diff, 2, 'mm'));
-  fdnKvRow(t, 'Distorsion angulaire gouvernante β', fdnNum(o.betaGov, 2, '‰'));
+  fdnKvRow(t, 'Tassement maximal w_max', fdnNum(o.wMax, 3, 'm'));
+  fdnKvRow(t, 'Tassement minimal w_min', fdnNum(o.wMin, 3, 'm'));
+  fdnKvRow(t, 'Tassement différentiel', fdnNum(o.diff, 3, 'm'));
+  fdnKvRow(t, 'Distorsion angulaire gouvernante β', fdnNum(o.betaGov, 5, 'rad'));
   fdnKvRow(t, 'Nombre de radiers', fdnNum(o.nRafts, 0));
   if (t.length > 1) {
     body.push({
@@ -806,9 +806,9 @@ function buildPressiometreBody(sealed: SealedContent): Content[] {
 
   body.push(sectionTitle('Résultats de dépouillement'));
   const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
-  fdnKvRow(t, 'Pression limite p_L', fdnNum(o.pL, 2, 'MPa'));
-  fdnKvRow(t, 'Pression limite nette p_L*', fdnNum(o.pLNette, 2, 'MPa'));
-  fdnKvRow(t, 'Pression de fluage nette p_f*', fdnNum(o.pfNette, 2, 'MPa'));
+  fdnKvRow(t, 'Pression limite p_L', fdnNum(o.pL, 2, 'bar'));
+  fdnKvRow(t, 'Pression limite nette p_L*', fdnNum(o.pLNette, 2, 'bar'));
+  fdnKvRow(t, 'Pression de fluage nette p_f*', fdnNum(o.pfNette, 2, 'bar'));
   fdnKvRow(t, 'Module pressiométrique E_M', fdnNum(o.EM, 1, 'MPa'));
   fdnKvRow(t, 'Rapport E_M / p_L*', fdnNum(o.ratioEMpL, 1));
   if (t.length > 1) {
