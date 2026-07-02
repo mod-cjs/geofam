@@ -438,9 +438,13 @@ function buildLaboRows(o: Record<string, unknown>): CalcOutputRow[] {
   const cl = o.classe;
   if (cl != null && typeof cl === 'object') {
     const c = cl as Record<string, unknown>;
-    const fam = typeof c.fam === 'string' ? c.fam : '';
-    const code = c.code != null && c.code !== '' ? String(c.code) : '';
-    const label = (fam + code).trim();
+    // `code`/`full` contiennent DÉJÀ la lettre de famille (ex. code='A2', full='A2 h') :
+    // concaténer `fam` la dupliquerait ('A'+'A2'='AA2'). On prend le libellé canonique
+    // du moteur (`full` = classe + état hydrique), repli sur `code`. `desc` (texte long)
+    // et `path` (justification, méthode) NE sont PAS exposés — fail-closed §8.
+    const full = typeof c.full === 'string' ? c.full.trim() : '';
+    const code = c.code != null && c.code !== '' ? String(c.code).trim() : '';
+    const label = full || code;
     if (label) rows.push({ label: 'Classe GTR', value: label, unit: '' });
   }
   pushRow(rows, 'Dmax', o.dmax, 'mm');

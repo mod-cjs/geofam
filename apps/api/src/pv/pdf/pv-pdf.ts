@@ -771,9 +771,11 @@ function buildLaboBody(sealed: SealedContent): Content[] {
   let classe = '';
   if (cl != null && typeof cl === 'object') {
     const c = cl as Record<string, unknown>;
-    const fam = typeof c.fam === 'string' ? c.fam : '';
-    const code = c.code != null && c.code !== '' ? String(c.code) : '';
-    classe = (fam + code).trim();
+    // `code`/`full` incluent DÉJÀ la lettre de famille (code='A2', full='A2 h') :
+    // concaténer `fam` la dupliquerait ('AA2'). Libellé canonique `full`, repli `code`.
+    const full = typeof c.full === 'string' ? c.full.trim() : '';
+    const code = c.code != null && c.code !== '' ? String(c.code).trim() : '';
+    classe = full || code;
   }
   body.push({
     text: classe ? `Classe : ${classe}` : 'Classe non déterminée.',
