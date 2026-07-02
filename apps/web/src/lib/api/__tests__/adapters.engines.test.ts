@@ -1,0 +1,267 @@
+/**
+ * Tests — adaptCalcResult : normalisation client-safe des 5 moteurs ajoutés hors
+ * burmister (terzaghi, pieux, radier, labo, pressiomètre).
+ *
+ * Complète adapters.burmister.test.ts. Le test de fuite de ce dernier n'exerçait
+ * qu'une sortie SYNTHÉTIQUE (`{qadm, methode}`) tombant sur `null` : il ne prouvait
+ * PAS l'étanchéité des VRAIES formes de sortie de ces moteurs. Ici, chaque cas part
+ * d'une sortie moteur RÉELLE (capturée depuis @roadsen/engines, champs confidentiels
+ * inclus) et vérifie, en BDD :
+ *   - le bon AIGUILLAGE (dispatch) + le verdict attendu ;
+ *   - la présence des grandeurs de RÉSULTAT attendues (pas de suite vide) ;
+ *   - fail-closed (DoD §8) : AUCUN champ confidentiel du brut n'atteint le navigateur.
+ *
+ * ⚠️ Confidentialité (DoD §8) : ce test N'IMPORTE PAS @roadsen/engines (garde-fou
+ * engines→web). Les sorties sont des ÉCHANTILLONS FIGÉS, comme LIVE_BURMISTER_OUTPUT.
+ */
+import { describe, it, expect } from 'vitest';
+
+import { adaptCalcResult, type PrismaCalcResult } from '../adapters';
+import type { CalcOutputRow, NormalizedCalcOutput } from '../types';
+
+// ── Sorties RÉELLES capturées (fixtures nominales de chaque moteur) ────────────────
+// Champs confidentiels VOLONTAIREMENT conservés (warnings, methode, capaciteReference,
+// classe.path/desc, alpha, slopeMax…) : ils servent de cibles au scan de fuite.
+
+const REAL_TERZAGHI = {
+  erreur: null,
+  warnings: ['Sondage très court (13,5 m < D + 2,5·B) : tassement indicatif (formule H.2.1.2.7).'],
+  regime: 'superficielle',
+  capaciteReference: { ok: true, A: 60, R0: 5400, states: [{ etat: 'ELU_F', gRv: 1.4, Rvd: 68891.08, qRvd: 1148.18 }] },
+  cas: [
+    {
+      idx: 0,
+      etat: 'ELS_QP',
+      invalide: false,
+      Rtot: 44046.74,
+      qRvd: 734.11,
+      taux: 0.2778,
+      portanceOk: true,
+      tassement: 0.010667,
+      deplacementVertical: 0.019088,
+    },
+  ],
+};
+
+const REAL_PIEUX = {
+  erreur: null,
+  warnings: [],
+  B: 0.6,
+  D: 15,
+  categorie: 1,
+  methode: 'pmt',
+  sens: 'comp',
+  RbK: 891.25,
+  RsK: 1494.15,
+  RcK: 2385.4,
+  RcD: 2168.55,
+  RcrK: 1491.53,
+  RcrCar: 1657.26,
+  RcrQp: 1355.94,
+  FduELU: 1605,
+  FdCar: 1150,
+  FdQp: 905,
+  verifications: [
+    { nom: 'ELU portance — DA2', Fd: 1605, Rd: 2168.55, taux: 0.7401, ok: true },
+    { nom: 'ELS caractéristique', Fd: 1150, Rd: 1657.26, taux: 0.6939, ok: true },
+  ],
+  allOk: true,
+  tauxGouvernant: 0.7401,
+  tassementELS: 3.19,
+};
+
+const REAL_LABO = {
+  erreur: null,
+  warnings: [],
+  wn: 17.99,
+  dmax: 20,
+  p80: 52,
+  p2: 73,
+  wl: 38,
+  wp: 20,
+  ip: 18,
+  ic: 1.11,
+  vbs: 3.5,
+  wopn: 16.21,
+  rdmax: 1.84,
+  cbr: null,
+  cbrType: 'cbr',
+  es: null,
+  la: null,
+  sz: null,
+  mde: null,
+  so3: null,
+  c_cis: 8.19,
+  phi_cis: 24.97,
+  Cc_oedo: 0.1215,
+  Cs_oedo: 0.01446,
+  k: null,
+  classe: {
+    fam: 'A',
+    code: 'A2',
+    full: 'A2 h',
+    desc: 'Sables fins argileux, limons, argiles peu plastiques',
+    path: ['Passant 80µm = 52.0 % > 35 % → sol fin → famille A.', 'Ip = 18.0 (préférentiel) → A2.'],
+    warn: [],
+    etat: 'h',
+    stApplies: true,
+    rNote: null,
+  },
+};
+
+const REAL_PRESSIOMETRE = {
+  erreur: null,
+  warnings: [],
+  pL: 4.3911,
+  pLNette: 4.2011,
+  pfNette: 2.11,
+  EM: 3.4064,
+  ratioEMpL: 7.7574,
+  alpha: 0.67,
+  pLDirect: false,
+  categorie: 'B',
+  categorieLibelle: 'Sol mou (cat. B)',
+  consolidation: 'Sol normalement consolidé',
+};
+
+const REAL_RADIER = {
+  erreur: null,
+  warnings: [],
+  wMax: 8.7895,
+  wMin: 5.4271,
+  diff: 3.3624,
+  slopeMax: 0.933,
+  tiltMax: 4.3e-13,
+  betaIntra: 0.933,
+  betaInter: 0,
+  interDiff: 0,
+  betaGov: 0.933,
+  nRafts: 1,
+  worstLoadPair: null,
+};
+
+function makeRaw(engineId: string, output: unknown): PrismaCalcResult {
+  return {
+    id: 'calc_x',
+    projectId: 'proj_01',
+    orgId: 'org_01',
+    engineId,
+    input: {},
+    output,
+    createdAt: '2026-07-02T10:00:00.000Z',
+  };
+}
+
+function normalizedOf(engineId: string, output: unknown): NormalizedCalcOutput {
+  const norm = adaptCalcResult(makeRaw(engineId, output)).output;
+  expect(norm, `${engineId} : sortie normalisée non nulle (dispatch ok)`).not.toBeNull();
+  return norm as NormalizedCalcOutput;
+}
+
+/** Asserte qu'AUCUN marqueur confidentiel n'apparaît dans la sortie normalisée sérialisée. */
+function expectNoLeak(norm: NormalizedCalcOutput, forbidden: string[]): void {
+  const serialized = JSON.stringify(norm);
+  for (const marker of forbidden) {
+    expect(serialized, `fuite détectée : "${marker}"`).not.toContain(marker);
+  }
+}
+
+function labels(norm: NormalizedCalcOutput): string {
+  return (norm.rows as CalcOutputRow[]).map((r) => r.label).join(' | ');
+}
+
+describe('adaptCalcResult — terzaghi (fondation superficielle)', () => {
+  it('given une sortie {cas:[…]} portante, when adapté, then verdict PASS + rows de résultat', () => {
+    const norm = normalizedOf('fondation-superficielle', REAL_TERZAGHI);
+    expect(norm.verdict).toBe('PASS');
+    expect(norm.rows.length).toBeGreaterThan(0);
+    expect(labels(norm)).toMatch(/résistance R|taux de mobilisation|tassement/);
+  });
+
+  it('fail-closed : ni warnings, ni régime, ni capaciteReference, ni intermédiaires', () => {
+    const norm = normalizedOf('fondation-superficielle', REAL_TERZAGHI);
+    expectNoLeak(norm, [
+      'regime',
+      'capaciteReference',
+      'deplacementVertical',
+      'H.2.1.2.7',
+      'Sondage',
+      'superficielle',
+      'states',
+      'invalide',
+      'ELS_QP',
+    ]);
+  });
+});
+
+describe('adaptCalcResult — pieux (fondation profonde)', () => {
+  it('given allOk=true, when adapté, then verdict PASS + résistances/vérifications', () => {
+    const norm = normalizedOf('fondation-profonde-pieux', REAL_PIEUX);
+    expect(norm.verdict).toBe('PASS');
+    expect(labels(norm)).toMatch(/Résistance de pointe Rb;k/);
+    expect(labels(norm)).toMatch(/Tassement estimé/);
+  });
+
+  it('fail-closed : ni methode, ni sens, ni Rcr* (résistances de fluage), ni tauxGouvernant', () => {
+    const norm = normalizedOf('fondation-profonde-pieux', REAL_PIEUX);
+    expectNoLeak(norm, ['methode', 'pmt', '"sens"', 'Rcr', 'tauxGouvernant']);
+  });
+});
+
+describe('adaptCalcResult — radier (plaque/sol multicouche)', () => {
+  it('given betaGov/nRafts, when adapté, then verdict NA (analyse) + tassements en mm', () => {
+    const norm = normalizedOf('radier-plaque', REAL_RADIER);
+    expect(norm.verdict).toBe('NA');
+    expect(labels(norm)).toMatch(/Tassement maximal/);
+    const beta = (norm.rows as CalcOutputRow[]).find((r) => r.label.includes('Distorsion'));
+    expect(beta?.unit).toBe('‰');
+  });
+
+  it('fail-closed : ni slopeMax/tiltMax, ni betaIntra/betaInter, ni interDiff/worstLoadPair', () => {
+    const norm = normalizedOf('radier-plaque', REAL_RADIER);
+    expectNoLeak(norm, ['slopeMax', 'tiltMax', 'betaIntra', 'betaInter', 'interDiff', 'worstLoadPair']);
+  });
+});
+
+describe('adaptCalcResult — labo (classification GTR)', () => {
+  it('given une classe, when adapté, then verdict NA + Classe GTR = A2 h (pas AA2)', () => {
+    const norm = normalizedOf('labo-classification-gtr', REAL_LABO);
+    expect(norm.verdict).toBe('NA');
+    const classe = (norm.rows as CalcOutputRow[]).find((r) => r.label === 'Classe GTR');
+    // Régression : ne JAMAIS re-dupliquer la lettre de famille (fam+code = 'AA2').
+    expect(classe?.value).toBe('A2 h');
+  });
+
+  it('fail-closed : ni classe.path/desc/full, ni œdomètre (Cc/Cs), ni essais non exposés', () => {
+    const norm = normalizedOf('labo-classification-gtr', REAL_LABO);
+    expectNoLeak(norm, [
+      '"path"',
+      '"desc"',
+      'Sables fins',
+      'préférentiel',
+      'Cc_oedo',
+      'Cs_oedo',
+      'phi_cis',
+      'c_cis',
+      '"mde"',
+      'rdmax',
+      'cbrType',
+    ]);
+  });
+});
+
+describe('adaptCalcResult — pressiomètre Ménard (dépouillement)', () => {
+  it('given categorie+pL, when adapté, then verdict NA + p_L en bar + catégorie textuelle', () => {
+    const norm = normalizedOf('pressiometre-menard', REAL_PRESSIOMETRE);
+    expect(norm.verdict).toBe('NA');
+    const pl = (norm.rows as CalcOutputRow[]).find((r) => r.label === 'Pression limite p_L');
+    expect(pl?.unit).toBe('bar');
+    expect(labels(norm)).toMatch(/Catégorie de sol/);
+    expect(JSON.stringify(norm)).toContain('Sol mou (cat. B)');
+  });
+
+  it('fail-closed : ni alpha (coefficient rhéologique), ni pLDirect, ni code catégorie brut', () => {
+    const norm = normalizedOf('pressiometre-menard', REAL_PRESSIOMETRE);
+    expectNoLeak(norm, ['"alpha"', 'pLDirect', '"categorie"']);
+  });
+});
