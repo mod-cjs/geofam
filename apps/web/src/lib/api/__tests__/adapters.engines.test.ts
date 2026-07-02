@@ -192,6 +192,16 @@ describe('adaptCalcResult — terzaghi (fondation superficielle)', () => {
       'ELS_QP',
     ]);
   });
+
+  it('durcissement : état-limite NON reconnu → placeholder « — », jamais le texte moteur brut', () => {
+    const tampered = {
+      ...REAL_TERZAGHI,
+      cas: [{ ...REAL_TERZAGHI.cas[0], etat: 'FORMULE_H.2.1.2.7_DEBUG' }],
+    };
+    const norm = normalizedOf('fondation-superficielle', tampered);
+    expect(JSON.stringify(norm)).not.toContain('FORMULE_H.2.1.2.7_DEBUG');
+    expect((norm.rows as CalcOutputRow[]).some((r) => r.label.startsWith('—'))).toBe(true);
+  });
 });
 
 describe('adaptCalcResult — pieux (fondation profonde)', () => {
@@ -205,6 +215,22 @@ describe('adaptCalcResult — pieux (fondation profonde)', () => {
   it('fail-closed : ni methode, ni sens, ni Rcr* (résistances de fluage), ni tauxGouvernant', () => {
     const norm = normalizedOf('fondation-profonde-pieux', REAL_PIEUX);
     expectNoLeak(norm, ['methode', 'pmt', '"sens"', 'Rcr', 'tauxGouvernant']);
+  });
+
+  it('durcissement : nom de vérification NON reconnu → libellé générique indexé, jamais brut', () => {
+    const tampered = {
+      ...REAL_PIEUX,
+      verifications: [
+        { nom: 'ELU portance — MÉTHODE_INTERNE_kc=1.3', Fd: 100, Rd: 200, taux: 0.5, ok: true },
+        { nom: 'ELS caractéristique', Fd: 1150, Rd: 1657.26, taux: 0.69, ok: true },
+      ],
+    };
+    const norm = normalizedOf('fondation-profonde-pieux', tampered);
+    const s = JSON.stringify(norm);
+    expect(s).not.toContain('MÉTHODE_INTERNE');
+    expect(s).not.toContain('kc=1.3');
+    expect(s).toContain('Vérification 1'); // repli générique pour le nom non reconnu
+    expect(s).toContain('ELS caractéristique'); // le nom EC7 reconnu passe intact
   });
 });
 

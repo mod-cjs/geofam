@@ -332,7 +332,9 @@ function buildTerzaghiRows(o: Record<string, unknown>): CalcOutputRow[] {
     if (item == null || typeof item !== 'object') continue;
     const c = item as Record<string, unknown>;
     if (c.invalide === true) continue;
-    const et = typeof c.etat === 'string' ? (TERZAGHI_ETAT_LABEL[c.etat] ?? c.etat) : '—';
+    // Fail-closed (DoD §8) : état non reconnu → placeholder neutre, JAMAIS le texte
+    // moteur brut (la map couvre l'ensemble complet ELU_F/A · ELS_C/F/QP).
+    const et = typeof c.etat === 'string' ? (TERZAGHI_ETAT_LABEL[c.etat] ?? '—') : '—';
     const pOk: 'ok' | 'fail' = c.portanceOk === true ? 'ok' : 'fail';
     pushRow(rows, `${et} — résistance Rᵥ;d`, c.Rtot, 'kN', pOk);
     pushRow(rows, `${et} — contrainte adm. q_Rv;d`, c.qRvd, 'kPa');
@@ -367,11 +369,37 @@ function terzaghiVerdict(o: Record<string, unknown>): 'PASS' | 'FAIL' {
 }
 
 /**
+ * Allowlist fail-closed des libellés de vérification pieux (EC7). Le moteur compose
+ * `nom` soit comme un ELS fixe, soit `«ELU portance|traction» — «combinaison EC7»`.
+ * On ne laisse traverser QUE des valeurs reconnues (état-limite + combinaison connus) ;
+ * tout `nom` inattendu → libellé générique indexé, pour qu'aucun texte moteur non
+ * whitelisté n'atteigne le navigateur (DoD §8). Ajouter ici toute nouvelle combinaison
+ * EC7 introduite côté moteur (sinon elle s'affiche « Vérification N », jamais brute).
+ */
+const PIEUX_ELS_LABELS: ReadonlySet<string> = new Set(['ELS caractéristique', 'ELS quasi-permanent']);
+const PIEUX_ELU_PREFIXES: ReadonlySet<string> = new Set(['ELU portance', 'ELU traction']);
+const PIEUX_ELU_COMBOS: ReadonlySet<string> = new Set(['DA1·C1', 'DA1·C2', 'DA2', 'DA3']);
+
+/** Sépare `nom` en (état-limite, combinaison) et ne le renvoie que si les DEUX sont whitelistés. */
+function safePieuxVerifLabel(rawNom: unknown, index: number): string {
+  const fallback = `Vérification ${index}`;
+  if (typeof rawNom !== 'string') return fallback;
+  if (PIEUX_ELS_LABELS.has(rawNom)) return rawNom;
+  const sep = rawNom.indexOf(' — ');
+  if (sep > 0) {
+    const prefix = rawNom.slice(0, sep);
+    const combo = rawNom.slice(sep + 3);
+    if (PIEUX_ELU_PREFIXES.has(prefix) && PIEUX_ELU_COMBOS.has(combo)) return rawNom;
+  }
+  return fallback;
+}
+
+/**
  * CONTRAT client-safe du moteur pieux (fondation profonde, NF P 94-262 / EC7).
  * Lit UNIQUEMENT les résultats whitelistés par PieuxOutputSchema : résistances
  * (Rb;k, Rs;k, Rc;k, Rc;d), sollicitation ELU, taux (calculé Fd/Rc;d), tassement ELS,
  * + vérifications par combinaison. Exclut warnings/erreur + échos non numériques.
- * Clés nommées uniquement (fail-closed, DoD §8).
+ * Libellés de vérification whitelistés (safePieuxVerifLabel). Fail-closed, DoD §8.
  */
 function buildPieuxRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
@@ -388,10 +416,12 @@ function buildPieuxRows(o: Record<string, unknown>): CalcOutputRow[] {
   }
   pushRow(rows, 'Tassement estimé (ELS)', o.tassementELS, 'mm');
   const verifs = Array.isArray(o.verifications) ? o.verifications : [];
+  let verifIdx = 0;
   for (const v of verifs) {
     if (v == null || typeof v !== 'object') continue;
     const c = v as Record<string, unknown>;
-    const nom = typeof c.nom === 'string' ? c.nom : 'Vérification';
+    verifIdx += 1;
+    const nom = safePieuxVerifLabel(c.nom, verifIdx);
     const fdv = finiteOrNull(c.Fd);
     const rdv = finiteOrNull(c.Rd);
     const st: 'ok' | 'fail' = fdv !== null && rdv !== null && fdv <= rdv ? 'ok' : 'fail';
