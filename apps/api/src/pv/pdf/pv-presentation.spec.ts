@@ -108,7 +108,7 @@ function makeFallbackPv(): OfficialPv {
   const content: SealableValue = {
     pvNumber: 'PV-RDS-geotest-2026-000099',
     sealedAt: sealedAtIso,
-    engineMeta: { engineId: 'fondation-superficielle', engineVersion: '1.0.0' },
+    engineMeta: { engineId: 'generic-fallback', engineVersion: '1.0.0' },
     identity: { userId: 'u', projectId: 'p', projectName: 'Semelle S1' },
     input: { B: 2, D: 1.5 },
     output: { qadm: 0.25, tassement: 0.012 },
@@ -123,7 +123,7 @@ function makeFallbackPv(): OfficialPv {
     pvNumber: 'PV-RDS-geotest-2026-000099',
     userId: 'u',
     projectName: 'Semelle S1',
-    engineId: 'fondation-superficielle',
+    engineId: 'generic-fallback',
     engineVersion: '1.0.0',
     engineSourceHash: null,
     inputCanonical: canonical,

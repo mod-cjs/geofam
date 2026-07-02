@@ -23,10 +23,13 @@ import { buildPvDocDefinition, collectPvPdfText, renderPvPdf } from './pv-pdf';
 const SECRET = 'secret-unitaire-pv';
 
 /**
- * Construit un OfficialPv COHÉRENT (sceau valide). Par DÉFAUT, moteur SANS modèle
- * de présentation (`fondation-superficielle`) -> voie FALLBACK (table clé-valeur)
- * qui exerce le formatage de nombres (formatNumber) et la projection brute. Les
- * tests #71 de présentation riche utilisent leur propre fabrique chaussée.
+ * Construit un OfficialPv COHÉRENT (sceau valide). NB : les 6 moteurs réels ont
+ * désormais chacun une présentation dédiée (burmister via modèle + buildFondationBody,
+ * buildFonProfondeBody, buildRadierBody, buildLaboBody, buildPressiometreBody). Le
+ * FALLBACK générique clé-valeur (formatNumber + projection brute) ne s'exécute donc que
+ * pour un engineId SANS builder : les tests du fallback passent un `engineId` générique
+ * explicite (voie de sécurité). Les tests #71 de présentation riche utilisent leur
+ * propre fabrique chaussée.
  */
 function makeSealedPv(
   overrides: Partial<{
@@ -176,7 +179,7 @@ describe('Bruit flottant IEEE-754 — nettoyé À L’AFFICHAGE seulement', () =
     // La SORTIE scellée contient le double EXACT issu du calcul (0.16+0.25 != 0.41).
     const noisy = 0.16 + 0.25; // = 0.41000000000000003
     expect(noisy).not.toBe(0.41); // c'est bien le double bruité
-    const pv = makeSealedPv({ output: { epaisseur: noisy, verdict: 'OK' } });
+    const pv = makeSealedPv({ engineId: 'generic-fallback', output: { epaisseur: noisy, verdict: 'OK' } });
 
     // LE SCELLEMENT reste INTOUCHÉ : la canonique contient le double exact bruité.
     expect(pv.inputCanonical).toContain('0.41000000000000003');
@@ -192,6 +195,7 @@ describe('Bruit flottant IEEE-754 — nettoyé À L’AFFICHAGE seulement', () =
     // 290.5841975093014 -> toPrecision(12) garde 290.584197509 (>8 sig. figs) :
     // on ne supprime QUE l'artefact binaire, pas de la précision réelle.
     const pv = makeSealedPv({
+      engineId: 'generic-fallback',
       output: { valeur: 290.5841975093014, verdict: 'OK' },
     });
     const text = collectPvPdfText(pv);
@@ -200,7 +204,7 @@ describe('Bruit flottant IEEE-754 — nettoyé À L’AFFICHAGE seulement', () =
   });
 
   it('un entier ou un petit décimal exact reste inchangé (FR)', () => {
-    const pv = makeSealedPv({ output: { n: 20, p: 0.45, verdict: 'OK' } });
+    const pv = makeSealedPv({ engineId: 'generic-fallback', output: { n: 20, p: 0.45, verdict: 'OK' } });
     const text = collectPvPdfText(pv);
     expect(text).toContain('20');
     expect(text).toContain('0,45');
