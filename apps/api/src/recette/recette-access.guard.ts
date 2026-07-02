@@ -51,8 +51,18 @@ export class RecetteAccessGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const expected = getRecetteApiKey();
-    // Guard inerte : aucune cle configuree -> on ne ferme pas la recette.
-    if (expected === null) return true;
+    if (expected === null) {
+      // FAIL-CLOSED hors dev/test. En local et en e2e (pas de cle posee), le guard reste
+      // INERTE pour ne pas casser les suites. Mais un environnement DEPLOYE sans
+      // RECETTE_API_KEY est une MISCONFIGURATION dangereuse : elle ouvrirait notamment les
+      // endpoints moteurs @Public /calc/* en ORACLE PUBLIC (calcul confidentiel sans auth).
+      // On refuse donc par defaut (meme logique fail-fast que le CORS en prod).
+      const env = process.env.NODE_ENV ?? '';
+      if (env === 'development' || env === 'test') return true;
+      throw new UnauthorizedException(
+        'Perimetre recette non configure (RECETTE_API_KEY absente hors developpement) — acces refuse (fail-closed).',
+      );
+    }
 
     // Exemption decidee sur la ROUTE MATCHEE (handler/classe), pas sur l'URL.
     // `/calc/*` n'est pas decore -> jamais exempte, quelle que soit l'URL.

@@ -85,7 +85,7 @@ if [ "$FAST" = false ]; then
     if grep -rIl -e "@roadsen/engines" -e "__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__" "$WEB/.next/static" >/dev/null 2>&1; then
       echo "<<< [confidentialité-bundle] FAIL"; record "confidentialité-bundle (DoD8)" FAIL
     else echo "<<< [confidentialité-bundle] PASS"; record "confidentialité-bundle (DoD8)" PASS; fi
-  else echo "<<< [confidentialité-bundle] ABSENT (.next/static non bâti)"; record "confidentialité-bundle (DoD8)" ABSENT; fi
+  else echo "<<< [confidentialité-bundle] FAIL — .next/static non bâti : la confidentialité §8 ne peut PAS être vérifiée (fail-closed). Lancer 'pnpm --filter @roadsen/web build' avant le gate complet."; record "confidentialité-bundle (DoD8)" FAIL; fi
 
   GUARD_DIR="$WEB/src/__reviewgate_guardcheck__"
   mkdir -p "$GUARD_DIR" 2>/dev/null
