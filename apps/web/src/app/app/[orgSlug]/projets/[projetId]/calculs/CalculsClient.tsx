@@ -344,6 +344,10 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   return (
     <div
       style={{
+        // position:relative = ancre pour la colonne liste passée en position:absolute
+        // sous le breakpoint (RESP-001) : sans elle, l'absolu se cale sur le viewport et
+        // la liste glisse sous l'en-tête / la sidebar (bouton « Nouveau calcul » masqué).
+        position: 'relative',
         display: 'flex',
         height: 'calc(100vh - 48px - 44px)',
         overflow: 'hidden',
