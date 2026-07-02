@@ -403,17 +403,17 @@ function safePieuxVerifLabel(rawNom: unknown, index: number): string {
  */
 function buildPieuxRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
-  const okElu: 'ok' | 'fail' = o.allOk === true ? 'ok' : 'fail';
-  pushRow(rows, 'Résistance de pointe Rb;k', o.RbK, 'kN');
-  pushRow(rows, 'Résistance de frottement Rs;k', o.RsK, 'kN');
-  pushRow(rows, 'Résistance caractéristique Rc;k', o.RcK, 'kN');
-  pushRow(rows, 'Résistance de calcul Rc;d', o.RcD, 'kN');
-  pushRow(rows, 'Sollicitation ELU Fd', o.FduELU, 'kN', okElu);
-  const fd = finiteOrNull(o.FduELU);
-  const rcd = finiteOrNull(o.RcD);
-  if (fd !== null && rcd !== null && rcd !== 0) {
-    rows.push({ label: 'Taux de mobilisation ELU', value: (fd / rcd) * 100, unit: '%', status: okElu });
-  }
+  const okGov: 'ok' | 'fail' = o.allOk === true ? 'ok' : 'fail';
+  // COMPLÉTUDE + ordre de l'outil d'origine casagrande_V5 : taux gouvernant → résistances
+  // (pointe R_b;k, frottement R_s;k, caractéristique R_c;k, calcul R_c;d, fluage R_c;cr;k)
+  // → tassement ELS → vérifications par état-limite (Fd/Rd).
+  const tg = finiteOrNull(o.tauxGouvernant);
+  if (tg !== null) rows.push({ label: 'Taux de travail gouvernant', value: tg * 100, unit: '%', status: okGov });
+  pushRow(rows, 'Résistance de pointe R_b;k', o.RbK, 'kN');
+  pushRow(rows, 'Résistance de frottement R_s;k', o.RsK, 'kN');
+  pushRow(rows, 'Résistance caractéristique R_c;k', o.RcK, 'kN');
+  pushRow(rows, 'Résistance de calcul R_c;d', o.RcD, 'kN');
+  pushRow(rows, 'Charge de fluage R_c;cr;k', o.RcrK, 'kN');
   pushRow(rows, 'Tassement estimé (ELS)', o.tassementELS, 'mm');
   const verifs = Array.isArray(o.verifications) ? o.verifications : [];
   let verifIdx = 0;
@@ -494,14 +494,29 @@ function buildLaboRows(o: Record<string, unknown>): CalcOutputRow[] {
     const label = full || code;
     if (label) rows.push({ label: 'Classe GTR', value: label, unit: '' });
   }
+  // COMPLÉTUDE : tous les résultats client-safe (multi-essais A/B/C/D). pushRow saute
+  // automatiquement les champs non renseignés (null) selon l'essai réalisé.
+  // — Identification (granulo / Atterberg / bleu)
   pushRow(rows, 'Dmax', o.dmax, 'mm');
   pushRow(rows, 'Passant à 80 µm', o.p80, '%');
   pushRow(rows, 'Passant à 2 mm', o.p2, '%');
+  pushRow(rows, 'Teneur en eau naturelle w_n', o.wn, '%');
   pushRow(rows, 'Limite de liquidité w_L', o.wl, '%');
   pushRow(rows, 'Limite de plasticité w_P', o.wp, '%');
   pushRow(rows, 'Indice de plasticité I_P', o.ip, '');
+  pushRow(rows, 'Indice de consistance I_C', o.ic, '');
   pushRow(rows, 'Valeur au bleu VBS', o.vbs, '');
+  // — Proctor / portance (lot B)
+  pushRow(rows, 'Teneur en eau optimale w_OPN', o.wopn, '%');
+  pushRow(rows, 'Densité sèche max ρ_d;max', o.rdmax, 't/m³');
   pushRow(rows, 'Indice CBR', o.cbr, '');
+  // — Œdomètre (lot C)
+  pushRow(rows, 'Indice des vides initial e₀', o.e0_oedo, '');
+  pushRow(rows, 'Indice de compression Cc', o.Cc_oedo, '');
+  pushRow(rows, 'Indice de gonflement Cs', o.Cs_oedo, '');
+  // — Cisaillement (lot D)
+  pushRow(rows, "Cohésion c'", o.c_cis, 'kPa');
+  pushRow(rows, "Angle de frottement φ'", o.phi_cis, '°');
   return rows;
 }
 

@@ -205,16 +205,20 @@ describe('adaptCalcResult — terzaghi (fondation superficielle)', () => {
 });
 
 describe('adaptCalcResult — pieux (fondation profonde)', () => {
-  it('given allOk=true, when adapté, then verdict PASS + résistances/vérifications', () => {
+  it('given allOk=true, when adapté, then verdict PASS + résistances complètes', () => {
     const norm = normalizedOf('fondation-profonde-pieux', REAL_PIEUX);
     expect(norm.verdict).toBe('PASS');
-    expect(labels(norm)).toMatch(/Résistance de pointe Rb;k/);
-    expect(labels(norm)).toMatch(/Tassement estimé/);
+    const l = labels(norm);
+    expect(l).toMatch(/Résistance de pointe R_b;k/);
+    expect(l).toMatch(/Tassement estimé/);
+    // Complétude (retour STARFIRE) : taux gouvernant + charge de fluage désormais affichés.
+    expect(l).toMatch(/Taux de travail gouvernant/);
+    expect(l).toMatch(/Charge de fluage/);
   });
 
-  it('fail-closed : ni methode, ni sens, ni Rcr* (résistances de fluage), ni tauxGouvernant', () => {
+  it('fail-closed : ni methode ni sens (paramètres de méthode) dans les libellés front', () => {
     const norm = normalizedOf('fondation-profonde-pieux', REAL_PIEUX);
-    expectNoLeak(norm, ['methode', 'pmt', '"sens"', 'Rcr', 'tauxGouvernant']);
+    expectNoLeak(norm, ['methode', '"pmt"', '"sens"', '"comp"']);
   });
 
   it('durcissement : nom de vérification NON reconnu → libellé générique indexé, jamais brut', () => {
@@ -280,21 +284,22 @@ describe('adaptCalcResult — labo (classification GTR)', () => {
     expect(classe?.value).toBe('A2 h');
   });
 
-  it('fail-closed : ni classe.path/desc/full, ni œdomètre (Cc/Cs), ni essais non exposés', () => {
+  it('complétude : affiche les résultats mécaniques (eau, consistance, Proctor, œdo, cisaillement)', () => {
     const norm = normalizedOf('labo-classification-gtr', REAL_LABO);
-    expectNoLeak(norm, [
-      '"path"',
-      '"desc"',
-      'Sables fins',
-      'préférentiel',
-      'Cc_oedo',
-      'Cs_oedo',
-      'phi_cis',
-      'c_cis',
-      '"mde"',
-      'rdmax',
-      'cbrType',
-    ]);
+    const l = labels(norm);
+    expect(l).toMatch(/Teneur en eau naturelle/);
+    expect(l).toMatch(/Indice de consistance/);
+    expect(l).toMatch(/Teneur en eau optimale/);
+    expect(l).toMatch(/Indice de compression Cc/);
+    expect(l).toMatch(/Cohésion/);
+    expect(l).toMatch(/Angle de frottement/);
+  });
+
+  it('fail-closed : la justification de classe (path/desc/full) n’est JAMAIS exposée', () => {
+    const norm = normalizedOf('labo-classification-gtr', REAL_LABO);
+    // Les VALEURS mécaniques sont affichées (libellés FR) mais la justification interne
+    // de la classification (chemin de décision, description longue) reste redactée.
+    expectNoLeak(norm, ['"path"', '"desc"', 'Sables fins', 'préférentiel', '"full"', 'cbrType']);
   });
 });
 

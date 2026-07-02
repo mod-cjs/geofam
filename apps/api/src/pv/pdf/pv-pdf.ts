@@ -800,14 +800,25 @@ function buildLaboBody(sealed: SealedContent): Content[] {
 
   // Paramètres d'identification
   const t: TableCell[][] = [[fdnHead('Paramètre'), fdnHead('Valeur', 'right')]];
+  // COMPLÉTUDE : tous les résultats client-safe (essais A/B/C/D). Les champs non
+  // renseignés (fdnNum→'—') sont auto-supprimés par fdnKvRow.
   fdnKvRow(t, 'Dmax', fdnNum(o.dmax, 0, 'mm'));
   fdnKvRow(t, 'Passant à 80 µm', fdnNum(o.p80, 0, '%'));
   fdnKvRow(t, 'Passant à 2 mm', fdnNum(o.p2, 0, '%'));
+  fdnKvRow(t, 'Teneur en eau naturelle w_n', fdnNum(o.wn, 1, '%'));
   fdnKvRow(t, 'Limite de liquidité w_L', fdnNum(o.wl, 0, '%'));
   fdnKvRow(t, 'Limite de plasticité w_P', fdnNum(o.wp, 0, '%'));
   fdnKvRow(t, 'Indice de plasticité I_P', fdnNum(o.ip, 0));
+  fdnKvRow(t, 'Indice de consistance I_C', fdnNum(o.ic, 2));
   fdnKvRow(t, 'Valeur au bleu VBS', fdnNum(o.vbs, 2));
+  fdnKvRow(t, 'Teneur en eau optimale w_OPN', fdnNum(o.wopn, 1, '%'));
+  fdnKvRow(t, 'Densité sèche max ρ_d;max', fdnNum(o.rdmax, 2, 't/m³'));
   fdnKvRow(t, 'Indice CBR', fdnNum(o.cbr, 0));
+  fdnKvRow(t, 'Indice des vides initial e₀', fdnNum(o.e0_oedo, 3));
+  fdnKvRow(t, 'Indice de compression Cc', fdnNum(o.Cc_oedo, 3));
+  fdnKvRow(t, 'Indice de gonflement Cs', fdnNum(o.Cs_oedo, 3));
+  fdnKvRow(t, "Cohésion c'", fdnNum(o.c_cis, 1, 'kPa'));
+  fdnKvRow(t, "Angle de frottement φ'", fdnNum(o.phi_cis, 1, '°'));
   if (t.length > 1) {
     body.push(sectionTitle('Paramètres d’identification'));
     body.push({
