@@ -165,9 +165,10 @@ databases:
 #    - RECETTE_API_KEY   : openssl rand -hex 32  → communiquer à STARFIRE
 #
 # 5. RÔLES POSTGRESQL (si l'utilisateur managé Render n'a pas CREATEROLE)
-#    Les migrations 0001 et 0004 créent roadsen_app (NOLOGIN, NOBYPASSRLS)
-#    et roadsen_auth (NOLOGIN, NOSUPERUSER, BYPASSRLS) via des blocs DO
-#    idempotents. Si prisma migrate deploy échoue sur CREATE ROLE (erreur
+#    Les migrations créent roadsen_app (NOLOGIN, NOBYPASSRLS) et roadsen_auth
+#    (NOLOGIN, NOSUPERUSER, NOBYPASSRLS — la 0007 supprime la dépendance
+#    BYPASSRLS : un roadsen_auth BYPASSRLS=t serait une faille d'isolation) via
+#    des blocs DO idempotents. Si prisma migrate deploy échoue sur CREATE ROLE (erreur
 #    « permission denied to create role »), exécuter manuellement le script
 #    fallback AVANT de relancer le déploiement :
 #      Dashboard → roadsen-db-recette → Shell → coller le contenu de

@@ -79,10 +79,13 @@ via des blocs DO idempotents. Si `preDeployCommand` (`prisma migrate deploy`)
 
 1. Dashboard → **roadsen-db-recette** → **Shell**
 2. Copier-coller le contenu de `infra/recette/init-roles.sql`
-3. Vérifier la sortie de la requête finale :
+3. Vérifier la sortie de la requête finale — **les DEUX rôles doivent être
+   `BYPASSRLS=f`** (la migration 0007 supprime la dépendance BYPASSRLS de
+   `roadsen_auth` ; un `BYPASSRLS=t` sur `roadsen_auth` = faille d'isolation, à
+   corriger par `ALTER ROLE roadsen_auth NOBYPASSRLS;`) :
    ```
    roadsen_app  | LOGIN=f | BYPASSRLS=f | SUPERUSER=f
-   roadsen_auth | LOGIN=f | BYPASSRLS=t | SUPERUSER=f
+   roadsen_auth | LOGIN=f | BYPASSRLS=f | SUPERUSER=f
    ```
 4. Dashboard → **roadsen-api-recette** → **Manual Deploy** → relancer.
 
