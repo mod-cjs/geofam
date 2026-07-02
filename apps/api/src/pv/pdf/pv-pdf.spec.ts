@@ -256,3 +256,41 @@ describe('Bruit flottant IEEE-754 — nettoyé À L’AFFICHAGE seulement', () =
     expect(text.includes('— vérifiable')).toBe(false);
   });
 });
+
+describe('PV pieux — allowlist fail-closed du libellé de vérification (DoD §8)', () => {
+  const prevSecret = process.env.PV_SIGNING_SECRET;
+  beforeAll(() => {
+    process.env.PV_SIGNING_SECRET = SECRET;
+  });
+  afterAll(() => {
+    if (prevSecret === undefined) delete process.env.PV_SIGNING_SECRET;
+    else process.env.PV_SIGNING_SECRET = prevSecret;
+  });
+
+  it('un nom de vérification NON whitelisté ne s’imprime PAS au PV (libellé générique)', () => {
+    const pv = makeSealedPv({
+      engineId: 'fondation-profonde-pieux',
+      output: {
+        allOk: true,
+        RbK: 800,
+        RsK: 1000,
+        RcK: 1800,
+        RcD: 1500,
+        RcrK: 1200,
+        tassementELS: 5,
+        verifications: [
+          { nom: 'ELU portance — MÉTHODE_INTERNE_kc=1.3', Fd: 100, Rd: 200, ok: true },
+          { nom: 'ELS caractéristique', Fd: 90, Rd: 180, ok: true },
+        ],
+      },
+    });
+    const text = collectPvPdfText(pv);
+    // Le texte moteur piégé NE traverse PAS vers le livrable scellé.
+    expect(text.includes('MÉTHODE_INTERNE')).toBe(false);
+    expect(text.includes('kc=1.3')).toBe(false);
+    // Repli générique indexé pour le nom non reconnu.
+    expect(text).toContain('Vérification 1');
+    // Le nom EC7 reconnu passe intact.
+    expect(text).toContain('ELS caractéristique');
+  });
+});

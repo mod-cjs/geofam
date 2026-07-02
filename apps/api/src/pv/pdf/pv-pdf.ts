@@ -582,6 +582,30 @@ const PIEUX_SENS: Record<string, string> = {
   trac: 'Traction',
 };
 
+/**
+ * Allowlist fail-closed du libellé de vérification pieux au PV (miroir serveur de
+ * safePieuxVerifLabel côté front, apps/web adapters.ts). Le PV est la surface la PLUS
+ * sensible (scellée, remise au client) : le `nom` de vérification (texte libre du moteur,
+ * borné en longueur mais PAS en contenu par CheckSchema) ne doit s'imprimer que s'il est
+ * reconnu (état-limite + combinaison EC7 whitelistés), sinon libellé générique indexé —
+ * aucun texte moteur non whitelisté sur un livrable client (DoD §8).
+ */
+const PV_PIEUX_ELS_LABELS: ReadonlySet<string> = new Set(['ELS caractéristique', 'ELS quasi-permanent']);
+const PV_PIEUX_ELU_PREFIXES: ReadonlySet<string> = new Set(['ELU portance', 'ELU traction']);
+const PV_PIEUX_ELU_COMBOS: ReadonlySet<string> = new Set(['DA1·C1', 'DA1·C2', 'DA2', 'DA3']);
+function safePieuxVerifLabelPv(rawNom: unknown, index: number): string {
+  const fallback = `Vérification ${index}`;
+  if (typeof rawNom !== 'string') return fallback;
+  if (PV_PIEUX_ELS_LABELS.has(rawNom)) return rawNom;
+  const sep = rawNom.indexOf(' — ');
+  if (sep > 0) {
+    const prefix = rawNom.slice(0, sep);
+    const combo = rawNom.slice(sep + 3);
+    if (PV_PIEUX_ELU_PREFIXES.has(prefix) && PV_PIEUX_ELU_COMBOS.has(combo)) return rawNom;
+  }
+  return fallback;
+}
+
 function buildFonProfondeBody(sealed: SealedContent): Content[] {
   const output = (sealed.output ?? {}) as Record<string, unknown>;
   const body: Content[] = [];
@@ -657,10 +681,12 @@ function buildFonProfondeBody(sealed: SealedContent): Content[] {
   };
   const verifs = Array.isArray(output.verifications) ? output.verifications : [];
   if (verifs.length > 0) {
+    let vi = 0;
     for (const v of verifs) {
       if (v === null || typeof v !== 'object') continue;
       const c = v as Record<string, unknown>;
-      checkRow(typeof c.nom === 'string' ? c.nom : 'Vérification', c.Fd, c.Rd);
+      vi += 1;
+      checkRow(safePieuxVerifLabelPv(c.nom, vi), c.Fd, c.Rd);
     }
   } else {
     // Combinaisons standard depuis les échos scellés.

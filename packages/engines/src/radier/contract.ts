@@ -248,6 +248,16 @@ const WorstPairSchema = z
  * Sortie client-safe du moteur radier : DIAGNOSTICS d'ingenierie uniquement. Aucun
  * champ nodal (w/p/M/...), aucune topologie de maillage (blocks/nodeX/nodeY), aucun
  * coefficient de reaction local kr.
+ *
+ * ⚠️ NOTE UNITÉS (piège du solveur — TRANCHÉ, décision titulaire 01/07/2026).
+ * Les annotations (m) / (rad) ci-dessous décrivent l'unité SI VISÉE. Mais la sortie
+ * NUMÉRIQUE du solveur est en réalité en **mm** (tassements) et en **‰** (distorsions /
+ * pentes / inclinaisons) — piège d'unité E-en-MPa × charges-en-kN × géométrie-en-m.
+ * L'affichage (front buildRadierRows + PV buildRadierBody) rend donc mm/‰ SANS conversion
+ * (physiquement juste : wMax=6,25 → 6,25 mm ; 6,25 m serait absurde). Preuve : physique +
+ * solveModel de référence identique au bit + cohérence inter-cas. NE PAS reprendre le
+ * ×1000 de l'outil d'origine GEOPLAQUE_V10 (sur-rapport). Confirmation STARFIRE/expert en
+ * attente pour figer l'unité sur un PV opposable (cf. mémoire roadsen-radier-units).
  */
 export const RadierOutputSchema = z
   .object({
