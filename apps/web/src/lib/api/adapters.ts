@@ -232,7 +232,8 @@ const ENGINE_TO_DOMAIN: Record<string, ProjectDomain> = {
 };
 
 function deriveDomain(raw: PrismaCalcResult): ProjectDomain {
-  if (raw.domain === 'CH' || raw.domain === 'FD' || raw.domain === 'LB') return raw.domain;
+  if (raw.domain === 'CH' || raw.domain === 'FD' || raw.domain === 'LB')
+    return raw.domain;
   return ENGINE_TO_DOMAIN[raw.engineId] ?? 'CH';
 }
 
@@ -254,6 +255,41 @@ function pushRow(
 }
 
 /**
+ * Familles de structure client-safe (catégories LCPC-SETRA §4.2-4.5, PUBLIQUES),
+ * en libellé NU sans discriminant. Doublon VOLONTAIRE de l'allowlist du contrat
+ * moteur (`FAMILLES_STRUCTURE`) : le front NE peut PAS importer @roadsen/engines
+ * (DoD §8). Ces noms de catégorie ne sont PAS confidentiels ; seul le ratio de
+ * rigidité Kmix calculé l'est — il ne doit jamais apparaître.
+ * ORDRE : préfixes les plus LONGS d'abord (« souple à faible trafic » avant « souple »).
+ */
+const BURMISTER_FAMILLES: readonly string[] = [
+  'bitumineuse épaisse',
+  'souple à faible trafic',
+  'souple',
+  'semi-rigide',
+  'mixte',
+  'inverse',
+  'granulaire',
+];
+const BURMISTER_FAMILLE_GENERIQUE = 'structure non catégorisée';
+
+/**
+ * Nettoie (fail-closed, DoD §8) un libellé de famille potentiellement corrompu en
+ * un libellé d'allowlist NU. Défense en profondeur : même si un output persisté /
+ * ancien portait « mixte (§4.4, K=0.62) », on n'affiche que « mixte » — jamais le
+ * discriminant Kmix. Non reconnu / non-chaîne → générique.
+ */
+function safeBurmisterFamille(raw: unknown): string {
+  if (typeof raw !== 'string') return BURMISTER_FAMILLE_GENERIQUE;
+  const s = raw.trim().toLowerCase();
+  if (s === '') return BURMISTER_FAMILLE_GENERIQUE;
+  for (const fam of BURMISTER_FAMILLES) {
+    if (s.startsWith(fam.toLowerCase())) return fam;
+  }
+  return BURMISTER_FAMILLE_GENERIQUE;
+}
+
+/**
  * CONTRAT client-safe du moteur chaussee-burmister.
  *
  * Construit les lignes affichables UNIQUEMENT à partir des champs whitelistés
@@ -263,14 +299,22 @@ function pushRow(
  * un champ confidentiel survivait au strip serveur, il N'apparaîtrait PAS ici car
  * on ne lit que des clés NOMMÉES (fail-closed — pas de copie d'objet brut).
  *
- * Inclus (grandeurs de RÉSULTAT d'ingénierie) : NE, épaisseurs, déformation/
- * contrainte sollicitante vs admissible (fatigue + orniérage) + verdict/critère.
- * Exclus : `famille` (libellé citant une §méthode — fail-closed, non rendu par le
- * panneau ; réouverture = décision explicite), `warnings`/`erreur` (texte libre,
- * canal séparé), `conforme` (porté par le verdict, pas une ligne numérique).
+ * Inclus (grandeurs de RÉSULTAT d'ingénierie) : famille (libellé NU nettoyé, aligné
+ * avec le PV), NE, épaisseurs, déformation/contrainte sollicitante vs admissible
+ * (fatigue + orniérage) + verdict/critère. La `famille` passe par
+ * `safeBurmisterFamille` : jamais le discriminant Kmix ni la référence §méthode
+ * (FUITE #1 / issue #81). Exclus : `warnings`/`erreur` (texte libre, canal séparé),
+ * `conforme` (porté par le verdict, pas une ligne numérique).
  */
 function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
+
+  // Famille de structure — libellé NU nettoyé (fail-closed §8), aligné avec le PV.
+  rows.push({
+    label: 'Famille de structure',
+    value: safeBurmisterFamille(o.famille),
+    unit: '',
+  });
 
   pushRow(rows, 'Trafic cumulé (NE)', o.NE, 'essieux éq.');
   pushRow(rows, 'Épaisseur totale', o.epaisseurTotale, 'm');
@@ -278,7 +322,12 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
 
   const f = o.fatigue;
   if (f != null && typeof f === 'object') {
-    const fa = f as { rigide?: unknown; valeur?: unknown; admissible?: unknown; ok?: unknown };
+    const fa = f as {
+      rigide?: unknown;
+      valeur?: unknown;
+      admissible?: unknown;
+      ok?: unknown;
+    };
     const rigide = fa.rigide === true;
     const unit = rigide ? 'MPa' : 'μdef';
     const fok: 'ok' | 'fail' = fa.ok === true ? 'ok' : 'fail';
@@ -339,12 +388,24 @@ function buildTerzaghiRows(o: Record<string, unknown>): CalcOutputRow[] {
     pushRow(rows, `${et} — résistance Rᵥ;d`, c.Rtot, 'kN', pOk);
     pushRow(rows, `${et} — contrainte adm. q_Rv;d`, c.qRvd, 'kPa');
     const taux = finiteOrNull(c.taux);
-    if (taux !== null) rows.push({ label: `${et} — taux de mobilisation`, value: taux * 100, unit: '%', status: pOk });
+    if (taux !== null)
+      rows.push({
+        label: `${et} — taux de mobilisation`,
+        value: taux * 100,
+        unit: '%',
+        status: pOk,
+      });
     if (c.Rhd != null) {
       const gOk: 'ok' | 'fail' = c.glissementOk === true ? 'ok' : 'fail';
       pushRow(rows, `${et} — résistance au glissement R_h;d`, c.Rhd, 'kN', gOk);
       const tH = finiteOrNull(c.tauxH);
-      if (tH !== null) rows.push({ label: `${et} — taux glissement`, value: tH * 100, unit: '%', status: gOk });
+      if (tH !== null)
+        rows.push({
+          label: `${et} — taux glissement`,
+          value: tH * 100,
+          unit: '%',
+          status: gOk,
+        });
     }
     pushRow(rows, `${et} — tassement`, c.tassement, 'm');
     pushRow(rows, `${et} — tassement (Schmertmann)`, c.tassementSchmertmann, 'm');
@@ -358,11 +419,14 @@ function terzaghiVerdict(o: Record<string, unknown>): 'PASS' | 'FAIL' {
   const cas = Array.isArray(o.cas) ? o.cas : [];
   const valid = cas.filter(
     (c): c is Record<string, unknown> =>
-      c != null && typeof c === 'object' && (c as Record<string, unknown>).invalide !== true,
+      c != null &&
+      typeof c === 'object' &&
+      (c as Record<string, unknown>).invalide !== true,
   );
   if (valid.length === 0) return 'FAIL';
   return valid.every(
-    (c) => c.portanceOk === true && (c.glissementOk === undefined || c.glissementOk === true),
+    (c) =>
+      c.portanceOk === true && (c.glissementOk === undefined || c.glissementOk === true),
   )
     ? 'PASS'
     : 'FAIL';
@@ -376,7 +440,10 @@ function terzaghiVerdict(o: Record<string, unknown>): 'PASS' | 'FAIL' {
  * whitelisté n'atteigne le navigateur (DoD §8). Ajouter ici toute nouvelle combinaison
  * EC7 introduite côté moteur (sinon elle s'affiche « Vérification N », jamais brute).
  */
-const PIEUX_ELS_LABELS: ReadonlySet<string> = new Set(['ELS caractéristique', 'ELS quasi-permanent']);
+const PIEUX_ELS_LABELS: ReadonlySet<string> = new Set([
+  'ELS caractéristique',
+  'ELS quasi-permanent',
+]);
 const PIEUX_ELU_PREFIXES: ReadonlySet<string> = new Set(['ELU portance', 'ELU traction']);
 const PIEUX_ELU_COMBOS: ReadonlySet<string> = new Set(['DA1·C1', 'DA1·C2', 'DA2', 'DA3']);
 
@@ -408,7 +475,13 @@ function buildPieuxRows(o: Record<string, unknown>): CalcOutputRow[] {
   // (pointe R_b;k, frottement R_s;k, caractéristique R_c;k, calcul R_c;d, fluage R_c;cr;k)
   // → tassement ELS → vérifications par état-limite (Fd/Rd).
   const tg = finiteOrNull(o.tauxGouvernant);
-  if (tg !== null) rows.push({ label: 'Taux de travail gouvernant', value: tg * 100, unit: '%', status: okGov });
+  if (tg !== null)
+    rows.push({
+      label: 'Taux de travail gouvernant',
+      value: tg * 100,
+      unit: '%',
+      status: okGov,
+    });
   pushRow(rows, 'Résistance de pointe R_b;k', o.RbK, 'kN');
   pushRow(rows, 'Résistance de frottement R_s;k', o.RsK, 'kN');
   pushRow(rows, 'Résistance caractéristique R_c;k', o.RcK, 'kN');
@@ -470,7 +543,12 @@ function buildRadierRows(o: Record<string, unknown>): CalcOutputRow[] {
   }
   const wlp = o.worstLoadPair;
   if (wlp != null && typeof wlp === 'object') {
-    pushRow(rows, 'Distorsion max entre charges voisines', (wlp as Record<string, unknown>).beta, '‰');
+    pushRow(
+      rows,
+      'Distorsion max entre charges voisines',
+      (wlp as Record<string, unknown>).beta,
+      '‰',
+    );
   }
   pushRow(rows, 'Nombre de radiers', o.nRafts, '');
   return rows;
@@ -547,9 +625,14 @@ function sanitizeRows(rows: unknown): CalcOutputRow[] {
     if (r == null || typeof r !== 'object') continue;
     const o = r as Record<string, unknown>;
     const value = finiteOrNull(o.value);
-    if (value === null || typeof o.label !== 'string' || typeof o.unit !== 'string') continue;
+    if (value === null || typeof o.label !== 'string' || typeof o.unit !== 'string')
+      continue;
     const status = o.status === 'ok' || o.status === 'fail' ? o.status : undefined;
-    out.push(status ? { label: o.label, value, unit: o.unit, status } : { label: o.label, value, unit: o.unit });
+    out.push(
+      status
+        ? { label: o.label, value, unit: o.unit, status }
+        : { label: o.label, value, unit: o.unit },
+    );
   }
   return out;
 }
@@ -575,10 +658,16 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
   if (output == null || typeof output !== 'object') return null;
   const o = output as Record<string, unknown>;
   if (typeof o.conforme === 'boolean') {
-    return { verdict: o.conforme === true ? 'PASS' : 'FAIL', rows: buildBurmisterRows(o) };
+    return {
+      verdict: o.conforme === true ? 'PASS' : 'FAIL',
+      rows: buildBurmisterRows(o),
+    };
   }
   if (typeof o.verdict === 'string' && Array.isArray(o.rows)) {
-    return { verdict: o.verdict === 'PASS' ? 'PASS' : 'FAIL', rows: sanitizeRows(o.rows) };
+    return {
+      verdict: o.verdict === 'PASS' ? 'PASS' : 'FAIL',
+      rows: sanitizeRows(o.rows),
+    };
   }
   // terzaghi (fondation superficielle) : sortie {cas:[…]} → whitelist par cas
   if (Array.isArray(o.cas)) {
@@ -692,7 +781,9 @@ export function adaptPersistedCalcResult(
  * #20 — sealedBy : extrait identity.userDisplayName de inputCanonical si disponible
  * (le nom d'émetteur est scellé dans le contenu canonique). Fallback = userId (UUID).
  */
-export function adaptOfficialPv(raw: PrismaOfficialPv | PrismaOfficialPvFlat): OfficialPv {
+export function adaptOfficialPv(
+  raw: PrismaOfficialPv | PrismaOfficialPvFlat,
+): OfficialPv {
   // Détection de la forme
   const isNested =
     'pv' in raw &&
@@ -800,7 +891,11 @@ export function adaptLoginResponse(raw: BackendLoginResponse): LoginResponse {
  * Mapping : userId→id, fullName→name, email→email.
  * Compatibilité : Sidebar/Topbar/page Compte lisent `user.name` et `user.email`.
  */
-export function adaptUserProfile(raw: BackendUserProfile): { id: string; email: string; name: string } {
+export function adaptUserProfile(raw: BackendUserProfile): {
+  id: string;
+  email: string;
+  name: string;
+} {
   return {
     id: raw.userId,
     email: raw.email,

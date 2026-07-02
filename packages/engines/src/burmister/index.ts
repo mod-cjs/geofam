@@ -30,6 +30,7 @@ import {
   BurmisterInputSchema,
   BurmisterOutputSchema,
   burmisterContract,
+  sanitizeFamille,
   type BurmisterInput,
   type BurmisterOutput,
 } from './contract.js';
@@ -40,6 +41,7 @@ export {
   BurmisterInputSchema,
   BurmisterOutputSchema,
   burmisterContract,
+  sanitizeFamille,
   type BurmisterInput,
   type BurmisterOutput,
 };
@@ -54,27 +56,36 @@ function fin(x: unknown): x is number {
 }
 
 /**
- * ETIQUETTES d'INTERMEDIAIRES CONFIDENTIELS susceptibles d'apparaitre dans le
- * TEXTE LIBRE d'un message (erreur globale, ou warning futur) — DoD §8, leçon
- * MAJEUR-1 de #45.
+ * --- CANAL WARNINGS : ALLOWLIST fail-closed (FUITE #2 / issue #82, DoD §8) ---
  *
- * --- Le probleme (meme nature que terzaghi) ---
- * La whitelist de sortie protege les CLES structurees (un champ `sz`/`kr`/`et0`
- * ne peut pas etre expose). Mais un TEXTE LIBRE pourrait interpoler la VALEUR
- * d'un intermediaire confidentiel propre a burmister :
+ * L'ancienne barriere sur `warnings` etait une BLACKLIST fail-OPEN : elle masquait
+ * la VALEUR (`kc=1.3` → masque) mais LAISSAIT passer l'etiquette `kc` ET le texte
+ * `(§ confidentiel)` (section d'un doc PRIVE STARFIRE). Structurellement
+ * insuffisante : tout intermediaire NON liste, toute reference de section privee
+ * fuyait. On inverse en ALLOWLIST : on n'expose au client QUE des warnings
+ * RECONNUS (ensemble FERME de messages cures) — jamais un texte moteur libre. Un
+ * warning non reconnu est ECARTE (voir `curateWarnings`).
+ *
+ * ETAT REEL DU MOTEUR (honnetete) : `computeBurmister` ne pose AUCUN warning en
+ * fonctionnement normal (l'objet `_D` n'a pas de champ `warn`) ; l'ensemble cure
+ * (`WARNINGS_CURES`) est donc VIDE a ce jour → tout warning est ECARTE. Toute
+ * evolution du moteur qui emettrait un warning DEVRA y ajouter le message CURE
+ * exact (texte fige, sans intermediaire), sinon il n'atteindra pas le client.
+ *
+ * --- CANAL ERREUR : redaction (defense en profondeur, inchangee) ---
+ * Le message d'erreur (`_D.err` = `e.message` d'une exception, parite HTML) reste
+ * un texte libre destine a etre lu. On lui applique la redaction ci-dessous
+ * (retrait de `<etiquette confidentielle> = <valeur>`) — barriere dormante
+ * (le moteur ne pose pas de valeur de ce type dans `err`), conservee par parite
+ * avec les 6 moteurs. Le passage de ce canal a un code d'erreur ferme
+ * (SafeEngineError) est un SUIVI hors de #82.
+ *
+ * ETIQUETTES d'INTERMEDIAIRES CONFIDENTIELS (canal erreur) :
  *   - contraintes brutes du tenseur : σ_z, σ_r, σ_θ (sz/sr/sth/srT/sthT) ;
- *   - deformations sollicitantes intermediaires aux positions r=0 / r=d/2
- *     (et0/etM) — distinctes des ε_t/ε_z FINALS exposes ;
+ *   - deformations sollicitantes intermediaires (et0/etM) — distinctes des
+ *     ε_t/ε_z FINALS exposes ;
  *   - coefficients de CALAGE des lois de fatigue : kr, ks, kc, kθ (kth), Sh, ε₆/σ₆ ;
  *   - module pondere du paquet lie E₁ (E1) — intermediaire de structure.
- *
- * --- La regle ---
- * On NE TOUCHE PAS au moteur (science figee). On REDACTE a la PROJECTION : on
- * retire la VALEUR confidentielle (`= <nombre> [unite]`) accolee a une etiquette
- * confidentielle, en gardant le SENS. Aujourd'hui le moteur ne produit qu'un
- * `err` (sur exception) sans valeur de ce type ; la redaction est donc une
- * defense en profondeur fail-closed (parite avec le patron des 6 moteurs), pas
- * un correctif d'une fuite avere ici.
  *
  * Le SEUIL/la classe normative (ex. « < 0,15 m », « NE < 3·10⁶ ») n'est PAS un
  * intermediaire calcule : on ne le vise pas (pas d'etiquette confidentielle a sa
@@ -128,9 +139,39 @@ export function redactConfidentialWarning(text: string): string {
   return out;
 }
 
-/** Applique la redaction a TOUS les warnings (point de passage oblige). */
+/** Applique la redaction a TOUS les messages (canal erreur — defense en profondeur). */
 export function redactConfidentialWarnings(warnings: readonly string[]): string[] {
   return warnings.map((w) => redactConfidentialWarning(w));
+}
+
+/**
+ * ALLOWLIST des warnings RECONNUS (messages cures, texte fige sans intermediaire).
+ * FERMEE et VIDE a ce jour : le moteur burmister n'emet aucun warning en
+ * fonctionnement normal. Ajouter une entree = decision de CURATION tracee (le
+ * message doit etre un texte STATIQUE, sans valeur d'intermediaire de methode).
+ */
+const WARNINGS_CURES: ReadonlySet<string> = new Set<string>([
+  // (aucun message cure a ce jour — cf. en-tete : `_D` n'a pas de champ `warn`)
+]);
+
+/**
+ * FAIL-CLOSED par ALLOWLIST : ne laisse traverser au client QUE les warnings
+ * EXACTEMENT reconnus (`cures`). Tout texte moteur libre non reconnu (etiquette
+ * `kc`, reference `(§ confidentiel)`, intermediaire arbitraire `foo=2.5`...) est
+ * ECARTE — jamais redacte-mais-expose. `cures` est parametre (defaut
+ * `WARNINGS_CURES`) UNIQUEMENT pour permettre a un test de prouver le mecanisme de
+ * lookup (reconnu → garde, inconnu → ecarte), pas pour un usage en production.
+ */
+export function curateWarnings(
+  warnings: readonly string[],
+  cures: ReadonlySet<string> = WARNINGS_CURES,
+): string[] {
+  const out: string[] = [];
+  for (const w of warnings) {
+    if (typeof w === 'string' && cures.has(w)) out.push(w);
+    // sinon : ECARTE (fail-closed) — aucun texte moteur libre non reconnu ne sort.
+  }
+  return out;
 }
 
 /**
@@ -155,7 +196,9 @@ function shapeOutput(D: Record<string, unknown>): unknown {
     };
   }
 
-  const warnings = redactConfidentialWarnings(
+  // Canal WARNINGS : ALLOWLIST fail-closed — seuls les messages cures reconnus
+  // traversent ; tout texte moteur libre non reconnu est ECARTE (FUITE #2 / #82).
+  const warnings = curateWarnings(
     Array.isArray(D.warn) ? D.warn.filter((w): w is string => typeof w === 'string') : [],
   );
 
@@ -164,7 +207,8 @@ function shapeOutput(D: Record<string, unknown>): unknown {
     warnings,
     conforme: D.PASS === true,
     NE: fin(D.NE) ? D.NE : 0,
-    famille: typeof D.fam === 'string' ? D.fam : '',
+    // Libelle de famille NETTOYE en allowlist NU (sans discriminant Kmix) — FUITE #1.
+    famille: sanitizeFamille(D.fam),
     epaisseurLiee: fin(D.H_bit) ? D.H_bit : 0,
     epaisseurTotale: fin(D.H_tot) ? D.H_tot : 0,
     ornierage: {

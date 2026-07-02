@@ -26,7 +26,9 @@ const CHAUSSEE_OUTPUT: SealableValue = {
   warnings: [],
   conforme: false,
   NE: 1467314.8218242952,
-  famille: 'bitumineuse épaisse (§4.2)',
+  // Famille SCELLEE = sortie NETTOYEE par la projection moteur (runBurmister) :
+  // libelle NU d'allowlist, SANS discriminant Kmix ni § (FUITE #1 / issue #81).
+  famille: 'bitumineuse épaisse',
   epaisseurLiee: 0.16, // m -> 16 cm
   epaisseurTotale: 0.41000000000000003, // m -> 41 cm (bruité)
   fatigue: {
@@ -207,6 +209,22 @@ describe('#71 — présentation métier chaussée', () => {
     expect(text.includes('load.sh')).toBe(false);
     // warnings (bruit) et erreur vide non rendus en ligne.
     expect(text.includes('warnings')).toBe(false);
+  });
+
+  it('CONFIDENTIALITÉ (DoD §8, FUITE #1) : le discriminant Kmix « K=… » n apparaît JAMAIS dans le PV', () => {
+    // La famille SCELLÉE provient de la projection moteur (runBurmister), qui la
+    // nettoie en libellé NU (allowlist) : plus de « §x.y, K=… ». Le renderer imprime
+    // cette famille nettoyée. Sentinelle : si une sortie brute portant le ratio de
+    // rigidité calculé était scellée puis rendue, « K= » fuiterait ici.
+    const output = {
+      ...(CHAUSSEE_OUTPUT as Record<string, unknown>),
+      famille: 'mixte', // libellé NU tel que produit par la projection
+    } as SealableValue;
+    const text = collectPvPdfText(makeChausseePv({ output }));
+    expect(text).toContain('Famille de structure');
+    expect(text).toContain('mixte');
+    expect(text).not.toContain('K=');
+    expect(text).not.toMatch(/K\s*=\s*0[.,]\d/);
   });
 
   it('WARNINGS vides : ni encadré ni clé « warnings » rendus', () => {

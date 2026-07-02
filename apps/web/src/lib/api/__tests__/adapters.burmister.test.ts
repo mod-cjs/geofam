@@ -12,6 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+
 import { adaptCalcResult, type PrismaCalcResult } from '../adapters';
 import type { CalcOutputRow, NormalizedCalcOutput } from '../types';
 
@@ -84,7 +85,8 @@ describe('adaptCalcResult — verdict dérivé de conforme', () => {
 
   it('given conforme=true, when adapté, then verdict = PASS', () => {
     const out = asNormalized(
-      adaptCalcResult(makeRaw({ output: { ...LIVE_BURMISTER_OUTPUT, conforme: true } })).output,
+      adaptCalcResult(makeRaw({ output: { ...LIVE_BURMISTER_OUTPUT, conforme: true } }))
+        .output,
     );
     expect(out.verdict).toBe('PASS');
   });
@@ -131,14 +133,27 @@ describe('adaptCalcResult — rows client-safe non vides', () => {
         makeRaw({
           output: {
             ...LIVE_BURMISTER_OUTPUT,
-            fatigue: { ok: false, requis: true, rigide: false, valeur: 119.12, admissible: null },
+            fatigue: {
+              ok: false,
+              requis: true,
+              rigide: false,
+              valeur: 119.12,
+              admissible: null,
+            },
           },
         }),
       ).output,
     );
-    expect(out.rows.find((r) => r.label === 'Déformation admissible ε_t,adm')).toBeUndefined();
-    // toutes les valeurs émises sont finies
-    expect(out.rows.every((r) => Number.isFinite(r.value))).toBe(true);
+    expect(
+      out.rows.find((r) => r.label === 'Déformation admissible ε_t,adm'),
+    ).toBeUndefined();
+    // aucune valeur numérique NaN affichée (les lignes textuelles — famille — sont
+    // des chaînes non vides ; les lignes numériques sont finies).
+    expect(
+      out.rows.every((r) =>
+        typeof r.value === 'string' ? r.value.length > 0 : Number.isFinite(r.value),
+      ),
+    ).toBe(true);
   });
 
   it('given fatigue rigide=true, then unité MPa et libellé contrainte (pas déformation)', () => {
@@ -147,7 +162,13 @@ describe('adaptCalcResult — rows client-safe non vides', () => {
         makeRaw({
           output: {
             ...LIVE_BURMISTER_OUTPUT,
-            fatigue: { ok: true, requis: true, rigide: true, valeur: 1.8, admissible: 2.1 },
+            fatigue: {
+              ok: true,
+              requis: true,
+              rigide: true,
+              valeur: 1.8,
+              admissible: 2.1,
+            },
           },
         }),
       ).output,
@@ -166,7 +187,16 @@ describe('adaptCalcResult — fail-closed : aucune fuite de champ non whitelist�
           output: {
             ...LIVE_BURMISTER_OUTPUT,
             // intermédiaires confidentiels qui ne DOIVENT jamais ressortir
-            _D: { sz: 0.42, sr: -0.13, kr: 1.3, ks: 0.9, kc: 1.3, Sh: 0.25, b: 5, e6: 100 },
+            _D: {
+              sz: 0.42,
+              sr: -0.13,
+              kr: 1.3,
+              ks: 0.9,
+              kc: 1.3,
+              Sh: 0.25,
+              b: 5,
+              e6: 100,
+            },
             propagateur: { A: 1, B: 2, C: 3, Dm: 4 },
           },
         }),
@@ -175,7 +205,16 @@ describe('adaptCalcResult — fail-closed : aucune fuite de champ non whitelist�
 
     const serialized = JSON.stringify(out);
     // Les libellés/valeurs confidentiels n'apparaissent NULLE PART dans la sortie normalisée.
-    for (const leak of ['_D', 'propagateur', 'sz', 'kr', 'Sh', 'famille', 'warnings', 'confidentiel']) {
+    for (const leak of [
+      '_D',
+      'propagateur',
+      'sz',
+      'kr',
+      'Sh',
+      'famille',
+      'warnings',
+      'confidentiel',
+    ]) {
       expect(serialized, `fuite détectée : ${leak}`).not.toContain(leak);
     }
     // La valeur d'un intermédiaire (kr=1.3 → -0.13 …) n'est pas non plus présente.
@@ -189,7 +228,12 @@ describe('adaptCalcResult — fail-closed : aucune fuite de champ non whitelist�
     const out = adaptCalcResult(
       makeRaw({
         engineId: 'fondation-terzaghi',
-        output: { qadm: 250, methode: 'Terzaghi §5.3', _kc: 1.3, warnings: ['…confidentiel…'] },
+        output: {
+          qadm: 250,
+          methode: 'Terzaghi §5.3',
+          _kc: 1.3,
+          warnings: ['…confidentiel…'],
+        },
       }),
     ).output;
     const serialized = JSON.stringify(out ?? {});
@@ -224,20 +268,76 @@ describe('adaptCalcResult — fail-closed : aucune fuite de champ non whitelist�
     expect(JSON.stringify(out)).not.toContain('§4.2');
   });
 
-  it('chaque row respecte le contrat {label:string, value:number fini, unit:string}', () => {
+  it('chaque row respecte le contrat {label:string, value:(number fini|string), unit:string}', () => {
     const out = asNormalized(adaptCalcResult(makeRaw()).output);
     for (const r of out.rows as CalcOutputRow[]) {
       expect(typeof r.label).toBe('string');
-      expect(Number.isFinite(r.value)).toBe(true);
+      // value = grandeur numérique FINIE (jamais NaN) ou résultat TEXTUEL (famille).
+      if (typeof r.value === 'string') {
+        expect(r.value.length).toBeGreaterThan(0);
+      } else {
+        expect(Number.isFinite(r.value)).toBe(true);
+      }
       expect(typeof r.unit).toBe('string');
     }
+  });
+});
+
+describe('buildBurmisterRows — famille : libellé NU nettoyé (FUITE #1 / issue #81)', () => {
+  it('given une famille propre, then la ligne « Famille de structure » affiche le libellé NU', () => {
+    const out = asNormalized(adaptCalcResult(makeRaw()).output);
+    const fam = out.rows.find((r) => r.label === 'Famille de structure');
+    expect(fam).toBeDefined();
+    // La fixture porte « bitumineuse épaisse (§4.2) » : le § est retiré à l affichage.
+    expect(fam!.value).toBe('bitumineuse épaisse');
+    expect(String(fam!.value)).not.toContain('§');
+  });
+
+  it('SENTINELLE : une famille CORROMPUE (§/K=/kc/décimale) retombe sur le générique, aucune fuite', () => {
+    // Chaîne adversaire portant un intermédiaire confidentiel (K/kc + section privée).
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            famille: 'bitumineuse (§ confidentiel kc=1.3)',
+          },
+        }),
+      ).output,
+    );
+    const fam = out.rows.find((r) => r.label === 'Famille de structure');
+    expect(fam).toBeDefined();
+    expect(fam!.value).toBe('structure non catégorisée');
+    // La sérialisation complète des rows ne contient NI §, NI kc, NI K=, NI 1.3.
+    const serialized = JSON.stringify(out);
+    for (const leak of ['§', 'kc', 'K=', '1.3', 'confidentiel']) {
+      expect(serialized, `fuite famille : ${leak}`).not.toContain(leak);
+    }
+  });
+
+  it('SENTINELLE : un discriminant Kmix « mixte (§4.4, K=0.62) » → « mixte » NU', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: { ...LIVE_BURMISTER_OUTPUT, famille: 'mixte (§4.4, K=0.62)' },
+        }),
+      ).output,
+    );
+    const fam = out.rows.find((r) => r.label === 'Famille de structure');
+    expect(fam!.value).toBe('mixte');
+    const serialized = JSON.stringify(out);
+    expect(serialized).not.toContain('K=');
+    expect(serialized).not.toContain('0.62');
+    expect(serialized).not.toContain('§4.4');
   });
 });
 
 describe('adaptCalcResult — passthrough des sorties déjà normalisées / autres', () => {
   it('given output déjà {verdict, rows} (sans conforme), then conservé tel quel', () => {
     const r = adaptCalcResult(
-      makeRaw({ output: { verdict: 'PASS', rows: [{ label: 'X', value: 1, unit: 'm' }] } }),
+      makeRaw({
+        output: { verdict: 'PASS', rows: [{ label: 'X', value: 1, unit: 'm' }] },
+      }),
     );
     expect((r.output as NormalizedCalcOutput).verdict).toBe('PASS');
     expect((r.output as NormalizedCalcOutput).rows).toHaveLength(1);

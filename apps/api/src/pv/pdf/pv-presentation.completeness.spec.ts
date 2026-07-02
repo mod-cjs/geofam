@@ -33,7 +33,8 @@ const OUTPUT = {
   warnings: [],
   conforme: false,
   NE: 1467314.82,
-  famille: 'bitumineuse épaisse (§4.2)',
+  // Famille SCELLEE = sortie NETTOYEE par la projection moteur (libelle NU, sans K).
+  famille: 'bitumineuse épaisse',
   epaisseurLiee: 0.16,
   epaisseurTotale: 0.41,
   fatigue: {

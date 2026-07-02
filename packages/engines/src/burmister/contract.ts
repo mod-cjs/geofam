@@ -40,6 +40,63 @@ import { defineEngineContract } from '@roadsen/shared';
 import { z } from 'zod';
 
 // ---------------------------------------------------------------------------
+// Famille de structure : ALLOWLIST fail-closed (FUITE #1 / issue #81, DoD §8)
+// ---------------------------------------------------------------------------
+
+/**
+ * Libelles de FAMILLE de structure client-safe (categories LCPC-SETRA §4.2-4.5,
+ * PUBLIQUES). Le moteur emet une chaine ENRICHIE d'un DISCRIMINANT CALCULE — ex.
+ * « mixte (§4.4, K=0.62) », « semi-rigide (§4.3, K=0.34<0,5) » — ou le ratio de
+ * rigidite Kmix (= h_lie_bit / h_lie_total) est un INTERMEDIAIRE de methode
+ * CONFIDENTIEL. Le `§4.x` est public ; le K chiffre ne l'est pas.
+ *
+ * On NE laisse traverser au client (affichage + PV scelle) QUE le libelle de
+ * famille NU, SANS le suffixe `(§x.y, K=...)`. Tout ce qui n'est pas reconnu
+ * retombe sur un GENERIQUE. La sortie ne contient jamais « § », « K= » ni decimale.
+ *
+ * ORDRE : prefixes les PLUS LONGS d'abord (« souple à faible trafic » AVANT
+ * « souple ») — le premier prefixe correspondant gagne (sinon collision de prefixe).
+ */
+export const FAMILLES_STRUCTURE = [
+  'bitumineuse épaisse',
+  'souple à faible trafic',
+  'souple',
+  'semi-rigide',
+  'mixte',
+  'inverse',
+  'granulaire',
+] as const;
+
+/** Libelle retenu pour toute chaine brute NON reconnue (fail-closed). */
+export const FAMILLE_GENERIQUE = 'structure non catégorisée';
+
+/**
+ * Ensemble FERME des libelles autorises en SORTIE : les 7 familles NUES + le
+ * generique + la chaine VIDE (cas d'erreur de calcul, aucune famille). Sert de
+ * garde-fou `refine` sur le schema de sortie (defense en profondeur).
+ */
+export const FAMILLES_AUTORISEES: ReadonlySet<string> = new Set<string>([
+  ...FAMILLES_STRUCTURE,
+  FAMILLE_GENERIQUE,
+  '',
+]);
+
+/**
+ * Nettoie la chaine BRUTE de famille du moteur en un libelle d'ALLOWLIST NU (sans
+ * discriminant calcule). FAIL-CLOSED : entree non-chaine, vide ou non reconnue →
+ * generique. Ne renvoie JAMAIS la chaine brute (jamais « § », « K= » ni decimale).
+ */
+export function sanitizeFamille(raw: unknown): string {
+  if (typeof raw !== 'string') return FAMILLE_GENERIQUE;
+  const s = raw.trim().toLowerCase();
+  if (s === '') return FAMILLE_GENERIQUE;
+  for (const fam of FAMILLES_STRUCTURE) {
+    if (s.startsWith(fam.toLowerCase())) return fam;
+  }
+  return FAMILLE_GENERIQUE;
+}
+
+// ---------------------------------------------------------------------------
 // Entree : etat complet de la structure (nombres finis bornes)
 // ---------------------------------------------------------------------------
 
@@ -252,8 +309,20 @@ export const BurmisterOutputSchema = z
     conforme: z.boolean(),
     /** Trafic cumule NE (essieux equivalents). */
     NE: z.number().finite(),
-    /** Famille de structure (LCPC §4.2-4.5) — libelle. */
-    famille: z.string().max(80),
+    /**
+     * Famille de structure (LCPC §4.2-4.5) — libelle NU d'allowlist (jamais le
+     * discriminant Kmix calcule). Nettoye a la projection (sanitizeFamille) ; le
+     * `refine` REJETTE tout libelle hors allowlist — fail-closed, defense en
+     * profondeur : une chaine porteuse de « § »/« K= » ne peut pas etre projetee
+     * silencieusement (elle fait echouer le parse). Cf. FUITE #1 / issue #81.
+     */
+    famille: z
+      .string()
+      .max(80)
+      .refine((v) => FAMILLES_AUTORISEES.has(v), {
+        message:
+          'famille hors allowlist (fail-closed) : suffixe §/discriminant K interdit en sortie',
+      }),
     /** Epaisseur du paquet lie (m). */
     epaisseurLiee: z.number().finite(),
     /** Epaisseur totale des couches (m). */
