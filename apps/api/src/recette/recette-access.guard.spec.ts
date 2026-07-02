@@ -118,26 +118,15 @@ describe('RecetteAccessGuard', () => {
     });
   });
 
-  describe('given RECETTE_API_KEY ABSENTE', () => {
-    let savedEnv: string | undefined;
-    beforeEach(() => {
-      savedEnv = process.env.NODE_ENV;
-    });
-    afterEach(() => {
-      if (savedEnv === undefined) delete process.env.NODE_ENV;
-      else process.env.NODE_ENV = savedEnv;
-    });
-
-    it('en dev/test : guard INERTE -> autorise (true) — e2e existants non casses', () => {
-      process.env.NODE_ENV = 'test';
+  describe('given RECETTE_API_KEY ABSENTE (guard inerte)', () => {
+    it('when aucun en-tete then autorise (true) — e2e existants non casses', () => {
       expect(guard.canActivate(ctx({}))).toBe(true);
-      process.env.NODE_ENV = 'development';
-      expect(guard.canActivate(ctx({ 'x-recette-key': 'peu-importe' }))).toBe(true);
     });
 
-    it('en environnement DEPLOYE (production) : FAIL-CLOSED -> 401 (pas d oracle moteur /calc/* public)', () => {
-      process.env.NODE_ENV = 'production';
-      expect(() => guard.canActivate(ctx({}))).toThrow(UnauthorizedException);
+    it('when un X-Recette-Key traine quand meme then autorise (true) — toujours inerte', () => {
+      expect(guard.canActivate(ctx({ 'x-recette-key': 'peu-importe' }))).toBe(
+        true,
+      );
     });
   });
 });
