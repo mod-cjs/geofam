@@ -745,10 +745,23 @@ function buildRadierBody(sealed: SealedContent): Content[] {
   // déplacements numériquement en mm (piège d'unité E-MPa × charges-kN × géométrie-m) ;
   // l'annotation « m/rad » du contrat vise l'unité SI, pas la sortie numérique. Voir le
   // commentaire détaillé dans apps/web adapters.ts (buildRadierRows).
+  // COMPLÉTUDE : tous les diagnostics client-safe (RadierOutputSchema), ordre GEOPLAQUE_V10.
   fdnKvRow(t, 'Tassement maximal w_max', fdnNum(o.wMax, 2, 'mm'));
   fdnKvRow(t, 'Tassement minimal w_min', fdnNum(o.wMin, 2, 'mm'));
   fdnKvRow(t, 'Tassement différentiel', fdnNum(o.diff, 2, 'mm'));
   fdnKvRow(t, 'Distorsion angulaire gouvernante β', fdnNum(o.betaGov, 2, '‰'));
+  fdnKvRow(t, 'Distorsion intra-plaque max', fdnNum(o.betaIntra, 2, '‰'));
+  fdnKvRow(t, "Inclinaison d'ensemble ϖ", fdnNum(o.tiltMax, 2, '‰'));
+  fdnKvRow(t, 'Pente locale max |∇w|', fdnNum(o.slopeMax, 2, '‰'));
+  const nRafts = typeof o.nRafts === 'number' ? o.nRafts : 0;
+  if (nRafts > 1) {
+    fdnKvRow(t, 'Distorsion entre plaques', fdnNum(o.betaInter, 2, '‰'));
+    fdnKvRow(t, 'Tassement différentiel inter-plaques', fdnNum(o.interDiff, 2, 'mm'));
+  }
+  const wlp = o.worstLoadPair;
+  if (wlp != null && typeof wlp === 'object') {
+    fdnKvRow(t, 'Distorsion max entre charges voisines', fdnNum((wlp as Record<string, unknown>).beta, 2, '‰'));
+  }
   fdnKvRow(t, 'Nombre de radiers', fdnNum(o.nRafts, 0));
   if (t.length > 1) {
     body.push({

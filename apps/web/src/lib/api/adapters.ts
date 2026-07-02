@@ -451,10 +451,27 @@ function buildRadierRows(o: Record<string, unknown>): CalcOutputRow[] {
   // ou 6251 mm seraient physiquement impossibles). NB : l'annotation « m/rad » du contrat
   // décrit l'unité SI VISÉE, pas la sortie numérique ; l'outil GEOPLAQUE_V10 du client
   // affiche wMax*1000 (sur-rapport ×1000) — on ne le copie pas.
+  // COMPLÉTUDE : on affiche TOUS les diagnostics client-safe du RadierOutputSchema,
+  // dans l'ordre du tableau EC7 de l'outil d'origine GEOPLAQUE_V10 (tassements →
+  // distorsion gouvernante → intra → inclinaison → pente → inter-plaques → entre
+  // charges → nombre). Les rangs inter-plaques / entre-charges ne s'affichent que
+  // s'ils s'appliquent (comme l'outil d'origine).
   pushRow(rows, 'Tassement maximal w_max', o.wMax, 'mm');
   pushRow(rows, 'Tassement minimal w_min', o.wMin, 'mm');
   pushRow(rows, 'Tassement différentiel', o.diff, 'mm');
   pushRow(rows, 'Distorsion angulaire gouvernante β', o.betaGov, '‰');
+  pushRow(rows, 'Distorsion intra-plaque max', o.betaIntra, '‰');
+  pushRow(rows, "Inclinaison d'ensemble ϖ", o.tiltMax, '‰');
+  pushRow(rows, 'Pente locale max |∇w|', o.slopeMax, '‰');
+  const nRafts = finiteOrNull(o.nRafts);
+  if (nRafts !== null && nRafts > 1) {
+    pushRow(rows, 'Distorsion entre plaques', o.betaInter, '‰');
+    pushRow(rows, 'Tassement différentiel inter-plaques', o.interDiff, 'mm');
+  }
+  const wlp = o.worstLoadPair;
+  if (wlp != null && typeof wlp === 'object') {
+    pushRow(rows, 'Distorsion max entre charges voisines', (wlp as Record<string, unknown>).beta, '‰');
+  }
   pushRow(rows, 'Nombre de radiers', o.nRafts, '');
   return rows;
 }

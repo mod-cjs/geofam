@@ -243,9 +243,31 @@ describe('adaptCalcResult — radier (plaque/sol multicouche)', () => {
     expect(beta?.unit).toBe('‰');
   });
 
-  it('fail-closed : ni slopeMax/tiltMax, ni betaIntra/betaInter, ni interDiff/worstLoadPair', () => {
+  it('complétude : affiche TOUS les diagnostics client-safe (intra, inclinaison, pente)', () => {
     const norm = normalizedOf('radier-plaque', REAL_RADIER);
-    expectNoLeak(norm, ['slopeMax', 'tiltMax', 'betaIntra', 'betaInter', 'interDiff', 'worstLoadPair']);
+    const l = labels(norm);
+    // Diagnostics du RadierOutputSchema auparavant omis — désormais affichés (client-safe).
+    expect(l).toMatch(/Distorsion intra-plaque/);
+    expect(l).toMatch(/Inclinaison d'ensemble/);
+    expect(l).toMatch(/Pente locale/);
+    // Conditionnel : radier UNIQUE (nRafts=1) → pas de rang inter-plaques ni entre charges
+    // (comme l'outil d'origine GEOPLAQUE_V10).
+    expect(l).not.toMatch(/entre plaques/);
+    expect(l).not.toMatch(/entre charges/);
+  });
+
+  it('multi-plaques : affiche distorsion entre plaques + entre charges voisines', () => {
+    const multi = {
+      ...REAL_RADIER,
+      nRafts: 2,
+      betaInter: 0.5,
+      interDiff: 1.2,
+      worstLoadPair: { beta: 0.8, ds: 2, L: 3, ki: 1, kj: 2, p1: null, p2: null },
+    };
+    const l = labels(normalizedOf('radier-plaque', multi));
+    expect(l).toMatch(/Distorsion entre plaques/);
+    expect(l).toMatch(/différentiel inter-plaques/);
+    expect(l).toMatch(/entre charges voisines/);
   });
 });
 
