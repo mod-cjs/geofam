@@ -87,7 +87,13 @@ const burmisterDescriptor: EngineDescriptor = {
   description: 'Dimensionnement de chaussées souples, semi-rigides et rigides.',
   norme: 'AGEROUTE Sénégal 2015 / LCPC-SETRA',
   fields: [
-    { key: 'projet', label: 'Référence projet', type: 'text', example: 'Structure test', optional: true },
+    {
+      key: 'projet',
+      label: 'Référence projet',
+      type: 'text',
+      example: 'Structure test',
+      optional: true,
+    },
     // Trafic
     { key: '_section_trafic', label: 'Trafic', type: 'section' },
     {
@@ -107,7 +113,7 @@ const burmisterDescriptor: EngineDescriptor = {
       example: 0.9,
       min: 0,
       max: 100,
-      hint: 'Agressivité du trafic PL rapportée à l\'essieu 13 t. Typique 0,5 (léger) à 1,5 (lourd) ; 0,8–0,9 courant.',
+      hint: "Agressivité du trafic PL rapportée à l'essieu 13 t. Typique 0,5 (léger) à 1,5 (lourd) ; 0,8–0,9 courant.",
     },
     {
       key: 'traffic_N',
@@ -157,7 +163,7 @@ const burmisterDescriptor: EngineDescriptor = {
       min: 0.01,
       max: 5,
       unit: 'MPa',
-      hint: 'Pression de contact pneu/chaussée. Essieu de référence 13 t : 0,662 MPa (AGEROUTE 2015). Fixe l\'intensité des sollicitations.',
+      hint: "Pression de contact pneu/chaussée. Essieu de référence 13 t : 0,662 MPa (AGEROUTE 2015). Fixe l'intensité des sollicitations.",
     },
     {
       key: 'load_a',
@@ -167,7 +173,7 @@ const burmisterDescriptor: EngineDescriptor = {
       min: 0.01,
       max: 1,
       unit: 'm',
-      hint: 'Rayon du disque de contact d\'une roue. Standard essieu 13 t : a = 0,125 m.',
+      hint: "Rayon du disque de contact d'une roue. Standard essieu 13 t : a = 0,125 m.",
     },
     {
       key: 'load_d',
@@ -300,7 +306,7 @@ const burmisterDescriptor: EngineDescriptor = {
       key: 'layer2_h',
       label: 'Épaisseur couche 2',
       type: 'number',
-      example: 0.10,
+      example: 0.1,
       min: 0.001,
       max: 2,
       unit: 'm',
@@ -348,7 +354,7 @@ const burmisterDescriptor: EngineDescriptor = {
       key: 'layer3_h',
       label: 'Épaisseur couche 3',
       type: 'number',
-      example: 0.20,
+      example: 0.2,
       min: 0.001,
       max: 2,
       unit: 'm',
@@ -395,7 +401,12 @@ const burmisterDescriptor: EngineDescriptor = {
   },
   scenarios: {
     conforme: { traffic_T: '10', layer1_h: '0.08', layer2_h: '0.20', layer3_h: '0.40' },
-    nonConforme: { traffic_T: '150', layer1_h: '0.06', layer2_h: '0.10', layer3_h: '0.20' },
+    nonConforme: {
+      traffic_T: '150',
+      layer1_h: '0.06',
+      layer2_h: '0.10',
+      layer3_h: '0.20',
+    },
   },
 };
 
@@ -409,7 +420,13 @@ const terzaghiDescriptor: EngineDescriptor = {
   description: 'Calcul de portance et tassement de fondations superficielles.',
   norme: 'NF P 94-261 (EC7)',
   fields: [
-    { key: 'projet', label: 'Référence projet', type: 'text', example: 'Fondation test', optional: true },
+    {
+      key: 'projet',
+      label: 'Référence projet',
+      type: 'text',
+      example: 'Fondation test',
+      optional: true,
+    },
     // Géométrie
     { key: '_section_geo', label: 'Géométrie de la fondation', type: 'section' },
     {
@@ -532,7 +549,7 @@ const terzaghiDescriptor: EngineDescriptor = {
       type: 'number',
       example: 1.5,
       unit: 'm',
-      hint: 'Profondeur du point de mesure sous le TN, dans la zone d\'influence (~1,5·B sous la base).',
+      hint: "Profondeur du point de mesure sous le TN, dans la zone d'influence (~1,5·B sous la base).",
     },
     {
       key: 'sondage_pl',
@@ -580,7 +597,7 @@ const terzaghiDescriptor: EngineDescriptor = {
       type: 'number',
       example: 500,
       unit: 'kN',
-      hint: 'Effort vertical de calcul pondéré selon l\'état-limite.',
+      hint: "Effort vertical de calcul pondéré selon l'état-limite.",
     },
     {
       key: 'charge_fx',
@@ -615,22 +632,36 @@ const terzaghiDescriptor: EngineDescriptor = {
       gAvant: flat['gAvant'] || undefined,
       gApres: flat['gApres'] || undefined,
       alphaSang: flat['alphaSang'] || undefined,
-      sondage: [{
-        z: flat['sondage_z'],
-        // Champs numériques optionnels : `|| undefined` transformerait un 0 légitime en absent.
-        // Pattern explicite : vide ou absent → undefined, sinon Number (préserve 0).
-        pl: Number.isFinite(Number(flat['sondage_pl'])) ? Number(flat['sondage_pl']) : undefined,
-        em: Number.isFinite(Number(flat['sondage_em'])) ? Number(flat['sondage_em']) : undefined,
-        qc: Number.isFinite(Number(flat['sondage_qc'])) ? Number(flat['sondage_qc']) : undefined,
-        al: undefined,
-      }],
-      charges: [{
-        etat: flat['charge_etat'],
-        fz: flat['charge_fz'],
-        // fx/fy : 0 est une valeur valide (pas d'effort horizontal) — `|| undefined` interdirait cette saisie.
-        fx: Number.isFinite(Number(flat['charge_fx'])) ? Number(flat['charge_fx']) : undefined,
-        fy: Number.isFinite(Number(flat['charge_fy'])) ? Number(flat['charge_fy']) : undefined,
-      }],
+      sondage: [
+        {
+          z: flat['sondage_z'],
+          // Champs numériques optionnels : `|| undefined` transformerait un 0 légitime en absent.
+          // Pattern explicite : vide ou absent → undefined, sinon Number (préserve 0).
+          pl: Number.isFinite(Number(flat['sondage_pl']))
+            ? Number(flat['sondage_pl'])
+            : undefined,
+          em: Number.isFinite(Number(flat['sondage_em']))
+            ? Number(flat['sondage_em'])
+            : undefined,
+          qc: Number.isFinite(Number(flat['sondage_qc']))
+            ? Number(flat['sondage_qc'])
+            : undefined,
+          al: undefined,
+        },
+      ],
+      charges: [
+        {
+          etat: flat['charge_etat'],
+          fz: flat['charge_fz'],
+          // fx/fy : 0 est une valeur valide (pas d'effort horizontal) — `|| undefined` interdirait cette saisie.
+          fx: Number.isFinite(Number(flat['charge_fx']))
+            ? Number(flat['charge_fx'])
+            : undefined,
+          fy: Number.isFinite(Number(flat['charge_fy']))
+            ? Number(flat['charge_fy'])
+            : undefined,
+        },
+      ],
     };
   },
   scenarios: {
@@ -649,8 +680,20 @@ const pressiometreDescriptor: EngineDescriptor = {
   description: "Dépouillement d'un essai pressiométrique à une profondeur donnée.",
   norme: 'NF EN ISO 22476-4',
   fields: [
-    { key: 'projet', label: 'Référence projet', type: 'text', example: 'PMT-01', optional: true },
-    { key: 'label', label: 'Profondeur (libellé)', type: 'text', example: '5.0 m', hint: 'Exemple : « 5.0 m » — la profondeur est extraite par le moteur' },
+    {
+      key: 'projet',
+      label: 'Référence projet',
+      type: 'text',
+      example: 'PMT-01',
+      optional: true,
+    },
+    {
+      key: 'label',
+      label: 'Profondeur (libellé)',
+      type: 'text',
+      example: '5.0 m',
+      hint: 'Exemple : « 5.0 m » — la profondeur est extraite par le moteur',
+    },
     // Paramètres sonde — avancé : valeurs de calibration fixées par appareil, rarement modifiées par essai
     {
       key: '_section_sonde',
@@ -665,7 +708,7 @@ const pressiometreDescriptor: EngineDescriptor = {
       example: 4.5,
       min: 0,
       max: 100,
-      hint: 'Inertie/dilatation propre de l\'appareillage (cm³/bar). Déjà ÷10 vs cm³/MPa.',
+      hint: "Inertie/dilatation propre de l'appareillage (cm³/bar). Déjà ÷10 vs cm³/MPa.",
     },
     {
       key: 'params_Ph',
@@ -683,7 +726,7 @@ const pressiometreDescriptor: EngineDescriptor = {
       example: 0.3,
       min: 0,
       max: 50,
-      hint: 'Résistance propre de la membrane (étalonnage à l\'air). Retranchée des pressions lues.',
+      hint: "Résistance propre de la membrane (étalonnage à l'air). Retranchée des pressions lues.",
     },
     {
       key: 'params_V0',
@@ -701,7 +744,7 @@ const pressiometreDescriptor: EngineDescriptor = {
       example: 0.5,
       min: 0,
       max: 5,
-      hint: 'Coefficient K0 de correction/étalonnage de la sonde (procédure d\'appareillage).',
+      hint: "Coefficient K0 de correction/étalonnage de la sonde (procédure d'appareillage).",
     },
     // Sol
     { key: '_section_sol', label: 'Sol', type: 'section' },
@@ -712,7 +755,7 @@ const pressiometreDescriptor: EngineDescriptor = {
       example: 19,
       min: 0,
       max: 40,
-      hint: 'Poids volumique du sol au-dessus de l\'essai (pour p₀). Sols 16–21 kN/m³.',
+      hint: "Poids volumique du sol au-dessus de l'essai (pour p₀). Sols 16–21 kN/m³.",
     },
     {
       key: 'nappe',
@@ -725,7 +768,7 @@ const pressiometreDescriptor: EngineDescriptor = {
     },
     // Paliers de mesure (4 paliers minimum)
     { key: '_section_paliers', label: 'Paliers de mesure (4 minimum)', type: 'section' },
-    ...([1, 2, 3, 4, 5, 6].flatMap(i => [
+    ...[1, 2, 3, 4, 5, 6].flatMap((i) => [
       {
         key: `row${i}_p`,
         label: `Palier ${i} — Pression P (bar)`,
@@ -734,9 +777,10 @@ const pressiometreDescriptor: EngineDescriptor = {
         min: 0,
         max: 500,
         optional: i > 4,
-        hint: i === 1
-          ? 'Pression du palier (bar), croissante et régulière. ≥ 4 paliers requis.'
-          : 'Pression du palier (bar).',
+        hint:
+          i === 1
+            ? 'Pression du palier (bar), croissante et régulière. ≥ 4 paliers requis.'
+            : 'Pression du palier (bar).',
       },
       {
         key: `row${i}_v15`,
@@ -756,9 +800,10 @@ const pressiometreDescriptor: EngineDescriptor = {
         min: 0,
         max: 10000,
         optional: i > 4,
-        hint: i === 1
-          ? 'Volume à 30 s : point retenu pour tracer la courbe (pl, EM).'
-          : 'Volume à 30 s.',
+        hint:
+          i === 1
+            ? 'Volume à 30 s : point retenu pour tracer la courbe (pl, EM).'
+            : 'Volume à 30 s.',
       },
       {
         key: `row${i}_v60`,
@@ -768,11 +813,12 @@ const pressiometreDescriptor: EngineDescriptor = {
         min: 0,
         max: 10000,
         optional: i > 4,
-        hint: i === 1
-          ? 'Volume à 60 s : sert au fluage (stabilité du palier).'
-          : 'Volume à 60 s.',
+        hint:
+          i === 1
+            ? 'Volume à 60 s : sert au fluage (stabilité du palier).'
+            : 'Volume à 60 s.',
       },
-    ])),
+    ]),
   ],
   buildPayload(flat) {
     const rows: unknown[] = [];
@@ -781,7 +827,13 @@ const pressiometreDescriptor: EngineDescriptor = {
       const v15 = flat[`row${i}_v15`];
       const v30 = flat[`row${i}_v30`];
       const v60 = flat[`row${i}_v60`];
-      if (p !== undefined && p !== '' && v15 !== undefined && v30 !== undefined && v60 !== undefined) {
+      if (
+        p !== undefined &&
+        p !== '' &&
+        v15 !== undefined &&
+        v30 !== undefined &&
+        v60 !== undefined
+      ) {
         rows.push({ p: Number(p), v15: Number(v15), v30: Number(v30), v60: Number(v60) });
       }
     }
@@ -816,7 +868,13 @@ const pieuxDescriptor: EngineDescriptor = {
   description: 'Calcul de portance et vérification ELU/ELS de pieux isolés ou en groupe.',
   norme: 'NF P 94-262 (EC7 DA2 NA France)',
   fields: [
-    { key: 'projet', label: 'Référence projet', type: 'text', example: 'Pieu P1', optional: true },
+    {
+      key: 'projet',
+      label: 'Référence projet',
+      type: 'text',
+      example: 'Pieu P1',
+      optional: true,
+    },
     {
       key: 'pieu',
       label: 'Libellé pieu',
@@ -838,7 +896,7 @@ const pieuxDescriptor: EngineDescriptor = {
         { value: 'rect', label: 'Rectangulaire' },
         { value: 'quel', label: 'Quelconque (Ap, P fournis)' },
       ],
-      hint: 'Forme de section : fixe l\'aire de pointe Ap et le périmètre P (frottement).',
+      hint: "Forme de section : fixe l'aire de pointe Ap et le périmètre P (frottement).",
     },
     {
       key: 'geom_g_B',
@@ -932,7 +990,7 @@ const pieuxDescriptor: EngineDescriptor = {
       type: 'number',
       example: 800,
       min: 0,
-      hint: 'Charge permanente caractéristique en tête (non pondérée ; ×1,35 à l\'ELU).',
+      hint: "Charge permanente caractéristique en tête (non pondérée ; ×1,35 à l'ELU).",
     },
     {
       key: 'c_Q',
@@ -940,7 +998,7 @@ const pieuxDescriptor: EngineDescriptor = {
       type: 'number',
       example: 200,
       min: 0,
-      hint: 'Charge variable caractéristique en tête (non pondérée ; ×1,5 à l\'ELU).',
+      hint: "Charge variable caractéristique en tête (non pondérée ; ×1,5 à l'ELU).",
     },
     {
       key: 'o_nappe',
@@ -973,7 +1031,7 @@ const pieuxDescriptor: EngineDescriptor = {
       type: 'number',
       example: 500,
       min: 0,
-      hint: 'Surface reconnue par les sondages (m²). Représentativité de l\'investigation.',
+      hint: "Surface reconnue par les sondages (m²). Représentativité de l'investigation.",
     },
     {
       key: 'o_redis',
@@ -1030,6 +1088,146 @@ const pieuxDescriptor: EngineDescriptor = {
       max: 100000,
       optional: true,
       hint: 'Module pressiométrique de la couche. Argile 3–30 ; sable 8–40 MPa.',
+    },
+    // Frottement négatif (downdrag) — groupe optionnel
+    {
+      key: '_section_fn',
+      label: 'Frottement négatif (downdrag)',
+      type: 'section',
+    },
+    {
+      key: 'fn_enabled',
+      label: 'Calculer le frottement négatif',
+      type: 'boolean',
+      example: false,
+      optional: true,
+      hint: 'Activer pour prendre en compte le frottement négatif (downdrag) du sol tassant sur le pieu. Laissez décoché si non pertinent.',
+    },
+    {
+      key: 'fn_mode',
+      label: 'Mode de calcul',
+      type: 'select',
+      example: 'auto',
+      options: [
+        { value: 'auto', label: 'Automatique (tassement libre du sol s₀ et H_c)' },
+        { value: 'impose', label: 'Zone imposée (bornes zt–zb)' },
+      ],
+      optional: true,
+      hint: 'Auto : le moteur dérive la zone F.N. du tassement libre s₀ et de la profondeur compressible H_c. Imposé : fournir zt et zb.',
+    },
+    {
+      key: 'fn_Q',
+      label: 'Charge structurelle en tête Q (kN)',
+      type: 'number',
+      example: 800,
+      min: 0,
+      max: 1e9,
+      unit: 'kN',
+      optional: true,
+      hint: 'Charge axiale structurelle appliquée en tête du pieu (séparée de c_G). Pré-remplie avec G+Q caractéristique en pratique.',
+    },
+    {
+      key: 'fn_ktd',
+      label: 'K·tanδ (coefficient Combarieu)',
+      type: 'number',
+      example: 0.2,
+      min: 0,
+      max: 5,
+      optional: true,
+      hint: "Produit K·tanδ pilotant l'intensité du frottement négatif. 0,20 = pieu foré, 0,30 = pieu refoulant (Combarieu NF P 94-262).",
+    },
+    {
+      key: 'fn_s0',
+      label: 'Tassement libre du sol en surface s₀',
+      type: 'number',
+      example: 100,
+      min: 0,
+      max: 5000,
+      unit: 'mm',
+      optional: true,
+      hint: 'Tassement libre (sans le pieu) en surface (mm). Pertinent en mode auto ; le moteur calcule la zone F.N. par interpolation linéaire.',
+    },
+    {
+      key: 'fn_hc',
+      label: 'Profondeur compressible H_c',
+      type: 'number',
+      example: 8,
+      min: 0,
+      max: 500,
+      unit: 'm',
+      optional: true,
+      hint: 'Profondeur de la couche compressible (m). Limite inférieure de la zone où le sol tasse (mode auto).',
+    },
+    {
+      key: 'fn_zt',
+      label: 'Haut de la zone F.N. zt',
+      type: 'number',
+      example: 0,
+      min: 0,
+      max: 500,
+      unit: 'm',
+      optional: true,
+      hint: 'Profondeur du début de la zone de frottement négatif imposée (m) — mode imposé uniquement.',
+    },
+    {
+      key: 'fn_zb',
+      label: 'Bas de la zone F.N. zb',
+      type: 'number',
+      example: 8,
+      min: 0,
+      max: 500,
+      unit: 'm',
+      optional: true,
+      hint: 'Profondeur de la fin de la zone de frottement négatif imposée (m) — mode imposé uniquement.',
+    },
+    // Vérification structurale du béton — groupe optionnel
+    {
+      key: '_section_beton',
+      label: 'Vérification structurale du béton (NF P 94-262 §4.4)',
+      type: 'section',
+    },
+    {
+      key: 'b_enabled',
+      label: 'Vérifier la section béton',
+      type: 'boolean',
+      example: false,
+      optional: true,
+      hint: 'Activer pour vérifier la résistance structurale du fût en béton (ELU + ELS). Laissez décoché si non souhaité ou pieu métallique.',
+    },
+    {
+      key: 'b_fck',
+      label: 'Résistance caractéristique f_ck',
+      type: 'number',
+      example: 25,
+      min: 0,
+      max: 200,
+      unit: 'MPa',
+      optional: true,
+      hint: 'Résistance caractéristique du béton (MPa). Laisser vide ou 0 → 25 MPa par défaut (C25/30).',
+    },
+    {
+      key: 'b_arm',
+      label: 'Type de section',
+      type: 'select',
+      example: 'arme',
+      options: [
+        { value: 'arme', label: 'Armé (α_cc = 1,0)' },
+        { value: 'nonarme', label: 'Non armé (α_cc = 0,8)' },
+      ],
+      optional: true,
+      hint: 'Pieu armé : α_cc = 1,0 ; non armé : α_cc = 0,8 (NF EN 1992-1-1 §3.1.6).',
+    },
+    {
+      key: 'b_k3',
+      label: "Niveau de contrôle d'intégrité",
+      type: 'select',
+      example: '1.0',
+      options: [
+        { value: '1.0', label: 'Contrôles courants (k₃ = 1,0)' },
+        { value: '1.2', label: 'Contrôles renforcés (k₃ = 1,2)' },
+      ],
+      optional: true,
+      hint: "k₃ = 1,0 pour contrôles courants, 1,2 si essais d'intégrité renforcés (NF P 94-262 §4.4).",
     },
     // Couche 2
     { key: '_section_sol2', label: 'Couche 2 (profil de sol)', type: 'section' },
@@ -1088,11 +1286,49 @@ const pieuxDescriptor: EngineDescriptor = {
         layers.push({
           soil,
           th: Number(th),
-          pl: flat[`layer${i}_pl`] !== '' && flat[`layer${i}_pl`] !== undefined ? Number(flat[`layer${i}_pl`]) : undefined,
-          em: flat[`layer${i}_em`] !== '' && flat[`layer${i}_em`] !== undefined ? Number(flat[`layer${i}_em`]) : undefined,
+          pl:
+            flat[`layer${i}_pl`] !== '' && flat[`layer${i}_pl`] !== undefined
+              ? Number(flat[`layer${i}_pl`])
+              : undefined,
+          em:
+            flat[`layer${i}_em`] !== '' && flat[`layer${i}_em`] !== undefined
+              ? Number(flat[`layer${i}_em`])
+              : undefined,
         });
       }
     }
+
+    // Groupe frottement négatif — inclus uniquement si le toggle fn_enabled est activé.
+    // Clé plate fn_mode → frottementNegatif.mode ; fn_Q → frottementNegatif.fn_Q ; etc.
+    const fnEnabled = flat['fn_enabled'] === true || flat['fn_enabled'] === 'true';
+    const frottementNegatif: unknown = fnEnabled
+      ? {
+          mode: flat['fn_mode'] ?? 'auto',
+          fn_Q: Number(flat['fn_Q'] ?? 0),
+          fn_ktd: Number(flat['fn_ktd'] ?? 0),
+          fn_s0: Number(flat['fn_s0'] ?? 0),
+          fn_hc: Number(flat['fn_hc'] ?? 0),
+          fn_zt: Number(flat['fn_zt'] ?? 0),
+          fn_zb: Number(flat['fn_zb'] ?? 0),
+        }
+      : undefined;
+
+    // Groupe béton — inclus uniquement si le toggle b_enabled est activé.
+    // b_fck vide ou 0 → absent (le serveur applique le défaut 25 MPa via `num('b_fck') || 25`).
+    const bEnabled = flat['b_enabled'] === true || flat['b_enabled'] === 'true';
+    const bFckRaw = flat['b_fck'];
+    const bFck =
+      bFckRaw !== '' && bFckRaw !== undefined && Number(bFckRaw) !== 0
+        ? Number(bFckRaw)
+        : undefined;
+    const beton: unknown = bEnabled
+      ? {
+          ...(bFck !== undefined ? { b_fck: bFck } : {}),
+          arm: flat['b_arm'] ?? 'arme',
+          k3: flat['b_k3'] ?? '1.0',
+        }
+      : undefined;
+
     return {
       projet: flat['projet'] || undefined,
       pieu: flat['pieu'] || undefined,
@@ -1115,12 +1351,25 @@ const pieuxDescriptor: EngineDescriptor = {
       o_redis: flat['o_redis'],
       grp: { grp_n: 1, grp_m: 1, grp_s: 0 },
       coeffs: {
-        k_gG: 1.35, k_gQ: 1.5, k_gb: 1.1, k_gs: 1.1, k_gst: 1.15,
-        k_psi2: 0.3, cr_b_b: 0.7, cr_b_s: 0.7, cr_f_b: 0.5, cr_f_s: 0.7,
-        cr_car: 0.9, cr_qp: 1.1, cr_car_t: 1.1, cr_qp_t: 1.5,
+        k_gG: 1.35,
+        k_gQ: 1.5,
+        k_gb: 1.1,
+        k_gs: 1.1,
+        k_gst: 1.15,
+        k_psi2: 0.3,
+        cr_b_b: 0.7,
+        cr_b_s: 0.7,
+        cr_f_b: 0.5,
+        cr_f_s: 0.7,
+        cr_car: 0.9,
+        cr_qp: 1.1,
+        cr_car_t: 1.1,
+        cr_qp_t: 1.5,
       },
       layers,
       cpt: { step: 0.2, pts: [] },
+      ...(frottementNegatif !== undefined ? { frottementNegatif } : {}),
+      ...(beton !== undefined ? { beton } : {}),
     };
   },
   scenarios: {
@@ -1143,9 +1392,19 @@ const radierDescriptor: EngineDescriptor = {
   description: "Tassements et diagnostics d'une fondation sur radier par éléments finis.",
   norme: 'Méthode Ménard — EF plaque de Winkler généralisé',
   fields: [
-    { key: 'projet', label: 'Référence projet', type: 'text', example: 'Radier R1', optional: true },
+    {
+      key: 'projet',
+      label: 'Référence projet',
+      type: 'text',
+      example: 'Radier R1',
+      optional: true,
+    },
     // Géométrie plaque
-    { key: '_section_plaque', label: 'Plaque (radier rectangulaire simplifié)', type: 'section' },
+    {
+      key: '_section_plaque',
+      label: 'Plaque (radier rectangulaire simplifié)',
+      type: 'section',
+    },
     {
       key: 'raft_E',
       label: 'Module béton E (MPa)',
@@ -1180,7 +1439,7 @@ const radierDescriptor: EngineDescriptor = {
       example: 10.0,
       min: 0.1,
       max: 10000,
-      hint: 'Longueur du radier rectangulaire selon l\'axe x.',
+      hint: "Longueur du radier rectangulaire selon l'axe x.",
     },
     {
       key: 'raft_Ly',
@@ -1189,10 +1448,14 @@ const radierDescriptor: EngineDescriptor = {
       example: 6.0,
       min: 0.1,
       max: 10000,
-      hint: 'Largeur du radier rectangulaire selon l\'axe y.',
+      hint: "Largeur du radier rectangulaire selon l'axe y.",
     },
     // Charge ponctuelle
-    { key: '_section_charge', label: 'Charge ponctuelle (centre du radier)', type: 'section' },
+    {
+      key: '_section_charge',
+      label: 'Charge ponctuelle (centre du radier)',
+      type: 'section',
+    },
     {
       key: 'load_Fz',
       label: 'Effort vertical Fz (kN)',
@@ -1205,14 +1468,14 @@ const radierDescriptor: EngineDescriptor = {
       label: 'Position x (m)',
       type: 'number',
       example: 5.0,
-      hint: 'Coordonnée x du point d\'application de la charge, depuis l\'angle d\'origine.',
+      hint: "Coordonnée x du point d'application de la charge, depuis l'angle d'origine.",
     },
     {
       key: 'load_y',
       label: 'Position y (m)',
       type: 'number',
       example: 3.0,
-      hint: 'Coordonnée y du point d\'application de la charge, depuis l\'angle d\'origine.',
+      hint: "Coordonnée y du point d'application de la charge, depuis l'angle d'origine.",
     },
     // Sol
     { key: '_section_sol', label: 'Sol (couche unique)', type: 'section' },
@@ -1264,27 +1527,33 @@ const radierDescriptor: EngineDescriptor = {
     const Ly = Number(flat['raft_Ly']);
     return {
       projet: flat['projet'] || undefined,
-      rafts: [{
-        pts: [
-          { x: 0, y: 0 },
-          { x: Lx, y: 0 },
-          { x: Lx, y: Ly },
-          { x: 0, y: Ly },
-        ],
-        E: Number(flat['raft_E']),
-        nu: Number(flat['raft_nu']),
-        e: Number(flat['raft_e']),
-      }],
-      pointLoads: [{
-        x: Number(flat['load_x']),
-        y: Number(flat['load_y']),
-        Fz: Number(flat['load_Fz']),
-      }],
-      layers: [{
-        zBase: Number(flat['soil_zBase']),
-        E: Number(flat['soil_E']),
-        nu: Number(flat['soil_nu']),
-      }],
+      rafts: [
+        {
+          pts: [
+            { x: 0, y: 0 },
+            { x: Lx, y: 0 },
+            { x: Lx, y: Ly },
+            { x: 0, y: Ly },
+          ],
+          E: Number(flat['raft_E']),
+          nu: Number(flat['raft_nu']),
+          e: Number(flat['raft_e']),
+        },
+      ],
+      pointLoads: [
+        {
+          x: Number(flat['load_x']),
+          y: Number(flat['load_y']),
+          Fz: Number(flat['load_Fz']),
+        },
+      ],
+      layers: [
+        {
+          zBase: Number(flat['soil_zBase']),
+          E: Number(flat['soil_E']),
+          nu: Number(flat['soil_nu']),
+        },
+      ],
       opts: {
         mesh: Number(flat['opts_mesh']),
       },
@@ -1307,9 +1576,27 @@ const laboDescriptor: EngineDescriptor = {
   norme: 'NF P 11-300 (GTR)',
   fields: [
     // Identification
-    { key: 'm_ref', label: 'Référence échantillon', type: 'text', example: 'ECH-001', optional: true },
-    { key: 'm_chantier', label: 'Chantier', type: 'text', example: 'RN1 - PK 12+500', optional: true },
-    { key: 'm_nature', label: 'Nature du sol', type: 'text', example: 'Argile sableuse', optional: true },
+    {
+      key: 'm_ref',
+      label: 'Référence échantillon',
+      type: 'text',
+      example: 'ECH-001',
+      optional: true,
+    },
+    {
+      key: 'm_chantier',
+      label: 'Chantier',
+      type: 'text',
+      example: 'RN1 - PK 12+500',
+      optional: true,
+    },
+    {
+      key: 'm_nature',
+      label: 'Nature du sol',
+      type: 'text',
+      example: 'Argile sableuse',
+      optional: true,
+    },
     // Granulométrie
     { key: '_section_granulo', label: 'Granulométrie', type: 'section' },
     {
@@ -1333,7 +1620,13 @@ const laboDescriptor: EngineDescriptor = {
       optional: true,
       hint: 'Tamisat 2 mm : sépare sableux/graveleux (Dmax, classes B/D).',
     },
-    { key: 'gr_M', label: 'Masse totale M (g)', type: 'number', example: 500, optional: true },
+    {
+      key: 'gr_M',
+      label: 'Masse totale M (g)',
+      type: 'number',
+      example: 500,
+      optional: true,
+    },
     // Atterberg
     { key: '_section_atterberg', label: "Limites d'Atterberg", type: 'section' },
     {
@@ -1400,7 +1693,7 @@ const laboDescriptor: EngineDescriptor = {
       type: 'number',
       example: 10,
       optional: true,
-      hint: 'Concentration de la solution de bleu de méthylène utilisée pour l\'essai VBS.',
+      hint: "Concentration de la solution de bleu de méthylène utilisée pour l'essai VBS.",
     },
     {
       key: 'v_prise1',
@@ -1416,7 +1709,7 @@ const laboDescriptor: EngineDescriptor = {
       type: 'number',
       example: 50,
       optional: true,
-      hint: 'Prise d\'essai sèche soumise au bleu (dénominateur du VBS).',
+      hint: "Prise d'essai sèche soumise au bleu (dénominateur du VBS).",
     },
   ],
   buildPayload(flat) {

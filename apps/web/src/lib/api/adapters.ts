@@ -501,6 +501,39 @@ function buildPieuxRows(o: Record<string, unknown>): CalcOutputRow[] {
     pushRow(rows, `${nom} — sollicitation Fd`, c.Fd, 'kN', st);
     pushRow(rows, `${nom} — résistance Rd`, c.Rd, 'kN');
   }
+
+  // Frottement négatif (downdrag, #94) — lignes conditionnelles si non-null
+  pushRow(rows, 'Charge de frottement négatif G_sn', o.Gsn, 'kN');
+  pushRow(rows, 'Effort axial maximal N_max', o.Nmax, 'kN');
+  pushRow(rows, 'Profondeur du point neutre z_N', o.pointNeutre, 'm');
+
+  // Vérification structurale du béton (#95) — conditionnelle selon betonApplicable
+  if (o.betonApplicable === false) {
+    // Cas na : traction ou catégorie de pieu non couverte par la vérification structurale
+    rows.push({ label: 'Vérification béton', value: 'Non applicable', unit: '' });
+  } else if (o.betonApplicable === true) {
+    const tELU = finiteOrNull(o.betonTauxELU);
+    if (tELU !== null) {
+      rows.push({
+        label: 'Taux béton ELU σ/f_cd',
+        value: tELU * 100,
+        unit: '%',
+        status: o.betonOkELU === true ? 'ok' : 'fail',
+      });
+    }
+    const tELS = finiteOrNull(o.betonTauxELS);
+    if (tELS !== null) {
+      rows.push({
+        label: 'Taux béton ELS',
+        value: tELS * 100,
+        unit: '%',
+        status: o.betonOkELS === true ? 'ok' : 'fail',
+      });
+    }
+    pushRow(rows, 'Résistance béton f_cd', o.betonFcd, 'MPa');
+  }
+  // betonApplicable === null (ou undefined) : béton non demandé → aucune ligne béton
+
   return rows;
 }
 
