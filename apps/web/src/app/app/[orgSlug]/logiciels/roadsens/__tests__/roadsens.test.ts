@@ -23,6 +23,7 @@ import {
 } from '../page';
 
 import { adaptCalcResult } from '@/lib/api/adapters';
+import type { NormalizedCalcOutput } from '@/lib/api/types';
 
 // ---------------------------------------------------------------------------
 // computeNE — NE cumulé (formule AGEROUTE 2015 §3.2, affichage)
