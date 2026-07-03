@@ -13,7 +13,19 @@
  * Coupe transversale : SVG généré depuis l'état React (fidèle à rSec() de l'original).
  */
 
+import { useParams } from 'next/navigation';
 import { useState, useCallback, useEffect, useId } from 'react';
+
+import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
+import type {
+  Project,
+  CalcResult,
+  CalcOutputRow,
+  NormalizedCalcOutput,
+  OfficialPv,
+  EntitlementsResponse,
+} from '@/lib/api/types';
+import { useOrgId } from '@/lib/org-context';
 
 // ---------------------------------------------------------------------------
 // Constantes de matériaux — DISPLAY ONLY (pas de coefficients de calcul)
@@ -412,6 +424,144 @@ export function buildBurmisterPayload(
 }
 
 // ---------------------------------------------------------------------------
+// Helpers écran Résultats — EXPORTÉS pour tests DoD §9
+// ---------------------------------------------------------------------------
+
+/**
+ * Trouve une ligne de résultat par préfixe de label (fail-closed).
+ * La comparaison est strictement sur le label, pas sur la valeur.
+ */
+function findOutputRow(rows: CalcOutputRow[], prefix: string): CalcOutputRow | undefined {
+  return rows.find((r) => r.label.startsWith(prefix));
+}
+
+/** Extrais d'une valeur de ligne le nombre ou null. */
+function rowNumber(row: CalcOutputRow | undefined): number | null {
+  if (!row) return null;
+  return typeof row.value === 'number' && Number.isFinite(row.value) ? row.value : null;
+}
+
+/** KPIs affichables extraits de la sortie normalisée burmister. */
+export interface BurmisterKpis {
+  hLie_cm: number | null; // H paquet lié en cm
+  hTotal_cm: number | null; // H total en cm
+  ne: number | null; // NE (essieux éq.)
+  familleSanitized: string | null; // famille (libellé NU, déjà whitelisté)
+  fatigueValeur: number | null;
+  fatigueAdmissible: number | null;
+  fatigueOk: 'ok' | 'fail' | null;
+  fatigueRigide: boolean; // true = structure rigide (unité MPa), false = µdef
+  ornieValeur: number | null;
+  ornieAdmissible: number | null;
+  ornieOk: 'ok' | 'fail' | null;
+}
+
+/**
+ * Extrait les KPIs affichables depuis la sortie normalisée burmister.
+ *
+ * Ne lit QUE des labels connus (fail-closed, DoD §8) : aucun intermédiaire
+ * confidentiel (E_pondere, nu_pondere, kc, kr, ks, σ_z brut) ne peut traverser
+ * car les rows sont déjà whitelistées par `buildBurmisterRows` + `normalizeOutput`
+ * côté adaptateur. Cette fonction ne fait que rechercher dans ces rows par label.
+ */
+export function extractBurmisterKpis(output: unknown): BurmisterKpis | null {
+  if (output == null || typeof output !== 'object') return null;
+  const o = output as { verdict?: unknown; rows?: unknown };
+  if (!Array.isArray(o.rows)) return null;
+
+  const rows = o.rows as CalcOutputRow[];
+
+  const neRow = findOutputRow(rows, 'Trafic cumulé (NE)');
+  const hLieRow = findOutputRow(rows, 'Épaisseur de couches liées');
+  const hTotalRow = findOutputRow(rows, 'Épaisseur totale');
+  const familleRow = findOutputRow(rows, 'Famille de structure');
+
+  // Fatigue : libellé diffère selon structure souple (ε_t / µdef) ou rigide (σ_t / MPa)
+  const fatigueRow =
+    findOutputRow(rows, 'Déformation sollicitante ε_t') ??
+    findOutputRow(rows, 'Contrainte sollicitante σ_t');
+  const fatigueAdmRow =
+    findOutputRow(rows, 'Déformation admissible ε_t,adm') ??
+    findOutputRow(rows, 'Contrainte admissible σ_t,adm');
+  const fatigueRigide = fatigueRow?.label.startsWith('Contrainte') ?? false;
+
+  const ornieRow = findOutputRow(rows, 'Déformation ε_z sollicitante (PSC)');
+  const ornieAdmRow = findOutputRow(rows, 'Déformation ε_z admissible');
+
+  const hLieNum = rowNumber(hLieRow);
+  const hTotalNum = rowNumber(hTotalRow);
+
+  return {
+    hLie_cm: hLieNum !== null ? Math.round(hLieNum * 100 * 10) / 10 : null,
+    hTotal_cm: hTotalNum !== null ? Math.round(hTotalNum * 100 * 10) / 10 : null,
+    ne: rowNumber(neRow),
+    familleSanitized:
+      typeof familleRow?.value === 'string' && familleRow.value.length > 0
+        ? familleRow.value
+        : null,
+    fatigueValeur: rowNumber(fatigueRow),
+    fatigueAdmissible: rowNumber(fatigueAdmRow),
+    fatigueOk: fatigueRow?.status ?? null,
+    fatigueRigide,
+    ornieValeur: rowNumber(ornieRow),
+    ornieAdmissible: rowNumber(ornieAdmRow),
+    ornieOk: ornieRow?.status ?? null,
+  };
+}
+
+/**
+ * Construit les messages de diagnostic depuis des flags whitelistés uniquement.
+ * Allowlist fail-closed (DoD §8) : seuls `verdict`, `fatigueOk`, `ornieOk`
+ * et les valeurs numériques whitelistées par `extractBurmisterKpis` sont utilisés.
+ * Aucun texte moteur libre ne traverse.
+ */
+export function buildBurmisterDiagnostics(output: unknown): string[] {
+  const kpis = extractBurmisterKpis(output);
+  if (!kpis) return [];
+  const o = output as { verdict?: unknown } | null;
+  const verdict = o?.verdict;
+  const msgs: string[] = [];
+
+  if (
+    kpis.fatigueOk === 'fail' &&
+    kpis.fatigueValeur !== null &&
+    kpis.fatigueAdmissible !== null &&
+    kpis.fatigueAdmissible > 0
+  ) {
+    const ratio = (kpis.fatigueValeur / kpis.fatigueAdmissible).toFixed(2);
+    const critere = kpis.fatigueRigide
+      ? 'contrainte de traction σ_t'
+      : 'déformation de traction ε_t';
+    msgs.push(
+      `Fatigue bitumineuse non satisfaite : ${critere} sollicitante / admissible = ${ratio} > 1. ` +
+        `Recommandation : augmenter l'épaisseur des couches liées. Consulter le catalogue AGEROUTE Sénégal 2015.`,
+    );
+  }
+
+  if (
+    kpis.ornieOk === 'fail' &&
+    kpis.ornieValeur !== null &&
+    kpis.ornieAdmissible !== null &&
+    kpis.ornieAdmissible > 0
+  ) {
+    const ratio = (kpis.ornieValeur / kpis.ornieAdmissible).toFixed(2);
+    msgs.push(
+      `Orniérage PSC non satisfaisant : ε_z sollicitante / admissible = ${ratio} > 1. ` +
+        `Recommandation : améliorer la qualité du sol support (hausse de classe PFi) ou augmenter l'épaisseur totale.`,
+    );
+  }
+
+  if (verdict === 'PASS') {
+    msgs.push(
+      `Structure satisfaisante vis-à-vis des critères AGEROUTE 2015 (fatigue bitumineuse + orniérage PSC). ` +
+        `Résultat éligible à l'émission du PV scellé.`,
+    );
+  }
+
+  return msgs;
+}
+
+// ---------------------------------------------------------------------------
 // Coupe transversale SVG
 // Reproduit fidèlement rSec() de l'outil d'origine (SVG React au lieu d'innerHTML).
 // ---------------------------------------------------------------------------
@@ -634,16 +784,55 @@ const NATURE_STYLE: Record<LayerNature, { bg: string; color: string; label: stri
 };
 
 export default function RoadsensPage() {
+  // ── Route & tenant ──────────────────────────────────────────────────────
+  const params = useParams<{ orgSlug: string }>();
+  const orgSlug = params?.orgSlug ?? '';
+  const orgId = useOrgId(orgSlug);
+
+  // ── Onglets + saisie ────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabId>('structure');
   const [layers, setLayers] = useState<Layer[]>(DEFAULT_LAYERS);
   const [pf, setPf] = useState<PF>(DEFAULT_PF);
   const [traffic, setTraffic] = useState<Traffic>(DEFAULT_TRAFFIC);
   const [load, setLoad] = useState<Load>(DEFAULT_LOAD);
+
+  // ── Projets ─────────────────────────────────────────────────────────────
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectId, setProjectId] = useState<string>('');
+  const [projectsLoading, setProjectsLoading] = useState(false);
+
+  // ── Entitlements ─────────────────────────────────────────────────────────
+  const [entitlements, setEntitlements] = useState<EntitlementsResponse | null>(null);
+
+  // ── Calcul ──────────────────────────────────────────────────────────────
   const [calculating, setCalculating] = useState(false);
+  const [calcResult, setCalcResult] = useState<CalcResult | null>(null);
+  const [calcError, setCalcError] = useState<string | null>(null);
+
+  // ── PV ──────────────────────────────────────────────────────────────────
+  const [emittingPv, setEmittingPv] = useState(false);
+  const [pvResult, setPvResult] = useState<OfficialPv | null>(null);
 
   // Guard SSR : évite les divergences d'hydratation.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // Chargement des projets CH + entitlements quand orgId résolu.
+  useEffect(() => {
+    if (!orgId) return;
+    setProjectsLoading(true);
+    Promise.all([listProjects(orgId), getEntitlements(orgId)])
+      .then(([projs, ent]) => {
+        const chProjects = projs.filter((p) => p.domain === 'CH');
+        setProjects(chProjects);
+        setEntitlements(ent);
+        if (chProjects.length === 1) setProjectId(chProjects[0].id);
+      })
+      .catch(() => {
+        /* silencieux — l'utilisateur verra que le sélecteur est vide */
+      })
+      .finally(() => setProjectsLoading(false));
+  }, [orgId]);
 
   // --------------------------------------------------------------------------
   // Gestion des couches
@@ -690,23 +879,62 @@ export default function RoadsensPage() {
   );
 
   // --------------------------------------------------------------------------
-  // Bouton Calculer — stub étape 1
+  // Bouton Calculer — branchement API réel
   // --------------------------------------------------------------------------
 
-  const handleCalculer = useCallback(() => {
-    const payload = buildBurmisterPayload(layers, pf, traffic, load);
-    console.log(
-      "[ROADSENS] Payload prêt pour l'API (étape 2) :",
-      JSON.stringify(payload, null, 2),
-    );
+  const handleCalculer = useCallback(async () => {
+    if (!orgId || !projectId) return;
+
     setCalculating(true);
-    // Étape 2 : brancher à runCalc(orgId, projetId, { engineId: 'burmister', label, params: payload })
-    // Pour l'instant, feedback visuel 1 s puis affichage du placeholder résultats.
-    setTimeout(() => {
-      setCalculating(false);
+    setCalcError(null);
+    setPvResult(null);
+
+    const payload = buildBurmisterPayload(layers, pf, traffic, load);
+    const ne = computeNE(traffic);
+    const label = `ROADSENS — ${neClass(ne)} — ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })}`;
+
+    try {
+      const result = await runCalc(orgId, projectId, {
+        engineId: 'burmister',
+        label,
+        params: payload as Record<string, unknown>,
+      });
+      setCalcResult(result);
       setActiveTab('resultats');
-    }, 800);
-  }, [layers, pf, traffic, load]);
+    } catch (err: unknown) {
+      const apiErr = err as { reason?: string; message?: string };
+      const msg =
+        apiErr?.reason === 'EXPIRED'
+          ? 'Abonnement expiré — calcul impossible.'
+          : apiErr?.reason === 'QUOTA'
+            ? 'Quota de calculs épuisé.'
+            : apiErr?.reason === 'MODULE_NOT_IN_PACK'
+              ? "Le moteur ROADSENS (burmister) n'est pas inclus dans votre abonnement."
+              : (apiErr?.message ?? 'Erreur lors du calcul. Réessayez.');
+      setCalcError(msg);
+    } finally {
+      setCalculating(false);
+    }
+  }, [orgId, projectId, layers, pf, traffic, load]);
+
+  // --------------------------------------------------------------------------
+  // Bouton Imprimer / Émettre PV
+  // --------------------------------------------------------------------------
+
+  const handleEmitPv = useCallback(async () => {
+    if (!calcResult || !orgId || !projectId) return;
+    setEmittingPv(true);
+    setCalcError(null);
+    try {
+      const pv = await emitPv(orgId, projectId, { calcResultId: calcResult.id });
+      setPvResult(pv);
+    } catch (err: unknown) {
+      const apiErr = err as { message?: string };
+      setCalcError(apiErr?.message ?? "Erreur lors de l'émission du PV.");
+    } finally {
+      setEmittingPv(false);
+    }
+  }, [calcResult, orgId, projectId]);
 
   if (!mounted) {
     return (
@@ -829,18 +1057,67 @@ export default function RoadsensPage() {
           </div>
         </div>
 
+        {/* Sélecteur de projet CH */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 190 }}>
+          <label
+            htmlFor="roadsens-projet"
+            style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-secondary)' }}
+          >
+            Projet
+          </label>
+          <select
+            id="roadsens-projet"
+            value={projectId}
+            onChange={(e) => {
+              setProjectId(e.target.value);
+              setCalcResult(null);
+              setPvResult(null);
+            }}
+            disabled={projectsLoading || projects.length === 0}
+            aria-label="Sélectionner un projet de chaussée"
+            style={{
+              padding: '6px 9px',
+              fontSize: 12.5,
+              color: 'var(--text-primary)',
+              background: 'var(--surface-base)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 8,
+              fontFamily: 'inherit',
+              minWidth: 180,
+            }}
+          >
+            {projects.length === 0 ? (
+              <option value="">
+                {projectsLoading ? 'Chargement…' : 'Aucun projet CH'}
+              </option>
+            ) : (
+              <>
+                {!projectId && <option value="">Sélectionner…</option>}
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
+        </div>
+
         {/* Bouton Calculer */}
         <button
-          onClick={handleCalculer}
-          disabled={calculating}
+          onClick={() => void handleCalculer()}
+          disabled={calculating || !projectId || !orgId}
           aria-busy={calculating}
+          aria-disabled={!projectId || !orgId}
+          title={!projectId ? 'Sélectionnez un projet avant de calculer' : undefined}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: 7,
-            background: calculating
-              ? '#143a61'
-              : 'linear-gradient(135deg, #1a4a7a, #143a61)',
+            background:
+              calculating || !projectId || !orgId
+                ? '#143a61'
+                : 'linear-gradient(135deg, #1a4a7a, #143a61)',
             color: '#fff',
             border: 'none',
             padding: '11px 22px',
@@ -848,9 +1125,12 @@ export default function RoadsensPage() {
             fontWeight: 600,
             letterSpacing: '0.01em',
             borderRadius: 12,
-            cursor: calculating ? 'not-allowed' : 'pointer',
-            boxShadow: calculating ? 'none' : '0 7px 17px -7px rgba(26,74,122,.7)',
-            opacity: calculating ? 0.7 : 1,
+            cursor: calculating || !projectId || !orgId ? 'not-allowed' : 'pointer',
+            boxShadow:
+              calculating || !projectId || !orgId
+                ? 'none'
+                : '0 7px 17px -7px rgba(26,74,122,.7)',
+            opacity: calculating || !projectId || !orgId ? 0.55 : 1,
             transition: 'opacity .15s, box-shadow .15s',
             flexShrink: 0,
           }}
@@ -895,6 +1175,44 @@ export default function RoadsensPage() {
           )}
         </button>
       </div>
+
+      {/* Bandeau erreur calcul */}
+      {calcError && (
+        <div
+          role="alert"
+          style={{
+            margin: '0 0 14px',
+            padding: '10px 15px',
+            background: '#fef2f2',
+            border: '1px solid #fca5a5',
+            borderLeft: '3px solid #dc2626',
+            borderRadius: 10,
+            fontSize: 12.5,
+            color: '#991b1b',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <svg
+            width={15}
+            height={15}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            style={{ flexShrink: 0 }}
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          {calcError}
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* NAVIGATION PAR ONGLETS                                            */}
@@ -1017,12 +1335,13 @@ export default function RoadsensPage() {
         hidden={activeTab !== 'resultats'}
         style={activeTab === 'resultats' ? panelStyle : undefined}
       >
-        <PlaceholderPane
-          icon="chart"
-          title="Résultats de calcul"
-          description={
-            'Cliquez sur “Calculer” pour lancer l’analyse Burmister exacte et afficher les résultats ici.'
-          }
+        <TabResultats
+          result={calcResult}
+          ne={computeNE(traffic)}
+          onEmitPv={() => void handleEmitPv()}
+          emittingPv={emittingPv}
+          pvResult={pvResult}
+          entitlements={entitlements}
         />
       </div>
 
@@ -1033,11 +1352,7 @@ export default function RoadsensPage() {
         hidden={activeTab !== 'details'}
         style={activeTab === 'details' ? panelStyle : undefined}
       >
-        <PlaceholderPane
-          icon="microscope"
-          title="Détails de calcul"
-          description="Les détails du calcul Burmister (tensions aux interfaces, critères de fatigue, orniérage) seront disponibles à l'étape 2."
-        />
+        <TabDetails result={calcResult} />
       </div>
 
       <style>{`
@@ -2206,3 +2521,681 @@ const catThStyle: React.CSSProperties = {
   color: 'var(--text-secondary)',
   borderBottom: '1px solid var(--border-subtle)',
 };
+
+// ---------------------------------------------------------------------------
+// Onglet Résultats
+// ---------------------------------------------------------------------------
+
+interface TabResultatsProps {
+  result: CalcResult | null;
+  ne: number; // NE courant depuis les paramètres de trafic (pour la classe de trafic)
+  onEmitPv: () => void;
+  emittingPv: boolean;
+  pvResult: OfficialPv | null;
+  entitlements: EntitlementsResponse | null;
+}
+
+function TabResultats({
+  result,
+  ne,
+  onEmitPv,
+  emittingPv,
+  pvResult,
+  entitlements,
+}: TabResultatsProps) {
+  if (!result) {
+    return (
+      <PlaceholderPane
+        icon="chart"
+        title="Résultats de calcul"
+        description={`Cliquez sur "Calculer" pour lancer l'analyse Burmister exacte et afficher les résultats ici.`}
+      />
+    );
+  }
+
+  const output = result.output as NormalizedCalcOutput | null;
+  const verdict = output?.verdict;
+  const kpis = extractBurmisterKpis(output);
+  const diagnostics = buildBurmisterDiagnostics(output);
+
+  // Classe de trafic (seuils AGEROUTE publics, décision D2a — présentation uniquement)
+  const classeNE = neClass(ne);
+
+  const isPass = verdict === 'PASS';
+  const isFail = verdict === 'FAIL';
+  const isError = result.status === 'ERROR';
+  const isExpiredOrQuota =
+    entitlements?.expired || (entitlements?.quota.remaining ?? 1) <= 0;
+
+  return (
+    <div data-testid="tab-resultats">
+      {/* ── Bandeau verdict ───────────────────────────────────────────── */}
+      <div
+        role="status"
+        aria-live="polite"
+        data-testid="verdict-banner"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '14px 18px',
+          borderRadius: 14,
+          marginBottom: 20,
+          background: isError
+            ? '#fef2f2'
+            : isPass
+              ? '#f0fdf4'
+              : isFail
+                ? '#fef2f2'
+                : 'var(--surface-canvas)',
+          border: `1px solid ${isError ? '#fca5a5' : isPass ? '#86efac' : isFail ? '#fca5a5' : 'var(--border-subtle)'}`,
+          borderLeft: `4px solid ${isError ? '#dc2626' : isPass ? '#16a34a' : isFail ? '#dc2626' : 'var(--border-subtle)'}`,
+        }}
+      >
+        {/* Icône */}
+        <svg
+          width={22}
+          height={22}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={
+            isPass ? '#16a34a' : isFail || isError ? '#dc2626' : 'var(--text-secondary)'
+          }
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          style={{ flexShrink: 0 }}
+        >
+          {isPass ? (
+            <>
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </>
+          ) : (
+            <>
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </>
+          )}
+        </svg>
+        <div>
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 15,
+              color: isPass
+                ? '#15803d'
+                : isFail || isError
+                  ? '#991b1b'
+                  : 'var(--text-primary)',
+            }}
+          >
+            {isError
+              ? 'Erreur moteur — calcul non abouti'
+              : isPass
+                ? 'Structure satisfaisante'
+                : isFail
+                  ? 'Structure non satisfaisante — renforcement requis'
+                  : 'Résultat en attente'}
+          </div>
+          {!isError && (
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+              Critères AGEROUTE Sénégal 2015 · Transfer Matrix (Burmister exact)
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── 4 cartes KPI ──────────────────────────────────────────────── */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))',
+          gap: 12,
+          marginBottom: 22,
+        }}
+        data-testid="kpi-cards"
+      >
+        {[
+          {
+            label: 'H paquet lié',
+            value: kpis?.hLie_cm != null ? `${fmtNum(kpis.hLie_cm, 1)} cm` : '—',
+            sub: 'Couches bitumineuses liées',
+            testId: 'kpi-hlie',
+          },
+          {
+            label: 'H total couches',
+            value: kpis?.hTotal_cm != null ? `${fmtNum(kpis.hTotal_cm, 1)} cm` : '—',
+            sub: 'Épaisseur de structure',
+            testId: 'kpi-htotal',
+          },
+          {
+            label: 'Classe de trafic',
+            value: classeNE,
+            sub: `NE ≈ ${fmtSci(ne)} essieux éq.`,
+            testId: 'kpi-classe',
+          },
+          {
+            label: 'Moteur',
+            value: 'Transfer Matrix',
+            sub: 'Burmister exact · n couches',
+            testId: 'kpi-moteur',
+          },
+        ].map((kpi) => (
+          <div
+            key={kpi.label}
+            data-testid={kpi.testId}
+            style={{
+              position: 'relative',
+              overflow: 'hidden',
+              background: 'var(--surface-base)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 12,
+              padding: '13px 15px',
+              boxShadow: 'var(--elevation-card)',
+            }}
+          >
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 11,
+                bottom: 11,
+                width: 3,
+                borderRadius: 2,
+                background: '#1a4a7a',
+                opacity: 0.85,
+              }}
+            />
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              {kpi.label}
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--font-mono, monospace)',
+                fontSize: 19,
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+                marginTop: 4,
+                lineHeight: 1.15,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {kpi.value}
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 3 }}>
+              {kpi.sub}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Vérification des critères ──────────────────────────────────── */}
+      <SectionTitle>Vérification des critères</SectionTitle>
+      <div
+        style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
+        data-testid="criteres"
+      >
+        {/* Fatigue bitumineuse */}
+        <CritereCard
+          label={
+            kpis?.fatigueRigide ? 'Fatigue (rigide) — σ_t' : 'Fatigue bitumineuse — ε_t'
+          }
+          unite={kpis?.fatigueRigide ? 'MPa' : 'µdef'}
+          valeur={kpis?.fatigueValeur}
+          admissible={kpis?.fatigueAdmissible}
+          ok={kpis?.fatigueOk ?? null}
+          famille={kpis?.familleSanitized}
+          testId="critere-fatigue"
+        />
+        {/* Orniérage PSC */}
+        <CritereCard
+          label="Orniérage PSC — ε_z"
+          unite="µdef"
+          valeur={kpis?.ornieValeur}
+          admissible={kpis?.ornieAdmissible}
+          ok={kpis?.ornieOk ?? null}
+          famille={null}
+          testId="critere-ornierage"
+        />
+      </div>
+
+      {/* ── Diagnostic & recommandations ──────────────────────────────── */}
+      {diagnostics.length > 0 && (
+        <>
+          <SectionTitle>Diagnostic et recommandations</SectionTitle>
+          <div
+            data-testid="diagnostics"
+            style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+          >
+            {diagnostics.map((msg, i) => (
+              <Note key={i} variant={isPass ? 'green' : 'orange'}>
+                {msg}
+              </Note>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── PV scellé ─────────────────────────────────────────────────── */}
+      <SectionTitle>Procès-verbal scellé</SectionTitle>
+      {pvResult ? (
+        <div
+          data-testid="pv-success"
+          style={{
+            padding: '13px 16px',
+            background: '#f0fdf4',
+            border: '1px solid #86efac',
+            borderLeft: '3px solid #16a34a',
+            borderRadius: 10,
+            fontSize: 12.5,
+            color: '#15803d',
+          }}
+        >
+          PV {pvResult.number} scellé — HMAC {pvResult.hmacTruncated}…
+          <span style={{ color: 'var(--text-secondary)', marginLeft: 8, fontSize: 11 }}>
+            {new Date(pvResult.sealedAt).toLocaleString('fr-FR')}
+          </span>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={onEmitPv}
+            disabled={
+              emittingPv || !result || result.status !== 'DONE' || isExpiredOrQuota
+            }
+            aria-busy={emittingPv}
+            data-testid="btn-imprimer"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 7,
+              background:
+                emittingPv || result.status !== 'DONE' || isExpiredOrQuota
+                  ? '#e5e7eb'
+                  : 'linear-gradient(135deg, #1a4a7a, #143a61)',
+              color:
+                emittingPv || result.status !== 'DONE' || isExpiredOrQuota
+                  ? 'var(--text-secondary)'
+                  : '#fff',
+              border: 'none',
+              padding: '10px 20px',
+              fontSize: 13,
+              fontWeight: 600,
+              borderRadius: 11,
+              cursor:
+                emittingPv || result.status !== 'DONE' || isExpiredOrQuota
+                  ? 'not-allowed'
+                  : 'pointer',
+              opacity:
+                emittingPv || result.status !== 'DONE' || isExpiredOrQuota ? 0.55 : 1,
+              fontFamily: 'inherit',
+              transition: 'opacity .15s',
+            }}
+          >
+            {emittingPv ? (
+              <>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 13,
+                    height: 13,
+                    border: '2px solid rgba(0,0,0,.15)',
+                    borderTopColor: 'currentColor',
+                    borderRadius: '50%',
+                    animation: 'roadsens-spin .7s linear infinite',
+                    display: 'inline-block',
+                    verticalAlign: -1,
+                  }}
+                />
+                Émission…
+              </>
+            ) : (
+              <>
+                <svg
+                  width={15}
+                  height={15}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg>
+                Imprimer le rapport / Émettre PV
+              </>
+            )}
+          </button>
+          {result.status !== 'DONE' && (
+            <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
+              Le calcul doit être terminé pour émettre un PV.
+            </span>
+          )}
+          {isExpiredOrQuota && (
+            <span style={{ fontSize: 11.5, color: '#991b1b' }}>
+              Abonnement expiré ou quota épuisé.
+            </span>
+          )}
+        </div>
+      )}
+
+      <Note>
+        Le PV est généré et scellé (HMAC) côté serveur. Il ne peut être modifié après
+        émission. La vérification d'intégrité en ligne sera disponible en Phase 2
+        (certificat horodaté tiers).
+      </Note>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Carte de critère (fatigue / orniérage)
+// ---------------------------------------------------------------------------
+
+interface CritereCardProps {
+  label: string;
+  unite: string;
+  valeur: number | null | undefined;
+  admissible: number | null | undefined;
+  ok: 'ok' | 'fail' | null;
+  famille: string | null | undefined;
+  testId: string;
+}
+
+function CritereCard({
+  label,
+  unite,
+  valeur,
+  admissible,
+  ok,
+  famille,
+  testId,
+}: CritereCardProps) {
+  const isOk = ok === 'ok';
+  const isFail = ok === 'fail';
+  const ratio =
+    valeur != null && admissible != null && admissible > 0 ? valeur / admissible : null;
+
+  return (
+    <div
+      data-testid={testId}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 10,
+        padding: '12px 16px',
+        background: 'var(--surface-base)',
+        border: `1px solid ${isFail ? '#fca5a5' : isOk ? '#86efac' : 'var(--border-subtle)'}`,
+        borderLeft: `3px solid ${isFail ? '#dc2626' : isOk ? '#16a34a' : 'var(--border-subtle)'}`,
+        borderRadius: 10,
+      }}
+    >
+      {/* Badge SATISFAIT / NON */}
+      <span
+        data-testid={`${testId}-badge`}
+        style={{
+          display: 'inline-block',
+          padding: '4px 11px',
+          borderRadius: 999,
+          fontSize: 10.5,
+          fontWeight: 700,
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
+          background: isFail ? '#fee2e2' : isOk ? '#dcfce7' : 'var(--surface-canvas)',
+          color: isFail ? '#991b1b' : isOk ? '#15803d' : 'var(--text-secondary)',
+          flexShrink: 0,
+        }}
+      >
+        {isFail ? 'NON SATISFAIT' : isOk ? 'SATISFAIT' : '—'}
+      </span>
+
+      {/* Libellé + famille */}
+      <div style={{ flex: 1, minWidth: 120 }}>
+        <div style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text-primary)' }}>
+          {label}
+        </div>
+        {famille && (
+          <div
+            data-testid={`${testId}-famille`}
+            style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2 }}
+          >
+            Famille : {famille}
+          </div>
+        )}
+      </div>
+
+      {/* Valeur sollicitante */}
+      {valeur != null && (
+        <div style={{ textAlign: 'right', minWidth: 90 }}>
+          <div
+            style={{
+              fontFamily: 'var(--font-mono, monospace)',
+              fontSize: 17,
+              fontWeight: 700,
+              color: isFail ? '#dc2626' : isOk ? '#16a34a' : 'var(--text-primary)',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {fmtNum(valeur, 1)} {unite}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>sollicitante</div>
+        </div>
+      )}
+
+      {/* Séparateur / */}
+      {valeur != null && admissible != null && (
+        <div
+          style={{
+            fontSize: 18,
+            color: 'var(--text-muted)',
+            fontWeight: 300,
+            lineHeight: 1,
+          }}
+          aria-hidden="true"
+        >
+          /
+        </div>
+      )}
+
+      {/* Admissible + ratio */}
+      {admissible != null && (
+        <div style={{ textAlign: 'right', minWidth: 90 }}>
+          <div
+            style={{
+              fontFamily: 'var(--font-mono, monospace)',
+              fontSize: 17,
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {fmtNum(admissible, 1)} {unite}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>admissible</div>
+        </div>
+      )}
+
+      {/* Taux % */}
+      {ratio != null && (
+        <div
+          data-testid={`${testId}-ratio`}
+          style={{
+            fontFamily: 'var(--font-mono, monospace)',
+            fontSize: 14,
+            fontWeight: 700,
+            color: ratio > 1 ? '#dc2626' : '#15803d',
+            minWidth: 48,
+            textAlign: 'right',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {Math.round(ratio * 100)} %
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Onglet Détails calcul
+// ---------------------------------------------------------------------------
+
+function TabDetails({ result }: { result: CalcResult | null }) {
+  if (!result) {
+    return (
+      <PlaceholderPane
+        icon="microscope"
+        title="Détails de calcul"
+        description="Lancez un calcul pour accéder au récapitulatif des critères et épaisseurs."
+      />
+    );
+  }
+
+  const output = result.output as NormalizedCalcOutput | null;
+  const rows = Array.isArray(output?.rows) ? (output!.rows as CalcOutputRow[]) : [];
+
+  return (
+    <div data-testid="tab-details">
+      <SectionTitle>
+        Récapitulatif des critères — calcul n° {result.id.slice(-8)}
+      </SectionTitle>
+      <Note>
+        Résultats de la méthode Transfer Matrix (Burmister exact, n couches). Les formules
+        et coefficients internes de calage restent côté serveur (DoD §8). Seuls les
+        résultats de vérification (grandeurs sollicitantes et admissibles) sont affichés.
+      </Note>
+
+      {rows.length === 0 ? (
+        <div style={{ padding: '1.5rem', color: 'var(--text-secondary)', fontSize: 13 }}>
+          Aucune ligne de résultat disponible.
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto', marginTop: 14 }}>
+          <table
+            style={{
+              width: '100%',
+              borderCollapse: 'separate',
+              borderSpacing: 0,
+              fontSize: 12.5,
+              background: 'var(--surface-base)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 12,
+              overflow: 'hidden',
+            }}
+            aria-label="Détails du calcul ROADSENS"
+          >
+            <thead>
+              <tr>
+                {['Critère', 'Valeur', 'Unité', 'Statut'].map((th) => (
+                  <th
+                    key={th}
+                    style={{
+                      textAlign: 'left',
+                      padding: '9px 12px',
+                      background: 'var(--surface-canvas)',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: '0.05em',
+                      textTransform: 'uppercase',
+                      color: 'var(--text-secondary)',
+                      borderBottom: '1px solid var(--border-subtle)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {th}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr
+                  key={i}
+                  style={{
+                    borderBottom:
+                      i < rows.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                  }}
+                >
+                  <td
+                    style={{
+                      padding: '8px 12px',
+                      fontWeight: 500,
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    {row.label}
+                  </td>
+                  <td
+                    style={{
+                      padding: '8px 12px',
+                      fontFamily: 'var(--font-mono, monospace)',
+                      fontVariantNumeric: 'tabular-nums',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    {typeof row.value === 'number'
+                      ? fmtNum(row.value, row.unit === 'm' ? 4 : 2)
+                      : row.value}
+                  </td>
+                  <td
+                    style={{
+                      padding: '8px 12px',
+                      color: 'var(--text-secondary)',
+                      fontSize: 11,
+                    }}
+                  >
+                    {row.unit || '—'}
+                  </td>
+                  <td style={{ padding: '8px 12px' }}>
+                    {row.status ? (
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          fontSize: 10,
+                          fontWeight: 700,
+                          background: row.status === 'ok' ? '#dcfce7' : '#fee2e2',
+                          color: row.status === 'ok' ? '#15803d' : '#991b1b',
+                        }}
+                      >
+                        {row.status === 'ok' ? 'OK' : 'NON'}
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <Note>
+        Calcul effectué le {new Date(result.createdAt).toLocaleString('fr-FR')} · Moteur :{' '}
+        {result.engineId} · ID : {result.id}
+      </Note>
+    </div>
+  );
+}
