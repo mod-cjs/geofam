@@ -8,11 +8,21 @@
  * - computeNE : formule NE publique AGEROUTE 2015 (display uniquement)
  * - neClass : classification NE
  * - buildBurmisterPayload : structure du payload API (clés, types)
+ * - extractBurmisterKpis : extraction KPIs depuis sortie normalisée (étape 2)
+ * - buildBurmisterDiagnostics : messages diagnostics allowlist fail-closed (étape 2)
  */
 
 import { describe, it, expect } from 'vitest';
 
-import { computeNE, neClass, buildBurmisterPayload } from '../page';
+import {
+  computeNE,
+  neClass,
+  buildBurmisterPayload,
+  extractBurmisterKpis,
+  buildBurmisterDiagnostics,
+} from '../page';
+
+import { adaptCalcResult } from '@/lib/api/adapters';
 
 // ---------------------------------------------------------------------------
 // computeNE — NE cumulé (formule AGEROUTE 2015 §3.2, affichage)
@@ -157,5 +167,220 @@ describe('buildBurmisterPayload', () => {
     expect(payload).not.toContain('"e6"');
     expect(payload).not.toContain('"kc"');
     expect(payload).not.toContain('"s6"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractBurmisterKpis — extraction KPIs depuis la sortie normalisée
+// ---------------------------------------------------------------------------
+
+/** Fixture de sortie normalisée burmister — cas conforme via adaptCalcResult. */
+const FIXTURE_BURMISTER_RAW_PASS = {
+  conforme: true,
+  NE: 1467314.82,
+  famille: 'souple',
+  epaisseurLiee: 0.34,
+  epaisseurTotale: 0.46,
+  fatigue: { ok: true, rigide: false, valeur: 96.4, admissible: 119.12 },
+  ornierage: { ok: true, valeur: 412.5, admissible: 600 },
+};
+
+/** Fixture de sortie normalisee burmister — cas non conforme. */
+const FIXTURE_BURMISTER_RAW_FAIL = {
+  conforme: false,
+  NE: 3200000,
+  famille: 'bitumineuse epaisse',
+  epaisseurLiee: 0.16,
+  epaisseurTotale: 0.28,
+  fatigue: { ok: false, rigide: false, valeur: 119.12, admissible: 96.4 },
+  ornierage: { ok: true, valeur: 412.5, admissible: 600 },
+};
+
+function adaptRaw(output: unknown): NormalizedCalcOutput | null {
+  const r = adaptCalcResult({
+    id: 'test',
+    projectId: 'p1',
+    orgId: 'o1',
+    engineId: 'chaussee-burmister',
+    input: {},
+    output,
+    createdAt: new Date().toISOString(),
+  });
+  return r.output as NormalizedCalcOutput | null;
+}
+
+describe('extractBurmisterKpis', () => {
+  it('given null output, returns null', () => {
+    expect(extractBurmisterKpis(null)).toBeNull();
+  });
+
+  it('given output sans rows, returns null', () => {
+    expect(extractBurmisterKpis({ verdict: 'PASS' })).toBeNull();
+  });
+
+  it('given sortie PASS reelle (via adaptCalcResult), extrait hLie_cm et hTotal_cm', () => {
+    // GIVEN : sortie brute burmister passee par adaptCalcResult (normalisation reelle)
+    const normalized = adaptRaw(FIXTURE_BURMISTER_RAW_PASS);
+    expect(normalized).not.toBeNull();
+
+    // WHEN
+    const kpis = extractBurmisterKpis(normalized);
+
+    // THEN : epaisseurs en cm
+    expect(kpis).not.toBeNull();
+    expect(kpis!.hLie_cm).toBeCloseTo(34, 0);
+    expect(kpis!.hTotal_cm).toBeCloseTo(46, 0);
+  });
+
+  it('given sortie PASS, extrait NE', () => {
+    const normalized = adaptRaw(FIXTURE_BURMISTER_RAW_PASS);
+    const kpis = extractBurmisterKpis(normalized);
+    expect(kpis!.ne).toBeCloseTo(1467314.82, 0);
+  });
+
+  it('given fatigue ok=true, fatigueOk = "ok"', () => {
+    const normalized = adaptRaw(FIXTURE_BURMISTER_RAW_PASS);
+    const kpis = extractBurmisterKpis(normalized);
+    expect(kpis!.fatigueOk).toBe('ok');
+    expect(kpis!.fatigueValeur).toBeCloseTo(96.4, 1);
+    expect(kpis!.fatigueAdmissible).toBeCloseTo(119.12, 1);
+  });
+
+  it('given fatigue ok=false, fatigueOk = "fail"', () => {
+    const normalized = adaptRaw(FIXTURE_BURMISTER_RAW_FAIL);
+    const kpis = extractBurmisterKpis(normalized);
+    expect(kpis!.fatigueOk).toBe('fail');
+    expect(kpis!.fatigueValeur).toBeCloseTo(119.12, 1);
+    expect(kpis!.fatigueAdmissible).toBeCloseTo(96.4, 1);
+  });
+
+  it('given ornierage ok=true, ornieOk = "ok"', () => {
+    const normalized = adaptRaw(FIXTURE_BURMISTER_RAW_PASS);
+    const kpis = extractBurmisterKpis(normalized);
+    expect(kpis!.ornieOk).toBe('ok');
+    expect(kpis!.ornieValeur).toBeCloseTo(412.5, 0);
+    expect(kpis!.ornieAdmissible).toBeCloseTo(600, 0);
+  });
+
+  it('given structure rigide (fatigue.rigide=true), fatigueRigide=true', () => {
+    const rawRigide = {
+      ...FIXTURE_BURMISTER_RAW_PASS,
+      fatigue: { ok: true, rigide: true, valeur: 1.8, admissible: 2.1 },
+    };
+    const normalized = adaptRaw(rawRigide);
+    const kpis = extractBurmisterKpis(normalized);
+    expect(kpis!.fatigueRigide).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildBurmisterDiagnostics — messages diagnostics fail-closed
+// ---------------------------------------------------------------------------
+
+describe('buildBurmisterDiagnostics', () => {
+  it('given null output, returns empty array', () => {
+    expect(buildBurmisterDiagnostics(null)).toEqual([]);
+  });
+
+  it('given PASS, returns message de conformite', () => {
+    const normalized = adaptRaw(FIXTURE_BURMISTER_RAW_PASS);
+    const msgs = buildBurmisterDiagnostics(normalized);
+    expect(msgs.length).toBeGreaterThanOrEqual(1);
+    // Le message de conformite contient "satisfaisante" ou "AGEROUTE"
+    const joined = msgs.join(' ');
+    expect(joined.toLowerCase()).toMatch(/satisfaisante|ageroute|emet/);
+  });
+
+  it('given fatigue FAIL, returns message fatigue avec ratio', () => {
+    const normalized = adaptRaw(FIXTURE_BURMISTER_RAW_FAIL);
+    const msgs = buildBurmisterDiagnostics(normalized);
+    // Au moins un message mentionne la fatigue
+    const fatigueMsgs = msgs.filter((m) => m.toLowerCase().includes('fatigue'));
+    expect(fatigueMsgs.length).toBeGreaterThanOrEqual(1);
+    // Le ratio est calcule correctement : 119.12 / 96.4 ~ 1.24
+    const joined = fatigueMsgs.join(' ');
+    expect(joined).toContain('1.24');
+  });
+
+  it('given ornierage FAIL, returns message ornieerage avec ratio', () => {
+    const rawOrnieFail = {
+      ...FIXTURE_BURMISTER_RAW_PASS,
+      conforme: false,
+      ornierage: { ok: false, valeur: 720, admissible: 600 },
+    };
+    const normalized = adaptRaw(rawOrnieFail);
+    const msgs = buildBurmisterDiagnostics(normalized);
+    const ornieMsgs = msgs.filter((m) => m.toLowerCase().includes('orni'));
+    expect(ornieMsgs.length).toBeGreaterThanOrEqual(1);
+    // Ratio : 720 / 600 = 1.20
+    expect(ornieMsgs.join(' ')).toContain('1.20');
+  });
+
+  it('given diagnostics, messages ne contiennent AUCUN terme confidentiel', () => {
+    // Garde DoD §8 : les messages sont construits depuis des flags whitelistés,
+    // jamais depuis le texte moteur libre.
+    const rawWithConfidential = {
+      ...FIXTURE_BURMISTER_RAW_FAIL,
+      _D: { kc: 1.3, kr: 0.82, ks: 0.95, e6: 100, b: 5 },
+      propagateur: { A: 1, B: 2 },
+      warnings: ['kc=1.3 confidentiel'],
+      E_pondere: 1234,
+      nu_pondere: 0.42,
+    };
+    const normalized = adaptRaw(rawWithConfidential);
+    const msgs = buildBurmisterDiagnostics(normalized);
+    const joined = msgs.join(' ');
+
+    // Termes confidentiels absolument interdits dans les diagnostics
+    for (const forbidden of [
+      'kc',
+      'kr',
+      'ks',
+      'e6',
+      'propagateur',
+      'E_pondere',
+      'nu_pondere',
+      'confidentiel',
+    ]) {
+      expect(joined, `terme confidentiel detecte : ${forbidden}`).not.toContain(
+        forbidden,
+      );
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test negatif DoD §8 — aucun intermédiaire confidentiel dans la sortie normalisée
+// ---------------------------------------------------------------------------
+
+describe('DoD §8 — fail-closed : aucune fuite via extractBurmisterKpis', () => {
+  it('given output brut avec champs confidentiels injectes, les KPIs ne contiennent aucun de ces champs', () => {
+    // GIVEN : sortie brute avec champs confidentiels additionnels
+    const rawWithLeaks = {
+      ...FIXTURE_BURMISTER_RAW_PASS,
+      E_pondere: 99999, // module pondere confidentiel
+      nu_pondere: 0.42, // Poisson pondere confidentiel
+      kc: 1.3, // coefficient de calage
+      kr: 0.82,
+      ks: 0.95,
+      sigma_z_brut: 999.99, // contrainte axiale brute
+    };
+
+    // WHEN : normalisation via adaptCalcResult (whitelist serveur simulée)
+    const normalized = adaptRaw(rawWithLeaks);
+
+    // THEN : les KPIs extraits ne contiennent aucun des champs confidentiels
+    const kpis = extractBurmisterKpis(normalized);
+    const kpiJson = JSON.stringify(kpis ?? {});
+
+    expect(kpiJson).not.toContain('E_pondere');
+    expect(kpiJson).not.toContain('99999');
+    expect(kpiJson).not.toContain('nu_pondere');
+    expect(kpiJson).not.toContain('0.42');
+    expect(kpiJson).not.toContain('"kc"');
+    expect(kpiJson).not.toContain('"kr"');
+    expect(kpiJson).not.toContain('"ks"');
+    expect(kpiJson).not.toContain('999.99');
+    expect(kpiJson).not.toContain('sigma_z_brut');
   });
 });
