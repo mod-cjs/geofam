@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { BurmisterOutputSchema } from './contract.js';
+import { BurmisterInputSchema, BurmisterOutputSchema } from './contract.js';
 import { BURMISTER_FIXTURES } from './test-fixtures.js';
 
 import { runBurmister } from './index.js';
@@ -149,47 +149,56 @@ describe('burmister — contrat de sortie (whitelist stricte, anti-fuite)', () =
     expect(() => BurmisterOutputSchema.parse(pollue)).toThrow(/[Uu]nrecognized/);
   });
 
-  it('le referentiel materiaux est INJECTE en parametre (override pris en compte)', () => {
-    // Critere #46.1 : pas de codage en dur cote calcul. On surcharge le module
-    // d'un materiau bitumineux RAIDI : la sortie doit differer du defaut, prouvant
-    // que `materials` est bien LU (et non ignore au profit d'une table en dur).
+  it('CALIBRATION VERROUILLEE : une entree forgee portant `materials` (calibration substituee) est REJETEE (400, fail-closed)', () => {
+    // INTEGRITE PV : le contrat d'entree ne doit JAMAIS accepter une calibration de
+    // fatigue fournie par le client — sinon une requete forgee pourrait la faire
+    // sceller dans le PV sous l'identite methode STARFIRE. Le schema etant
+    // `.strict()`, la cle `materials` est INCONNUE -> le parse ECHOUE (aucune
+    // calibration client n'atteint le calcul ni le PV).
     const fxBase = BURMISTER_FIXTURES.find((f) => f.id === 'bitumineuse-epaisse-defaut');
     expect(fxBase).toBeDefined();
     if (!fxBase) return;
-    const baseEnv = runBurmister(fxBase.input);
 
-    // Referentiel custom : GB3 dote d'un E10 et e6 differents (loi de fatigue).
-    const custom = {
-      BBSG1: {
-        n: 'BBSG1',
-        E: 1512,
-        E10: 7200,
-        nu: 0.45,
-        bit: 1,
-        e6: 100,
-        b: 5,
-        kc: 1.1,
-        sn: 0.3,
+    // Preuve 1 : l'entree LEGITIME (sans materials) reste ACCEPTEE.
+    expect(() => BurmisterInputSchema.parse(fxBase.input)).not.toThrow();
+
+    // Preuve 2 : la MEME entree + un referentiel de fatigue substitue (GB3 « raidi »
+    // : e6=200, E10=20000) est REJETEE au niveau schema...
+    const forge = {
+      ...fxBase.input,
+      materials: {
+        GB3: {
+          n: 'GB3 raidi',
+          E: 2588,
+          E10: 20000,
+          nu: 0.45,
+          bit: 1,
+          e6: 200,
+          b: 5,
+          kc: 1.3,
+          sn: 0.3,
+        },
       },
-      GB3: {
-        n: 'GB3 raidi',
-        E: 2588,
-        E10: 20000,
-        nu: 0.45,
-        bit: 1,
-        e6: 200,
-        b: 5,
-        kc: 1.3,
-        sn: 0.3,
-      },
-      GL1: { n: 'GL1', E: 200, nu: 0.35 },
     };
-    const customEnv = runBurmister({ ...fxBase.input, materials: custom });
-    expect(baseEnv.ok && customEnv.ok).toBe(true);
-    if (!baseEnv.ok || !customEnv.ok) return;
-    // L'admissible de fatigue depend de e6/E10 : il doit CHANGER (referentiel lu).
-    expect(customEnv.output.fatigue?.admissible).not.toBe(
-      baseEnv.output.fatigue?.admissible,
+    expect(() => BurmisterInputSchema.parse(forge)).toThrow(/[Uu]nrecognized/);
+
+    // Preuve 3 : ...et le point d'entree serveur `runBurmister` la rejette AUSSI
+    // (le calcul/PV n'est jamais atteint).
+    expect(() => runBurmister(forge)).toThrow(/[Uu]nrecognized/);
+  });
+
+  it('CALIBRATION VERROUILLEE : meme un coefficient de calage isole en entree est REJETE (aucun contournement de champ)', () => {
+    // Defense en profondeur : on ne peut pas non plus glisser un coefficient de
+    // calage a un autre niveau. Toute cle inconnue (`kc`, `e6`...) au sommet de
+    // l'entree fait echouer le parse strict.
+    const fxBase = BURMISTER_FIXTURES.find((f) => f.id === 'bitumineuse-epaisse-defaut');
+    expect(fxBase).toBeDefined();
+    if (!fxBase) return;
+    expect(() => BurmisterInputSchema.parse({ ...fxBase.input, kc: 0.5 })).toThrow(
+      /[Uu]nrecognized/,
+    );
+    expect(() => BurmisterInputSchema.parse({ ...fxBase.input, e6: 200 })).toThrow(
+      /[Uu]nrecognized/,
     );
   });
 });

@@ -8,12 +8,20 @@
  *
  * --- ENTREE ---
  * L'etat complet d'une structure de chaussee : couches (materiau/E/ν/h),
- * plateforme support (PSC), trafic, charge (jumelage), et — explicitement — le
- * REFERENTIEL MATERIAUX AGEROUTE injecte en parametre (le HTML le code en dur
- * dans `const M` ; cote module on l'accepte en entree, defaut = AGEROUTE_MATERIALS).
- * Contrairement a terzaghi, le moteur burmister attend des NOMBRES (le HTML lit
- * des champs de saisie deja convertis en `+value`) : on declare des nombres finis
- * bornes, pas d'unions chaine.
+ * plateforme support (PSC), trafic, charge (jumelage). Contrairement a terzaghi,
+ * le moteur burmister attend des NOMBRES (le HTML lit des champs de saisie deja
+ * convertis en `+value`) : on declare des nombres finis bornes, pas d'unions chaine.
+ *
+ * --- CALIBRATION VERROUILLEE (integrite PV — faille fermee) ---
+ * Le REFERENTIEL MATERIAUX AGEROUTE (coefficients de calage des lois de fatigue :
+ * e6/σ6, b, kc, sn, Sh, kd, E10, et les drapeaux bit/rig) N'EST PAS accepte en
+ * entree. Il est FIGE cote moteur a la table de REFERENCE `AGEROUTE_MATERIALS`
+ * (θ=34 °C). Motif : l'entree valide sert aussi de forme PERSISTEE et SCELLEE dans
+ * le PV ; une requete forgee portant `materials:{...}` aurait pu substituer une
+ * calibration de fatigue puis la faire sceller SOUS l'identite methode STARFIRE.
+ * Le schema etant `.strict()`, toute entree portant une cle `materials` est
+ * desormais REJETEE (400, fail-closed). Les couches portent deja E/ν/h (saisis) ;
+ * aucune propriete de calage n'a donc a transiter par l'entree client.
  *
  * --- POURQUOI une sortie tres reduite (anti-fuite, DoD §8) ---
  * Le calcul produit, en interne (objet `_D`), une foule d'intermediaires
@@ -173,73 +181,15 @@ const LoadSchema = z
   .strict();
 
 /**
- * Une entree du referentiel materiaux : les proprietes lues par le moteur. En
- * `.strict()` (le garde-fou anti-passthrough du contrat impose des conteneurs
- * FERMES — pas de record/catchall/passthrough : une cle inconnue serait une
- * porte de fuite). Les champs d'affichage du HTML (n, c, s) sont declares pour
- * que le referentiel d'usine passe tel quel.
- */
-const MaterialSchema = z
-  .object({
-    n: z.string().max(120).optional(),
-    E: Modulus,
-    E10: z.number().finite().min(1).max(60000).optional(),
-    nu: Poisson,
-    bit: z.number().optional(),
-    rig: z.number().optional(),
-    e6: z.number().finite().min(0).max(1000).optional(),
-    s6: z.number().finite().min(0).max(20).optional(),
-    b: z.number().finite().min(1).max(50).optional(),
-    kc: z.number().finite().min(0).max(5).optional(),
-    sn: z.number().finite().min(0).max(5).optional(),
-    Sh: z.number().finite().min(0).max(10).optional(),
-    kd: z.number().finite().min(0).max(5).optional(),
-    c: z.string().max(16).optional(),
-    s: z.string().max(16).optional(),
-  })
-  .strict();
-
-/**
- * Referentiel materiaux AGEROUTE injecte (#46, critere 1 : pas de codage en dur
- * cote calcul). Modelise en OBJET A CLES FERMEES (les 20 codes AGEROUTE 2015),
- * chaque entree optionnelle : l'appelant fournit tout ou partie du referentiel.
- * OPTIONNEL globalement : en son absence le module utilise AGEROUTE_MATERIALS
- * (defaut/fixture, identique a la table d'usine du HTML).
+ * Entree complete du moteur burmister. Bornee.
  *
- * Pourquoi un objet a cles fixes et NON un z.record : le garde-fou
- * anti-passthrough (engine-io.ts) REJETTE les conteneurs ouverts (ZodRecord) —
- * une cle inconnue est une fuite potentielle. On enumere donc le jeu de codes
- * AGEROUTE (espace de cles ferme, whitelist-safe). Un nouveau materiau du client
- * = avenant au referentiel + ajout de sa cle ici (tracable), pas une porte ouverte.
- */
-const MaterialsSchema = z
-  .object({
-    BBSG1: MaterialSchema.optional(),
-    BBSG2: MaterialSchema.optional(),
-    BBTM: MaterialSchema.optional(),
-    BBM: MaterialSchema.optional(),
-    GB2: MaterialSchema.optional(),
-    GB3: MaterialSchema.optional(),
-    EME2: MaterialSchema.optional(),
-    GL1: MaterialSchema.optional(),
-    GL2: MaterialSchema.optional(),
-    GLli: MaterialSchema.optional(),
-    GLa: MaterialSchema.optional(),
-    GLc1: MaterialSchema.optional(),
-    GLc2: MaterialSchema.optional(),
-    GNT1: MaterialSchema.optional(),
-    GNT2: MaterialSchema.optional(),
-    GC3: MaterialSchema.optional(),
-    SC2: MaterialSchema.optional(),
-    BQc: MaterialSchema.optional(),
-    BC5: MaterialSchema.optional(),
-    BC2: MaterialSchema.optional(),
-  })
-  .strict();
-
-/**
- * Entree complete du moteur burmister. Bornee. Le referentiel materiaux est
- * optionnel (defaut interne) mais explicitement modelise.
+ * PAS de champ `materials` : le referentiel/la calibration de fatigue est FIGE
+ * cote moteur a `AGEROUTE_MATERIALS` (reference θ=34 °C), jamais fourni par le
+ * client (cf. en-tete « CALIBRATION VERROUILLEE »). Le schema etant `.strict()`,
+ * une entree portant `materials` (ou tout autre coefficient de calage e6/kc/b/…)
+ * est REJETEE (400) — aucune science substituee ne peut atteindre le calcul ni
+ * etre scellee dans le PV. Les couches portent E/ν/h (les seules grandeurs
+ * elastiques saisies) ; les coefficients de calage ne transitent jamais par l'entree.
  */
 export const BurmisterInputSchema = z
   .object({
@@ -249,8 +199,6 @@ export const BurmisterInputSchema = z
     subgrade: SubgradeSchema,
     traffic: TrafficSchema,
     load: LoadSchema,
-    /** Referentiel materiaux (injecte) ; defaut = AGEROUTE_MATERIALS. */
-    materials: MaterialsSchema.optional(),
   })
   .strict();
 export type BurmisterInput = z.infer<typeof BurmisterInputSchema>;

@@ -48,10 +48,11 @@ export const BURMISTER_CONFIDENTIAL_MARKER = ENGINE_BUNDLE_MARKER;
 // REFERENTIEL MATERIAUX AGEROUTE 2015 (defaut / fixture — INJECTE en parametre)
 // ===========================================================================
 //
-// Valeurs telles que dans le HTML d'origine (const M). Cote module, elles ne
-// sont PAS codees en dur dans le calcul : `computeBurmister` prend le referentiel
-// en parametre `state.materials` ; ces valeurs servent UNIQUEMENT de defaut quand
-// l'appelant n'en fournit pas (parite avec la saisie d'usine du HTML).
+// Valeurs telles que dans le HTML d'origine (const M). L'architecture #46 est
+// preservee : la science pure (`doCalcPure`) recoit le referentiel en PARAMETRE
+// `M` (il n'est pas code en dur dans le propagateur). Mais — integrite PV — ce
+// parametre est desormais FIGE a cette table de REFERENCE ; il n'est plus jamais
+// fourni par l'entree client (cf. `computeBurmister` + en-tete de contract.ts).
 export const AGEROUTE_MATERIALS = {
   BBSG1: {
     n: 'BBSG classe 1  (E = 1 512 MPa — T.54)',
@@ -1045,15 +1046,22 @@ function doCalcPure(M, ly, pf, tr, cp) {
 
 /**
  * Calcule le dimensionnement Burmister a partir d'un ETAT complet (pas de DOM,
- * pas de globale). Le referentiel materiaux est INJECTE (`state.materials`) ;
- * en son absence, on retombe sur AGEROUTE_MATERIALS (parite avec le HTML).
+ * pas de globale).
+ *
+ * CALIBRATION VERROUILLEE (integrite PV, defense en profondeur) : le referentiel
+ * materiaux `M` est TOUJOURS la table de REFERENCE `AGEROUTE_MATERIALS` (θ=34 °C).
+ * On n'accepte JAMAIS `state.materials` : le contrat d'entree rejette deja cette
+ * cle (400, `.strict()`) — cette ligne est la 2e barriere (si un appelant court-
+ * circuitait le parse, aucune calibration client ne peut atteindre le calcul ni
+ * le PV). `doCalcPure` conserve `M` en parametre (#46 : pas de codage en dur dans
+ * la science) ; c'est la VALEUR injectee qui est figee, pas l'architecture.
  *
  * Renvoie l'objet de resultat BRUT `_D` (identique au HTML), OU `{ err }` si la
  * science leve (parite avec le `try/catch` du HTML : `runCalc` affiche e.message).
  * La PROJECTION client-safe est faite par index.ts (whitelist + redaction).
  */
 export function computeBurmister(state) {
-  const M = state && state.materials ? state.materials : AGEROUTE_MATERIALS;
+  const M = AGEROUTE_MATERIALS;
   const ly = state && Array.isArray(state.layers) ? state.layers : [];
   const pf = state && state.subgrade ? state.subgrade : {};
   const tr = state && state.traffic ? state.traffic : {};

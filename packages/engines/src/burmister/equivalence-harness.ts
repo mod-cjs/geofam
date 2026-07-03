@@ -79,10 +79,10 @@ export function loadOriginalCompute(): {
   }
 
   const computeHtml = (state: BurmisterInput): unknown => {
-    // Si l'appelant fournit un referentiel materiaux, on REASSIGNE `M` aussi
-    // (le HTML le code en dur ; on le surcharge pour la parite). Sinon on garde
-    // le `M` d'usine du HTML (= AGEROUTE_MATERIALS du module).
-    const setM = state.materials ? `M = ${JSON.stringify(state.materials)};` : '';
+    // CALIBRATION VERROUILLEE : le referentiel n'est plus un champ d'entree (fige a
+    // AGEROUTE_MATERIALS cote module). On garde donc le `M` d'usine du HTML, qui est
+    // exactement AGEROUTE_MATERIALS — les deux cotes utilisent la meme table de
+    // reference, ce qui renforce l'equivalence-portage.
     // doCalc appelle renderRes/renderDetails (DOM) : ils s'executent sur la page
     // jsdom complete (sans effet sur _D, deja calcule avant). On capture _D.
     const code = `
@@ -90,7 +90,6 @@ export function loadOriginalCompute(): {
       pf = ${JSON.stringify(state.subgrade)};
       tr = ${JSON.stringify(state.traffic)};
       cp = ${JSON.stringify(state.load)};
-      ${setM}
       let __err = null;
       try { doCalc(); } catch (e) { __err = e && e.message ? String(e.message) : 'Erreur de calcul'; }
       __err !== null ? JSON.stringify({ err: __err }) : JSON.stringify(_D);
