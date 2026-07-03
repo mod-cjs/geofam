@@ -613,22 +613,91 @@ function buildRadierRows(o: Record<string, unknown>): CalcOutputRow[] {
  * labo — classification GTR (NF P 11-300) + paramètres d'identification.
  * La classe est un RÉSULTAT textuel. Clés nommées (fail-closed §8).
  */
+// Allowlist FAIL-CLOSED du chemin de décision GTR (classe.path) — DoD §8, avis
+// ingenieur-securite. path ne contient que des SEUILS NF P 11-300 PUBLICS + des
+// valeurs DÉJÀ exposées (passant, Ip, VBS…) + la sous-classe résultante. On n'affiche
+// QUE les libellés matchant un gabarit connu ; tout libellé inattendu (future branche
+// qui y écrirait un coefficient) est ÉCARTÉ. Les slots variables sont contraints à des
+// NOMBRES / CODES (jamais `.*`) : un « kc=1.3 » injecté ne matche aucun slot. `warn`
+// n'est JAMAIS affiché (note de maturité C1/C2 → arbitrage STARFIRE/expert).
+const LABO_N = '\\d[\\d.,\\u202f]*';
+const LABO_C = '[A-D0-9?]{1,6}';
+const LABO_ST = '[a-zàâéèêîïôûç]{1,4}';
+
+// Allowlist des DESCRIPTIONS de sous-classe (NF P 11-300, statiques). Symétrie fail-closed
+// avec `path` : desc n'est affiché QUE s'il correspond à un libellé normatif connu (ou à
+// une variante famille C « … · 0/50 type D1/D2 »). Tout desc inattendu est écarté.
+const LABO_DESCS: ReadonlySet<string> = new Set([
+  'Limons peu plastiques, loess, sables fins argileux, arènes',
+  'Sables fins argileux, limons, argiles peu plastiques',
+  'Argiles et argiles marneuses, limons très plastiques',
+  'Argiles très plastiques',
+  'Sables silteux',
+  'Sables argileux (peu argileux)',
+  'Graves silteuses',
+  'Graves argileuses (peu argileuses)',
+  'Sables et graves très silteux',
+  'Sables et graves argileux à très argileux',
+  "Sables propres insensibles à l'eau",
+  "Graves propres insensibles à l'eau",
+  'Matériaux grossiers insensibles',
+  'Gros éléments — comportement régi par le squelette',
+  'Gros éléments — comportement régi par la fraction 0/50',
+]);
+const LABO_DESC_C = /^Gros éléments — comportement régi par (?:le squelette|la fraction 0\/50)(?: · 0\/50 type (?:D1|D2))?$/;
+function safeLaboDesc(desc: unknown): string {
+  if (typeof desc !== 'string') return '';
+  const t = desc.trim();
+  return LABO_DESCS.has(t) || LABO_DESC_C.test(t) ? t : '';
+}
+const LABO_PATH_PATTERNS: readonly RegExp[] = [
+  new RegExp(`^Dmax = ${LABO_N} mm > ${LABO_N} mm → famille C\\.$`),
+  new RegExp(`^Fraction 0/50 reclassée → ${LABO_C} \\(essais à réaliser sur le 0/50\\)\\.$`),
+  new RegExp(`^Passant 80µm = ${LABO_N} % ≤ ${LABO_N} % et VBS = ${LABO_N} ≤ ${LABO_N} → insensible → famille D\\.$`),
+  new RegExp(`^Passant 2mm = ${LABO_N} % → ${LABO_C}\\.$`),
+  new RegExp(`^Passant 80µm = ${LABO_N} % > ${LABO_N} % → sol fin → famille A\\.$`),
+  new RegExp(`^Ip = ${LABO_N} \\(préférentiel\\) → ${LABO_C}\\.$`),
+  new RegExp(`^Ip absent → VBS = ${LABO_N} → ${LABO_C}\\.$`),
+  new RegExp(`^Passant 80µm = ${LABO_N} % ≤ ${LABO_N} % → famille B\\.$`),
+  new RegExp(`^Passant 2mm = ${LABO_N} % \\((?:sables|graves)\\), VBS = ${LABO_N} → ${LABO_C}\\.$`),
+  new RegExp(`^Passant 80µm entre ${LABO_N}–${LABO_N} %, VBS = ${LABO_N} → ${LABO_C}\\.$`),
+  new RegExp(`^État hydrique ${LABO_ST} \\((?:forcé|wn/wOPN = ${LABO_N})\\) → ${LABO_C}(?: ${LABO_ST})?\\.$`),
+  /^Famille D insensible : pas d'indice d'état\.$/,
+];
+
+/** Filtre fail-closed : ne garde que les libellés de path matchant un gabarit connu. */
+function safeLaboPath(path: unknown): string[] {
+  if (!Array.isArray(path)) return [];
+  const out: string[] = [];
+  for (const s of path) {
+    if (typeof s !== 'string') continue;
+    const t = s.trim();
+    if (t && LABO_PATH_PATTERNS.some((re) => re.test(t))) out.push(t);
+  }
+  return out;
+}
+
 function buildLaboRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
   const cl = o.classe;
   if (cl != null && typeof cl === 'object') {
     const c = cl as Record<string, unknown>;
     // `code`/`full` contiennent DÉJÀ la lettre de famille (ex. code='A2', full='A2 h') :
-    // concaténer `fam` la dupliquerait ('A'+'A2'='AA2'). On prend le libellé canonique
-    // du moteur (`full` = classe + état hydrique), repli sur `code`.
-    // `desc` (description longue) et `path` (chemin de décision) NE sont PAS affichés :
-    // un test §8 (adapters.engines) l'interdit aujourd'hui. La mémoire/l'audit #106 les
-    // disent client-safe (NF P 11-300 public) → REOUVERTURE possible mais = décision de
-    // confidentialité (ingénieur-sécurité + titulaire), pas un flip unilatéral de test.
+    // concaténer `fam` la dupliquerait ('A'+'A2'='AA2'). On prend le libellé canonique.
+    // `desc` (description normative NF P 11-300, statique) et `path` (chemin de décision,
+    // seuils publics + valeurs déjà exposées) SONT client-safe (avis ingenieur-securite).
+    // path passe par l'allowlist fail-closed `safeLaboPath` ; `warn` reste NON affiché.
     const full = typeof c.full === 'string' ? c.full.trim() : '';
     const code = c.code != null && c.code !== '' ? String(c.code).trim() : '';
     const label = full || code;
     if (label) rows.push({ label: 'Classe GTR', value: label, unit: '' });
+    const desc = safeLaboDesc(c.desc);
+    if (desc) rows.push({ label: 'Description', value: desc, unit: '' });
+    let step = 0;
+    for (const s of safeLaboPath(c.path)) {
+      step += 1;
+      rows.push({ label: `Justification du classement ${step}`, value: s, unit: '' });
+    }
   }
   // COMPLÉTUDE : tous les résultats client-safe (multi-essais). pushRow saute les null.
   // — Identification (granulo / Atterberg / bleu)

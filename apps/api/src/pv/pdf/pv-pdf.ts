@@ -859,6 +859,65 @@ function buildRadierBody(sealed: SealedContent): Content[] {
   return body;
 }
 
+// Allowlist FAIL-CLOSED du chemin de décision GTR (classe.path) — DoD §8, avis
+// ingenieur-securite. Miroir de `safeLaboPath` du front : seuls les libellés matchant un
+// gabarit connu (seuils NF P 11-300 publics + valeurs déjà exposées) sont affichés ;
+// slots contraints à des NOMBRES / CODES → un coefficient injecté ne matche pas. `warn`
+// (note de maturité C1/C2) n'est JAMAIS imprimé au PV.
+const LABO_PV_N = '\\d[\\d.,\\u202f]*';
+const LABO_PV_C = '[A-D0-9?]{1,6}';
+const LABO_PV_ST = '[a-zàâéèêîïôûç]{1,4}';
+
+// Allowlist des DESCRIPTIONS de sous-classe (NF P 11-300, statiques) — miroir du front.
+const LABO_PV_DESCS: ReadonlySet<string> = new Set([
+  'Limons peu plastiques, loess, sables fins argileux, arènes',
+  'Sables fins argileux, limons, argiles peu plastiques',
+  'Argiles et argiles marneuses, limons très plastiques',
+  'Argiles très plastiques',
+  'Sables silteux',
+  'Sables argileux (peu argileux)',
+  'Graves silteuses',
+  'Graves argileuses (peu argileuses)',
+  'Sables et graves très silteux',
+  'Sables et graves argileux à très argileux',
+  "Sables propres insensibles à l'eau",
+  "Graves propres insensibles à l'eau",
+  'Matériaux grossiers insensibles',
+  'Gros éléments — comportement régi par le squelette',
+  'Gros éléments — comportement régi par la fraction 0/50',
+]);
+const LABO_PV_DESC_C = /^Gros éléments — comportement régi par (?:le squelette|la fraction 0\/50)(?: · 0\/50 type (?:D1|D2))?$/;
+function safeLaboDescPv(desc: unknown): string {
+  if (typeof desc !== 'string') return '';
+  const t = desc.trim();
+  return LABO_PV_DESCS.has(t) || LABO_PV_DESC_C.test(t) ? t : '';
+}
+const LABO_PV_PATH_PATTERNS: readonly RegExp[] = [
+  new RegExp(`^Dmax = ${LABO_PV_N} mm > ${LABO_PV_N} mm → famille C\\.$`),
+  new RegExp(`^Fraction 0/50 reclassée → ${LABO_PV_C} \\(essais à réaliser sur le 0/50\\)\\.$`),
+  new RegExp(`^Passant 80µm = ${LABO_PV_N} % ≤ ${LABO_PV_N} % et VBS = ${LABO_PV_N} ≤ ${LABO_PV_N} → insensible → famille D\\.$`),
+  new RegExp(`^Passant 2mm = ${LABO_PV_N} % → ${LABO_PV_C}\\.$`),
+  new RegExp(`^Passant 80µm = ${LABO_PV_N} % > ${LABO_PV_N} % → sol fin → famille A\\.$`),
+  new RegExp(`^Ip = ${LABO_PV_N} \\(préférentiel\\) → ${LABO_PV_C}\\.$`),
+  new RegExp(`^Ip absent → VBS = ${LABO_PV_N} → ${LABO_PV_C}\\.$`),
+  new RegExp(`^Passant 80µm = ${LABO_PV_N} % ≤ ${LABO_PV_N} % → famille B\\.$`),
+  new RegExp(`^Passant 2mm = ${LABO_PV_N} % \\((?:sables|graves)\\), VBS = ${LABO_PV_N} → ${LABO_PV_C}\\.$`),
+  new RegExp(`^Passant 80µm entre ${LABO_PV_N}–${LABO_PV_N} %, VBS = ${LABO_PV_N} → ${LABO_PV_C}\\.$`),
+  new RegExp(`^État hydrique ${LABO_PV_ST} \\((?:forcé|wn/wOPN = ${LABO_PV_N})\\) → ${LABO_PV_C}(?: ${LABO_PV_ST})?\\.$`),
+  /^Famille D insensible : pas d'indice d'état\.$/,
+];
+
+function safeLaboPathPv(path: unknown): string[] {
+  if (!Array.isArray(path)) return [];
+  const out: string[] = [];
+  for (const s of path) {
+    if (typeof s !== 'string') continue;
+    const t = s.trim();
+    if (t && LABO_PV_PATH_PATTERNS.some((re) => re.test(t))) out.push(t);
+  }
+  return out;
+}
+
 function buildLaboBody(sealed: SealedContent): Content[] {
   const o = (sealed.output ?? {}) as Record<string, unknown>;
   const body: Content[] = [];
@@ -868,6 +927,8 @@ function buildLaboBody(sealed: SealedContent): Content[] {
   body.push(sectionTitle('Classification GTR (NF P 11-300)'));
   const cl = o.classe;
   let classe = '';
+  let laboDesc = '';
+  let laboPath: string[] = [];
   if (cl != null && typeof cl === 'object') {
     const c = cl as Record<string, unknown>;
     // `code`/`full` incluent DÉJÀ la lettre de famille (code='A2', full='A2 h') :
@@ -875,14 +936,30 @@ function buildLaboBody(sealed: SealedContent): Content[] {
     const full = typeof c.full === 'string' ? c.full.trim() : '';
     const code = c.code != null && c.code !== '' ? String(c.code).trim() : '';
     classe = full || code;
+    // desc (allowlisté sur l'ensemble NF P 11-300) + path (allowlisté) = client-safe.
+    laboDesc = safeLaboDescPv(c.desc);
+    laboPath = safeLaboPathPv(c.path);
   }
   body.push({
     text: classe ? `Classe : ${classe}` : 'Classe non déterminée.',
     fontSize: classe ? 13 : 9,
     bold: !!classe,
     color: classe ? COLORS.navy : COLORS.muted,
-    margin: [0, 2, 0, 6],
+    margin: [0, 2, 0, laboDesc || laboPath.length ? 2 : 6],
   });
+  if (laboDesc) {
+    body.push({ text: laboDesc, style: 'cellMuted', margin: [0, 0, 0, 4] });
+  }
+  if (laboPath.length > 0) {
+    body.push(fdnSubTitle('Justification du classement'));
+    laboPath.forEach((line, i) => {
+      body.push({
+        text: `${i + 1}. ${line}`,
+        style: 'cellMuted',
+        margin: [0, 0, 0, i === laboPath.length - 1 ? 6 : 2],
+      });
+    });
+  }
 
   // Paramètres d'identification
   const t: TableCell[][] = [[fdnHead('Paramètre'), fdnHead('Valeur', 'right')]];

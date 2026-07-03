@@ -309,10 +309,13 @@ const ClassSchema = z
     full: z.string().max(16).nullable(),
     /** Libelle descriptif de la sous-classe. */
     desc: z.string().max(200),
-    /** Chemin de decision (libelles). */
+    /** Chemin de decision (libelles) — client-safe, affiche via allowlist. */
     path: z.array(z.string().max(300)).max(20),
-    /** Avertissements (libelles, redactes). */
-    warn: z.array(z.string().max(300)).max(20),
+    /**
+     * NB : `warn` (caveats de maturite de classification) est VOLONTAIREMENT ABSENT de
+     * la sortie client-facing (avis ingenieur-securite + titulaire) : le moteur le
+     * calcule mais la projection ne le reporte pas → jamais scelle ni envoye au client.
+     */
     /** Etat hydrique retenu (ts/s/m/h/th) ou null. */
     etat: z.string().max(4).nullable(),
     /** L'etat hydrique s'applique-t-il a cette famille ? */

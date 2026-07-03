@@ -382,7 +382,7 @@ describe('PV labo — complétude d’affichage des essais (#106)', () => {
         k: 1.2e-7,
         gonfl: 1.5,
         rhos: 2.65,
-        classe: { fam: 'B', code: 'B5', full: 'B5', desc: 'x', path: ['y'], warn: [], etat: null, stApplies: false, rNote: null },
+        classe: { fam: 'B', code: 'B5', full: 'B5', desc: 'x', path: ['coefficient secret = 9.9 → B5.'], warn: [], etat: null, stApplies: false, rNote: null },
       },
     });
     const text = collectPvPdfText(pv);
@@ -392,7 +392,39 @@ describe('PV labo — complétude d’affichage des essais (#106)', () => {
     expect(text).toContain('compression simple');
     expect(text).toContain('Perméabilité');
     expect(text).toContain('Masse volumique des grains');
-    // fail-closed : la justification interne (path/desc) n'apparaît pas dans le PV.
-    expect(text.includes('path')).toBe(false);
+    // allowlist fail-closed : un libellé de path hors gabarit est écarté du PV.
+    expect(text.includes('coefficient secret')).toBe(false);
+  });
+
+  it('chemin de décision : path allowlisté + desc affichés ; warn (maturité) JAMAIS', () => {
+    const pv = makeSealedPv({
+      engineId: 'labo-classification-gtr',
+      output: {
+        erreur: null,
+        warnings: [],
+        p80: 52,
+        ip: 18,
+        classe: {
+          fam: 'A',
+          code: 'A2',
+          full: 'A2 h',
+          desc: 'Sables fins argileux, limons, argiles peu plastiques',
+          warn: ['Distinction C1/C2 : heuristique provisoire.'],
+          path: [
+            'Passant 80µm = 52.0 % > 35 % → sol fin → famille A.',
+            'Ip = 18.0 (préférentiel) → A2.',
+            'facteur interne = 1.3 → A2.',
+          ],
+          etat: 'h',
+          stApplies: true,
+          rNote: null,
+        },
+      },
+    });
+    const text = collectPvPdfText(pv);
+    expect(text).toContain('Sables fins'); // desc (client-safe)
+    expect(text).toContain('sol fin → famille A'); // path allowlisté
+    expect(text.includes('facteur interne')).toBe(false); // injection écartée
+    expect(text.includes('heuristique provisoire')).toBe(false); // warn jamais imprimé
   });
 });

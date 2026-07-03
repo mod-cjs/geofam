@@ -186,7 +186,6 @@ function shapeOutput(R: Record<string, unknown>): unknown {
     full: null,
     desc: '',
     path: [] as string[],
-    warn: [] as string[],
     etat: null,
     stApplies: false,
     rNote: null,
@@ -239,12 +238,13 @@ function shapeOutput(R: Record<string, unknown>): unknown {
     };
   }
 
-  // NB : `classe.path`/`warn`/`rNote` sont des LIBELLES NORMATIFS d'explication du
-  // classement GTR — le LIVRABLE meme de l'outil (ex. « Passant 80µm = 52 % > 35 % →
-  // famille A »). Ils sont CLIENT-SAFE et NE sont PAS redactes : les redacter mutilerait
-  // le resultat (les etiquettes « Passant 80µm »/« Ip »/« VBS » portent des valeurs
-  // exposees). La redaction fail-closed s'applique au canal `erreur` + `warnings` (libre),
-  // PAS aux explications de classification. On filtre juste les types (string-only).
+  // NB : `classe.path`/`rNote` sont des LIBELLES NORMATIFS d'explication du classement
+  // GTR — le LIVRABLE meme de l'outil (ex. « Passant 80µm = 52 % > 35 % → famille A »),
+  // CLIENT-SAFE (les etiquettes portent des valeurs deja exposees) ; l'AFFICHAGE les
+  // passe par une allowlist fail-closed. En revanche `classe.warn` (caveats de maturite,
+  // ex. « distinction C1/C2 heuristique provisoire ») est INTERNE : il n'est PAS reporte
+  // dans la sortie client-facing (decision confidentialite/credibilite — avis
+  // ingenieur-securite + titulaire) → jamais scelle ni envoye au navigateur.
   const strArr = (a: unknown): string[] =>
     Array.isArray(a) ? a.filter((s): s is string => typeof s === 'string') : [];
   const classe = cls
@@ -254,7 +254,6 @@ function shapeOutput(R: Record<string, unknown>): unknown {
         full: sn(cls.full),
         desc: typeof cls.desc === 'string' ? cls.desc : '',
         path: strArr(cls.path),
-        warn: strArr(cls.warn),
         etat: sn(cls.etat),
         stApplies: cls.stApplies === true,
         rNote: Array.isArray(cls.rNote) ? strArr(cls.rNote) : null,

@@ -315,18 +315,39 @@ describe('adaptCalcResult — labo (classification GTR)', () => {
     expect(l).toMatch(/Angle de frottement/);
   });
 
-  it('fail-closed : la justification de classe (path/desc/full) n’est JAMAIS exposée', () => {
+  it('chemin de décision : desc + path (allowlistés) affichés ; warn et clés brutes JAMAIS', () => {
+    // Décision confidentialité (avis ingenieur-securite) : desc (description normative
+    // NF P 11-300) et path (seuils publics + valeurs déjà exposées) sont client-safe.
     const norm = normalizedOf('labo-classification-gtr', REAL_LABO);
-    // Les VALEURS mécaniques sont affichées (libellés FR) mais la justification interne
-    // de la classification (chemin de décision, description longue) reste redactée.
-    expectNoLeak(norm, [
-      '"path"',
-      '"desc"',
-      'Sables fins',
-      'préférentiel',
-      '"full"',
-      'cbrType',
-    ]);
+    const s = JSON.stringify(norm);
+    expect(s).toContain('Sables fins'); // desc affiché
+    expect(s).toContain('sol fin → famille A'); // path (gabarit allowlisté)
+    expect(s).toContain('préférentiel'); // Ip → sous-classe
+    // warn (note de maturité) et clés brutes / état interne : JAMAIS exposés
+    expectNoLeak(norm, ['"warn"', '"path"', '"desc"', '"full"', 'cbrType']);
+  });
+
+  it('allowlist fail-closed : un libellé de path HORS gabarit (coefficient injecté) est écarté', () => {
+    const injected = {
+      ...REAL_LABO,
+      classe: {
+        ...REAL_LABO.classe,
+        desc: 'DESC_INJECTE = 7.7', // desc hors ensemble NF P 11-300 → écarté
+        warn: ['Distinction C1/C2 : heuristique provisoire.'],
+        path: [
+          'Passant 80µm = 52.0 % > 35 % → sol fin → famille A.', // légitime → affiché
+          'facteur interne = 1.3 → A2.', // injection hors gabarit → écartée
+          'Ip = kc=1.3 (préférentiel) → A2.', // coefficient dans un slot → écartée
+        ],
+      },
+    };
+    const norm = normalizedOf('labo-classification-gtr', injected);
+    const s = JSON.stringify(norm);
+    expect(s).toContain('sol fin → famille A'); // le libellé légitime passe
+    expect(s.includes('facteur interne')).toBe(false); // injection écartée (fail-closed)
+    expect(s.includes('kc=1.3')).toBe(false); // coefficient dans slot écarté
+    expect(s.includes('DESC_INJECTE')).toBe(false); // desc hors allowlist écarté
+    expect(s.includes('heuristique provisoire')).toBe(false); // warn jamais affiché
   });
 
   it('complétude : affiche les essais granulats + mécaniques + masses volumiques quand renseignés', () => {
@@ -363,8 +384,8 @@ describe('adaptCalcResult — labo (classification GTR)', () => {
     expect(l).toMatch(/Perméabilité/);
     expect(l).toMatch(/Masse volumique des grains/);
     expect(l).toMatch(/Gonflement/);
-    // fail-closed inchangé : la justification reste redactée même sur un output riche.
-    expectNoLeak(norm, ['"path"', '"desc"']);
+    // clés brutes / warn non exposés (les VALEURS client-safe, elles, le sont).
+    expectNoLeak(norm, ['"path"', '"warn"', 'cbrType']);
   });
 });
 
