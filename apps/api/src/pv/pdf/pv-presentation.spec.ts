@@ -186,6 +186,22 @@ describe('#71 — présentation métier chaussée', () => {
     expect(text).toContain(pv.contentHash); // hash complet rendu
   });
 
+  it('TRANSPARENCE E↔matériau (réserve expert) : chaque couche affiche son module E sur SA ligne', () => {
+    // Réserve d'intégration expert : E (saisi) et le matériau doivent décrire le
+    // MÊME matériau. Pour qu'un vérificateur détecte une incohérence, le module E
+    // de CHAQUE couche est affiché À CÔTÉ de son matériau (même ligne de la table
+    // structure). findRowValue cible la ligne dont la 1re cellule = le matériau et
+    // renvoie la cellule suivante (colonne E). Casser le lien (E décorrélé du
+    // matériau, ou colonne E retirée) vire cette assertion au ROUGE.
+    const def = buildPvDocDefinition(makeChausseePv());
+    // couches haut->bas : BBSG1 / GB3 / GL1 (cf. CHAUSSEE_INPUT), E en MPa.
+    expect(findRowValue(def.content, 'BBSG1')?.value).toBe('1512');
+    expect(findRowValue(def.content, 'GB3')?.value).toBe('2588');
+    expect(findRowValue(def.content, 'GL1')?.value).toBe('200');
+    // Sol support (semi-infini) : E de la plateforme aussi affiché sur sa ligne.
+    expect(findRowValue(def.content, 'Sol support (PF2)')?.value).toBe('50');
+  });
+
   it('UNITÉS : MPa, µdef, cm, ν présents ; libellés lisibles (pas de clés brutes)', () => {
     const text = collectPvPdfText(makeChausseePv());
     expect(text).toContain('MPa');

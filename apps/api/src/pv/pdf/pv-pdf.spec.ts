@@ -179,7 +179,10 @@ describe('Bruit flottant IEEE-754 — nettoyé À L’AFFICHAGE seulement', () =
     // La SORTIE scellée contient le double EXACT issu du calcul (0.16+0.25 != 0.41).
     const noisy = 0.16 + 0.25; // = 0.41000000000000003
     expect(noisy).not.toBe(0.41); // c'est bien le double bruité
-    const pv = makeSealedPv({ engineId: 'generic-fallback', output: { epaisseur: noisy, verdict: 'OK' } });
+    const pv = makeSealedPv({
+      engineId: 'generic-fallback',
+      output: { epaisseur: noisy, verdict: 'OK' },
+    });
 
     // LE SCELLEMENT reste INTOUCHÉ : la canonique contient le double exact bruité.
     expect(pv.inputCanonical).toContain('0.41000000000000003');
@@ -204,7 +207,10 @@ describe('Bruit flottant IEEE-754 — nettoyé À L’AFFICHAGE seulement', () =
   });
 
   it('un entier ou un petit décimal exact reste inchangé (FR)', () => {
-    const pv = makeSealedPv({ engineId: 'generic-fallback', output: { n: 20, p: 0.45, verdict: 'OK' } });
+    const pv = makeSealedPv({
+      engineId: 'generic-fallback',
+      output: { n: 20, p: 0.45, verdict: 'OK' },
+    });
     const text = collectPvPdfText(pv);
     expect(text).toContain('20');
     expect(text).toContain('0,45');
@@ -279,7 +285,12 @@ describe('PV pieux — allowlist fail-closed du libellé de vérification (DoD �
         RcrK: 1200,
         tassementELS: 5,
         verifications: [
-          { nom: 'ELU portance — MÉTHODE_INTERNE_kc=1.3', Fd: 100, Rd: 200, ok: true },
+          {
+            nom: 'ELU portance — MÉTHODE_INTERNE_kc=1.3',
+            Fd: 100,
+            Rd: 200,
+            ok: true,
+          },
           { nom: 'ELS caractéristique', Fd: 90, Rd: 180, ok: true },
         ],
       },
@@ -355,6 +366,117 @@ describe('PV pieux — allowlist fail-closed du libellé de vérification (DoD �
   });
 });
 
+describe('PV pieux — TRANSPARENCE des paramètres réglementaires EC7 / NF P 94-262', () => {
+  const prevSecret = process.env.PV_SIGNING_SECRET;
+  beforeAll(() => {
+    process.env.PV_SIGNING_SECRET = SECRET;
+  });
+  afterAll(() => {
+    if (prevSecret === undefined) delete process.env.PV_SIGNING_SECRET;
+    else process.env.PV_SIGNING_SECRET = prevSecret;
+  });
+
+  /** Coeffs par défaut du contrat pieux (aucun écart -> rien de tracé sauf da+ψ₂). */
+  const DEFAULT_COEFFS = {
+    k_gG: 1.35,
+    k_gQ: 1.5,
+    k_gb: 1.1,
+    k_gs: 1.1,
+    k_gst: 1.15,
+    k_psi2: 0.3,
+    cr_b_b: 0.7,
+    cr_b_s: 0.7,
+    cr_f_b: 0.5,
+    cr_f_s: 0.7,
+    cr_car: 0.9,
+    cr_qp: 1.1,
+    cr_car_t: 1.1,
+    cr_qp_t: 1.5,
+  };
+  const OUTPUT = { allOk: true, RbK: 800, RcD: 1500 };
+
+  it('TOUJOURS : approche de calcul (da) + ψ₂ tracés, même quand tous les coeffs sont par défaut', () => {
+    const pv = makeSealedPv({
+      engineId: 'fondation-profonde-pieux',
+      input: { da: 'da2', coeffs: DEFAULT_COEFFS },
+      output: OUTPUT,
+    });
+    const text = collectPvPdfText(pv);
+    // Approche de calcul : da2 -> libellé normatif « DA2 (NA France) ».
+    expect(text).toContain('Approche de calcul EC7');
+    expect(text).toContain('DA2 (NA France)');
+    // ψ₂ non universel -> TOUJOURS affiché (valeur défaut 0,3 comprise).
+    expect(text).toContain('ψ₂ (quasi-permanent)');
+    // Coeffs par défaut : AUCUN autre coefficient tracé.
+    expect(text.includes('γG (permanente défavorable)')).toBe(false);
+    expect(text.includes('γb (pointe, R2)')).toBe(false);
+    expect(text.includes('γs;t (traction, R2)')).toBe(false);
+    expect(text.includes('Rc;cr;k coef.')).toBe(false);
+  });
+
+  it('un coeff NON-DÉFAUT apparaît avec son libellé normatif ; les coeffs restés par défaut n’apparaissent PAS', () => {
+    const pv = makeSealedPv({
+      engineId: 'fondation-profonde-pieux',
+      input: {
+        da: 'da3',
+        coeffs: {
+          ...DEFAULT_COEFFS,
+          k_gb: 1.2, // ≠ défaut (1,1)
+          k_gst: 1.25, // ≠ défaut (1,15)
+          cr_car: 0.85, // ≠ défaut (0,90)
+        },
+      },
+      output: OUTPUT,
+    });
+    const def = buildPvDocDefinition(pv);
+    const text = collectPvPdfText(pv);
+    // Approche : da3 -> « DA3 ».
+    expect(text).toContain('DA3');
+    // Coeffs non-défaut : libellé + valeur (ciblage EXACT de la cellule valeur).
+    expect(findRowValue(def.content, 'γb (pointe, R2)')?.value).toBe('1,2');
+    expect(findRowValue(def.content, 'γs;t (traction, R2)')?.value).toBe(
+      '1,25',
+    );
+    expect(
+      findRowValue(
+        def.content,
+        'coef. fluage ELS caractéristique (compression)',
+      )?.value,
+    ).toBe('0,85');
+    // Coeffs restés par défaut : ABSENTS (transparence = seulement les écarts).
+    expect(text.includes('γG (permanente défavorable)')).toBe(false);
+    expect(text.includes('γs (frottement, R2)')).toBe(false);
+    expect(text.includes('γ fluage ELS q.perm. (compression)')).toBe(false);
+  });
+
+  it('FAIL-CLOSED : ni coeffs ni da dans l’entrée scellée -> AUCUNE section réglementaire (pas de crash)', () => {
+    const pv = makeSealedPv({
+      engineId: 'fondation-profonde-pieux',
+      input: { pieu: 'P1' }, // pas de coeffs, pas de da
+      output: OUTPUT,
+    });
+    const text = collectPvPdfText(pv);
+    expect(text.includes('Approche de calcul EC7')).toBe(false);
+    expect(text.includes('ψ₂ (quasi-permanent)')).toBe(false);
+    // Le titre de section (majuscules) ne doit pas non plus apparaître.
+    expect(text.includes('PARAMÈTRES RÉGLEMENTAIRES')).toBe(false);
+    expect(text.includes('NaN')).toBe(false);
+  });
+
+  it('FAIL-CLOSED partiel : da présent mais coeffs absents -> approche tracée, ψ₂ non (pas de crash)', () => {
+    const pv = makeSealedPv({
+      engineId: 'fondation-profonde-pieux',
+      input: { da: 'da1' }, // da seul, pas de coeffs
+      output: OUTPUT,
+    });
+    const text = collectPvPdfText(pv);
+    expect(text).toContain('Approche de calcul EC7');
+    expect(text).toContain('DA1');
+    expect(text.includes('ψ₂ (quasi-permanent)')).toBe(false);
+    expect(text.includes('NaN')).toBe(false);
+  });
+});
+
 describe('PV labo — complétude d’affichage des essais (#106)', () => {
   const prevSecret = process.env.PV_SIGNING_SECRET;
   beforeAll(() => {
@@ -382,7 +504,17 @@ describe('PV labo — complétude d’affichage des essais (#106)', () => {
         k: 1.2e-7,
         gonfl: 1.5,
         rhos: 2.65,
-        classe: { fam: 'B', code: 'B5', full: 'B5', desc: 'x', path: ['coefficient secret = 9.9 → B5.'], warn: [], etat: null, stApplies: false, rNote: null },
+        classe: {
+          fam: 'B',
+          code: 'B5',
+          full: 'B5',
+          desc: 'x',
+          path: ['coefficient secret = 9.9 → B5.'],
+          warn: [],
+          etat: null,
+          stApplies: false,
+          rNote: null,
+        },
       },
     });
     const text = collectPvPdfText(pv);
@@ -428,3 +560,51 @@ describe('PV labo — complétude d’affichage des essais (#106)', () => {
     expect(text.includes('heuristique provisoire')).toBe(false); // warn jamais imprimé
   });
 });
+
+/**
+ * Cherche dans la docDef une LIGNE de table dont la 1re cellule texte === `label`,
+ * et renvoie { value, unit } des cellules 2 et 3 (cible la valeur EXACTE d'un
+ * champ, pas une sous-chaîne du texte global). null si introuvable.
+ */
+function findRowValue(
+  content: unknown,
+  label: string,
+): { value: string; unit: string } | null {
+  let found: { value: string; unit: string } | null = null;
+  const cellText = (c: unknown): string => {
+    if (
+      c &&
+      typeof c === 'object' &&
+      typeof (c as { text?: unknown }).text === 'string'
+    ) {
+      return (c as { text: string }).text;
+    }
+    return '';
+  };
+  const walk = (n: unknown): void => {
+    if (found || n == null) return;
+    if (Array.isArray(n)) {
+      n.forEach(walk);
+      return;
+    }
+    if (typeof n === 'object') {
+      const o = n as Record<string, unknown>;
+      const table = o.table as { body?: unknown[][] } | undefined;
+      if (table?.body) {
+        for (const row of table.body) {
+          if (
+            Array.isArray(row) &&
+            row.length >= 2 &&
+            cellText(row[0]) === label
+          ) {
+            found = { value: cellText(row[1]), unit: cellText(row[2]) };
+            return;
+          }
+        }
+      }
+      Object.values(o).forEach(walk);
+    }
+  };
+  walk(content);
+  return found;
+}

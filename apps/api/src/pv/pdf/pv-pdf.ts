@@ -1,4 +1,5 @@
 import type { OfficialPv } from '@prisma/client';
+import { PIEUX_DEFAULT_COEFFS } from '@roadsen/engines';
 import { sealContentHash, verifySeal } from '@roadsen/shared';
 import type {
   Content,
@@ -301,12 +302,13 @@ function fdnNum(v: unknown, decimals: number, unit?: string): string {
   if (!Number.isFinite(n)) return '—';
   const s = n
     .toLocaleString('fr-FR', { maximumFractionDigits: decimals })
-    .replace(/[  ]/g, ' ');
+    .replace(/[\u202f\u00a0]/g, ' ');
   return unit ? `${s} ${unit}` : s;
 }
 
 function fdnFirstFinite(...vals: unknown[]): number | null {
-  for (const v of vals) if (typeof v === 'number' && Number.isFinite(v)) return v;
+  for (const v of vals)
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
   return null;
 }
 
@@ -314,7 +316,10 @@ function fdnSubTitle(label: string): Content {
   return { text: label, style: 'groupRow', margin: [0, 8, 0, 3] };
 }
 
-function fdnHead(text: string, align: 'left' | 'right' | 'center' = 'left'): TableCell {
+function fdnHead(
+  text: string,
+  align: 'left' | 'right' | 'center' = 'left',
+): TableCell {
   return { text, style: 'tableHead', alignment: align };
 }
 
@@ -355,19 +360,31 @@ function buildFondationBody(sealed: SealedContent): Content[] {
 
   // 1) ENTRÉES — géométrie & sol (table clé/valeur)
   body.push(sectionTitle('Données d’entrée'));
-  const geo: TableCell[][] = [[fdnHead('Paramètre'), fdnHead('Valeur', 'right')]];
+  const geo: TableCell[][] = [
+    [fdnHead('Paramètre'), fdnHead('Valeur', 'right')],
+  ];
   const kv = (p: string, val: string): void => {
     geo.push([
       { text: p, style: 'cell' },
       { text: val, style: 'cell', alignment: 'right' },
     ]);
   };
-  kv('Forme de la fondation', FDN_FORME[String(input.forme)] ?? String(input.forme ?? '—'));
+  kv(
+    'Forme de la fondation',
+    FDN_FORME[String(input.forme)] ?? String(input.forme ?? '—'),
+  );
   kv('Largeur B', fdnNum(input.B, 2, 'm'));
-  if (input.L != null && input.L !== '') kv('Longueur L', fdnNum(input.L, 2, 'm'));
+  if (input.L != null && input.L !== '')
+    kv('Longueur L', fdnNum(input.L, 2, 'm'));
   kv('Profondeur d’encastrement D', fdnNum(input.D, 2, 'm'));
-  kv('Catégorie de sol', FDN_SOL[String(input.solCat)] ?? String(input.solCat ?? '—'));
-  kv('Type d’essai', FDN_ESSAI[String(input.essai)] ?? String(input.essai ?? '—'));
+  kv(
+    'Catégorie de sol',
+    FDN_SOL[String(input.solCat)] ?? String(input.solCat ?? '—'),
+  );
+  kv(
+    'Type d’essai',
+    FDN_ESSAI[String(input.essai)] ?? String(input.essai ?? '—'),
+  );
   kv('Poids volumique γ (avant travaux)', fdnNum(input.gAvant, 1, 'kN/m³'));
   kv('Poids volumique γ (après travaux)', fdnNum(input.gApres, 1, 'kN/m³'));
   body.push({
@@ -420,7 +437,10 @@ function buildFondationBody(sealed: SealedContent): Content[] {
     ];
     for (const c of charges) {
       cb.push([
-        { text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'), style: 'cell' },
+        {
+          text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'),
+          style: 'cell',
+        },
         { text: fdnNum(c.fz, 0), style: 'cell', alignment: 'right' },
         { text: fdnNum(c.fx, 0), style: 'cell', alignment: 'right' },
         { text: fdnNum(c.fy, 0), style: 'cell', alignment: 'right' },
@@ -464,7 +484,10 @@ function buildFondationBody(sealed: SealedContent): Content[] {
           ? `${Math.round(c.taux * 100)} %`
           : '—';
       rb.push([
-        { text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'), style: 'cell' },
+        {
+          text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'),
+          style: 'cell',
+        },
         { text: fdnNum(c.Rtot, 1), style: 'cell', alignment: 'right' },
         { text: fdnNum(c.qRvd, 1), style: 'cell', alignment: 'right' },
         { text: taux, style: 'cell', alignment: 'right' },
@@ -478,7 +501,11 @@ function buildFondationBody(sealed: SealedContent): Content[] {
       ]);
     }
     body.push({
-      table: { headerRows: 1, widths: ['*', 'auto', 'auto', 'auto', 'auto'], body: rb },
+      table: {
+        headerRows: 1,
+        widths: ['*', 'auto', 'auto', 'auto', 'auto'],
+        body: rb,
+      },
       layout: FINE_TABLE_LAYOUT,
       margin: [0, 2, 0, 4],
     });
@@ -501,7 +528,10 @@ function buildFondationBody(sealed: SealedContent): Content[] {
             ? `${Math.round(c.tauxH * 100)} %`
             : '—';
         gb.push([
-          { text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'), style: 'cell' },
+          {
+            text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'),
+            style: 'cell',
+          },
           { text: fdnNum(c.Rhd, 1), style: 'cell', alignment: 'right' },
           { text: tH, style: 'cell', alignment: 'right' },
           {
@@ -515,7 +545,11 @@ function buildFondationBody(sealed: SealedContent): Content[] {
       }
       body.push(fdnSubTitle('Vérification au glissement'));
       body.push({
-        table: { headerRows: 1, widths: ['*', 'auto', 'auto', 'auto'], body: gb },
+        table: {
+          headerRows: 1,
+          widths: ['*', 'auto', 'auto', 'auto'],
+          body: gb,
+        },
         layout: FINE_TABLE_LAYOUT,
         margin: [0, 2, 0, 4],
       });
@@ -541,7 +575,10 @@ function buildFondationBody(sealed: SealedContent): Content[] {
           c.tassementElastique,
         );
         tb.push([
-          { text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'), style: 'cell' },
+          {
+            text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'),
+            style: 'cell',
+          },
           { text: fdnNum(t, 3), style: 'cell', alignment: 'right' },
         ]);
       }
@@ -582,6 +619,108 @@ const PIEUX_SENS: Record<string, string> = {
   trac: 'Traction',
 };
 
+// TRANSPARENCE réglementaire (feature d'intégrité, avis expert-genie-civil) : les
+// facteurs partiels EC7 sont des choix RÉGLEMENTAIRES PUBLICS (EN 1990 /
+// NF P 94-262) ajustables par le BE. On ne les fige pas, on les TRACE sur le PV
+// scellé. Ce sont des paramètres PUBLICS, affichables (DoD §8) — AUCUN calage
+// confidentiel (kp/kc/α) n'apparaît ici : ces coefficients-là restent verrouillés
+// hors entrée et ne transitent pas par le PV.
+const PIEUX_DA_LABEL: Record<string, string> = {
+  da1: 'DA1',
+  da2: 'DA2 (NA France)',
+  da3: 'DA3',
+};
+
+/**
+ * Coefficients partiels tracés SEULEMENT s'ils s'écartent du défaut (choix
+ * explicite du BE) — ordre normatif, libellés EN 1990 / NF P 94-262. ψ₂ (k_psi2)
+ * est TOUJOURS affiché (non universel : dépend de la catégorie d'action) donc
+ * traité à part, hors de cette liste.
+ * `cr_car` (défaut 0,90) : libellé PRUDENT — l'expert n'a pas certifié ce défaut,
+ * on n'invente aucune clause ; il est simplement affiché s'il diffère du défaut.
+ */
+const PIEUX_COEFF_LABELS: ReadonlyArray<
+  [keyof typeof PIEUX_DEFAULT_COEFFS, string]
+> = [
+  ['k_gG', 'γG (permanente défavorable)'],
+  ['k_gQ', 'γQ (variable défavorable)'],
+  ['k_gb', 'γb (pointe, R2)'],
+  ['k_gs', 'γs (frottement, R2)'],
+  ['k_gst', 'γs;t (traction, R2)'],
+  ['cr_b_b', 'Rc;cr;k coef. Rb;k, pieu refoulant'],
+  ['cr_b_s', 'Rc;cr;k coef. Rs;k, pieu refoulant'],
+  ['cr_f_b', 'Rc;cr;k coef. Rb;k, pieu foré'],
+  ['cr_f_s', 'Rc;cr;k coef. Rs;k, pieu foré'],
+  ['cr_car', 'coef. fluage ELS caractéristique (compression)'],
+  ['cr_qp', 'γ fluage ELS q.perm. (compression)'],
+  ['cr_car_t', 'γs;cr ELS caract. (traction)'],
+  ['cr_qp_t', 'γs;cr ELS q.perm. (traction)'],
+];
+
+/**
+ * Section « Paramètres réglementaires (EC7 / NF P 94-262) » du PV pieux —
+ * TRACABILITÉ des choix réglementaires PUBLICS depuis l'ENTRÉE scellée
+ * (`sealed.input.coeffs` + `sealed.input.da`) :
+ *  - TOUJOURS : l'approche de calcul (da) + ψ₂ (k_psi2, non universel) ;
+ *  - les AUTRES coeffs UNIQUEMENT s'ils diffèrent de PIEUX_DEFAULT_COEFFS.
+ * FAIL-CLOSED : coeffs/da absents de l'entrée -> aucune section (jamais de crash,
+ * jamais de section vide). Aucun calage confidentiel ici (paramètres PUBLICS).
+ */
+function buildPieuxReglementaires(sealed: SealedContent): Content[] {
+  const input =
+    sealed.input !== null && typeof sealed.input === 'object'
+      ? (sealed.input as Record<string, unknown>)
+      : {};
+  const coeffs =
+    input.coeffs !== null && typeof input.coeffs === 'object'
+      ? (input.coeffs as Record<string, unknown>)
+      : null;
+  const da = typeof input.da === 'string' ? input.da : null;
+
+  // Rien de traçable dans l'entrée scellée -> rien du tout (fail-closed).
+  if (coeffs === null && da === null) return [];
+
+  const rows: TableCell[][] = [
+    [fdnHead('Paramètre'), fdnHead('Valeur', 'right')],
+  ];
+  const row = (p: string, val: string): void => {
+    rows.push([
+      { text: p, style: 'cell' },
+      { text: val, style: 'cell', alignment: 'right' },
+    ]);
+  };
+
+  // TOUJOURS : approche de calcul EC7 (si présente dans l'entrée).
+  if (da !== null) row('Approche de calcul EC7', PIEUX_DA_LABEL[da] ?? da);
+
+  if (coeffs !== null) {
+    // TOUJOURS : ψ₂ (non universel — dépend de la catégorie d'action).
+    const psi2 = fdnNum(coeffs.k_psi2, 2);
+    if (psi2 !== '—') row('ψ₂ (quasi-permanent)', psi2);
+
+    // AUTRES coeffs : SEULEMENT si ≠ défaut (choix explicite du BE, comparé
+    // valeur à valeur au défaut du contrat moteur).
+    for (const [key, label] of PIEUX_COEFF_LABELS) {
+      const v = coeffs[key];
+      if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+      if (v === PIEUX_DEFAULT_COEFFS[key]) continue;
+      row(label, fdnNum(v, 2));
+    }
+  }
+
+  // Aucune ligne de donnée (que l'en-tête) -> pas de section.
+  if (rows.length <= 1) return [];
+
+  return [
+    sectionTitle('Paramètres réglementaires (EC7 / NF P 94-262)'),
+    {
+      table: { headerRows: 1, widths: ['*', 'auto'], body: rows },
+      layout: FINE_TABLE_LAYOUT,
+      margin: [0, 2, 0, 4],
+    },
+  ];
+}
+
 /**
  * Allowlist fail-closed du libellé de vérification pieux au PV (miroir serveur de
  * safePieuxVerifLabel côté front, apps/web adapters.ts). Le PV est la surface la PLUS
@@ -590,9 +729,20 @@ const PIEUX_SENS: Record<string, string> = {
  * reconnu (état-limite + combinaison EC7 whitelistés), sinon libellé générique indexé —
  * aucun texte moteur non whitelisté sur un livrable client (DoD §8).
  */
-const PV_PIEUX_ELS_LABELS: ReadonlySet<string> = new Set(['ELS caractéristique', 'ELS quasi-permanent']);
-const PV_PIEUX_ELU_PREFIXES: ReadonlySet<string> = new Set(['ELU portance', 'ELU traction']);
-const PV_PIEUX_ELU_COMBOS: ReadonlySet<string> = new Set(['DA1·C1', 'DA1·C2', 'DA2', 'DA3']);
+const PV_PIEUX_ELS_LABELS: ReadonlySet<string> = new Set([
+  'ELS caractéristique',
+  'ELS quasi-permanent',
+]);
+const PV_PIEUX_ELU_PREFIXES: ReadonlySet<string> = new Set([
+  'ELU portance',
+  'ELU traction',
+]);
+const PV_PIEUX_ELU_COMBOS: ReadonlySet<string> = new Set([
+  'DA1·C1',
+  'DA1·C2',
+  'DA2',
+  'DA3',
+]);
 function safePieuxVerifLabelPv(rawNom: unknown, index: number): string {
   const fallback = `Vérification ${index}`;
   if (typeof rawNom !== 'string') return fallback;
@@ -601,7 +751,8 @@ function safePieuxVerifLabelPv(rawNom: unknown, index: number): string {
   if (sep > 0) {
     const prefix = rawNom.slice(0, sep);
     const combo = rawNom.slice(sep + 3);
-    if (PV_PIEUX_ELU_PREFIXES.has(prefix) && PV_PIEUX_ELU_COMBOS.has(combo)) return rawNom;
+    if (PV_PIEUX_ELU_PREFIXES.has(prefix) && PV_PIEUX_ELU_COMBOS.has(combo))
+      return rawNom;
   }
   return fallback;
 }
@@ -614,7 +765,9 @@ function buildFonProfondeBody(sealed: SealedContent): Content[] {
 
   // 1) Caractéristiques du pieu (échos d'entrée whitelistés)
   body.push(sectionTitle('Caractéristiques du pieu'));
-  const geo: TableCell[][] = [[fdnHead('Paramètre'), fdnHead('Valeur', 'right')]];
+  const geo: TableCell[][] = [
+    [fdnHead('Paramètre'), fdnHead('Valeur', 'right')],
+  ];
   const kv = (p: string, val: string): void => {
     geo.push([
       { text: p, style: 'cell' },
@@ -624,20 +777,34 @@ function buildFonProfondeBody(sealed: SealedContent): Content[] {
   kv('Diamètre / largeur B', fdnNum(output.B, 2, 'm'));
   kv('Profondeur de base D', fdnNum(output.D, 2, 'm'));
   kv('Catégorie de pieu', fdnNum(output.categorie, 0));
-  kv('Méthode de portance', PIEUX_METH[String(output.methode)] ?? String(output.methode ?? '—'));
-  kv('Sens de sollicitation', PIEUX_SENS[String(output.sens)] ?? String(output.sens ?? '—'));
+  kv(
+    'Méthode de portance',
+    PIEUX_METH[String(output.methode)] ?? String(output.methode ?? '—'),
+  );
+  kv(
+    'Sens de sollicitation',
+    PIEUX_SENS[String(output.sens)] ?? String(output.sens ?? '—'),
+  );
   body.push({
     table: { headerRows: 1, widths: ['*', 'auto'], body: geo },
     layout: FINE_TABLE_LAYOUT,
     margin: [0, 2, 0, 4],
   });
 
+  // 1bis) Paramètres réglementaires EC7/NF P 94-262 — TRANSPARENCE (feature
+  // d'intégrité) : trace les choix réglementaires PUBLICS depuis l'entrée scellée.
+  body.push(...buildPieuxReglementaires(sealed));
+
   // 2) Résistances de calcul
   body.push(sectionTitle('Résistances de calcul'));
   const rb: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
   const rr = (p: string, v: unknown): void => {
     const n = fdnNum(v, 1, 'kN');
-    if (n !== '—') rb.push([{ text: p, style: 'cell' }, { text: n, style: 'cell', alignment: 'right' }]);
+    if (n !== '—')
+      rb.push([
+        { text: p, style: 'cell' },
+        { text: n, style: 'cell', alignment: 'right' },
+      ]);
   };
   rr('Résistance de pointe Rb;k', output.RbK);
   rr('Résistance de frottement Rs;k', output.RsK);
@@ -679,7 +846,9 @@ function buildFonProfondeBody(sealed: SealedContent): Content[] {
       },
     ]);
   };
-  const verifs = Array.isArray(output.verifications) ? output.verifications : [];
+  const verifs = Array.isArray(output.verifications)
+    ? output.verifications
+    : [];
   if (verifs.length > 0) {
     let vi = 0;
     for (const v of verifs) {
@@ -715,9 +884,15 @@ function buildFonProfondeBody(sealed: SealedContent): Content[] {
   const zN = fdnNum(output.pointNeutre, 2, 'm');
   if (gsn !== '—' || nmax !== '—' || zN !== '—') {
     body.push(sectionTitle('Frottement négatif'));
-    const fn: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
+    const fn: TableCell[][] = [
+      [fdnHead('Grandeur'), fdnHead('Valeur', 'right')],
+    ];
     const fnRow = (p: string, v: string): void => {
-      if (v !== '—') fn.push([{ text: p, style: 'cell' }, { text: v, style: 'cell', alignment: 'right' }]);
+      if (v !== '—')
+        fn.push([
+          { text: p, style: 'cell' },
+          { text: v, style: 'cell', alignment: 'right' },
+        ]);
     };
     fnRow('Charge de frottement négatif G_sn', gsn);
     fnRow('Effort axial maximal N_max', nmax);
@@ -733,7 +908,11 @@ function buildFonProfondeBody(sealed: SealedContent): Content[] {
   if (output.betonApplicable === true) {
     body.push(sectionTitle('Vérification structurale du béton'));
     const bt: TableCell[][] = [
-      [fdnHead('Grandeur'), fdnHead('Taux', 'right'), fdnHead('Vérif.', 'center')],
+      [
+        fdnHead('Grandeur'),
+        fdnHead('Taux', 'right'),
+        fdnHead('Vérif.', 'center'),
+      ],
     ];
     const betonRow = (p: string, taux: unknown, ok: unknown): void => {
       const n = typeof taux === 'number' && Number.isFinite(taux) ? taux : null;
@@ -762,11 +941,19 @@ function buildFonProfondeBody(sealed: SealedContent): Content[] {
     }
     const fcd = fdnNum(output.betonFcd, 1, 'MPa');
     if (fcd !== '—') {
-      body.push({ text: `Résistance de calcul du béton f_cd = ${fcd}`, style: 'cellMuted', margin: [0, 0, 0, 4] });
+      body.push({
+        text: `Résistance de calcul du béton f_cd = ${fcd}`,
+        style: 'cellMuted',
+        margin: [0, 0, 0, 4],
+      });
     }
   } else if (output.betonApplicable === false) {
     body.push(sectionTitle('Vérification structurale du béton'));
-    body.push({ text: 'Non applicable pour ce pieu.', style: 'cellMuted', margin: [0, 2, 0, 4] });
+    body.push({
+      text: 'Non applicable pour ce pieu.',
+      style: 'cellMuted',
+      margin: [0, 2, 0, 4],
+    });
   }
 
   // Avertissements
@@ -842,11 +1029,19 @@ function buildRadierBody(sealed: SealedContent): Content[] {
   const nRafts = typeof o.nRafts === 'number' ? o.nRafts : 0;
   if (nRafts > 1) {
     fdnKvRow(t, 'Distorsion entre plaques', fdnNum(o.betaInter, 2, '‰'));
-    fdnKvRow(t, 'Tassement différentiel inter-plaques', fdnNum(o.interDiff, 2, 'mm'));
+    fdnKvRow(
+      t,
+      'Tassement différentiel inter-plaques',
+      fdnNum(o.interDiff, 2, 'mm'),
+    );
   }
   const wlp = o.worstLoadPair;
   if (wlp != null && typeof wlp === 'object') {
-    fdnKvRow(t, 'Distorsion max entre charges voisines', fdnNum((wlp as Record<string, unknown>).beta, 2, '‰'));
+    fdnKvRow(
+      t,
+      'Distorsion max entre charges voisines',
+      fdnNum((wlp as Record<string, unknown>).beta, 2, '‰'),
+    );
   }
   fdnKvRow(t, 'Nombre de radiers', fdnNum(o.nRafts, 0));
   if (t.length > 1) {
@@ -886,7 +1081,8 @@ const LABO_PV_DESCS: ReadonlySet<string> = new Set([
   'Gros éléments — comportement régi par le squelette',
   'Gros éléments — comportement régi par la fraction 0/50',
 ]);
-const LABO_PV_DESC_C = /^Gros éléments — comportement régi par (?:le squelette|la fraction 0\/50)(?: · 0\/50 type (?:D1|D2))?$/;
+const LABO_PV_DESC_C =
+  /^Gros éléments — comportement régi par (?:le squelette|la fraction 0\/50)(?: · 0\/50 type (?:D1|D2))?$/;
 function safeLaboDescPv(desc: unknown): string {
   if (typeof desc !== 'string') return '';
   const t = desc.trim();
@@ -894,16 +1090,28 @@ function safeLaboDescPv(desc: unknown): string {
 }
 const LABO_PV_PATH_PATTERNS: readonly RegExp[] = [
   new RegExp(`^Dmax = ${LABO_PV_N} mm > ${LABO_PV_N} mm → famille C\\.$`),
-  new RegExp(`^Fraction 0/50 reclassée → ${LABO_PV_C} \\(essais à réaliser sur le 0/50\\)\\.$`),
-  new RegExp(`^Passant 80µm = ${LABO_PV_N} % ≤ ${LABO_PV_N} % et VBS = ${LABO_PV_N} ≤ ${LABO_PV_N} → insensible → famille D\\.$`),
+  new RegExp(
+    `^Fraction 0/50 reclassée → ${LABO_PV_C} \\(essais à réaliser sur le 0/50\\)\\.$`,
+  ),
+  new RegExp(
+    `^Passant 80µm = ${LABO_PV_N} % ≤ ${LABO_PV_N} % et VBS = ${LABO_PV_N} ≤ ${LABO_PV_N} → insensible → famille D\\.$`,
+  ),
   new RegExp(`^Passant 2mm = ${LABO_PV_N} % → ${LABO_PV_C}\\.$`),
-  new RegExp(`^Passant 80µm = ${LABO_PV_N} % > ${LABO_PV_N} % → sol fin → famille A\\.$`),
+  new RegExp(
+    `^Passant 80µm = ${LABO_PV_N} % > ${LABO_PV_N} % → sol fin → famille A\\.$`,
+  ),
   new RegExp(`^Ip = ${LABO_PV_N} \\(préférentiel\\) → ${LABO_PV_C}\\.$`),
   new RegExp(`^Ip absent → VBS = ${LABO_PV_N} → ${LABO_PV_C}\\.$`),
   new RegExp(`^Passant 80µm = ${LABO_PV_N} % ≤ ${LABO_PV_N} % → famille B\\.$`),
-  new RegExp(`^Passant 2mm = ${LABO_PV_N} % \\((?:sables|graves)\\), VBS = ${LABO_PV_N} → ${LABO_PV_C}\\.$`),
-  new RegExp(`^Passant 80µm entre ${LABO_PV_N}–${LABO_PV_N} %, VBS = ${LABO_PV_N} → ${LABO_PV_C}\\.$`),
-  new RegExp(`^État hydrique ${LABO_PV_ST} \\((?:forcé|wn/wOPN = ${LABO_PV_N})\\) → ${LABO_PV_C}(?: ${LABO_PV_ST})?\\.$`),
+  new RegExp(
+    `^Passant 2mm = ${LABO_PV_N} % \\((?:sables|graves)\\), VBS = ${LABO_PV_N} → ${LABO_PV_C}\\.$`,
+  ),
+  new RegExp(
+    `^Passant 80µm entre ${LABO_PV_N}–${LABO_PV_N} %, VBS = ${LABO_PV_N} → ${LABO_PV_C}\\.$`,
+  ),
+  new RegExp(
+    `^État hydrique ${LABO_PV_ST} \\((?:forcé|wn/wOPN = ${LABO_PV_N})\\) → ${LABO_PV_C}(?: ${LABO_PV_ST})?\\.$`,
+  ),
   /^Famille D insensible : pas d'indice d'état\.$/,
 ];
 
@@ -979,7 +1187,11 @@ function buildLaboBody(sealed: SealedContent): Content[] {
   fdnKvRow(t, 'Valeur au bleu VBS', fdnNum(o.vbs, 2));
   fdnKvRow(t, 'Masse volumique des grains ρ_s', fdnNum(o.rhos, 2, 'Mg/m³'));
   fdnKvRow(t, 'Masse volumique apparente ρ', fdnNum(o.rho_app, 2, 'Mg/m³'));
-  fdnKvRow(t, 'Masse volumique sèche apparente ρ_d', fdnNum(o.rhod_app, 2, 'Mg/m³'));
+  fdnKvRow(
+    t,
+    'Masse volumique sèche apparente ρ_d',
+    fdnNum(o.rhod_app, 2, 'Mg/m³'),
+  );
   fdnKvRow(t, 'Teneur en eau optimale w_OPN', fdnNum(o.wopn, 1, '%'));
   fdnKvRow(t, 'Densité sèche max ρ_d;max', fdnNum(o.rdmax, 2, 't/m³'));
   fdnKvRow(t, 'Indice CBR', fdnNum(o.cbr, 0));
@@ -995,7 +1207,11 @@ function buildLaboBody(sealed: SealedContent): Content[] {
   fdnKvRow(t, 'Indice de compression Cc (œdo)', fdnNum(o.Cc_oedo, 3));
   fdnKvRow(t, 'Indice de gonflement Cs', fdnNum(o.Cs_oedo, 3));
   fdnKvRow(t, "Cohésion c' (cisaillement)", fdnNum(o.c_cis, 1, 'kPa'));
-  fdnKvRow(t, "Angle de frottement φ' (cisaillement)", fdnNum(o.phi_cis, 1, '°'));
+  fdnKvRow(
+    t,
+    "Angle de frottement φ' (cisaillement)",
+    fdnNum(o.phi_cis, 1, '°'),
+  );
   fdnKvRow(t, "Angle de frottement résiduel φ'_R", fdnNum(o.phiR_cis, 1, '°'));
   fdnKvRow(t, "Cohésion c' (triaxial)", fdnNum(o.c, 1, 'kPa'));
   fdnKvRow(t, "Angle de frottement φ' (triaxial)", fdnNum(o.phi, 1, '°'));
@@ -1036,7 +1252,9 @@ function buildPressiometreBody(sealed: SealedContent): Content[] {
   const cat = typeof o.categorieLibelle === 'string' ? o.categorieLibelle : '';
   const cons = typeof o.consolidation === 'string' ? o.consolidation : '';
   if (cat || cons) {
-    const ct: TableCell[][] = [[fdnHead('Paramètre'), fdnHead('Valeur', 'right')]];
+    const ct: TableCell[][] = [
+      [fdnHead('Paramètre'), fdnHead('Valeur', 'right')],
+    ];
     if (cat) fdnKvRow(ct, 'Catégorie de sol', cat);
     if (cons) fdnKvRow(ct, 'État de consolidation', cons);
     if (ct.length > 1) {
