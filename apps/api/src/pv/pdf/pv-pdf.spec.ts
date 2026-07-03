@@ -354,3 +354,45 @@ describe('PV pieux — allowlist fail-closed du libellé de vérification (DoD �
     expect(text).toContain('Non applicable');
   });
 });
+
+describe('PV labo — complétude d’affichage des essais (#106)', () => {
+  const prevSecret = process.env.PV_SIGNING_SECRET;
+  beforeAll(() => {
+    process.env.PV_SIGNING_SECRET = SECRET;
+  });
+  afterAll(() => {
+    if (prevSecret === undefined) delete process.env.PV_SIGNING_SECRET;
+    else process.env.PV_SIGNING_SECRET = prevSecret;
+  });
+
+  it('affiche les essais granulats + mécaniques + masses volumiques quand renseignés', () => {
+    const pv = makeSealedPv({
+      engineId: 'labo-classification-gtr',
+      output: {
+        erreur: null,
+        warnings: [],
+        Cu: 12.4,
+        es: 65,
+        la: 25,
+        sz: 22,
+        mde: 18,
+        so3: 0.3,
+        qu: 2.5,
+        cu_uu: 45,
+        k: 1.2e-7,
+        gonfl: 1.5,
+        rhos: 2.65,
+        classe: { fam: 'B', code: 'B5', full: 'B5', desc: 'x', path: ['y'], warn: [], etat: null, stApplies: false, rNote: null },
+      },
+    });
+    const text = collectPvPdfText(pv);
+    expect(text).toContain('Los Angeles');
+    expect(text).toContain('Micro-Deval');
+    expect(text).toContain('Équivalent de sable');
+    expect(text).toContain('compression simple');
+    expect(text).toContain('Perméabilité');
+    expect(text).toContain('Masse volumique des grains');
+    // fail-closed : la justification interne (path/desc) n'apparaît pas dans le PV.
+    expect(text.includes('path')).toBe(false);
+  });
+});

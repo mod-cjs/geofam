@@ -328,6 +328,44 @@ describe('adaptCalcResult — labo (classification GTR)', () => {
       'cbrType',
     ]);
   });
+
+  it('complétude : affiche les essais granulats + mécaniques + masses volumiques quand renseignés', () => {
+    const LABO_FULL = {
+      erreur: null,
+      warnings: [],
+      Cu: 12.4,
+      Cc: 1.2,
+      mf: 2.3,
+      rhos: 2.65,
+      rho_app: 1.9,
+      rhod_app: 1.7,
+      gonfl: 1.5,
+      es: 65,
+      la: 25,
+      sz: 22,
+      mde: 18,
+      wa: 1.2,
+      so3: 0.3,
+      qu: 2.5,
+      cu_uu: 45,
+      k: 1.2e-7,
+      classe: { fam: 'B', code: 'B5', full: 'B5', desc: 'x', path: ['y'], warn: [], etat: null, stApplies: false, rNote: null },
+    };
+    const norm = normalizedOf('labo-classification-gtr', LABO_FULL);
+    const l = labels(norm);
+    expect(l).toMatch(/Los Angeles/);
+    expect(l).toMatch(/Micro-Deval/);
+    expect(l).toMatch(/Fragmentation SZ/);
+    expect(l).toMatch(/Équivalent de sable/);
+    expect(l).toMatch(/Teneur en sulfates/);
+    expect(l).toMatch(/compression simple/);
+    expect(l).toMatch(/Cohésion non drainée/);
+    expect(l).toMatch(/Perméabilité/);
+    expect(l).toMatch(/Masse volumique des grains/);
+    expect(l).toMatch(/Gonflement/);
+    // fail-closed inchangé : la justification reste redactée même sur un output riche.
+    expectNoLeak(norm, ['"path"', '"desc"']);
+  });
 });
 
 describe('adaptCalcResult — pressiomètre Ménard (dépouillement)', () => {

@@ -620,36 +620,59 @@ function buildLaboRows(o: Record<string, unknown>): CalcOutputRow[] {
     const c = cl as Record<string, unknown>;
     // `code`/`full` contiennent DÉJÀ la lettre de famille (ex. code='A2', full='A2 h') :
     // concaténer `fam` la dupliquerait ('A'+'A2'='AA2'). On prend le libellé canonique
-    // du moteur (`full` = classe + état hydrique), repli sur `code`. `desc` (texte long)
-    // et `path` (justification, méthode) NE sont PAS exposés — fail-closed §8.
+    // du moteur (`full` = classe + état hydrique), repli sur `code`.
+    // `desc` (description longue) et `path` (chemin de décision) NE sont PAS affichés :
+    // un test §8 (adapters.engines) l'interdit aujourd'hui. La mémoire/l'audit #106 les
+    // disent client-safe (NF P 11-300 public) → REOUVERTURE possible mais = décision de
+    // confidentialité (ingénieur-sécurité + titulaire), pas un flip unilatéral de test.
     const full = typeof c.full === 'string' ? c.full.trim() : '';
     const code = c.code != null && c.code !== '' ? String(c.code).trim() : '';
     const label = full || code;
     if (label) rows.push({ label: 'Classe GTR', value: label, unit: '' });
   }
-  // COMPLÉTUDE : tous les résultats client-safe (multi-essais A/B/C/D). pushRow saute
-  // automatiquement les champs non renseignés (null) selon l'essai réalisé.
+  // COMPLÉTUDE : tous les résultats client-safe (multi-essais). pushRow saute les null.
   // — Identification (granulo / Atterberg / bleu)
   pushRow(rows, 'Dmax', o.dmax, 'mm');
   pushRow(rows, 'Passant à 80 µm', o.p80, '%');
   pushRow(rows, 'Passant à 2 mm', o.p2, '%');
+  pushRow(rows, "Coefficient d'uniformité Cu", o.Cu, '');
+  pushRow(rows, 'Coefficient de courbure Cc', o.Cc, '');
+  pushRow(rows, 'Module de finesse', o.mf, '');
   pushRow(rows, 'Teneur en eau naturelle w_n', o.wn, '%');
   pushRow(rows, 'Limite de liquidité w_L', o.wl, '%');
   pushRow(rows, 'Limite de plasticité w_P', o.wp, '%');
   pushRow(rows, 'Indice de plasticité I_P', o.ip, '');
   pushRow(rows, 'Indice de consistance I_C', o.ic, '');
   pushRow(rows, 'Valeur au bleu VBS', o.vbs, '');
-  // — Proctor / portance (lot B)
+  // — Masses volumiques
+  pushRow(rows, 'Masse volumique des grains ρ_s', o.rhos, 'Mg/m³');
+  pushRow(rows, 'Masse volumique apparente ρ', o.rho_app, 'Mg/m³');
+  pushRow(rows, 'Masse volumique sèche apparente ρ_d', o.rhod_app, 'Mg/m³');
+  // — Proctor / portance
   pushRow(rows, 'Teneur en eau optimale w_OPN', o.wopn, '%');
   pushRow(rows, 'Densité sèche max ρ_d;max', o.rdmax, 't/m³');
   pushRow(rows, 'Indice CBR', o.cbr, '');
-  // — Œdomètre (lot C)
+  pushRow(rows, 'Gonflement', o.gonfl, '%');
+  // — Granulats
+  pushRow(rows, 'Équivalent de sable ES', o.es, '%');
+  pushRow(rows, 'Los Angeles LA', o.la, '');
+  pushRow(rows, 'Fragmentation SZ', o.sz, '%');
+  pushRow(rows, 'Micro-Deval MDE', o.mde, '');
+  pushRow(rows, "Absorption d'eau WA24", o.wa, '%');
+  pushRow(rows, 'Teneur en sulfates SO₃', o.so3, '%');
+  // — Essais mécaniques
+  pushRow(rows, 'Résistance à la compression simple q_u', o.qu, 'MPa');
+  pushRow(rows, "Cohésion c' (cisaillement)", o.c_cis, 'kPa');
+  pushRow(rows, "Angle de frottement φ' (cisaillement)", o.phi_cis, '°');
+  pushRow(rows, "Angle de frottement résiduel φ'_R", o.phiR_cis, '°');
+  pushRow(rows, "Cohésion c' (triaxial)", o.c, 'kPa');
+  pushRow(rows, "Angle de frottement φ' (triaxial)", o.phi, '°');
+  pushRow(rows, 'Cohésion non drainée c_u (UU)', o.cu_uu, 'kPa');
+  // — Œdomètre
   pushRow(rows, 'Indice des vides initial e₀', o.e0_oedo, '');
-  pushRow(rows, 'Indice de compression Cc', o.Cc_oedo, '');
+  pushRow(rows, 'Indice de compression Cc (œdo)', o.Cc_oedo, '');
   pushRow(rows, 'Indice de gonflement Cs', o.Cs_oedo, '');
-  // — Cisaillement (lot D)
-  pushRow(rows, "Cohésion c'", o.c_cis, 'kPa');
-  pushRow(rows, "Angle de frottement φ'", o.phi_cis, '°');
+  pushRow(rows, 'Perméabilité k', o.k, 'cm/s');
   return rows;
 }
 
