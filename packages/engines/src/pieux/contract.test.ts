@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 import { PieuxOutputSchema } from './contract.js';
 import { computePieux } from './engine.js';
-import { PIEUX_FIXTURES } from './test-fixtures.js';
+import { PIEUX_DOWNDRAG_FIXTURES, PIEUX_FIXTURES } from './test-fixtures.js';
 
 import { runPieux } from './index.js';
 
@@ -111,6 +111,76 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
       expect(fuites, `cles d intermediaire trouvees dans la sortie`).toEqual([]);
     });
   }
+
+  // --- FROTTEMENT NÉGATIF (#94) : seuls Gsn/Nmax/pointNeutre sortent -----------------
+  // Le résultat BRUT du downdrag porte un profil DÉTAILLÉ (prof[] segment par segment :
+  // z/w/g/f/qsP/qsN/N), les rigidités t-z, les tassements tête/pointe wHead/wTip, la
+  // cote brute zN, la zone zt/zb, KtanD/Hc/s0... Tout cela révèle la MÉTHODE (courbes
+  // de mobilisation, coefficient de F.N.) et reste SERVEUR. Seuls Gsn, Nmax et
+  // pointNeutre (résultats de dimensionnement) sont whitelistés.
+  const DOWNDRAG_FUITES_INTERDITES = [
+    'prof',
+    'qsN',
+    'qsP',
+    'Ntip',
+    'qbM',
+    'wtip',
+    'wHead',
+    'wTip',
+    'zN', // la cote du point neutre est exposée sous le nom 'pointNeutre', jamais 'zN'
+    'zt',
+    'zb',
+    'KtanD',
+    'Hc',
+    's0',
+    'w',
+    'g',
+  ];
+
+  const ddFixtures = PIEUX_DOWNDRAG_FIXTURES.filter((f) => !f.horsDomaine);
+
+  it('PRECONDITION : au moins un jeu downdrag comparable (sinon test vide)', () => {
+    expect(ddFixtures.length).toBeGreaterThanOrEqual(1);
+  });
+
+  for (const fx of ddFixtures) {
+    it(`[${fx.id}] downdrag : prof/qsN par couche N APPARAISSENT PAS dans la sortie projetée`, () => {
+      const env = runPieux(fx.input);
+      expect(env.ok).toBe(true);
+      if (!env.ok) return;
+      const keys = new Set<string>();
+      collectKeys(env.output, keys);
+      const fuites = DOWNDRAG_FUITES_INTERDITES.filter((k) => keys.has(k));
+      expect(fuites, `clés d intermédiaire downdrag trouvées dans la sortie`).toEqual([]);
+      // Symétrie POSITIVE : les 3 résultats livrables SONT bien présents (non undefined).
+      expect(Object.prototype.hasOwnProperty.call(env.output, 'Gsn')).toBe(true);
+      expect(Object.prototype.hasOwnProperty.call(env.output, 'Nmax')).toBe(true);
+      expect(Object.prototype.hasOwnProperty.call(env.output, 'pointNeutre')).toBe(true);
+      // Gsn/Nmax sont finis (downdrag demandé) ; pointNeutre fini OU null (mode auto
+      // sans point neutre trouvé). Aucun n'est un objet/tableau (pas de fuite de structure).
+      expect(env.output.Gsn === null || Number.isFinite(env.output.Gsn)).toBe(true);
+      expect(env.output.Nmax === null || Number.isFinite(env.output.Nmax)).toBe(true);
+      expect(
+        env.output.pointNeutre === null || Number.isFinite(env.output.pointNeutre),
+      ).toBe(true);
+      // Re-parse strict : toute clé non whitelistée qui aurait survécu serait rejetée.
+      expect(() => PieuxOutputSchema.parse(env.output)).not.toThrow();
+    });
+  }
+
+  it('SANS groupe frottementNegatif : Gsn/Nmax/pointNeutre valent null (downdrag non calculé)', () => {
+    // Une fixture nominale SANS downdrag : les 3 champs existent mais valent null.
+    const fx = PIEUX_FIXTURES.find((f) => f.id === 'pmt-fore-da2-comp');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    expect(fx.input.frottementNegatif).toBeUndefined();
+    const env = runPieux(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    expect(env.output.Gsn).toBeNull();
+    expect(env.output.Nmax).toBeNull();
+    expect(env.output.pointNeutre).toBeNull();
+  });
 
   it('la meta porte l identite, la version et le hash source (tracabilite PV)', () => {
     const fx = PIEUX_FIXTURES[0];

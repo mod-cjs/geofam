@@ -20,8 +20,8 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { computePieux } from './engine.js';
-import { PIEUX_FIXTURES } from './test-fixtures.js';
+import { computePieux, computeDowndrag } from './engine.js';
+import { PIEUX_DOWNDRAG_FIXTURES, PIEUX_FIXTURES } from './test-fixtures.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -46,6 +46,33 @@ describe('pieux — determinisme (meme entree -> meme sortie x100, egalite stric
     const first = JSON.stringify(computePieux(fx.input));
     const second = JSON.stringify(computePieux(fx.input));
     expect(second).toBe(first);
+  });
+});
+
+describe('pieux — FROTTEMENT NÉGATIF déterministe (#94) — même entrée -> même sortie x100, égalité stricte', () => {
+  for (const fx of PIEUX_DOWNDRAG_FIXTURES) {
+    it(`[${fx.id}] downdrag identique sur 100 appels`, () => {
+      const ref = JSON.stringify(computeDowndrag(fx.input));
+      for (let i = 0; i < 100; i++) {
+        // Égalité STRICTE : aucune tolérance. La bissection (46 tours) et le marching
+        // (nseg segments) sont purement arithmétiques -> aucune dérive entre 2 appels.
+        expect(JSON.stringify(computeDowndrag(fx.input))).toBe(ref);
+      }
+    });
+  }
+
+  it('le downdrag ne MUTE pas l entrée (state.cpt cloné ; 2 appels identiques sur le même objet)', () => {
+    // La branche CPT du downdrag lit un CLONE de state.cpt (pas de régénération ni de
+    // mutation). On vérifie que 2 appels sur le MÊME objet d'entrée coïncident.
+    const fx = PIEUX_DOWNDRAG_FIXTURES.find((f) => f.id === 'dd-auto-cpt-penetrogramme');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const cptAvant = JSON.stringify(fx.input.cpt);
+    const first = JSON.stringify(computeDowndrag(fx.input));
+    const second = JSON.stringify(computeDowndrag(fx.input));
+    expect(second).toBe(first);
+    // Le pénétrogramme d'entrée est INCHANGÉ après calcul (pas de mutation cachée).
+    expect(JSON.stringify(fx.input.cpt)).toBe(cptAvant);
   });
 });
 

@@ -30,7 +30,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type * as EngineModule from './engine.js';
-import { PIEUX_FIXTURES } from './test-fixtures.js';
+import { PIEUX_DOWNDRAG_FIXTURES, PIEUX_FIXTURES } from './test-fixtures.js';
 
 import {
   redactConfidentialWarning,
@@ -220,6 +220,36 @@ describe('MAJEUR-1 — pas de fuite d intermediaire confidentiel par les message
       expect(joined, `fuite texte sur fixture ${fx.id}`).not.toMatch(
         VALEUR_CONFIDENTIELLE,
       );
+    }
+  });
+
+  // --- FROTTEMENT NÉGATIF (#94) : le warning STATIQUE de découplage est sûr ----------
+  // Quand le downdrag est calculé, index.ts ajoute un rappel STATIQUE (Gsn est une
+  // action à ajouter aux vérifications, non couplée automatiquement au verdict). Ce
+  // texte n'interpole AUCUN nombre : il traverse la rédaction fail-closed trivialement.
+  describe('downdrag — warning statique de découplage (aucune valeur interpolée)', () => {
+    const ddFixtures = PIEUX_DOWNDRAG_FIXTURES.filter((f) => !f.horsDomaine);
+
+    it('PRECONDITION : au moins un jeu downdrag comparable (sinon test vide)', () => {
+      expect(ddFixtures.length).toBeGreaterThanOrEqual(1);
+    });
+
+    for (const fx of ddFixtures) {
+      it(`[${fx.id}] le rappel de découplage est présent, SANS valeur confidentielle`, () => {
+        const env = runPieux(fx.input);
+        expect(env.ok).toBe(true);
+        if (!env.ok) return;
+        // Le rappel statique est bien émis (texte de découplage Gsn).
+        const rappel = env.output.warnings.find((w) => /Frottement négatif Gsn/.test(w));
+        expect(rappel, `rappel de découplage absent sur ${fx.id}`).toBeDefined();
+        // Aucun warning (rappel inclus) ne porte une valeur confidentielle « X = <n> ».
+        const joined = [env.output.erreur ?? '', ...env.output.warnings].join(' || ');
+        expect(joined, `fuite texte sur downdrag ${fx.id}`).not.toMatch(
+          VALEUR_CONFIDENTIELLE,
+        );
+        // Anti faux-vert : le rappel n'interpole PAS de « = <nombre> » (borne du canal).
+        expect(rappel).not.toMatch(/=\s*-?[0-9]/);
+      });
     }
   });
 });

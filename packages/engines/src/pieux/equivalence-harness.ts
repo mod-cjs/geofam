@@ -206,6 +206,125 @@ export function loadOriginalCompute(): {
 }
 
 /**
+ * Charge le HTML d'origine dans jsdom et renvoie une fonction `computeDowndragHtml`
+ * qui pilote `computeDowndrag()` (onglet « Frottement négatif ») dans le contexte
+ * global de la fenetre, en INTERCEPTANT `drawDowndrag(prof, m)` pour capturer son
+ * argument, puis renvoie l'objet BRUT MIS A PLAT `{ prof, ...m }` — EXACTEMENT ce que
+ * le module `computeDowndrag()` retourne (cf. engine.ts, ligne ~1170).
+ *
+ * Meme mecanique que loadOriginalCompute (compute() non-pur, oriente rendu) :
+ *   1. INTERCEPTE `drawDowndrag` (capture `{ prof, ...m }`), neutralise le rendu ;
+ *   2. renseigne les CHAMPS DE SAISIE (geometrie, profondeurs, nappe, champs `fn_*`)
+ *      + la globale `state` (section/meth/layers/cpt) + `state.fnmode` (mode) ;
+ *   3. appelle `computeDowndrag()` et renvoie l'objet capture serialise.
+ * Les GARDES du HTML (profil vide / D<=z0) ecrivent `host.innerHTML` SANS appeler
+ * `drawDowndrag` : on lit alors le texte de la carte (`.coef-note`) et on le renvoie
+ * sous forme `{ err: <texte> }` — le module renvoie le MEME texte en `{ err }`.
+ *
+ * NB (fidelite CPT) : `computeDowndrag()` du HTML lit `state.cpt` TEL QUEL (via
+ * qcAt/qsCPT), il NE regenere PAS le penetrogramme. Le module fait pareil (clone
+ * lu tel quel). Les fixtures CPT downdrag doivent donc porter un `cpt.pts` peuple.
+ *
+ * @throws si la source est absente / si le SHA-256 lu != registre (cf.
+ *   loadOriginalCompute : meme garde MINEUR-1).
+ */
+export function loadOriginalDowndrag(): {
+  computeDowndragHtml: (state: PieuxInput) => unknown;
+  cleanup: () => void;
+} {
+  const buf = readFileSync(pieuxSourcePath());
+  const actualSha = createHash('sha256').update(buf).digest('hex');
+  const expectedSha = pieuxRegistrySha256();
+  if (actualSha !== expectedSha) {
+    throw new Error(
+      `EQUIVALENCE INVALIDE (downdrag) : le SHA-256 du HTML source pieux (${actualSha}) ` +
+        `ne correspond PAS a la valeur scellee au registre (${expectedSha}). On testerait ` +
+        `l'equivalence contre une version DIFFERENTE de celle scellee au PV. ` +
+        `Mettre a jour le registre (sha256 + bump version) si l'evolution est voulue, ` +
+        `OU restaurer la version canonique. (MINEUR-1 #48)`,
+    );
+  }
+  const html = buf.toString('utf8');
+  const dom = new JSDOM(html, { runScripts: 'dangerously' });
+  const win = dom.window as unknown as { eval: (code: string) => unknown };
+
+  if (win.eval('typeof computeDowndrag') !== 'function') {
+    throw new Error(
+      "Le HTML d'origine n'expose pas computeDowndrag : structure du moteur modifiee ?",
+    );
+  }
+  if (win.eval('typeof drawDowndrag') !== 'function') {
+    throw new Error("Le HTML d'origine n'expose pas drawDowndrag.");
+  }
+  if (win.eval('typeof state') === 'undefined') {
+    throw new Error("Le HTML d'origine n'expose pas la globale `state`.");
+  }
+
+  const computeDowndragHtml = (s: PieuxInput): unknown => {
+    const g = s.geom;
+    const fn = s.frottementNegatif;
+    if (!fn) {
+      throw new Error(
+        `Fixture downdrag sans groupe frottementNegatif : ${JSON.stringify(s.pieu)}`,
+      );
+    }
+    const code = `
+      (function(){
+        function setV(id, v){ var el = document.getElementById(id); if(el){ el.value = String(v); } }
+        // 1. INTERCEPTION : capturer { prof, ...m }, neutraliser le rendu/dessin.
+        var __captured = null;
+        drawDowndrag = function(prof, m){
+          var o = { prof: prof };
+          for (var k in m) { if (Object.prototype.hasOwnProperty.call(m, k)) o[k] = m[k]; }
+          __captured = o;
+        };
+
+        // 2. CHAMPS DE SAISIE : geometrie, profondeurs, nappe, selection de pieu.
+        setV('g_pieu', ${s.cat});
+        setV('g_B', ${g.g_B ?? ''});
+        setV('g_b2', ${g.g_b2 ?? ''});
+        setV('g_Ap', ${g.g_Ap ?? ''});
+        setV('g_P', ${g.g_P ?? ''});
+        setV('g_z0', ${s.g_z0});
+        setV('g_D', ${s.g_D});
+        setV('o_nappe', ${s.o_nappe});
+        // Champs specifiques au frottement negatif (fn_*).
+        setV('fn_s0', ${fn.fn_s0});
+        setV('fn_hc', ${fn.fn_hc});
+        setV('fn_Q', ${fn.fn_Q});
+        setV('fn_ktd', ${fn.fn_ktd});
+        setV('fn_zt', ${fn.fn_zt});
+        setV('fn_zb', ${fn.fn_zb});
+
+        // 3. GLOBALE state (section/meth/layers/cpt) + mode (state.fnmode).
+        state.section = ${JSON.stringify(g.section)};
+        state.meth = ${JSON.stringify(s.meth)};
+        state.layers = ${JSON.stringify(s.layers)};
+        state.cpt = ${JSON.stringify(s.cpt)};
+        state.fnmode = ${JSON.stringify(fn.mode)};
+
+        // 4. CALCUL (objet capture par drawDowndrag intercepte).
+        var __err = null;
+        try { computeDowndrag(); } catch (e) { __err = e && e.message ? String(e.message) : 'Erreur de calcul'; }
+        if (__err !== null) return JSON.stringify({ err: __err });
+        if (__captured === null) {
+          // GARDE du HTML : host.innerHTML pose, drawDowndrag NON appele. On lit le
+          // texte de la carte (.coef-note) -> meme texte que le { err } du module.
+          var host = document.getElementById('fn-content');
+          var note = host ? host.querySelector('.coef-note') : null;
+          var txt = note ? note.textContent : (host ? host.textContent : '');
+          return JSON.stringify({ err: txt });
+        }
+        return JSON.stringify(__captured);
+      })()
+    `;
+    return JSON.parse(win.eval(code) as string);
+  };
+
+  return { computeDowndragHtml, cleanup: () => dom.window.close() };
+}
+
+/**
  * Verifie si le HTML source est present localement (absent en CI : 03-Moteurs-client
  * hors depot git). Permet au test d'equivalence de SKIP BRUYAMMENT sans faux-vert.
  */

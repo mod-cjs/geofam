@@ -128,7 +128,13 @@ export const ENGINE_REGISTRY: readonly EngineRegistryEntry[] = [
     // evolution du moteur. Equivalence-PORTAGE prouvee (rel 1e-9) ; justesse
     // scientifique NON validee tant que le kit cas-tests STARFIRE manque
     // (@science-unsigned, MJ-6 : pas de prod sans conformite).
-    version: '1.0.0',
+    // 1.1.0 : portage du FROTTEMENT NEGATIF (downdrag, #94) — nouvelle entree
+    // frottementNegatif + sorties Gsn/Nmax/pointNeutre. Le HTML source est INCHANGE
+    // (sha256 identique : la fonction computeDowndrag() existait deja dans casagrande_V5,
+    // seule son EXTRACTION est nouvelle). MINEUR : ajout retro-compatible (sans downdrag,
+    // les 3 sorties valent null). Equivalence-PORTAGE downdrag prouvee (rel 1e-9). Cette
+    // extraction est SCIENCE-SIGNEE (STARFIRE a valide les moteurs) : voir engine.ts.
+    version: '1.1.0',
     confirmePar:
       'title="CASAGRANDE — Calcul de fondations profondes (NF P 94-262)" + 69 occurrences "pieu"',
   },

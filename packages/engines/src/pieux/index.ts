@@ -34,7 +34,7 @@ import {
   type PieuxInput,
   type PieuxOutput,
 } from './contract.js';
-import { computePieux } from './engine.js';
+import { computePieux, computeDowndrag } from './engine.js';
 
 export {
   PIEUX_ENGINE_ID,
@@ -48,7 +48,11 @@ export {
 export { PIEUX_CONFIDENTIAL_MARKER } from './engine.js';
 // Jeux d'ENTREES canoniques (donnees pures, sans science ni sortie figee) :
 // reutilises par l'equivalence-portage ET l'e2e API (meme entree des deux cotes).
-export { PIEUX_FIXTURES, type PieuxFixture } from './test-fixtures.js';
+export {
+  PIEUX_FIXTURES,
+  PIEUX_DOWNDRAG_FIXTURES,
+  type PieuxFixture,
+} from './test-fixtures.js';
 
 /** Garde booleen : valeur numerique finie utilisable. */
 function fin(x: unknown): x is number {
@@ -138,6 +142,9 @@ const BENIGN_VALUE_LABELS: ReadonlySet<string> = new Set([
   'taux',
   'tassement',
   's', // tassement (mm)
+  // Frottement negatif (#94) : resultats DESORMAIS EXPOSES au PV (Gsn/Nmax).
+  'gsn',
+  'nmax',
   // Geometrie / profondeurs legitimes (non confidentielles).
   'h',
   'hsol',
@@ -244,7 +251,47 @@ export function redactConfidentialWarnings(warnings: readonly string[]): string[
  * xi3/xi4/grd, facteurs partiels par combinaison `Rbf/Rsf/comb`...) est ECARTE ici,
  * puis re-strippe par projectEngineOutput (defense en profondeur).
  */
-function shapeOutput(R: Record<string, unknown>): unknown {
+/**
+ * Warning STATIQUE (aucun nombre interpole) rappelant le statut du frottement negatif
+ * calcule (#94). FIDELITE : le HTML AFFICHE que Gsn est « une action permanente a
+ * ajouter a la charge en tete pour les verifications (ch. 11 du guide) » mais son
+ * compute() ne l'ajoute PAS au Fd. On reproduit ce DECOUPLAGE (Gsn expose, verdict
+ * ELU/ELS INCHANGE) ; coupler Gsn dans Fd serait ajouter de la science absente du
+ * source (avenant STARFIRE + expert-genie-civil). Aucune interpolation => passe la
+ * redaction fail-closed trivialement (§8).
+ */
+const DOWNDRAG_STATIC_WARNING =
+  'Frottement négatif Gsn calculé : action permanente à ajouter à la charge en tête ' +
+  'pour les vérifications (ch. 11 du guide) — non couplé automatiquement au verdict.';
+
+/**
+ * Projette le resultat BRUT du downdrag sur les 3 champs client-safe (Gsn/Nmax/
+ * pointNeutre), champ a champ (jamais de copie brute). `prof`, les qsN par segment,
+ * les rigidites t-z et wHead/wTip restent SERVEUR (DoD §8). null si downdrag non
+ * demande ou garde du moteur (err).
+ */
+function downdragFields(dd: Record<string, unknown> | null): {
+  Gsn: number | null;
+  Nmax: number | null;
+  pointNeutre: number | null;
+} {
+  if (!dd || typeof dd.err === 'string') {
+    return { Gsn: null, Nmax: null, pointNeutre: null };
+  }
+  return {
+    Gsn: fin(dd.Gsn) ? dd.Gsn : null,
+    Nmax: fin(dd.Nmax) ? dd.Nmax : null,
+    // zN peut valoir null (mode auto sans point neutre trouve) -> pointNeutre null.
+    pointNeutre: fin(dd.zN) ? dd.zN : null,
+  };
+}
+
+function shapeOutput(
+  R: Record<string, unknown>,
+  downdrag: Record<string, unknown> | null,
+): unknown {
+  const dd = downdragFields(downdrag);
+  const ddComputed = downdrag != null && typeof downdrag.err !== 'string';
   // Cas d'erreur de calcul / garde du moteur : on n'expose que le message redacte.
   if (typeof R.err === 'string') {
     return {
@@ -269,12 +316,18 @@ function shapeOutput(R: Record<string, unknown>): unknown {
       allOk: false,
       tauxGouvernant: 0,
       tassementELS: null,
+      Gsn: dd.Gsn,
+      Nmax: dd.Nmax,
+      pointNeutre: dd.pointNeutre,
     };
   }
 
   const warnings = redactConfidentialWarnings(
     Array.isArray(R.warn) ? R.warn.filter((w): w is string => typeof w === 'string') : [],
   );
+  // Frottement negatif calcule : rappel STATIQUE du decouplage au verdict (fidelite,
+  // #94). Texte sans nombre => sur pour la redaction ; ajoute apres les warnings moteur.
+  if (ddComputed) warnings.push(DOWNDRAG_STATIC_WARNING);
 
   // --- VERIFICATIONS : SOURCE DE VERITE UNIQUE (MINEUR-3 #48) ---
   // Le moteur calcule son verdict GLOBAL par `govern = max(Fd/Rd)` et
@@ -340,6 +393,9 @@ function shapeOutput(R: Record<string, unknown>): unknown {
     allOk: derivedAllOk,
     tauxGouvernant: finiteTaux(derivedGovern),
     tassementELS,
+    Gsn: dd.Gsn,
+    Nmax: dd.Nmax,
+    pointNeutre: dd.pointNeutre,
   };
 }
 
@@ -372,7 +428,12 @@ function resolveMeta(): {
 export function runPieux(rawInput: unknown): EngineResultEnvelope<PieuxOutput> {
   const input: PieuxInput = PieuxInputSchema.parse(rawInput);
   const rawResult = computePieux(input) as Record<string, unknown>;
-  const shaped = shapeOutput(rawResult);
+  // Frottement negatif : calcul SEPARE (comme l'onglet dedie du HTML), uniquement si
+  // le groupe est fourni. Decouple du verdict ELU/ELS (fidelite, #94).
+  const downdrag = input.frottementNegatif
+    ? (computeDowndrag(input) as Record<string, unknown>)
+    : null;
+  const shaped = shapeOutput(rawResult, downdrag);
   // Re-strip a travers le schema declare : tout champ non whiteliste qui aurait
   // survecu a shapeOutput est retire ici (defense en profondeur, anti-fuite).
   const output = projectEngineOutput(PieuxOutputSchema, shaped);

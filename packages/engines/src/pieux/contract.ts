@@ -186,6 +186,32 @@ export const PIEUX_DEFAULT_COEFFS: PieuxInput['coeffs'] = {
 };
 
 /**
+ * FROTTEMENT NEGATIF (downdrag) — groupe d'entree OPTIONNEL (#94). Absent => le
+ * frottement negatif n'est PAS calcule (les 3 sorties Gsn/Nmax/pointNeutre valent
+ * null). Bornes fideles aux champs `fn_*` du HTML d'origine. Aucun defaut cache :
+ * les prefills `fnFromProject` du HTML sont du CONFORT UI (pas de la science) ; le
+ * contrat exige des nombres explicites (determinisme + pilotage HTML a l'identique).
+ */
+const FrottementNegatifSchema = z
+  .object({
+    /** Mode : 'auto' (tassement libre du sol) ou 'impose' (zone F.N. bornee zt-zb). */
+    mode: z.enum(['auto', 'impose']),
+    /** Charge structurelle en tete Q (kN) — separee de c_G (le HTML la preremplit). */
+    fn_Q: z.number().finite().min(0).max(1e9),
+    /** Terme K·tanδ du frottement negatif (Combarieu) — 0,30 refoule / 0,20 fore. */
+    fn_ktd: z.number().finite().min(0).max(5),
+    /** Tassement libre du sol en surface s₀ (mm) — mode auto. */
+    fn_s0: z.number().finite().min(0).max(5000),
+    /** Profondeur de sol compressible H_c (m) — mode auto. */
+    fn_hc: z.number().finite().min(0).max(500),
+    /** Haut de la zone de F.N. imposee (m) — mode impose. */
+    fn_zt: z.number().finite().min(0).max(500),
+    /** Bas de la zone de F.N. imposee (m) — mode impose. */
+    fn_zb: z.number().finite().min(0).max(500),
+  })
+  .strict();
+
+/**
  * Entree complete du moteur pieux (un calcul de portance). Bornee. Voir l'en-tete
  * pour le sens et les unites.
  */
@@ -228,6 +254,8 @@ export const PieuxInputSchema = z
     layers: z.array(LayerSchema).min(1).max(100),
     /** Penetrogramme q_c(z) ; vide -> genere depuis les qc de couches (methode CPT). */
     cpt: CptSchema,
+    /** Frottement negatif (downdrag) — groupe optionnel ; absent => non calcule. */
+    frottementNegatif: FrottementNegatifSchema.optional(),
   })
   .strict();
 export type PieuxInput = z.infer<typeof PieuxInputSchema>;
@@ -302,6 +330,13 @@ export const PieuxOutputSchema = z
     tauxGouvernant: z.number().finite(),
     /** Tassement ELS estime sous charge caracteristique (mm). null si non calculable. */
     tassementELS: z.number().finite().nullable(),
+    // --- FROTTEMENT NEGATIF (downdrag, #94) — null si non demande / garde du moteur ---
+    /** Charge de frottement negatif G_sn (kN) = max(0, Nmax − Q) — resultat livrable. */
+    Gsn: z.number().finite().nullable(),
+    /** Effort axial maximal au point neutre N_max (kN) = Q + G_sn — sollicitation a verifier. */
+    Nmax: z.number().finite().nullable(),
+    /** Cote du point neutre z_N (m) — position (deplacement relatif sol-pieu nul). */
+    pointNeutre: z.number().finite().nullable(),
   })
   .strict();
 export type PieuxOutput = z.infer<typeof PieuxOutputSchema>;

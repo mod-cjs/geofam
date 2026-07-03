@@ -203,3 +203,138 @@ export const PIEUX_FIXTURES: readonly PieuxFixture[] = [
     input: base({ g_z0: 10, g_D: 8 }),
   },
 ];
+
+// ===========================================================================
+// FROTTEMENT NEGATIF (downdrag, #94) — jeux d'ENTREES pour l'equivalence-portage
+// de computeDowndrag() <-> HTML d'origine (drawDowndrag), et pour le determinisme.
+// ===========================================================================
+//
+// Meme discipline que ci-dessus : ces fixtures ne portent QUE des entrees ; la
+// REFERENCE est derivee en pilotant `computeDowndrag()` du HTML via jsdom
+// (provenance 'HTML-origine'). Aucune sortie fabriquee a la main (anti faux-vert).
+//
+// Le groupe `frottementNegatif` renseigne EXPLICITEMENT les 7 champs `fn_*`/`mode`
+// (bornes fideles aux inputs du HTML). Les prefills `fnFromProject()` du HTML sont du
+// CONFORT UI : on ne s'appuie pas dessus, on donne des nombres explicites (pilotage
+// a l'identique + determinisme). Valeurs nominales issues des placeholders du HTML
+// (s₀ = 90 mm, H_c = 9,0 m, Q = 800 kN, K·tanδ = 0,30 refoulé / 0,20 foré).
+//
+// Couverture : mode auto (tassement libre s₀/H_c) ET impose (zone F.N. zt–zb),
+// croises avec les 3 methodes de frottement (pmt / cpt penetrogramme peuple / c-φ),
+// un pieu a REFOULEMENT (battu, cat 9), un MICROPIEU (cat 17, qbLim = 0), plus un
+// cas HORS-DOMAINE (D <= z0, garde du moteur).
+
+/** Penetrogramme q_c(z) PEUPLE (methode CPT) : le downdrag lit state.cpt TEL QUEL
+ *  (il ne le regenere PAS, contrairement a compute()). Profil croissant realiste sur
+ *  0..20 m ; les valeurs importent peu pour l'equivalence (memes pts des deux cotes),
+ *  mais un penetrogramme NON vide exerce reellement qsCPT/qcAt (interpolation). */
+const CPT_POPULATED: PieuxInput['cpt'] = {
+  step: 0.5,
+  pts: [
+    { z: 0, qc: 1.5 },
+    { z: 2, qc: 1.8 },
+    { z: 4, qc: 2.5 },
+    { z: 6, qc: 6 },
+    { z: 8, qc: 8 },
+    { z: 10, qc: 9 },
+    { z: 12, qc: 12 },
+    { z: 14, qc: 15 },
+    { z: 16, qc: 17 },
+    { z: 18, qc: 18 },
+    { z: 20, qc: 19 },
+  ],
+};
+
+/** Frottement negatif — mode AUTO (tassement libre du sol s₀ sur H_c compressibles). */
+function fnAuto(over: Partial<PieuxInput['frottementNegatif'] & object> = {}) {
+  return {
+    mode: 'auto' as const,
+    fn_Q: 800,
+    fn_ktd: 0.2,
+    fn_s0: 90,
+    fn_hc: 9,
+    fn_zt: 0,
+    fn_zb: 9,
+    ...over,
+  };
+}
+
+/** Frottement negatif — mode IMPOSE (zone de F.N. bornee zt..zb). */
+function fnImpose(over: Partial<PieuxInput['frottementNegatif'] & object> = {}) {
+  return {
+    mode: 'impose' as const,
+    fn_Q: 800,
+    fn_ktd: 0.2,
+    fn_s0: 90,
+    fn_hc: 9,
+    fn_zt: 2,
+    fn_zb: 10,
+    ...over,
+  };
+}
+
+export const PIEUX_DOWNDRAG_FIXTURES: readonly PieuxFixture[] = [
+  {
+    id: 'dd-auto-pmt-fore',
+    description:
+      'Downdrag AUTO (s₀=90 mm, H_c=9 m), pressiométrique, foré simple — point neutre attendu',
+    input: base({ frottementNegatif: fnAuto() }),
+  },
+  {
+    id: 'dd-impose-pmt-fore',
+    description:
+      'Downdrag IMPOSÉ (zone F.N. 2–10 m), pressiométrique, foré simple — zN = zb',
+    input: base({ frottementNegatif: fnImpose() }),
+  },
+  {
+    id: 'dd-auto-cphi-fore',
+    description: 'Downdrag AUTO, c-φ (σ′v·K·tanδ), foré simple',
+    input: base({ meth: 'cphi', layers: LAYERS_CPHI, frottementNegatif: fnAuto() }),
+  },
+  {
+    id: 'dd-impose-cphi-fore',
+    description: 'Downdrag IMPOSÉ, c-φ, foré simple',
+    input: base({ meth: 'cphi', layers: LAYERS_CPHI, frottementNegatif: fnImpose() }),
+  },
+  {
+    id: 'dd-auto-cpt-penetrogramme',
+    description:
+      'Downdrag AUTO, pénétrométrique (cpt), pénétrogramme PEUPLÉ lu tel quel (pas de régénération)',
+    input: base({
+      meth: 'cpt',
+      layers: LAYERS_CPT,
+      cpt: CPT_POPULATED,
+      frottementNegatif: fnAuto(),
+    }),
+  },
+  {
+    id: 'dd-impose-cpt-penetrogramme',
+    description: 'Downdrag IMPOSÉ, pénétrométrique (cpt), pénétrogramme PEUPLÉ',
+    input: base({
+      meth: 'cpt',
+      layers: LAYERS_CPT,
+      cpt: CPT_POPULATED,
+      frottementNegatif: fnImpose(),
+    }),
+  },
+  {
+    id: 'dd-auto-pmt-battu-ktd030',
+    description:
+      'Downdrag AUTO, battu béton (cat 9, refoulement), K·tanδ = 0,30 — pieu refoulé',
+    input: base({ cat: 9, frottementNegatif: fnAuto({ fn_ktd: 0.3 }) }),
+  },
+  {
+    id: 'dd-impose-pmt-micropieu',
+    description:
+      'Downdrag IMPOSÉ, MICROPIEU type I (cat 17) : qbLim = 0 (pas de pointe), frottement seul',
+    input: base({ cat: 17, frottementNegatif: fnImpose() }),
+  },
+  // --- HORS-DOMAINE : garde du moteur downdrag (host.innerHTML côté HTML) ----------
+  {
+    id: 'dd-hors-domaine-D-inferieur-z0',
+    description:
+      'Downdrag D <= z0 : garde « Géométrie incomplète » (base sous la tête) — erreur bornée identique origine/module.',
+    horsDomaine: true,
+    input: base({ g_z0: 10, g_D: 8, frottementNegatif: fnAuto() }),
+  },
+];

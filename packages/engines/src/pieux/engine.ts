@@ -971,3 +971,239 @@ export function computePieux(state) {
     return { err: e && e.message ? String(e.message) : 'Erreur de calcul' };
   }
 }
+
+// ===========================================================================
+// FROTTEMENT NEGATIF (downdrag) — extraction PURE de computeDowndrag() (#94)
+// ===========================================================================
+//
+// Transcription FIDELE de `computeDowndrag()` du HTML d'origine (casagrande_V5.html,
+// lignes 1704-1763), onglet « 02 Frottement négatif ». Comme pour compute(), les
+// seules differences avec le HTML sont de COUPLAGE (PAS de science) :
+//   - les lookups DOM (`num('fn_s0')`, `num('g_D')`, `num('o_nappe')`...) et la
+//     globale `state.fnmode` deviennent des champs de l'objet `state` injecte :
+//     `state.frottementNegatif.fn_*` / `state.frottementNegatif.mode`, `state.g_D`,
+//     `state.o_nappe`, `state.meth`, `state.layers`, `state.geom`, `state.cat` ;
+//   - `curPile()` -> `PILES.find(p=>p.cat==state.cat)||PILES[0]` (comme compute()) ;
+//   - la downdrag lit `state.cpt` TEL QUEL (elle NE regenere PAS le penetrogramme) ;
+//     on passe un CLONE a qsCPT/qcAt pour ne pas muter l'entree (purete de l'appel) ;
+//   - au lieu d'APPELER `drawDowndrag(prof, m)` (presentation, NON transcrite), on
+//     RETOURNE l'objet exact qui lui etait passe, MIS A PLAT : `{ prof, ...m }` ;
+//   - les gardes que le HTML rend en `host.innerHTML` (profil vide / D<=z0) sont
+//     RETOURNEES sous forme `{ err }` avec le MEME texte que la carte d'origine.
+// Aucune formule, aucun ordre de sommation, aucune borne de bissection, aucun pas
+// n'est modifie (bornes lo=0 / hi=max(0,30 ; s0·1,5+0,05), 46 tours ; nseg=
+// max(60, ⌈(D−z0)/0,15⌉)). Deterministe : ni horloge ni hasard ni for..in.
+//
+// --- ETAT SCIENTIFIQUE (decision titulaire, #94) ---
+// STARFIRE a valide les moteurs ; une EXTRACTION FIDELE prouvee par l'equivalence
+// module<->HTML (rel 1e-9) est SCIENCE-SIGNEE. Ce module downdrag n'est donc PAS
+// tague @science-unsigned. L'equivalence verte reste l'arbitre OBLIGATOIRE de la
+// fidelite : sans elle, la revendication de fidelite tombe.
+
+function computeDowndragCore(state) {
+  const fn = state.frottementNegatif;
+  const layers = layerTops(state.layers);
+  if (!layers.length) {
+    return {
+      err: "Définissez d'abord un profil de sol (onglet 02) et la géométrie du pieu (onglet 01), puis revenez ici. Le bouton « Reprendre Q et la coupe du projet » initialise les données.",
+    };
+  }
+  const z0 = state.g_z0,
+    D = state.g_D;
+  if (!(D > z0)) {
+    return {
+      err: 'Géométrie incomplète : la base D doit être sous la tête z₀ (onglet 01).',
+    };
+  }
+  const PG = pileGeom(state.geom),
+    B = PG.B,
+    Ab = PG.Ab,
+    perim = PG.perim;
+  const pile = PILES.find((p) => p.cat == state.cat) || PILES[0],
+    cat = pile.cat,
+    cls = pile.cls,
+    meth = state.meth;
+  const baseLayer = soilAt(D - 1e-6, layers) || layers[layers.length - 1];
+  const nappe = state.o_nappe;
+  // cpt LOCAL (clone) : la downdrag lit state.cpt tel quel, sans regeneration ni
+  // mutation (le HTML lit la globale state.cpt via qcAt ; ici on clone pour la purete).
+  const cpt = { step: state.cpt.step, pts: state.cpt.pts.slice() };
+  const s0 = (fn.fn_s0 || 0) / 1000,
+    Hc = fn.fn_hc || 0,
+    Q = fn.fn_Q || 0,
+    KtanD = fn.fn_ktd || 0;
+  const mode = fn.mode || 'auto';
+  let zt = Math.max(z0, fn.fn_zt || z0),
+    zb = Math.min(D, fn.fn_zb || 0);
+  if (mode === 'impose' && zb <= zt) zb = Math.min(D, zt + 0.01);
+  const isFine = (s) => s === 'argile';
+  function sigmaV(z) {
+    let sv = 0;
+    layers.forEach((L) => {
+      const d = Math.min(L.zbot, z) - Math.min(L.ztop, z);
+      if (d > 0) sv += L.gamma * d;
+    });
+    const u = z > nappe ? 9.81 * (z - nappe) : 0;
+    return Math.max(sv - u, 0);
+  }
+  function gsoil(z) {
+    return Hc > 0 && z < Hc ? s0 * (1 - z / Hc) : 0;
+  }
+  function qsPosLayer(L) {
+    if (meth === 'pmt') {
+      const cu = PMT_CURVE[L.soil],
+        al = alphaPMT(cat, L.soil),
+        qsm = qsMaxOf(cat, L.soil);
+      if (al == null || qsm == null) return 0;
+      const f = (cu.a * L.pl + cu.b) * (1 - Math.exp(-cu.c * L.pl));
+      return Math.min(al * f * 1000, qsm);
+    }
+    if (meth === 'cpt') {
+      const qsm = qsMaxOf(cat, L.soil);
+      if (alphaCPT(cat, L.soil) == null || qsm == null) return 0;
+      const z = (Math.max(L.ztop, z0) + Math.min(L.zbot, D)) / 2;
+      return qsCPT(z, L.soil, cat, cpt);
+    }
+    const mid = (Math.max(L.ztop, z0) + Math.min(L.zbot, D)) / 2,
+      sv = sigmaV(mid);
+    const phi = (L.phi * Math.PI) / 180,
+      K = 1 - Math.sin(phi),
+      beta = K * Math.tan((phi * 2) / 3);
+    return beta * sv + 0.7 * L.c;
+  }
+  let qbLim = 0;
+  if (!pile.micro) {
+    if (meth === 'pmt') {
+      qbLim = kpMax(cls, baseLayer.soil) * (baseLayer.pl || 1) * 1000;
+    } else if (meth === 'cpt') {
+      qbLim = kcMax(cls, baseLayer.soil) * (baseLayer.qc || 5) * 1000;
+    } else {
+      const phi = (baseLayer.phi * Math.PI) / 180,
+        Nq =
+          Math.exp(Math.PI * Math.tan(phi)) *
+          Math.pow(Math.tan(Math.PI / 4 + phi / 2), 2);
+      qbLim =
+        baseLayer.c * (Math.abs(phi) < 1e-6 ? 5.14 : (Nq - 1) / Math.tan(phi)) +
+        sigmaV(D) * Nq;
+    }
+  }
+  const EMb = baseLayer.em || 10,
+    kq = ((isFine(baseLayer.soil) ? 11 : 4.8) * EMb * 1000) / B,
+    Ep = 2.0e7;
+  const mob = (a, lim, k) => {
+    if (lim <= 0 || a <= 0) return 0;
+    const w1 = lim / 2 / k;
+    if (a <= w1) return k * a;
+    const wc = w1 + lim / 2 / (k / 5);
+    return a <= wc ? lim / 2 + (k / 5) * (a - w1) : lim;
+  };
+  const mobSig = (delta, lim, k) => Math.sign(delta) * mob(Math.abs(delta), lim, k);
+  const nseg = Math.max(60, Math.ceil((D - z0) / 0.15)),
+    dz = (D - z0) / nseg;
+  function march(w0, rec) {
+    let w = w0,
+      N = Q;
+    const prof = [];
+    for (let i = 0; i < nseg; i++) {
+      const z = z0 + (i + 0.5) * dz,
+        L = soilAt(z, layers) || baseLayer;
+      const ktau = ((isFine(L.soil) ? 2.0 : 0.8) * (L.em || 10) * 1000) / B;
+      const qsP = qsPosLayer(L),
+        qsN = KtanD * sigmaV(z);
+      let g, f;
+      if (mode === 'impose') {
+        g = 0;
+        if (z >= zt && z <= zb)
+          f = -qsN; // frottement negatif a la limite (Combarieu)
+        else f = mob(Math.max(0, w), qsP, ktau); // frottement positif mobilise en dessous
+      } else {
+        g = gsoil(z);
+        const delta = w - g,
+          lim = delta >= 0 ? qsP : qsN;
+        f = mobSig(delta, lim, ktau);
+      }
+      if (rec) prof.push({ z, w, g, f, qsP: qsP, qsN: -qsN, N });
+      N -= f * perim * dz;
+      w -= (N / (Ep * Ab)) * dz;
+    }
+    const wtip = w,
+      qbM = mob(Math.max(0, wtip), qbLim, kq) * Ab;
+    if (rec)
+      prof.push({
+        z: D,
+        w: wtip,
+        g: gsoil(D),
+        f: 0,
+        qsP: qsPosLayer(baseLayer),
+        qsN: -KtanD * sigmaV(D),
+        N,
+      });
+    return { prof, Ntip: N, qbM, wtip };
+  }
+  let lo = 0,
+    hi = Math.max(0.3, s0 * 1.5 + 0.05),
+    r;
+  for (let it = 0; it < 46; it++) {
+    const mid = (lo + hi) / 2;
+    r = march(mid, false);
+    if (r.Ntip - r.qbM > 0) lo = mid;
+    else hi = mid;
+  }
+  const sol = march((lo + hi) / 2, true),
+    prof = sol.prof;
+  let zN = null,
+    Nmax = Q;
+  prof.forEach((p, i) => {
+    if (p.N > Nmax) Nmax = p.N;
+    if (i > 0) {
+      const a = prof[i - 1],
+        da = a.w - a.g,
+        db = p.w - p.g;
+      if (da * db < 0 && zN == null) {
+        const t = da / (da - db);
+        zN = a.z + t * (p.z - a.z);
+      }
+    }
+  });
+  if (mode === 'impose') zN = zb;
+  const Gsn = Math.max(0, Nmax - Q),
+    wHead = prof[0].w * 1000,
+    wTip = sol.wtip * 1000;
+  return {
+    prof,
+    z0,
+    D,
+    B,
+    Q,
+    Nmax,
+    Gsn,
+    zN,
+    wHead,
+    wTip,
+    s0: s0 * 1000,
+    Hc,
+    KtanD,
+    meth,
+    pile,
+    mode,
+    zt,
+    zb,
+  };
+}
+
+/**
+ * Calcule le FROTTEMENT NEGATIF (downdrag) d'un pieu a partir de l'ETAT complet
+ * (meme `state` que computePieux, plus le groupe `frottementNegatif`). Renvoie
+ * l'objet BRUT mis a plat `{ prof, z0, D, B, Q, Nmax, Gsn, zN, wHead, wTip, s0, Hc,
+ * KtanD, meth, pile, mode, zt, zb }` (identique a l'argument que le HTML passe a
+ * `drawDowndrag`), OU `{ err }` si une garde rejette l'entree (profil vide, D<=z0)
+ * ou si la science leve. La PROJECTION client-safe (Gsn/Nmax/pointNeutre uniquement)
+ * est faite par index.ts ; `prof`/`qsN`/rigidites restent SERVEUR (DoD §8).
+ */
+export function computeDowndrag(state) {
+  try {
+    return computeDowndragCore(state || {});
+  } catch (e) {
+    return { err: e && e.message ? String(e.message) : 'Erreur de calcul' };
+  }
+}
