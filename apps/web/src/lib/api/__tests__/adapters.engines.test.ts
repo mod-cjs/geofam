@@ -496,3 +496,81 @@ describe('adaptCalcResult — pieux : vérification béton (#95)', () => {
     ]);
   });
 });
+
+// ── MAJEUR-2 : note de découplage frottement négatif ─────────────────────────
+
+describe('adaptCalcResult — pieux : note de découplage downdrag (MAJEUR-2)', () => {
+  it(
+    'given Gsn/Nmax non-null (downdrag calculé), ' +
+      'when adapté, then une note de découplage est présente dans les rows',
+    () => {
+      const norm = normalizedOf('fondation-profonde-pieux', REAL_PIEUX_DOWNDRAG);
+      const note = (norm.rows as CalcOutputRow[]).find(
+        (r) => typeof r.value === 'string' && r.value.includes('non intégré au verdict'),
+      );
+      expect(
+        note,
+        'la note de découplage doit être présente quand le downdrag est calculé',
+      ).toBeDefined();
+    },
+  );
+
+  it(
+    'given Gsn/Nmax null (pas de downdrag), ' +
+      'when adapté, then aucune note de découplage',
+    () => {
+      const norm = normalizedOf('fondation-profonde-pieux', REAL_PIEUX_BASE);
+      const note = (norm.rows as CalcOutputRow[]).find(
+        (r) => typeof r.value === 'string' && r.value.includes('non intégré au verdict'),
+      );
+      expect(note, 'aucune note de découplage quand downdrag absent').toBeUndefined();
+    },
+  );
+
+  it('fail-closed : la note ne contient aucune valeur numérique issue du moteur (Gsn, Nmax, pointNeutre)', () => {
+    const norm = normalizedOf('fondation-profonde-pieux', REAL_PIEUX_DOWNDRAG);
+    const note = (norm.rows as CalcOutputRow[]).find(
+      (r) => typeof r.value === 'string' && r.value.includes('non intégré au verdict'),
+    );
+    const v = String(note?.value ?? '');
+    // Les valeurs de REAL_PIEUX_DOWNDRAG ne doivent pas apparaître dans le texte
+    expect(v).not.toContain('120.5'); // Gsn
+    expect(v).not.toContain('920.5'); // Nmax
+    expect(v).not.toContain('7.3'); // pointNeutre
+    // Pas de fuite des clés confidentielles du moteur dans la sérialisation complète
+    expectNoLeak(norm, ['"Gsn"', '"Nmax"', '"pointNeutre"', 'KtanD', 'sigmaV']);
+  });
+});
+
+// ── MINEUR-2 : libellé Rc;d / Rt;d conditionnel selon sens ───────────────────
+
+describe('adaptCalcResult — pieux : libellé Rc;d vs Rt;d selon sens (MINEUR-2)', () => {
+  it(
+    'given sens="comp" (compression, défaut), ' +
+      'when adapté, then le libellé porte Rc;d',
+    () => {
+      // REAL_PIEUX a sens: 'comp'
+      const norm = normalizedOf('fondation-profonde-pieux', REAL_PIEUX);
+      expect(labels(norm)).toMatch(/R_c;d/);
+      expect(labels(norm)).not.toMatch(/R_t;d/);
+    },
+  );
+
+  it(
+    'given sens="trac" (traction), ' +
+      'when adapté, then le libellé porte Rt;d (pas Rc;d)',
+    () => {
+      const tracOutput = { ...REAL_PIEUX, sens: 'trac', RcD: 1200 };
+      const norm = normalizedOf('fondation-profonde-pieux', tracOutput);
+      expect(labels(norm)).toMatch(/R_t;d/);
+      expect(labels(norm)).not.toMatch(/R_c;d/);
+    },
+  );
+
+  it('fail-closed : la valeur "trac" ou "comp" de sens ne traverse jamais le navigateur', () => {
+    const tracOutput = { ...REAL_PIEUX, sens: 'trac' };
+    const norm = normalizedOf('fondation-profonde-pieux', tracOutput);
+    // "trac" est la valeur interne — ne doit pas apparaître dans la sérialisation
+    expectNoLeak(norm, ['"trac"', '"sens"', '"comp"']);
+  });
+});

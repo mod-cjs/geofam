@@ -485,7 +485,14 @@ function buildPieuxRows(o: Record<string, unknown>): CalcOutputRow[] {
   pushRow(rows, 'Résistance de pointe R_b;k', o.RbK, 'kN');
   pushRow(rows, 'Résistance de frottement R_s;k', o.RsK, 'kN');
   pushRow(rows, 'Résistance caractéristique R_c;k', o.RcK, 'kN');
-  pushRow(rows, 'Résistance de calcul R_c;d', o.RcD, 'kN');
+  // MINEUR-2 : libellé conditionnel selon le sens (compression → Rc;d ; traction → Rt;d).
+  // o.sens n'est jamais exposé dans la sortie — seul le libellé change.
+  pushRow(
+    rows,
+    o.sens === 'trac' ? 'Résistance de calcul R_t;d' : 'Résistance de calcul R_c;d',
+    o.RcD,
+    'kN',
+  );
   pushRow(rows, 'Charge de fluage R_c;cr;k', o.RcrK, 'kN');
   pushRow(rows, 'Tassement estimé (ELS)', o.tassementELS, 'mm');
   const verifs = Array.isArray(o.verifications) ? o.verifications : [];
@@ -506,6 +513,21 @@ function buildPieuxRows(o: Record<string, unknown>): CalcOutputRow[] {
   pushRow(rows, 'Charge de frottement négatif G_sn', o.Gsn, 'kN');
   pushRow(rows, 'Effort axial maximal N_max', o.Nmax, 'kN');
   pushRow(rows, 'Profondeur du point neutre z_N', o.pointNeutre, 'm');
+  // MAJEUR-2 : note de découplage — affichée uniquement si au moins une valeur downdrag
+  // est présente. Aligne le caveat du PV (frottement négatif non intégré au verdict).
+  // Texte statique client-safe : aucun intermédiaire confidentiel ne traverse.
+  if (
+    finiteOrNull(o.Gsn) !== null ||
+    finiteOrNull(o.Nmax) !== null ||
+    finiteOrNull(o.pointNeutre) !== null
+  ) {
+    rows.push({
+      label: 'Note frottement négatif',
+      value:
+        'Frottement négatif reporté à titre indicatif — non intégré au verdict de portance ; action permanente à ajouter à la charge en tête selon NF P 94-262.',
+      unit: '',
+    });
+  }
 
   // Vérification structurale du béton (#95) — conditionnelle selon betonApplicable
   if (o.betonApplicable === false) {

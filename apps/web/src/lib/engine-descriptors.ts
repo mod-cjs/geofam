@@ -1089,6 +1089,46 @@ const pieuxDescriptor: EngineDescriptor = {
       optional: true,
       hint: 'Module pressiométrique de la couche. Argile 3–30 ; sable 8–40 MPa.',
     },
+    {
+      key: 'layer1_gamma',
+      label: 'Poids volumique γ (kN/m³)',
+      type: 'number',
+      example: 18,
+      min: 0,
+      max: 40,
+      optional: true,
+      hint: 'Poids volumique de la couche (kN/m³). Nécessaire au calcul du frottement négatif (downdrag) : sigmaV(z) += γ·dz. Argile molle 15–17 ; sable 17–20 ; marne 19–22.',
+    },
+    {
+      key: 'layer1_qc',
+      label: 'Résistance de pointe CPT q_c (MPa)',
+      type: 'number',
+      example: 5.0,
+      min: 0,
+      max: 200,
+      optional: true,
+      hint: 'Résistance de pointe au pénétromètre statique (MPa). Requis pour la méthode pénétrométrique (CPT). Argile molle < 1 ; sable dense 10–30.',
+    },
+    {
+      key: 'layer1_c',
+      label: 'Cohésion c (kPa)',
+      type: 'number',
+      example: 15,
+      min: 0,
+      max: 1000,
+      optional: true,
+      hint: 'Cohésion du sol (kPa). Requis pour la méthode c-φ. Argile non drainée 10–100 kPa ; sol frottant ≈ 0.',
+    },
+    {
+      key: 'layer1_phi',
+      label: 'Angle de frottement φ (°)',
+      type: 'number',
+      example: 28,
+      min: 0,
+      max: 89,
+      optional: true,
+      hint: 'Angle de frottement interne (degrés). Requis pour la méthode c-φ. Argile 15–25° ; sable dense 32–40°.',
+    },
     // Frottement négatif (downdrag) — groupe optionnel
     {
       key: '_section_fn',
@@ -1276,6 +1316,46 @@ const pieuxDescriptor: EngineDescriptor = {
       optional: true,
       hint: 'Module pressiométrique de la couche. Argile 3–30 ; sable 8–40 MPa.',
     },
+    {
+      key: 'layer2_gamma',
+      label: 'Poids volumique γ (kN/m³)',
+      type: 'number',
+      example: 19,
+      min: 0,
+      max: 40,
+      optional: true,
+      hint: 'Poids volumique de la couche (kN/m³). Nécessaire au calcul du frottement négatif (downdrag).',
+    },
+    {
+      key: 'layer2_qc',
+      label: 'Résistance de pointe CPT q_c (MPa)',
+      type: 'number',
+      example: 8.0,
+      min: 0,
+      max: 200,
+      optional: true,
+      hint: 'Résistance de pointe au pénétromètre statique (MPa). Méthode pénétrométrique (CPT).',
+    },
+    {
+      key: 'layer2_c',
+      label: 'Cohésion c (kPa)',
+      type: 'number',
+      example: 0,
+      min: 0,
+      max: 1000,
+      optional: true,
+      hint: 'Cohésion du sol (kPa). Méthode c-φ.',
+    },
+    {
+      key: 'layer2_phi',
+      label: 'Angle de frottement φ (°)',
+      type: 'number',
+      example: 32,
+      min: 0,
+      max: 89,
+      optional: true,
+      hint: 'Angle de frottement interne (degrés). Méthode c-φ.',
+    },
   ],
   buildPayload(flat) {
     const layers: unknown[] = [];
@@ -1283,17 +1363,22 @@ const pieuxDescriptor: EngineDescriptor = {
       const soil = flat[`layer${i}_soil`];
       const th = flat[`layer${i}_th`];
       if (soil && th !== undefined && th !== '') {
+        const optNum = (key: string): number | undefined => {
+          const v = flat[key];
+          return v !== '' && v !== undefined ? Number(v) : undefined;
+        };
         layers.push({
           soil,
           th: Number(th),
-          pl:
-            flat[`layer${i}_pl`] !== '' && flat[`layer${i}_pl`] !== undefined
-              ? Number(flat[`layer${i}_pl`])
-              : undefined,
-          em:
-            flat[`layer${i}_em`] !== '' && flat[`layer${i}_em`] !== undefined
-              ? Number(flat[`layer${i}_em`])
-              : undefined,
+          pl: optNum(`layer${i}_pl`),
+          em: optNum(`layer${i}_em`),
+          // Poids volumique — requis par le calcul du frottement négatif (downdrag)
+          gamma: optNum(`layer${i}_gamma`),
+          // Résistance de pointe CPT — méthode pénétrométrique
+          qc: optNum(`layer${i}_qc`),
+          // Cohésion et angle de frottement — méthode c-φ
+          c: optNum(`layer${i}_c`),
+          phi: optNum(`layer${i}_phi`),
         });
       }
     }
