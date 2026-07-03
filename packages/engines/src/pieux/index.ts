@@ -299,9 +299,13 @@ function downdragFields(dd: Record<string, unknown> | null): {
  * NB CONFIDENTIALITE : f_cd est la resistance de CALCUL du beton au sens EC2 — une
  * grandeur de dimensionnement PUBLIQUE (elle figure sur toute note de calcul). Elle
  * est de toute facon deductible du couple (tauxELU, FduELU, Ab) deja expose
- * (σ_ELU = FduELU/Ab/1000 ; f_cd = σ_ELU/tauxELU). L'exposer n'ajoute donc aucune
- * fuite, et l'on NE peut PAS remonter aux facteurs de calage (acc·k3·fckStar est un
- * PRODUIT non factorisable a partir de f_cd seul).
+ * (σ_ELU = FduELU/Ab/1000 ; f_cd = σ_ELU/tauxELU). L'exposer n'ajoute donc pas de
+ * surface de fuite au-dela de l'existant. NUANCE D'HONNETETE (revue qa-challenger) :
+ * la non-inversibilite n'est PAS totale — acc (arme/non), k3, gc=1,5 et fck sont
+ * connus/normatifs cote client ; dans la branche ou acc·k3·fckStar/gc gouverne le
+ * min, il peut isoler fckStar puis k1·k2 = min(Cmax,fck)/fckStar (k2 calculable via
+ * B/D publics). Mais ces valeurs sont celles du Tableau 12 NF P 94-262 (norme
+ * PUBLIEE, faible entropie) : la fuite pratique est negligeable, pas nulle.
  */
 function betonFields(bt: Record<string, unknown> | null): {
   betonApplicable: boolean | null;
