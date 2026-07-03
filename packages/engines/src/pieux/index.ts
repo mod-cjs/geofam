@@ -34,7 +34,7 @@ import {
   type PieuxInput,
   type PieuxOutput,
 } from './contract.js';
-import { computePieux, computeDowndrag } from './engine.js';
+import { computePieux, computeDowndrag, computeBeton } from './engine.js';
 
 export {
   PIEUX_ENGINE_ID,
@@ -286,11 +286,63 @@ function downdragFields(dd: Record<string, unknown> | null): {
   };
 }
 
+/**
+ * Projette le resultat BRUT de la verification structurale du beton (§4.4, #95) sur
+ * les seuls champs client-safe (applicable + verdict ELU/ELS + taux + f_cd), champ a
+ * champ (jamais de copie brute). Les FACTEURS DE CALAGE de la methode (Cmax/k1/k2/
+ * fckStar/acc/k3/gc, et les contraintes NUES sELU/sELS/limELS) restent SERVEUR (DoD
+ * §8). null partout si la verification n'a pas ete demandee ou si la portance a
+ * rejete l'entree (err). Cas `na` (traction / categorie non couverte) : applicable
+ * = false, verdicts/taux/fcd = null (aucun calcul de section n'a eu lieu).
+ *
+ * NB CONFIDENTIALITE : f_cd est la resistance de CALCUL du beton au sens EC2 — une
+ * grandeur de dimensionnement PUBLIQUE (elle figure sur toute note de calcul). Elle
+ * est de toute facon deductible du couple (tauxELU, FduELU, Ab) deja expose
+ * (σ_ELU = FduELU/Ab/1000 ; f_cd = σ_ELU/tauxELU). L'exposer n'ajoute donc aucune
+ * fuite, et l'on NE peut PAS remonter aux facteurs de calage (acc·k3·fckStar est un
+ * PRODUIT non factorisable a partir de f_cd seul).
+ */
+function betonFields(bt: Record<string, unknown> | null): {
+  betonApplicable: boolean | null;
+  betonOkELU: boolean | null;
+  betonOkELS: boolean | null;
+  betonTauxELU: number | null;
+  betonTauxELS: number | null;
+  betonFcd: number | null;
+} {
+  const NULLS = {
+    betonApplicable: null,
+    betonOkELU: null,
+    betonOkELS: null,
+    betonTauxELU: null,
+    betonTauxELS: null,
+    betonFcd: null,
+  };
+  if (!bt || typeof bt.err === 'string') return NULLS;
+  if (bt.na === true) {
+    // Verification NON APPLICABLE (traction / categorie non couverte) : on signale
+    // l'inapplicabilite, sans aucun verdict ni valeur (betonCheck n'a rien calcule).
+    // Le `reason` (texte explicatif benin) n'est PAS structure ici : le front derive
+    // le message du drapeau `betonApplicable=false` (aucune valeur de methode a exposer).
+    return { ...NULLS, betonApplicable: false };
+  }
+  return {
+    betonApplicable: true,
+    betonOkELU: typeof bt.okELU === 'boolean' ? bt.okELU : null,
+    betonOkELS: typeof bt.okELS === 'boolean' ? bt.okELS : null,
+    betonTauxELU: fin(bt.tauxELU) ? bt.tauxELU : null,
+    betonTauxELS: fin(bt.tauxELS) ? bt.tauxELS : null,
+    betonFcd: fin(bt.fcd) ? bt.fcd : null,
+  };
+}
+
 function shapeOutput(
   R: Record<string, unknown>,
   downdrag: Record<string, unknown> | null,
+  beton: Record<string, unknown> | null,
 ): unknown {
   const dd = downdragFields(downdrag);
+  const bt = betonFields(beton);
   const ddComputed = downdrag != null && typeof downdrag.err !== 'string';
   // Cas d'erreur de calcul / garde du moteur : on n'expose que le message redacte.
   if (typeof R.err === 'string') {
@@ -319,6 +371,7 @@ function shapeOutput(
       Gsn: dd.Gsn,
       Nmax: dd.Nmax,
       pointNeutre: dd.pointNeutre,
+      ...bt,
     };
   }
 
@@ -396,6 +449,7 @@ function shapeOutput(
     Gsn: dd.Gsn,
     Nmax: dd.Nmax,
     pointNeutre: dd.pointNeutre,
+    ...bt,
   };
 }
 
@@ -433,7 +487,10 @@ export function runPieux(rawInput: unknown): EngineResultEnvelope<PieuxOutput> {
   const downdrag = input.frottementNegatif
     ? (computeDowndrag(input) as Record<string, unknown>)
     : null;
-  const shaped = shapeOutput(rawResult, downdrag);
+  // Verification structurale du beton : calcul SEPARE (comme betonCheck dans compute()),
+  // uniquement si le groupe `beton` est fourni. Facteurs de calage confidentiels ecartes.
+  const beton = input.beton ? (computeBeton(input) as Record<string, unknown>) : null;
+  const shaped = shapeOutput(rawResult, downdrag, beton);
   // Re-strip a travers le schema declare : tout champ non whiteliste qui aurait
   // survecu a shapeOutput est retire ici (defense en profondeur, anti-fuite).
   const output = projectEngineOutput(PieuxOutputSchema, shaped);

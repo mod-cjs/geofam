@@ -1207,3 +1207,168 @@ export function computeDowndrag(state) {
     return { err: e && e.message ? String(e.message) : 'Erreur de calcul' };
   }
 }
+
+// ===========================================================================
+// VERIFICATION STRUCTURALE DU BETON (NF P 94-262 §4.4) — extraction de betonCheck (#95)
+// ===========================================================================
+//
+// Transcription FIDELE de `betonCheck(pile, Ab, FduELU, FdCar, traction)` du HTML
+// d'origine (casagrande_V5.html, lignes 1534-1556, « VERIFICATION STRUCTURALE DU
+// BETON »). Le HTML l'APPELLE dans compute() (ligne 1268) :
+//   `drawBeton(betonCheck(pile, Ab, FduELU, FdCar, traction))`
+// avec `pile`/`Ab`/`FduELU`/`FdCar`/`traction` PRODUITS par le calcul de portance.
+// Les seules differences avec le HTML sont de COUPLAGE (PAS de science) :
+//   - `betonCheck` lisait 5 valeurs supplementaires dans le DOM / la globale `state` :
+//     `num('b_fck')` (resistance caracteristique), `pileGeom().B` (diametre/cote),
+//     `num('g_D')`/`num('g_z0')` (profondeurs), `state.arm` (armé/non armé) et
+//     `state.k3` (contrôles courants/renforcés). On les PASSE EN PARAMETRE : `b_fck`,
+//     `geom`, `g_D`, `g_z0`, `arm`, `k3sel`. `pileGeom()` -> `pileGeom(geom)` (deja
+//     extrait, sans DOM) ;
+//   - `computeBetonCore(state)` RE-EXECUTE `computePieuxCore(state)` pour obtenir les
+//     3 grandeurs que le HTML derive de compute() (Ab, FduELU, FdCar) et la fiche
+//     `pile`, PUIS appelle betonCheck — EXACTEMENT l'enchainement du HTML. Si la
+//     portance leve une garde (profil vide, D<=z0), compute() du HTML RETOURNE avant
+//     `betonCheck` (drawBeton non appele) : on reproduit ce court-circuit en
+//     RETOURNANT `{ err }` (meme texte que la garde de portance) ;
+//   - au lieu d'APPELER `drawBeton(b)` (presentation, NON transcrite), on RETOURNE
+//     l'objet `b` (le retour EXACT de betonCheck) ; drawBeton n'influence aucun nombre.
+// Aucune formule, aucun seuil, aucun ordre n'est modifie. Deterministe (ni horloge ni
+// hasard ni for..in). Le texte des motifs `na` est reproduit VERBATIM (compare a
+// l'identique par l'equivalence). Les FACTEURS DE CALAGE de la methode (Cmax, k1, k2,
+// fckStar, acc, k3, gc) restent SERVEUR : index.ts n'expose que la VERIFICATION
+// (tauxELU/okELU/tauxELS/okELS + fcd, resistance de calcul EC2 publique) — DoD §8.
+//
+// --- ETAT SCIENTIFIQUE (decision titulaire, #95, comme #94) ---
+// STARFIRE a valide les moteurs ; une EXTRACTION FIDELE prouvee par l'equivalence
+// module<->HTML (rel 1e-9) est SCIENCE-SIGNEE. Ce module beton n'est donc PAS tague
+// @science-unsigned. L'equivalence verte reste l'arbitre OBLIGATOIRE de la fidelite.
+
+/**
+ * VERIFICATION STRUCTURALE DU BETON — transcription VERBATIM de `betonCheck` du HTML
+ * (lignes 1534-1556). Les 5 valeurs que l'original lisait dans le DOM/`state`
+ * (`num('b_fck')`, `pileGeom().B`, `num('g_D')`, `num('g_z0')`, `state.arm`,
+ * `state.k3`) sont PASSEES en parametre (`b_fck`/`geom`/`g_D`/`g_z0`/`arm`/`k3sel`).
+ * Retourne l'objet EXACT que le HTML passe a `drawBeton` : soit `{ na:true, reason }`
+ * (traction ou categorie non couverte), soit la verification complete `{ na:false,
+ * Cmax, k1, k2, fck, fckStar, acc, k3, gc, fcd, sELU, sELS, limELS, okELU, okELS,
+ * tauxELU, tauxELS }`.
+ */
+function betonCheck(
+  pile,
+  Ab,
+  FduELU,
+  FdCar,
+  traction,
+  geom,
+  g_D,
+  g_z0,
+  b_fck,
+  arm,
+  k3sel,
+) {
+  // C_max et k1 par technique (pieux beton coules en place) — Tableau 12
+  const map = {
+    1: [35, 1.3],
+    2: [35, 1.3],
+    3: [35, 1.3],
+    4: [35, 1.3],
+    5: [35, 1.3],
+    6: [30, 1.35],
+    7: [35, 1.3],
+    10: [35, 1.3],
+    11: [35, 1.3],
+  };
+  const cat = pile.cat;
+  if (traction)
+    return {
+      na: true,
+      reason:
+        "Pieu sollicité en traction : la compression du béton ne gouverne pas — la résistance structurale est assurée par les armatures / l'acier (hors de cet outil).",
+    };
+  if (!map[cat])
+    return {
+      na: true,
+      reason:
+        "Vérification non applicable à cette catégorie (pieu acier, préfabriqué, micropieu ou injecté) : la résistance structurale dépend du matériau et n'est pas couverte ici.",
+    };
+  const [Cmax, k1] = map[cat];
+  const fck = b_fck || 25;
+  const Bsmall = pileGeom(geom).B;
+  const D = g_D,
+    z0 = g_z0,
+    Lp = D - z0;
+  let k2 = 1.0;
+  if (Bsmall > 0 && Bsmall < 0.6) k2 = 1.3 - Bsmall / 2;
+  if (Bsmall > 0 && Bsmall < 0.6 && Lp > 0 && D / Bsmall < 20)
+    k2 = Math.max(k2, 1.35 - Bsmall / 2);
+  if (Lp > 0 && Bsmall / Lp < 0.05) k2 = Math.max(k2, 1.05);
+  const fckStar = Math.min(Cmax, fck) / (k1 * k2);
+  const acc = arm === 'nonarme' ? 0.8 : 1.0,
+    k3 = k3sel === '1.2' ? 1.2 : 1.0,
+    gc = 1.5;
+  const fcd = Math.min((acc * k3 * fckStar) / gc, (acc * fck) / gc, (acc * Cmax) / gc);
+  const sELU = Ab > 0 ? FduELU / Ab / 1000 : 0; // MPa
+  const sELS = Ab > 0 ? FdCar / Ab / 1000 : 0; // MPa
+  const limELS = 0.3 * k3 * fckStar;
+  return {
+    na: false,
+    Cmax,
+    k1,
+    k2,
+    fck,
+    fckStar,
+    acc,
+    k3,
+    gc,
+    fcd,
+    sELU,
+    sELS,
+    limELS,
+    okELU: sELU <= fcd,
+    okELS: sELS <= limELS,
+    tauxELU: fcd > 0 ? sELU / fcd : 0,
+    tauxELS: limELS > 0 ? sELS / limELS : 0,
+  };
+}
+
+function computeBetonCore(state) {
+  // Enchainement du HTML : compute() calcule la portance PUIS appelle betonCheck avec
+  // Ab / FduELU / FdCar / pile / traction issus de ce meme calcul. On re-derive ces
+  // grandeurs via computePieuxCore (fidelite : meme code, memes entrees).
+  const R = computePieuxCore(state || {});
+  // Garde de portance (profil vide, D<=z0) : le HTML RETOURNE avant betonCheck
+  // (drawBeton non appele). Meme court-circuit ici, meme message.
+  if (R.err) return { err: R.err };
+  const beton = state.beton || {};
+  const traction = state.sens === 'trac';
+  return betonCheck(
+    R.pile,
+    R.Ab,
+    R.FduELU,
+    R.FdCar,
+    traction,
+    state.geom,
+    state.g_D,
+    state.g_z0,
+    beton.b_fck,
+    beton.arm,
+    beton.k3,
+  );
+}
+
+/**
+ * Calcule la VERIFICATION STRUCTURALE DU BETON (NF P 94-262 §4.4) d'un pieu a partir
+ * de l'ETAT complet (meme `state` que computePieux, plus le groupe `beton` :
+ * `{ b_fck?, arm, k3 }`). Renvoie l'objet BRUT de `betonCheck` (soit `{ na:true,
+ * reason }`, soit la verification `{ na:false, ..., okELU, okELS, tauxELU, tauxELS }`),
+ * OU `{ err }` si la portance rejette l'entree (garde) ou si la science leve. La
+ * PROJECTION client-safe (tauxELU/okELU/tauxELS/okELS/fcd uniquement) est faite par
+ * index.ts ; les facteurs de calage (Cmax/k1/k2/fckStar/acc/k3/gc) restent SERVEUR.
+ */
+export function computeBeton(state) {
+  try {
+    return computeBetonCore(state || {});
+  } catch (e) {
+    return { err: e && e.message ? String(e.message) : 'Erreur de calcul' };
+  }
+}

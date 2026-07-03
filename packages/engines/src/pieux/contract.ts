@@ -212,6 +212,28 @@ const FrottementNegatifSchema = z
   .strict();
 
 /**
+ * VERIFICATION STRUCTURALE DU BETON (NF P 94-262 §4.4) — groupe d'entree OPTIONNEL
+ * (#95). Absent => la verification structurale n'est PAS calculee (les sorties
+ * beton* valent null). Reproduit les 3 entrees que `betonCheck()` du HTML lisait :
+ *   - `b_fck` : resistance caracteristique du beton f_ck (MPa) ; le HTML applique
+ *     `num('b_fck') || 25` (champ vide ou 0 => 25 MPa) — d'ou l'optionnalite ;
+ *   - `arm`   : section « armé » (α_cc = 1,0) ou « nonarme » (α_cc = 0,8) ;
+ *   - `k3`    : contrôles d'intégrité — « 1.0 » (courants) ou « 1.2 » (renforcés).
+ * NB : les VALEURS numeriques associees (α_cc, k3, k1, k2, C_max, f_ck*) sont des
+ * FACTEURS DE CALAGE de la methode — ils restent SERVEUR (jamais exposes, cf. index.ts).
+ */
+const BetonSchema = z
+  .object({
+    /** Resistance caracteristique du beton f_ck (MPa). Vide/0 => 25 (defaut moteur). */
+    b_fck: z.number().finite().min(0).max(200).optional(),
+    /** Section : 'arme' (α_cc = 1,0) / 'nonarme' (α_cc = 0,8). */
+    arm: z.enum(['arme', 'nonarme']),
+    /** Contrôles d'intégrité : '1.0' (courants) / '1.2' (renforcés) -> facteur k₃. */
+    k3: z.enum(['1.0', '1.2']),
+  })
+  .strict();
+
+/**
  * Entree complete du moteur pieux (un calcul de portance). Bornee. Voir l'en-tete
  * pour le sens et les unites.
  */
@@ -256,6 +278,8 @@ export const PieuxInputSchema = z
     cpt: CptSchema,
     /** Frottement negatif (downdrag) — groupe optionnel ; absent => non calcule. */
     frottementNegatif: FrottementNegatifSchema.optional(),
+    /** Verification structurale du beton (§4.4) — groupe optionnel ; absent => non calculee. */
+    beton: BetonSchema.optional(),
   })
   .strict();
 export type PieuxInput = z.infer<typeof PieuxInputSchema>;
@@ -337,6 +361,22 @@ export const PieuxOutputSchema = z
     Nmax: z.number().finite().nullable(),
     /** Cote du point neutre z_N (m) — position (deplacement relatif sol-pieu nul). */
     pointNeutre: z.number().finite().nullable(),
+    // --- VERIFICATION STRUCTURALE DU BETON (§4.4, #95) — null si non demandee ---
+    // On expose UNIQUEMENT le RESULTAT de la verification. Les facteurs de calage de
+    // la methode (Cmax, k1, k2, fckStar, acc, k3, gc) NE sortent JAMAIS (SERVEUR, DoD §8).
+    /** Verification structurale applicable : false si traction / categorie non couverte (na),
+     *  true si calculee, null si non demandee. */
+    betonApplicable: z.boolean().nullable(),
+    /** Verification ELU du beton satisfaite (σ_ELU ≤ f_cd). null si na / non demandee. */
+    betonOkELU: z.boolean().nullable(),
+    /** Verification ELS du beton satisfaite (σ_ELS ≤ limite ELS). null si na / non demandee. */
+    betonOkELS: z.boolean().nullable(),
+    /** Taux de travail ELU du beton σ_ELU/f_cd (sans dimension). null si na / non demandee. */
+    betonTauxELU: z.number().finite().nullable(),
+    /** Taux de travail ELS du beton (sans dimension). null si na / non demandee. */
+    betonTauxELS: z.number().finite().nullable(),
+    /** Resistance de calcul du beton f_cd (MPa, EC2) — resultat de dimensionnement. null si na / non demandee. */
+    betonFcd: z.number().finite().nullable(),
   })
   .strict();
 export type PieuxOutput = z.infer<typeof PieuxOutputSchema>;

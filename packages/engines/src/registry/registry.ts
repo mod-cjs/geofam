@@ -134,7 +134,14 @@ export const ENGINE_REGISTRY: readonly EngineRegistryEntry[] = [
     // seule son EXTRACTION est nouvelle). MINEUR : ajout retro-compatible (sans downdrag,
     // les 3 sorties valent null). Equivalence-PORTAGE downdrag prouvee (rel 1e-9). Cette
     // extraction est SCIENCE-SIGNEE (STARFIRE a valide les moteurs) : voir engine.ts.
-    version: '1.1.0',
+    // 1.2.0 : portage de la VERIFICATION STRUCTURALE DU BETON (betonCheck, §4.4, #95)
+    // — nouvelle entree `beton` { b_fck, arm, k3 } + sorties betonApplicable/betonOkELU/
+    // betonOkELS/betonTauxELU/betonTauxELS/betonFcd. Le HTML source reste INCHANGE
+    // (sha256 identique : betonCheck() existait deja dans casagrande_V5, seule son
+    // EXTRACTION est nouvelle). MINEUR : ajout retro-compatible (sans `beton`, les 6
+    // sorties valent null). Facteurs de calage (Cmax/k1/k2/fckStar/acc/k3/gc) SERVEUR.
+    // Equivalence-PORTAGE beton prouvee (rel 1e-9). SCIENCE-SIGNEE : voir engine.ts.
+    version: '1.2.0',
     confirmePar:
       'title="CASAGRANDE — Calcul de fondations profondes (NF P 94-262)" + 69 occurrences "pieu"',
   },
