@@ -21,6 +21,7 @@ import {
   LogOut,
   Menu,
   X,
+  Route,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
@@ -56,6 +57,18 @@ function useNavItems(orgSlug: string): NavItem[] {
       label: 'Bibliothèque de moteurs',
       icon: <Library size={20} strokeWidth={1.5} aria-hidden="true" />,
       href: `/app/${orgSlug}/bibliotheque`,
+    },
+  ];
+}
+
+/** Items de navigation pour les logiciels (section dédiée). */
+function useLogicielsItems(orgSlug: string): NavItem[] {
+  return [
+    {
+      id: 'roadsens',
+      label: 'ROADSENS — Chaussées',
+      icon: <Route size={20} strokeWidth={1.5} aria-hidden="true" />,
+      href: `/app/${orgSlug}/logiciels/roadsens`,
     },
   ];
 }
@@ -105,6 +118,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
   const pathname = usePathname();
   const router = useRouter();
   const navItems = useNavItems(orgSlug);
+  const logicielsItems = useLogicielsItems(orgSlug);
   const [tooltipId, setTooltipId] = useState<string | null>(null);
   const tooltipTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -406,6 +420,81 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
 
         <ul role="list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {navItems.slice(0, 1).map((item) => {
+            const active = isActive(item.href);
+            return (
+              <li key={item.id} style={{ position: 'relative' }}>
+                <a
+                  href={item.href}
+                  aria-current={active ? 'page' : undefined}
+                  onMouseEnter={() => showTooltip(item.id)}
+                  onMouseLeave={() => hideTooltip(item.id)}
+                  onFocus={() => showTooltip(item.id)}
+                  onBlur={() => hideTooltip(item.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: collapsed ? '10px 0' : '10px 10px',
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    borderRadius: 'var(--radius-base)',
+                    textDecoration: 'none',
+                    color: active ? 'var(--accent-action-on-nav)' : 'var(--text-on-nav)',
+                    background: active ? 'rgba(31,78,74,0.12)' : 'transparent',
+                    borderLeft: active
+                      ? '3px solid var(--struct-petrole)'
+                      : '3px solid transparent',
+                    fontSize: 'var(--text-sm)',
+                    fontWeight: active ? 500 : 400,
+                    transition: `background var(--dur-fast) var(--ease-state), color var(--dur-fast) var(--ease-state)`,
+                    position: 'relative',
+                  }}
+                  onMouseOver={(e) => {
+                    if (!active)
+                      (e.currentTarget as HTMLElement).style.background =
+                        'var(--nav-hover)';
+                  }}
+                  onMouseOut={(e) => {
+                    if (!active)
+                      (e.currentTarget as HTMLElement).style.background = 'transparent';
+                  }}
+                >
+                  {item.icon}
+                  {collapsed ? (
+                    <span className="sr-only">{item.label}</span>
+                  ) : (
+                    <span>{item.label}</span>
+                  )}
+                </a>
+                <NavTooltip
+                  label={item.label}
+                  visible={collapsed && tooltipId === item.id}
+                />
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* Séparateur */}
+        <div style={{ height: 1, background: 'var(--border-nav)', margin: '8px 2px' }} />
+
+        {/* LOGICIELS */}
+        {!collapsed && (
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              color: 'var(--muted-on-nav)',
+              padding: '12px 10px 6px',
+            }}
+          >
+            Logiciels
+          </div>
+        )}
+
+        <ul role="list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          {logicielsItems.map((item) => {
             const active = isActive(item.href);
             return (
               <li key={item.id} style={{ position: 'relative' }}>
