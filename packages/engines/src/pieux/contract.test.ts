@@ -13,7 +13,11 @@ import { describe, expect, it } from 'vitest';
 
 import { PieuxOutputSchema } from './contract.js';
 import { computePieux } from './engine.js';
-import { PIEUX_DOWNDRAG_FIXTURES, PIEUX_FIXTURES } from './test-fixtures.js';
+import {
+  PIEUX_BETON_FIXTURES,
+  PIEUX_DOWNDRAG_FIXTURES,
+  PIEUX_FIXTURES,
+} from './test-fixtures.js';
 
 import { runPieux } from './index.js';
 
@@ -180,6 +184,111 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     expect(env.output.Gsn).toBeNull();
     expect(env.output.Nmax).toBeNull();
     expect(env.output.pointNeutre).toBeNull();
+  });
+
+  // --- VÉRIFICATION BÉTON (#95) : seul le RÉSULTAT sort, jamais les facteurs de calage --
+  // Le retour BRUT de betonCheck porte les FACTEURS DE CALAGE de la méthode NF P 94-262
+  // §4.4 (C_max et k₁ du Tableau 12, k₂ d'élancement, la résistance calée f_ck*, α_cc,
+  // k₃, γ_c) ET les contraintes NUES σ_ELU/σ_ELS/limite ELS. Tout cela révèle la méthode
+  // et reste SERVEUR. Seuls le verdict (okELU/okELS), les taux et f_cd (résistance de
+  // calcul EC2, publique) sont whitelistés — sous des noms préfixés `beton*`.
+  const BETON_FUITES_INTERDITES = [
+    'Cmax',
+    'k1',
+    'k2',
+    'fck',
+    'fckStar',
+    'acc',
+    'k3',
+    'gc',
+    'sELU',
+    'sELS',
+    'limELS',
+    'na',
+    'reason',
+    // Les taux/verdicts NUS (sans préfixe beton*) ne doivent pas non plus apparaître.
+    'okELU',
+    'okELS',
+    'tauxELU',
+    'tauxELS',
+    'fcd',
+  ];
+
+  const btFixtures = PIEUX_BETON_FIXTURES.filter((f) => !f.horsDomaine);
+
+  it('PRECONDITION béton : au moins 8 jeux comparables (sinon test vide)', () => {
+    expect(btFixtures.length).toBeGreaterThanOrEqual(8);
+  });
+
+  for (const fx of btFixtures) {
+    it(`[${fx.id}] béton : aucun facteur de calage (Cmax/k1/k2/fckStar/acc/k3/gc) ne fuit`, () => {
+      const env = runPieux(fx.input);
+      expect(env.ok).toBe(true);
+      if (!env.ok) return;
+      const keys = new Set<string>();
+      collectKeys(env.output, keys);
+      const fuites = BETON_FUITES_INTERDITES.filter((k) => keys.has(k));
+      expect(fuites, `facteurs de calage béton trouvés dans la sortie`).toEqual([]);
+      // Symétrie POSITIVE : les 6 champs client-safe SONT présents (non undefined).
+      for (const k of [
+        'betonApplicable',
+        'betonOkELU',
+        'betonOkELS',
+        'betonTauxELU',
+        'betonTauxELS',
+        'betonFcd',
+      ]) {
+        expect(Object.prototype.hasOwnProperty.call(env.output, k)).toBe(true);
+      }
+      // Re-parse strict : toute clé non whitelistée qui aurait survécu serait rejetée.
+      expect(() => PieuxOutputSchema.parse(env.output)).not.toThrow();
+    });
+  }
+
+  it('béton APPLICABLE (compression) : verdict/taux/f_cd finis, betonApplicable=true', () => {
+    const fx = PIEUX_BETON_FIXTURES.find((f) => f.id === 'bt-arme-comp-courant-fore');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const env = runPieux(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    expect(env.output.betonApplicable).toBe(true);
+    expect(typeof env.output.betonOkELU).toBe('boolean');
+    expect(typeof env.output.betonOkELS).toBe('boolean');
+    expect(Number.isFinite(env.output.betonTauxELU)).toBe(true);
+    expect(Number.isFinite(env.output.betonTauxELS)).toBe(true);
+    expect(Number.isFinite(env.output.betonFcd)).toBe(true);
+  });
+
+  it('béton NON APPLICABLE (traction) : betonApplicable=false, verdicts/taux/f_cd = null', () => {
+    const fx = PIEUX_BETON_FIXTURES.find((f) => f.id === 'bt-arme-traction-na');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const env = runPieux(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    expect(env.output.betonApplicable).toBe(false);
+    expect(env.output.betonOkELU).toBeNull();
+    expect(env.output.betonOkELS).toBeNull();
+    expect(env.output.betonTauxELU).toBeNull();
+    expect(env.output.betonTauxELS).toBeNull();
+    expect(env.output.betonFcd).toBeNull();
+  });
+
+  it('SANS groupe beton : les 6 champs beton* valent null (vérification non calculée)', () => {
+    const fx = PIEUX_FIXTURES.find((f) => f.id === 'pmt-fore-da2-comp');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    expect(fx.input.beton).toBeUndefined();
+    const env = runPieux(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    expect(env.output.betonApplicable).toBeNull();
+    expect(env.output.betonOkELU).toBeNull();
+    expect(env.output.betonOkELS).toBeNull();
+    expect(env.output.betonTauxELU).toBeNull();
+    expect(env.output.betonTauxELS).toBeNull();
+    expect(env.output.betonFcd).toBeNull();
   });
 
   it('la meta porte l identite, la version et le hash source (tracabilite PV)', () => {

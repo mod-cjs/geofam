@@ -51,6 +51,7 @@ export { PIEUX_CONFIDENTIAL_MARKER } from './engine.js';
 export {
   PIEUX_FIXTURES,
   PIEUX_DOWNDRAG_FIXTURES,
+  PIEUX_BETON_FIXTURES,
   type PieuxFixture,
 } from './test-fixtures.js';
 

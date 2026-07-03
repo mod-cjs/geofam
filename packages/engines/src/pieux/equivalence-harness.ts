@@ -325,6 +325,130 @@ export function loadOriginalDowndrag(): {
 }
 
 /**
+ * Charge le HTML d'origine dans jsdom et renvoie une fonction `computeBetonHtml` qui
+ * pilote la VERIFICATION STRUCTURALE DU BETON (§4.4) dans le contexte global de la
+ * fenetre, en INTERCEPTANT `drawBeton(b)` pour capturer son argument — qui est
+ * EXACTEMENT le retour de `betonCheck(pile, Ab, FduELU, FdCar, traction)` (le HTML
+ * fait `drawBeton(betonCheck(...))`, ligne 1268). On renvoie cet objet `b` BRUT — ce
+ * que le module `computeBeton()` retourne (cf. engine.ts).
+ *
+ * Meme mecanique que loadOriginalCompute (compute() non-pur), a une difference PRES :
+ * on NE neutralise PAS `betonCheck` (on veut le VRAI). On intercepte :
+ *   1. `renderResults` (capture `R` -> permet de recuperer un `{ err }` de garde) ;
+ *   2. `drawBeton` (capture l'objet `b`), et on neutralise `drawCoupe`/`drawQcLog`/
+ *      `drawPortance` (presentation, aucun effet sur `b`) ;
+ *   3. on renseigne TOUS les champs de saisie/globales de loadOriginalCompute PLUS
+ *      `b_fck` (DOM) + `state.arm` + `state.k3` (les 3 entrees propres a betonCheck) ;
+ *   4. on appelle `compute()` : betonCheck s'execute sur les grandeurs de portance
+ *      REELLES (Ab/FduELU/FdCar), drawBeton capture son retour.
+ * GARDE de portance (profil vide / D<=z0) : compute() fait `renderResults({err})` et
+ * RETOURNE avant betonCheck (drawBeton non appele). On renvoie alors `{ err: R.err }`
+ * — le module renvoie le MEME `{ err }`.
+ *
+ * @throws si la source est absente / si le SHA-256 lu != registre (meme garde MINEUR-1).
+ */
+export function loadOriginalBeton(): {
+  computeBetonHtml: (state: PieuxInput) => unknown;
+  cleanup: () => void;
+} {
+  const buf = readFileSync(pieuxSourcePath());
+  const actualSha = createHash('sha256').update(buf).digest('hex');
+  const expectedSha = pieuxRegistrySha256();
+  if (actualSha !== expectedSha) {
+    throw new Error(
+      `EQUIVALENCE INVALIDE (beton) : le SHA-256 du HTML source pieux (${actualSha}) ` +
+        `ne correspond PAS a la valeur scellee au registre (${expectedSha}). On testerait ` +
+        `l'equivalence contre une version DIFFERENTE de celle scellee au PV. ` +
+        `Mettre a jour le registre (sha256 + bump version) si l'evolution est voulue, ` +
+        `OU restaurer la version canonique. (MINEUR-1 #48)`,
+    );
+  }
+  const html = buf.toString('utf8');
+  const dom = new JSDOM(html, { runScripts: 'dangerously' });
+  const win = dom.window as unknown as { eval: (code: string) => unknown };
+
+  if (win.eval('typeof compute') !== 'function') {
+    throw new Error(
+      "Le HTML d'origine n'expose pas compute : structure du moteur modifiee ?",
+    );
+  }
+  if (win.eval('typeof betonCheck') !== 'function') {
+    throw new Error("Le HTML d'origine n'expose pas betonCheck.");
+  }
+  if (win.eval('typeof drawBeton') !== 'function') {
+    throw new Error("Le HTML d'origine n'expose pas drawBeton.");
+  }
+
+  const computeBetonHtml = (s: PieuxInput): unknown => {
+    const g = s.geom;
+    const c = s.coeffs;
+    const bt = s.beton;
+    const code = `
+      (function(){
+        function setV(id, v){ var el = document.getElementById(id); if(el){ el.value = String(v); } }
+        // 1. INTERCEPTION : capturer R (pour un eventuel { err }) et l'objet b de betonCheck.
+        //    On NE neutralise PAS betonCheck (on veut le VRAI) ; on neutralise le rendu.
+        var __capturedR = null, __capturedBeton = null;
+        renderResults = function(R){ __capturedR = R; };
+        drawCoupe = function(){};
+        if (typeof drawQcLog === 'function') drawQcLog = function(){};
+        if (typeof drawPortance === 'function') drawPortance = function(){};
+        drawBeton = function(b){ __capturedBeton = b; };
+
+        // 2. CHAMPS DE SAISIE (geometrie, charges, options, coefficients editables).
+        setV('g_pieu', ${s.cat});
+        setV('g_B', ${g.g_B ?? ''});
+        setV('g_b2', ${g.g_b2 ?? ''});
+        setV('g_Ap', ${g.g_Ap ?? ''});
+        setV('g_P', ${g.g_P ?? ''});
+        setV('g_z0', ${s.g_z0});
+        setV('g_D', ${s.g_D});
+        setV('c_G', ${s.c_G});
+        setV('c_Q', ${s.c_Q});
+        setV('o_nappe', ${s.o_nappe});
+        setV('o_nprofil', ${s.o_nprofil});
+        setV('o_surf', ${s.o_surf});
+        setV('o_redis', ${JSON.stringify(s.o_redis)});
+        setV('grp_n', ${s.grp.grp_n});
+        setV('grp_m', ${s.grp.grp_m});
+        setV('grp_s', ${s.grp.grp_s});
+        // b_fck : entree PROPRE a betonCheck (num('b_fck') || 25). Vide => '' => 0 => 25.
+        setV('b_fck', ${bt && bt.b_fck != null ? bt.b_fck : ''});
+        setV('k_gb', ${c.k_gb}); setV('k_gs', ${c.k_gs}); setV('k_gst', ${c.k_gst});
+        setV('k_psi2', ${c.k_psi2});
+        setV('cr_b_b', ${c.cr_b_b}); setV('cr_b_s', ${c.cr_b_s});
+        setV('cr_f_b', ${c.cr_f_b}); setV('cr_f_s', ${c.cr_f_s});
+        setV('cr_car', ${c.cr_car}); setV('cr_qp', ${c.cr_qp});
+        setV('cr_car_t', ${c.cr_car_t}); setV('cr_qp_t', ${c.cr_qp_t});
+
+        // 3. GLOBALE state (section/sens/meth/da/essais/layers/cpt) + arm/k3 (betonCheck).
+        state.section = ${JSON.stringify(g.section)};
+        state.sens = ${JSON.stringify(s.sens)};
+        state.meth = ${JSON.stringify(s.meth)};
+        state.da = ${JSON.stringify(s.da)};
+        state.essais = ${JSON.stringify(s.essais)};
+        state.layers = ${JSON.stringify(s.layers)};
+        state.cpt = ${JSON.stringify(s.cpt)};
+        state.arm = ${JSON.stringify(bt ? bt.arm : 'arme')};
+        state.k3 = ${JSON.stringify(bt ? bt.k3 : '1.0')};
+
+        // 4. CALCUL (betonCheck capture par drawBeton intercepte).
+        var __err = null;
+        try { compute(); } catch (e) { __err = e && e.message ? String(e.message) : 'Erreur de calcul'; }
+        if (__err !== null) return JSON.stringify({ err: __err });
+        if (__capturedBeton !== null) return JSON.stringify(__capturedBeton);
+        // GARDE : compute() a fait renderResults({err}) et RETOURNE avant betonCheck.
+        if (__capturedR && typeof __capturedR.err === 'string') return JSON.stringify({ err: __capturedR.err });
+        return JSON.stringify(null);
+      })()
+    `;
+    return JSON.parse(win.eval(code) as string);
+  };
+
+  return { computeBetonHtml, cleanup: () => dom.window.close() };
+}
+
+/**
  * Verifie si le HTML source est present localement (absent en CI : 03-Moteurs-client
  * hors depot git). Permet au test d'equivalence de SKIP BRUYAMMENT sans faux-vert.
  */

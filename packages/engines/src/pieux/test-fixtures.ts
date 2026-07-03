@@ -338,3 +338,103 @@ export const PIEUX_DOWNDRAG_FIXTURES: readonly PieuxFixture[] = [
     input: base({ g_z0: 10, g_D: 8, frottementNegatif: fnAuto() }),
   },
 ];
+
+// ===========================================================================
+// VERIFICATION STRUCTURALE DU BETON (§4.4, #95) — jeux d'ENTREES pour l'equivalence
+// -portage de betonCheck() <-> HTML d'origine (drawBeton), et pour le determinisme.
+// ===========================================================================
+//
+// Meme discipline : ces fixtures ne portent QUE des entrees ; la REFERENCE est derivee
+// en pilotant compute() (qui appelle betonCheck) du HTML via jsdom, en interceptant
+// drawBeton (provenance 'HTML-origine'). Aucune sortie fabriquee a la main.
+//
+// Le groupe `beton` renseigne EXPLICITEMENT les 3 entrees de betonCheck : `b_fck`
+// (MPa ; omis => defaut moteur 25 via num||25), `arm` ('arme' α_cc=1,0 / 'nonarme'
+// α_cc=0,8), `k3` ('1.0' courants / '1.2' renforces).
+//
+// Couverture demandee : armé/non x compression/traction x controles courants/renforces,
+// + un cas de CATEGORIE NON COUVERTE (na), + exercice de k2 (petit diametre B<0,60),
+// + ecretage f_ck a C_max (f_ck > C_max) et f_ck par DEFAUT (b_fck omis), + la ligne de
+// map cat 6 (C_max=30, k1=1,35), + 1 HORS-DOMAINE (D<=z0, garde de portance).
+
+/** Verification beton — construit un groupe `beton` (defauts arme / courant / fck 30). */
+function beton(over: Partial<PieuxInput['beton'] & object> = {}) {
+  return { arm: 'arme' as const, k3: '1.0' as const, b_fck: 30, ...over };
+}
+
+export const PIEUX_BETON_FIXTURES: readonly PieuxFixture[] = [
+  {
+    id: 'bt-arme-comp-courant-fore',
+    description:
+      'Béton ARMÉ (α_cc=1,0), compression, contrôles COURANTS (k₃=1,0), foré simple cat 1, f_ck=30 — vérification complète',
+    input: base({ beton: beton() }),
+  },
+  {
+    id: 'bt-nonarme-comp-courant-fore',
+    description:
+      'Béton NON ARMÉ (α_cc=0,8), compression, contrôles courants, foré simple — f_cd réduit',
+    input: base({ beton: beton({ arm: 'nonarme' }) }),
+  },
+  {
+    id: 'bt-arme-comp-renforce-fore',
+    description:
+      'Béton armé, compression, contrôles RENFORCÉS (k₃=1,2), foré simple — f_ck* et limite ELS majorés',
+    input: base({ beton: beton({ k3: '1.2' }) }),
+  },
+  {
+    id: 'bt-nonarme-comp-renforce-fore',
+    description:
+      'Béton NON ARMÉ, compression, contrôles RENFORCÉS — croisement α_cc=0,8 × k₃=1,2',
+    input: base({ beton: beton({ arm: 'nonarme', k3: '1.2' }) }),
+  },
+  {
+    id: 'bt-arme-traction-na',
+    description:
+      'TRACTION (sens=trac) : betonCheck renvoie na:true (« la compression du béton ne gouverne pas ») — armé courant',
+    input: base({ sens: 'trac', beton: beton() }),
+  },
+  {
+    id: 'bt-nonarme-traction-na',
+    description:
+      'TRACTION, béton non armé, contrôles renforcés : na:true identique (les paramètres section ne changent rien en traction)',
+    input: base({ sens: 'trac', beton: beton({ arm: 'nonarme', k3: '1.2' }) }),
+  },
+  {
+    id: 'bt-cat9-battu-non-couverte-na',
+    description:
+      'Catégorie NON COUVERTE (cat 9, battu préfabriqué : hors map Tableau 12) : na:true (« Vérification non applicable »)',
+    input: base({ cat: 9, beton: beton() }),
+  },
+  {
+    id: 'bt-cat6-tariere-comp',
+    description:
+      'Foré tarière creuse (cat 6) : ligne de map spécifique C_max=30, k₁=1,35 — compression, armé courant',
+    input: base({ cat: 6, beton: beton() }),
+  },
+  {
+    id: 'bt-petit-diametre-k2',
+    description:
+      'Petit diamètre B=0,40 m < 0,60 : exerce k₂ (1,30−B/2, puis 1,35−B/2 si D/B<20), foré simple compression',
+    input: base({ geom: { section: 'circ', g_B: 0.4 }, g_D: 6, beton: beton() }),
+  },
+  {
+    id: 'bt-fck-ecrete-cmax',
+    description:
+      'f_ck=50 > C_max=35 (cat 1) : min(C_max ; f_ck) écrête f_ck* à C_max — compression, armé courant',
+    input: base({ beton: beton({ b_fck: 50 }) }),
+  },
+  {
+    id: 'bt-fck-defaut-25',
+    description:
+      'b_fck OMIS : le moteur applique f_ck = 25 (num||25) — compression, armé courant',
+    input: base({ beton: beton({ b_fck: undefined }) }),
+  },
+  // --- HORS-DOMAINE : garde de portance (compute() retourne avant betonCheck) --------
+  {
+    id: 'bt-hors-domaine-D-inferieur-z0',
+    description:
+      'D <= z0 : compute() renvoie une erreur bornée AVANT betonCheck (drawBeton non appelé) — { err } identique origine/module.',
+    horsDomaine: true,
+    input: base({ g_z0: 10, g_D: 8, beton: beton() }),
+  },
+];

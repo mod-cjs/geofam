@@ -20,8 +20,12 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { computePieux, computeDowndrag } from './engine.js';
-import { PIEUX_DOWNDRAG_FIXTURES, PIEUX_FIXTURES } from './test-fixtures.js';
+import { computePieux, computeDowndrag, computeBeton } from './engine.js';
+import {
+  PIEUX_BETON_FIXTURES,
+  PIEUX_DOWNDRAG_FIXTURES,
+  PIEUX_FIXTURES,
+} from './test-fixtures.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -73,6 +77,30 @@ describe('pieux — FROTTEMENT NÉGATIF déterministe (#94) — même entrée ->
     expect(second).toBe(first);
     // Le pénétrogramme d'entrée est INCHANGÉ après calcul (pas de mutation cachée).
     expect(JSON.stringify(fx.input.cpt)).toBe(cptAvant);
+  });
+});
+
+describe('pieux — VÉRIFICATION BÉTON déterministe (#95) — même entrée -> même sortie x100, égalité stricte', () => {
+  for (const fx of PIEUX_BETON_FIXTURES) {
+    it(`[${fx.id}] béton identique sur 100 appels`, () => {
+      const ref = JSON.stringify(computeBeton(fx.input));
+      for (let i = 0; i < 100; i++) {
+        // Égalité STRICTE : aucune tolérance. betonCheck est purement arithmétique
+        // (tables Tableau 12, min/max) -> aucune dérive entre deux appels.
+        expect(JSON.stringify(computeBeton(fx.input))).toBe(ref);
+      }
+    });
+  }
+
+  it('le béton ne MUTE pas l entrée (2 appels identiques sur le même objet)', () => {
+    // computeBeton re-exécute computePieuxCore (branche CPT clonée) sans mutation de
+    // l'entrée. 2 appels sur le MÊME objet doivent coïncider.
+    const fx = PIEUX_BETON_FIXTURES.find((f) => f.id === 'bt-arme-comp-courant-fore');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const first = JSON.stringify(computeBeton(fx.input));
+    const second = JSON.stringify(computeBeton(fx.input));
+    expect(second).toBe(first);
   });
 });
 
