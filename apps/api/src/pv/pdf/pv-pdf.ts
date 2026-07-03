@@ -709,6 +709,66 @@ function buildFonProfondeBody(sealed: SealedContent): Content[] {
     body.push({ text: tass, style: 'cell', margin: [0, 2, 0, 4] });
   }
 
+  // 5) Frottement négatif (downdrag, #94) — si calculé (sinon rien : fail-closed)
+  const gsn = fdnNum(output.Gsn, 1, 'kN');
+  const nmax = fdnNum(output.Nmax, 1, 'kN');
+  const zN = fdnNum(output.pointNeutre, 2, 'm');
+  if (gsn !== '—' || nmax !== '—' || zN !== '—') {
+    body.push(sectionTitle('Frottement négatif'));
+    const fn: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
+    const fnRow = (p: string, v: string): void => {
+      if (v !== '—') fn.push([{ text: p, style: 'cell' }, { text: v, style: 'cell', alignment: 'right' }]);
+    };
+    fnRow('Charge de frottement négatif G_sn', gsn);
+    fnRow('Effort axial maximal N_max', nmax);
+    fnRow('Profondeur du point neutre z_N', zN);
+    body.push({
+      table: { headerRows: 1, widths: ['*', 'auto'], body: fn },
+      layout: FINE_TABLE_LAYOUT,
+      margin: [0, 2, 0, 4],
+    });
+  }
+
+  // 6) Vérification structurale du béton (#95) — selon betonApplicable
+  if (output.betonApplicable === true) {
+    body.push(sectionTitle('Vérification structurale du béton'));
+    const bt: TableCell[][] = [
+      [fdnHead('Grandeur'), fdnHead('Taux', 'right'), fdnHead('Vérif.', 'center')],
+    ];
+    const betonRow = (p: string, taux: unknown, ok: unknown): void => {
+      const n = typeof taux === 'number' && Number.isFinite(taux) ? taux : null;
+      if (n === null) return;
+      const isOk = ok === true;
+      bt.push([
+        { text: p, style: 'cell' },
+        { text: fdnNum(n * 100, 0, '%'), style: 'cell', alignment: 'right' },
+        {
+          text: isOk ? '✓ OK' : '✗ NON',
+          style: 'cell',
+          alignment: 'center',
+          bold: true,
+          color: isOk ? COLORS.navy : COLORS.alert,
+        },
+      ]);
+    };
+    betonRow('Taux béton ELU σ/f_cd', output.betonTauxELU, output.betonOkELU);
+    betonRow('Taux béton ELS', output.betonTauxELS, output.betonOkELS);
+    if (bt.length > 1) {
+      body.push({
+        table: { headerRows: 1, widths: ['*', 'auto', 'auto'], body: bt },
+        layout: FINE_TABLE_LAYOUT,
+        margin: [0, 2, 0, 4],
+      });
+    }
+    const fcd = fdnNum(output.betonFcd, 1, 'MPa');
+    if (fcd !== '—') {
+      body.push({ text: `Résistance de calcul du béton f_cd = ${fcd}`, style: 'cellMuted', margin: [0, 0, 0, 4] });
+    }
+  } else if (output.betonApplicable === false) {
+    body.push(sectionTitle('Vérification structurale du béton'));
+    body.push({ text: 'Non applicable pour ce pieu.', style: 'cellMuted', margin: [0, 2, 0, 4] });
+  }
+
   // Avertissements
   const w = output.warnings;
   if (Array.isArray(w) && w.length > 0) {

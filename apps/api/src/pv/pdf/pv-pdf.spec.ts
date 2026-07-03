@@ -293,4 +293,64 @@ describe('PV pieux — allowlist fail-closed du libellé de vérification (DoD �
     // Le nom EC7 reconnu passe intact.
     expect(text).toContain('ELS caractéristique');
   });
+
+  it('affiche le frottement négatif (#94) et la vérif béton (#95) quand calculés', () => {
+    const pv = makeSealedPv({
+      engineId: 'fondation-profonde-pieux',
+      output: {
+        allOk: true,
+        RbK: 800,
+        RsK: 1000,
+        RcD: 1500,
+        tassementELS: 5,
+        // Frottement négatif (downdrag)
+        Gsn: 250,
+        Nmax: 1750,
+        pointNeutre: 8.5,
+        // Vérification structurale du béton
+        betonApplicable: true,
+        betonTauxELU: 0.75,
+        betonOkELU: true,
+        betonTauxELS: 0.5,
+        betonOkELS: true,
+        betonFcd: 14.2,
+      },
+    });
+    const text = collectPvPdfText(pv);
+    // Contenu (les titres de section ne sont pas collectés par collectPvPdfText).
+    expect(text).toContain('Charge de frottement négatif');
+    expect(text).toContain('G_sn');
+    expect(text).toContain('250'); // Gsn kN
+    expect(text).toContain('Taux béton');
+    expect(text).toContain('75'); // taux ELU 0.75 -> 75 %
+    expect(text).toContain('f_cd');
+  });
+
+  it('n’affiche AUCUNE section frottement négatif / béton quand non calculés (fail-closed)', () => {
+    const pv = makeSealedPv({
+      engineId: 'fondation-profonde-pieux',
+      output: {
+        allOk: true,
+        RbK: 800,
+        RsK: 1000,
+        RcD: 1500,
+        tassementELS: 5,
+        // Gsn/Nmax/pointNeutre absents, betonApplicable absent (null)
+      },
+    });
+    const text = collectPvPdfText(pv);
+    expect(text.includes('Charge de frottement négatif')).toBe(false);
+    expect(text.includes('Taux béton')).toBe(false);
+    expect(text.includes('Non applicable')).toBe(false);
+    expect(text.includes('NaN')).toBe(false);
+  });
+
+  it('affiche « Non applicable » quand betonApplicable=false (cas na)', () => {
+    const pv = makeSealedPv({
+      engineId: 'fondation-profonde-pieux',
+      output: { allOk: true, RbK: 800, RcD: 1500, betonApplicable: false },
+    });
+    const text = collectPvPdfText(pv);
+    expect(text).toContain('Non applicable');
+  });
 });
