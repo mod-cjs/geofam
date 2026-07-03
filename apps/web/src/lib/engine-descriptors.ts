@@ -47,6 +47,18 @@ export interface FieldDescriptor {
    * dans le formulaire (paramètres experts rarement modifiés).
    */
   advanced?: boolean;
+  /**
+   * Pour type 'array-rows' uniquement : descripteurs des sous-champs (colonnes).
+   * Chaque colonne est un FieldDescriptor complet (type number|select|text).
+   * La valeur de ce champ est stockée dans formValues[key] = JSON.stringify(Row[]).
+   */
+  columns?: FieldDescriptor[];
+  /**
+   * Pour type 'array-rows' uniquement : nombre minimum de lignes (défaut 1).
+   * L'utilisateur ne peut pas supprimer au-delà de cette borne.
+   * initFormValues seed ce nombre de lignes par défaut.
+   */
+  minRows?: number;
 }
 
 export interface EngineDescriptor {
@@ -1044,90 +1056,98 @@ const pieuxDescriptor: EngineDescriptor = {
       ],
       hint: 'Structure de liaison rigide redistribuant les charges ? Autorise un ξ moins pénalisant.',
     },
-    // Couche de sol 1
-    { key: '_section_sol1', label: 'Couche 1 (profil de sol)', type: 'section' },
+    // Profil de sol — tableau multi-couches dynamique
+    { key: '_section_layers', label: 'Profil de sol (couches)', type: 'section' },
     {
-      key: 'layer1_soil',
-      label: 'Nature du sol',
-      type: 'select',
-      example: 'argile',
-      options: [
-        { value: 'argile', label: 'Argile' },
-        { value: 'sable', label: 'Sable' },
-        { value: 'craie', label: 'Craie' },
-        { value: 'marne', label: 'Marne' },
-        { value: 'roche', label: 'Roche' },
+      key: 'layers',
+      label: 'Couches de sol',
+      type: 'array-rows',
+      minRows: 2,
+      hint: 'Une ligne par couche traversée par le pieu, de z₀ vers la pointe. Au moins 1 couche.',
+      columns: [
+        {
+          key: 'soil',
+          label: 'Nature',
+          type: 'select',
+          example: 'argile',
+          options: [
+            { value: 'argile', label: 'Argile' },
+            { value: 'sable', label: 'Sable' },
+            { value: 'craie', label: 'Craie' },
+            { value: 'marne', label: 'Marne' },
+            { value: 'roche', label: 'Roche' },
+          ],
+        },
+        {
+          key: 'th',
+          label: 'Ép.',
+          type: 'number',
+          example: 5,
+          min: 0,
+          max: 200,
+          unit: 'm',
+        },
+        {
+          key: 'pl',
+          label: 'pl*',
+          type: 'number',
+          example: 0.6,
+          min: 0,
+          max: 100,
+          unit: 'MPa',
+          optional: true,
+        },
+        {
+          key: 'em',
+          label: 'EM',
+          type: 'number',
+          example: 6,
+          min: 0,
+          max: 100000,
+          unit: 'MPa',
+          optional: true,
+        },
+        {
+          key: 'gamma',
+          label: 'γ',
+          type: 'number',
+          example: 18,
+          min: 0,
+          max: 40,
+          unit: 'kN/m³',
+          optional: true,
+        },
+        {
+          key: 'qc',
+          label: 'qc',
+          type: 'number',
+          example: '',
+          min: 0,
+          max: 200,
+          unit: 'MPa',
+          optional: true,
+        },
+        {
+          key: 'c',
+          label: 'c',
+          type: 'number',
+          example: '',
+          min: 0,
+          max: 1000,
+          unit: 'kPa',
+          optional: true,
+        },
+        {
+          key: 'phi',
+          label: 'φ',
+          type: 'number',
+          example: '',
+          min: 0,
+          max: 89,
+          unit: '°',
+          optional: true,
+        },
       ],
-      hint: 'Nature de la couche : sélectionne qs (frottement) et kp (NF P 94-262).',
-    },
-    {
-      key: 'layer1_th',
-      label: 'Épaisseur (m)',
-      type: 'number',
-      example: 5.0,
-      min: 0,
-      max: 200,
-      hint: 'Épaisseur le long du fût ; le cumul couvre z₀→D ; apporte qs·P·h.',
-    },
-    {
-      key: 'layer1_pl',
-      label: 'Pression limite nette pl* (MPa)',
-      type: 'number',
-      example: 0.6,
-      min: 0,
-      max: 100,
-      optional: true,
-      hint: 'Pression limite nette Ménard. Argile 0,3–2,5 ; sable 1–5 ; marne/craie 2–5 MPa.',
-    },
-    {
-      key: 'layer1_em',
-      label: 'Module EM (MPa)',
-      type: 'number',
-      example: 6.0,
-      min: 0,
-      max: 100000,
-      optional: true,
-      hint: 'Module pressiométrique de la couche. Argile 3–30 ; sable 8–40 MPa.',
-    },
-    {
-      key: 'layer1_gamma',
-      label: 'Poids volumique γ (kN/m³)',
-      type: 'number',
-      example: 18,
-      min: 0,
-      max: 40,
-      optional: true,
-      hint: 'Poids volumique de la couche (kN/m³). Nécessaire au calcul du frottement négatif (downdrag) : sigmaV(z) += γ·dz. Argile molle 15–17 ; sable 17–20 ; marne 19–22.',
-    },
-    {
-      key: 'layer1_qc',
-      label: 'Résistance de pointe CPT q_c (MPa)',
-      type: 'number',
-      example: 5.0,
-      min: 0,
-      max: 200,
-      optional: true,
-      hint: 'Résistance de pointe au pénétromètre statique (MPa). Requis pour la méthode pénétrométrique (CPT). Argile molle < 1 ; sable dense 10–30.',
-    },
-    {
-      key: 'layer1_c',
-      label: 'Cohésion c (kPa)',
-      type: 'number',
-      example: 15,
-      min: 0,
-      max: 1000,
-      optional: true,
-      hint: 'Cohésion du sol (kPa). Requis pour la méthode c-φ. Argile non drainée 10–100 kPa ; sol frottant ≈ 0.',
-    },
-    {
-      key: 'layer1_phi',
-      label: 'Angle de frottement φ (°)',
-      type: 'number',
-      example: 28,
-      min: 0,
-      max: 89,
-      optional: true,
-      hint: 'Angle de frottement interne (degrés). Requis pour la méthode c-φ. Argile 15–25° ; sable dense 32–40°.',
     },
     // Frottement négatif (downdrag) — groupe optionnel
     {
@@ -1269,119 +1289,47 @@ const pieuxDescriptor: EngineDescriptor = {
       optional: true,
       hint: "k₃ = 1,0 pour contrôles courants, 1,2 si essais d'intégrité renforcés (NF P 94-262 §4.4).",
     },
-    // Couche 2
-    { key: '_section_sol2', label: 'Couche 2 (profil de sol)', type: 'section' },
-    {
-      key: 'layer2_soil',
-      label: 'Nature du sol',
-      type: 'select',
-      example: 'argile',
-      options: [
-        { value: 'argile', label: 'Argile' },
-        { value: 'sable', label: 'Sable' },
-        { value: 'craie', label: 'Craie' },
-        { value: 'marne', label: 'Marne' },
-        { value: 'roche', label: 'Roche' },
-      ],
-      optional: true,
-      hint: 'Nature de la couche : sélectionne qs (frottement) et kp (NF P 94-262).',
-    },
-    {
-      key: 'layer2_th',
-      label: 'Épaisseur (m)',
-      type: 'number',
-      example: 7.0,
-      min: 0,
-      max: 200,
-      optional: true,
-      hint: 'Épaisseur le long du fût ; le cumul couvre z₀→D ; apporte qs·P·h.',
-    },
-    {
-      key: 'layer2_pl',
-      label: 'Pression limite nette pl* (MPa)',
-      type: 'number',
-      example: 1.2,
-      min: 0,
-      max: 100,
-      optional: true,
-      hint: 'Pression limite nette Ménard. Argile 0,3–2,5 ; sable 1–5 ; marne/craie 2–5 MPa.',
-    },
-    {
-      key: 'layer2_em',
-      label: 'Module EM (MPa)',
-      type: 'number',
-      example: 12.0,
-      min: 0,
-      max: 100000,
-      optional: true,
-      hint: 'Module pressiométrique de la couche. Argile 3–30 ; sable 8–40 MPa.',
-    },
-    {
-      key: 'layer2_gamma',
-      label: 'Poids volumique γ (kN/m³)',
-      type: 'number',
-      example: 19,
-      min: 0,
-      max: 40,
-      optional: true,
-      hint: 'Poids volumique de la couche (kN/m³). Nécessaire au calcul du frottement négatif (downdrag).',
-    },
-    {
-      key: 'layer2_qc',
-      label: 'Résistance de pointe CPT q_c (MPa)',
-      type: 'number',
-      example: 8.0,
-      min: 0,
-      max: 200,
-      optional: true,
-      hint: 'Résistance de pointe au pénétromètre statique (MPa). Méthode pénétrométrique (CPT).',
-    },
-    {
-      key: 'layer2_c',
-      label: 'Cohésion c (kPa)',
-      type: 'number',
-      example: 0,
-      min: 0,
-      max: 1000,
-      optional: true,
-      hint: 'Cohésion du sol (kPa). Méthode c-φ.',
-    },
-    {
-      key: 'layer2_phi',
-      label: 'Angle de frottement φ (°)',
-      type: 'number',
-      example: 32,
-      min: 0,
-      max: 89,
-      optional: true,
-      hint: 'Angle de frottement interne (degrés). Méthode c-φ.',
-    },
   ],
   buildPayload(flat) {
-    const layers: unknown[] = [];
-    for (let i = 1; i <= 2; i++) {
-      const soil = flat[`layer${i}_soil`];
-      const th = flat[`layer${i}_th`];
-      if (soil && th !== undefined && th !== '') {
-        const optNum = (key: string): number | undefined => {
-          const v = flat[key];
-          return v !== '' && v !== undefined ? Number(v) : undefined;
-        };
-        layers.push({
-          soil,
-          th: Number(th),
-          pl: optNum(`layer${i}_pl`),
-          em: optNum(`layer${i}_em`),
-          // Poids volumique — requis par le calcul du frottement négatif (downdrag)
-          gamma: optNum(`layer${i}_gamma`),
-          // Résistance de pointe CPT — méthode pénétrométrique
-          qc: optNum(`layer${i}_qc`),
-          // Cohésion et angle de frottement — méthode c-φ
-          c: optNum(`layer${i}_c`),
-          phi: optNum(`layer${i}_phi`),
-        });
-      }
+    // ── Couches — array-rows (#109) ──────────────────────────────────────────
+    // flat['layers'] = JSON.stringify(Row[]) sérialisé par ArrayRowsField.
+    // Chaque Row = { soil, th, pl?, em?, gamma?, qc?, c?, phi? } (valeurs string).
+    let layersRaw: Array<Record<string, string>> = [];
+    try {
+      const parsed = JSON.parse((flat['layers'] as string) ?? '[]');
+      if (Array.isArray(parsed)) layersRaw = parsed as Array<Record<string, string>>;
+    } catch {
+      // JSON malformé → couches vides (l'erreur de validation remonte côté serveur)
     }
+
+    /** Convertit une valeur string en number si non-vide et fini ; sinon undefined. */
+    const optNum = (v: string | undefined): number | undefined => {
+      if (v === '' || v === undefined || v === null) return undefined;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : undefined;
+    };
+
+    const layers = layersRaw
+      .filter((row) => row.soil && row.th !== '' && row.th !== undefined)
+      .map((row) => {
+        const entry: Record<string, unknown> = {
+          soil: row.soil,
+          th: Number(row.th),
+        };
+        const pl = optNum(row.pl);
+        if (pl !== undefined) entry.pl = pl;
+        const em = optNum(row.em);
+        if (em !== undefined) entry.em = em;
+        const gamma = optNum(row.gamma);
+        if (gamma !== undefined) entry.gamma = gamma;
+        const qc = optNum(row.qc);
+        if (qc !== undefined) entry.qc = qc;
+        const c = optNum(row.c);
+        if (c !== undefined) entry.c = c;
+        const phi = optNum(row.phi);
+        if (phi !== undefined) entry.phi = phi;
+        return entry;
+      });
 
     // Groupe frottement négatif — inclus uniquement si le toggle fn_enabled est activé.
     // Clé plate fn_mode → frottementNegatif.mode ; fn_Q → frottementNegatif.fn_Q ; etc.

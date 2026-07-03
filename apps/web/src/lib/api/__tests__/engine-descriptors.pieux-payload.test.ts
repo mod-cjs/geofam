@@ -1,12 +1,13 @@
 /**
- * Tests — pieuxDescriptor.buildPayload : champs de couche manquants (MAJEUR-1).
+ * Tests — pieuxDescriptor.buildPayload : émission des champs optionnels par couche.
  *
- * Avant ce correctif, `buildPayload` n'émettait par couche que { soil, th, pl, em }.
- * Le moteur downdrag exige `gamma` (poids volumique) pour calculer sigmaV(z).
- * Les méthodes CPT et c-φ exigent respectivement `qc`, `c`, `phi`.
+ * Mis à jour (#109) : le descripteur pieux utilise désormais array-rows.
+ * flat['layers'] = JSON.stringify([...]) remplace les clés plates layer1_xx/layer2_xx.
  *
- * Ces tests sont RED tant que les champs ne sont pas émis par buildPayload.
- * Ils deviennent verts après le correctif (MAJEUR-1).
+ * Ces tests maintiennent la couverture des comportements originaux (MAJEUR-1) :
+ *   - gamma (poids volumique, downdrag)
+ *   - qc (résistance de pointe CPT)
+ *   - c et phi (méthode c-φ)
  *
  * ⚠️ DoD §8 — ce fichier N'IMPORTE PAS @roadsen/engines.
  */
@@ -17,11 +18,11 @@ import { findDescriptor } from '../../engine-descriptors';
 const descriptor = findDescriptor('pieux');
 if (!descriptor) throw new Error('descripteur pieux introuvable');
 
-/** Flat minimal valide (couche 1 seule, méthode PMT). */
+/** Flat de base valide — hors couches (array-rows). */
 const BASE_FLAT: Record<string, unknown> = {
   projet: 'Test',
   pieu: '',
-  geom_section: 'circulaire',
+  geom_section: 'circ',
   geom_g_B: '0.6',
   g_z0: '0',
   g_D: '15',
@@ -29,25 +30,33 @@ const BASE_FLAT: Record<string, unknown> = {
   meth: 'pmt',
   da: 'da2',
   sens: 'comp',
-  essais: 'moyen',
+  essais: 'non',
   c_G: '150',
   c_Q: '50',
   o_nappe: '100',
-  o_nprofil: '1.5',
+  o_nprofil: '1',
   o_surf: '0',
   o_redis: 'non',
-  layer1_soil: 'argile',
-  layer1_th: '10',
-  layer1_pl: '0.6',
-  layer1_em: '6',
 };
 
-describe('pieuxDescriptor.buildPayload — émission de gamma par couche (MAJEUR-1 downdrag)', () => {
+describe('pieuxDescriptor.buildPayload — émission de gamma par couche (downdrag)', () => {
   it(
-    'given layer1_gamma renseigné, ' +
+    'given layer avec gamma=18, ' +
       'when buildPayload, then layers[0].gamma est un nombre fini',
     () => {
-      const flat = { ...BASE_FLAT, layer1_gamma: '18' };
+      const layers = [
+        {
+          soil: 'argile',
+          th: '10',
+          pl: '0.6',
+          em: '6',
+          gamma: '18',
+          qc: '',
+          c: '',
+          phi: '',
+        },
+      ];
+      const flat = { ...BASE_FLAT, layers: JSON.stringify(layers) };
       const payload = descriptor.buildPayload(flat) as {
         layers: Array<Record<string, unknown>>;
       };
@@ -61,10 +70,22 @@ describe('pieuxDescriptor.buildPayload — émission de gamma par couche (MAJEUR
   );
 
   it(
-    'given layer1_gamma absent (vide), ' +
-      'when buildPayload, then layers[0].gamma est undefined (ne casse pas le moteur)',
+    'given layer sans gamma (vide), ' +
+      'when buildPayload, then layers[0].gamma est undefined',
     () => {
-      const flat = { ...BASE_FLAT }; // pas de gamma
+      const layers = [
+        {
+          soil: 'argile',
+          th: '10',
+          pl: '0.6',
+          em: '6',
+          gamma: '',
+          qc: '',
+          c: '',
+          phi: '',
+        },
+      ];
+      const flat = { ...BASE_FLAT, layers: JSON.stringify(layers) };
       const payload = descriptor.buildPayload(flat) as {
         layers: Array<Record<string, unknown>>;
       };
@@ -73,20 +94,14 @@ describe('pieuxDescriptor.buildPayload — émission de gamma par couche (MAJEUR
   );
 
   it(
-    'given layer1_gamma et layer2_gamma, ' +
+    'given deux couches avec gamma, ' +
       'when buildPayload, then les deux couches ont gamma',
     () => {
-      const flat: Record<string, unknown> = {
-        ...BASE_FLAT,
-        layer1_gamma: '18',
-        layer1_soil: 'argile',
-        layer1_th: '5',
-        layer2_soil: 'sable',
-        layer2_th: '5',
-        layer2_pl: '',
-        layer2_em: '',
-        layer2_gamma: '20',
-      };
+      const layers = [
+        { soil: 'argile', th: '5', pl: '', em: '', gamma: '18', qc: '', c: '', phi: '' },
+        { soil: 'sable', th: '5', pl: '', em: '', gamma: '20', qc: '', c: '', phi: '' },
+      ];
+      const flat = { ...BASE_FLAT, layers: JSON.stringify(layers) };
       const payload = descriptor.buildPayload(flat) as {
         layers: Array<Record<string, unknown>>;
       };
@@ -99,10 +114,13 @@ describe('pieuxDescriptor.buildPayload — émission de gamma par couche (MAJEUR
 
 describe('pieuxDescriptor.buildPayload — émission de qc par couche (méthode CPT)', () => {
   it(
-    'given layer1_qc renseigné et meth=cpt, ' +
+    'given qc=5.2 et meth=cpt, ' +
       'when buildPayload, then layers[0].qc est un nombre fini',
     () => {
-      const flat = { ...BASE_FLAT, meth: 'cpt', layer1_qc: '5.2' };
+      const layers = [
+        { soil: 'sable', th: '10', pl: '', em: '', gamma: '', qc: '5.2', c: '', phi: '' },
+      ];
+      const flat = { ...BASE_FLAT, meth: 'cpt', layers: JSON.stringify(layers) };
       const payload = descriptor.buildPayload(flat) as {
         layers: Array<Record<string, unknown>>;
       };
@@ -111,8 +129,11 @@ describe('pieuxDescriptor.buildPayload — émission de qc par couche (méthode 
     },
   );
 
-  it('given layer1_qc absent, when buildPayload, then layers[0].qc est undefined', () => {
-    const flat = { ...BASE_FLAT };
+  it('given qc absent, when buildPayload, then layers[0].qc est undefined', () => {
+    const layers = [
+      { soil: 'argile', th: '10', pl: '0.6', em: '6', gamma: '', qc: '', c: '', phi: '' },
+    ];
+    const flat = { ...BASE_FLAT, layers: JSON.stringify(layers) };
     const payload = descriptor.buildPayload(flat) as {
       layers: Array<Record<string, unknown>>;
     };
@@ -122,14 +143,25 @@ describe('pieuxDescriptor.buildPayload — émission de qc par couche (méthode 
 
 describe('pieuxDescriptor.buildPayload — émission de c et phi par couche (méthode c-φ)', () => {
   it(
-    'given layer1_c et layer1_phi renseignés et meth=cphi, ' +
+    'given c=15 et phi=28, ' +
       'when buildPayload, then layers[0].c et layers[0].phi sont des nombres finis',
     () => {
+      const layers = [
+        {
+          soil: 'argile',
+          th: '10',
+          pl: '',
+          em: '',
+          gamma: '',
+          qc: '',
+          c: '15',
+          phi: '28',
+        },
+      ];
       const flat = {
         ...BASE_FLAT,
         meth: 'cphi',
-        layer1_c: '15',
-        layer1_phi: '28',
+        layers: JSON.stringify(layers),
       };
       const payload = descriptor.buildPayload(flat) as {
         layers: Array<Record<string, unknown>>;
@@ -141,8 +173,11 @@ describe('pieuxDescriptor.buildPayload — émission de c et phi par couche (mé
     },
   );
 
-  it('given layer1_c et layer1_phi absents, when buildPayload, then undefined (pas de NaN)', () => {
-    const flat = { ...BASE_FLAT };
+  it('given c et phi absents, when buildPayload, then undefined (pas de NaN)', () => {
+    const layers = [
+      { soil: 'argile', th: '10', pl: '0.6', em: '6', gamma: '', qc: '', c: '', phi: '' },
+    ];
+    const flat = { ...BASE_FLAT, layers: JSON.stringify(layers) };
     const payload = descriptor.buildPayload(flat) as {
       layers: Array<Record<string, unknown>>;
     };

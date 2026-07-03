@@ -26,8 +26,16 @@ import {
   FileCheck2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, useCallback, type FormEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 
+import { ArrayRowsField } from '@/components/ui/ArrayRowsField';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DomainTag } from '@/components/ui/DomainTag';
@@ -42,7 +50,6 @@ import { listCalcResults, runCalc, emitPv, getEntitlements } from '@/lib/api/cli
 import type { CalcResult, EntitlementsResponse } from '@/lib/api/types';
 import { findDescriptor } from '@/lib/engine-descriptors';
 import type { EngineDescriptor, FieldDescriptor } from '@/lib/engine-descriptors';
-
 import { useOrgId } from '@/lib/org-context';
 
 // Formatage numérique fr-FR
@@ -59,7 +66,10 @@ function ClientRelativeDate({ iso }: { iso: string }) {
   const [label, setLabel] = useState<string | null>(null);
   useEffect(() => {
     const t = new Date(iso).getTime();
-    if (!Number.isFinite(t)) { setLabel('—'); return; }
+    if (!Number.isFinite(t)) {
+      setLabel('—');
+      return;
+    }
     const d = Math.floor((Date.now() - t) / 86400000);
     setLabel(d === 0 ? 'auj.' : d === 1 ? 'hier' : `${d}j`);
   }, [iso]);
@@ -184,6 +194,18 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     const out: Record<string, string> = {};
     for (const f of desc.fields) {
       if (f.type === 'section') continue;
+      if (f.type === 'array-rows') {
+        // Seed minRows lignes par défaut (exemples des colonnes)
+        const minRows = f.minRows ?? 1;
+        const defaultRow: Record<string, string> = {};
+        for (const col of f.columns ?? []) {
+          defaultRow[col.key] = col.example !== undefined ? String(col.example) : '';
+        }
+        out[f.key] = JSON.stringify(
+          Array.from({ length: minRows }, () => ({ ...defaultRow })),
+        );
+        continue;
+      }
       out[f.key] = f.example !== undefined ? String(f.example) : '';
     }
     return out;
@@ -213,6 +235,20 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     const errors: Record<string, string> = {};
     for (const f of descriptor.fields) {
       if (f.type === 'section' || f.optional) continue;
+
+      // array-rows : validation spécifique (au moins une ligne non-vide)
+      if (f.type === 'array-rows') {
+        try {
+          const rows = JSON.parse(formValues[f.key] ?? '[]');
+          if (!Array.isArray(rows) || rows.length === 0) {
+            errors[f.key] = 'Au moins une couche est requise';
+          }
+        } catch {
+          errors[f.key] = 'Données de couches invalides (JSON malformé)';
+        }
+        continue;
+      }
+
       const v = formValues[f.key];
       if (v === undefined || v === '') {
         errors[f.key] = 'Champ requis';
@@ -338,7 +374,9 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   // Tant que non monté (SSR + 1er rendu client), on rend un placeholder stable →
   // SSR et hydratation identiques, plus de #418 ni de page blanche.
   if (!mounted) {
-    return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement des calculs" />;
+    return (
+      <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement des calculs" />
+    );
   }
 
   return (
@@ -536,7 +574,9 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <DomainTag
-                          domain={ENGINE_DOMAIN[canonicalEngineId(calc.engineId)] ?? 'road'}
+                          domain={
+                            ENGINE_DOMAIN[canonicalEngineId(calc.engineId)] ?? 'road'
+                          }
                           size="compact"
                         />
                         <Badge
@@ -581,7 +621,9 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                         }}
                       >
                         <span>{calc.engineId}</span>
-                        <span><ClientRelativeDate iso={calc.updatedAt} /></span>
+                        <span>
+                          <ClientRelativeDate iso={calc.updatedAt} />
+                        </span>
                       </div>
                     </button>
                   </li>
@@ -1135,10 +1177,14 @@ function CalcForm({
         }
         const n = Number(value);
         if (field.min !== undefined && n < field.min) {
-          return { error: `Valeur minimale : ${field.min}${field.unit ? ' ' + field.unit : ''}` };
+          return {
+            error: `Valeur minimale : ${field.min}${field.unit ? ' ' + field.unit : ''}`,
+          };
         }
         if (field.max !== undefined && n > field.max) {
-          return { error: `Valeur maximale : ${field.max}${field.unit ? ' ' + field.unit : ''}` };
+          return {
+            error: `Valeur maximale : ${field.max}${field.unit ? ' ' + field.unit : ''}`,
+          };
         }
       }
     };
@@ -1152,7 +1198,21 @@ function CalcForm({
    */
   function renderField(field: FieldDescriptor, inGrid: boolean) {
     const inlineHelp = buildInlineHelp(field);
-    const wideStyle = inGrid && field.type === 'text' ? { gridColumn: '1 / -1' } : undefined;
+    const wideStyle =
+      inGrid && field.type === 'text' ? { gridColumn: '1 / -1' } : undefined;
+
+    // Tableau multi-lignes dynamique (array-rows) — toujours pleine largeur
+    if (field.type === 'array-rows') {
+      return (
+        <ArrayRowsField
+          key={field.key}
+          field={field}
+          value={formValues[field.key] ?? '[]'}
+          onChange={(val) => onFieldChange(field.key, val)}
+          error={formErrors[field.key]}
+        />
+      );
+    }
 
     if (field.type === 'select' && field.options) {
       return (
@@ -1384,7 +1444,9 @@ function CalcResults({
             {calc.label}
           </h2>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
-            <DomainTag domain={ENGINE_DOMAIN[canonicalEngineId(calc.engineId)] ?? 'road'} />
+            <DomainTag
+              domain={ENGINE_DOMAIN[canonicalEngineId(calc.engineId)] ?? 'road'}
+            />
             <Badge
               variant={
                 isDone ? 'recalculable' : calc.status === 'ERROR' ? 'erreur' : 'neutre'
@@ -1427,8 +1489,8 @@ function CalcResults({
             color: 'var(--text-secondary)',
           }}
         >
-          Résultat d&apos;analyse — ce moteur produit une extraction / classification, sans
-          verdict de conformité.
+          Résultat d&apos;analyse — ce moteur produit une extraction / classification,
+          sans verdict de conformité.
         </div>
       )}
 
