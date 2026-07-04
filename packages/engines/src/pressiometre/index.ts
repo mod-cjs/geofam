@@ -164,6 +164,24 @@ export function redactConfidentialWarnings(warnings: readonly string[]): string[
   return warnings.map((w) => redactConfidentialWarning(w));
 }
 
+// Signatures d'EXCEPTION JS interne (moteur leve sur donnees aberrantes : volumes
+// decroissants, courbe plate). On ne laisse JAMAIS un tel message brut atteindre le
+// client (hygiene + anti-divulgation d'implementation). Les messages de DOMAINE (FR)
+// ne matchent pas ces signatures et restent visibles (redactes des valeurs sensibles).
+const INTERNAL_JS_ERROR =
+  /cannot read|cannot access|is not a function|is not defined|is not iterable|reading '|of undefined|of null|type\s?error|reference\s?error|undefined is|null is/i;
+
+/**
+ * Nettoie le message d'erreur expose au client : une exception JS interne devient un
+ * message generique ; une erreur de domaine passe (redactee des valeurs confidentielles).
+ */
+export function sanitizeEngineError(text: string): string {
+  if (INTERNAL_JS_ERROR.test(text)) {
+    return 'Courbe pressiometrique non exploitable : paliers de mesure incoherents ou insuffisants.';
+  }
+  return redactConfidentialWarning(text);
+}
+
 /**
  * Re-FORME le resultat brut `_res` du moteur en la SORTIE whitelistee. On
  * CONSTRUIT un objet propre champ a champ (jamais de copie brute) : seuls les
@@ -176,7 +194,7 @@ function shapeOutput(R: Record<string, unknown>): unknown {
   // Cas d'erreur de calcul / donnees insuffisantes : on n'expose que le message redacte.
   if (typeof R.err === 'string') {
     return {
-      erreur: redactConfidentialWarning(R.err),
+      erreur: sanitizeEngineError(R.err),
       warnings: [],
       pL: 0,
       pLNette: 0,
