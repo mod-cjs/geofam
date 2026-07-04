@@ -485,7 +485,15 @@ function resolveMeta(): {
  *   la mappe en SafeEngineError).
  */
 export function runPieux(rawInput: unknown): EngineResultEnvelope<PieuxOutput> {
-  const input: PieuxInput = PieuxInputSchema.parse(rawInput);
+  const parsed: PieuxInput = PieuxInputSchema.parse(rawInput);
+  // SECURITE (audit adverse) : les coefficients partiels de securite EC7 sont
+  // AUTORITATIFS COTE SERVEUR. On IGNORE tout `coeffs` client et on applique les
+  // valeurs NORMATIVES (le front CASAGRANDE les fige deja). Sans ce garde-fou, un
+  // client API pouvait envoyer des coeffs tous favorables DANS les bornes du schema
+  // (k_gG=0, cr_* aux extremes) et faire passer un pieu grossierement non conforme
+  // (taux 6,7 -> 0,2) -> verdict FALSIFIE scelle dans un PV. Reactiver des facteurs
+  // par projet = fonctionnalite GOUVERNEE (expert + client) avec disclosure au PV.
+  const input: PieuxInput = { ...parsed, coeffs: PIEUX_DEFAULT_COEFFS };
   const rawResult = computePieux(input) as Record<string, unknown>;
   // Frottement negatif : calcul SEPARE (comme l'onglet dedie du HTML), uniquement si
   // le groupe est fourni. Decouple du verdict ELU/ELS (fidelite, #94).
