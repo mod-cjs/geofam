@@ -445,6 +445,44 @@ function buildTerzaghiRows(o: Record<string, unknown>): CalcOutputRow[] {
   return rows;
 }
 
+/**
+ * DÉTAILS DE CALCUL terzaghi — intermédiaires de MÉTHODE PUBLICS déjà whitelistés
+ * (capacité de référence A/R₀/états, régime, tassements complémentaires). Clés
+ * nommées uniquement (fail-closed §8) ; pl* et qc (in situ) restent serveur.
+ */
+function buildTerzaghiDetails(o: Record<string, unknown>): CalcOutputRow[] {
+  const rows: CalcOutputRow[] = [];
+  if (typeof o.regime === 'string') {
+    const reg = o.regime === 'superficielle' ? 'Superficielle' : o.regime === 'semi-profonde' ? 'Semi-profonde' : null;
+    if (reg) rows.push({ label: 'Régime de fondation', value: reg, unit: '' });
+  }
+  const ref = o.capaciteReference;
+  if (ref != null && typeof ref === 'object') {
+    const rf = ref as Record<string, unknown>;
+    pushRow(rows, 'Aire de la semelle A', rf.A, 'm²');
+    pushRow(rows, 'Résistance de référence R₀', rf.R0, 'kN');
+    const states = Array.isArray(rf.states) ? rf.states : [];
+    for (const s of states) {
+      if (s == null || typeof s !== 'object') continue;
+      const st = s as Record<string, unknown>;
+      const et = typeof st.etat === 'string' ? (TERZAGHI_ETAT_LABEL[st.etat] ?? '—') : '—';
+      pushRow(rows, `${et} — γ_Rv appliqué`, st.gRv, '');
+      pushRow(rows, `${et} — Rᵥ;d de référence`, st.Rvd, 'kN');
+      pushRow(rows, `${et} — q_Rv;d de référence`, st.qRvd, 'kPa');
+    }
+  }
+  const cas = Array.isArray(o.cas) ? o.cas : [];
+  for (const item of cas) {
+    if (item == null || typeof item !== 'object') continue;
+    const c = item as Record<string, unknown>;
+    if (c.invalide === true) continue;
+    const et = typeof c.etat === 'string' ? (TERZAGHI_ETAT_LABEL[c.etat] ?? '—') : '—';
+    pushRow(rows, `${et} — tassement élastique`, c.tassementElastique, 'm');
+    pushRow(rows, `${et} — déplacement vertical`, c.deplacementVertical, 'm');
+  }
+  return rows;
+}
+
 /** Verdict global terzaghi : tous les cas valides portants (et stables au glissement si évalué). */
 function terzaghiVerdict(o: Record<string, unknown>): 'PASS' | 'FAIL' {
   const cas = Array.isArray(o.cas) ? o.cas : [];
@@ -587,6 +625,24 @@ function buildPieuxRows(o: Record<string, unknown>): CalcOutputRow[] {
   }
   // betonApplicable === null (ou undefined) : béton non demandé → aucune ligne béton
 
+  return rows;
+}
+
+const PIEUX_METH_LABEL: Record<string, string> = { pmt: 'Pressiomètre (pl*)', cpt: 'Pénétromètre (qc)', cphi: 'Laboratoire (c, φ)' };
+/**
+ * DÉTAILS DE CALCUL pieux — contexte de dimensionnement PUBLIC déjà whitelisté
+ * (géométrie B/D, catégorie de pieu, méthode). Clés nommées (fail-closed §8) ;
+ * les facteurs de portance kp et coefficients de calage restent serveur.
+ */
+function buildPieuxDetails(o: Record<string, unknown>): CalcOutputRow[] {
+  const rows: CalcOutputRow[] = [];
+  if (typeof o.categorie === 'number') rows.push({ label: 'Catégorie de pieu (NF P 94-262)', value: o.categorie, unit: 'n°' });
+  if (typeof o.methode === 'string') {
+    const m = PIEUX_METH_LABEL[o.methode];
+    if (m) rows.push({ label: 'Méthode de dimensionnement', value: m, unit: '' });
+  }
+  pushRow(rows, 'Diamètre / côté B', o.B, 'm');
+  pushRow(rows, 'Fiche D', o.D, 'm');
   return rows;
 }
 
@@ -850,11 +906,11 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
   }
   // terzaghi (fondation superficielle) : sortie {cas:[…]} → whitelist par cas
   if (Array.isArray(o.cas)) {
-    return { verdict: terzaghiVerdict(o), rows: buildTerzaghiRows(o) };
+    return { verdict: terzaghiVerdict(o), rows: buildTerzaghiRows(o), details: buildTerzaghiDetails(o) };
   }
   // pieux (fondation profonde) : verdict global booléen `allOk` + résistances
   if (typeof o.allOk === 'boolean') {
-    return { verdict: o.allOk === true ? 'PASS' : 'FAIL', rows: buildPieuxRows(o) };
+    return { verdict: o.allOk === true ? 'PASS' : 'FAIL', rows: buildPieuxRows(o), details: buildPieuxDetails(o) };
   }
   // radier (plaque/sol multicouche) : déflexions/distorsions — pas de verdict (NA)
   if (typeof o.betaGov === 'number' || 'nRafts' in o) {

@@ -350,7 +350,23 @@ export default function CasagrandePage() {
                   ))}
                 </tbody>
               </table>
-              <div style={{ marginTop: 12, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Facteurs de portance et calage appliqués côté serveur ; seuls les résultats de vérification (Fd / Rd / taux) sont affichés.</div>
+              {output.details && output.details.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={secH}>Détails de calcul — contexte &amp; méthode</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <tbody>
+                      {output.details.map((row, i) => (
+                        <tr key={i}>
+                          <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}` }}>{row.label}</td>
+                          <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, fontWeight: 600, textAlign: 'right' }}>{typeof row.value === 'number' ? row.value.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) : row.value}</td>
+                          <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, color: MUTED }}>{row.unit}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div style={{ marginTop: 12, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Intermédiaires et contexte exposés ci-dessus ; seuls les facteurs de portance et coefficients de calage restent côté serveur (DoD §8).</div>
               <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
                 <button data-testid="btn-imprimer" onClick={handleEmitPv} disabled={emittingPv} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontWeight: 600, cursor: emittingPv ? 'wait' : 'pointer', fontSize: 13 }}>{emittingPv ? 'Émission…' : 'Émettre le PV scellé'}</button>
                 {pvResult && <span data-testid="pv-success" style={{ fontSize: 12.5, color: '#2e7d4f', fontWeight: 600 }}>PV scellé émis (n° {pvResult.number ?? pvResult.id}).</span>}

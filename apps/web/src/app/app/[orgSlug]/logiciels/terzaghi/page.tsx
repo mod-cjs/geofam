@@ -14,7 +14,7 @@ import { useState, useCallback, useEffect, Fragment } from 'react';
 
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
-import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, OfficialPv } from '@/lib/api/types';
+import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, OfficialPv, CalcOutputRow } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 
 // ── Types (miroir borné de TerzaghiInputSchema) ──
@@ -362,8 +362,14 @@ export default function TerzaghiPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 15px', borderRadius: 11, marginBottom: 14, background: output.verdict === 'PASS' ? '#e4efe6' : output.verdict === 'FAIL' ? '#f6e5e1' : '#f4edd8', border: `1px solid ${output.verdict === 'PASS' ? '#a9d0b3' : output.verdict === 'FAIL' ? '#e0b3aa' : '#e6cf9c'}` }}>
                       <b style={{ fontSize: 15, color: output.verdict === 'PASS' ? '#2e7d4f' : output.verdict === 'FAIL' ? '#b23a2e' : '#96701a' }}>{output.verdict === 'PASS' ? 'Fondation vérifiée — critères EC7 satisfaits' : output.verdict === 'FAIL' ? 'Fondation non vérifiée — reprise nécessaire' : 'Résultats de vérification'}</b>
                     </div>
-                    <ResultTable output={output} />
-                    <div style={subnote}>Formules et coefficients de calage appliqués côté serveur ; seuls les résultats de vérification (sollicitantes/admissibles) sont affichés.</div>
+                    <ResultTable rows={output.rows} />
+                    {output.details && output.details.length > 0 && (
+                      <div style={{ marginTop: 16 }}>
+                        <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', fontWeight: 700, color: ACCENT, margin: '4px 0 10px' }}>Détails de calcul — intermédiaires de la méthode</div>
+                        <ResultTable rows={output.details} />
+                      </div>
+                    )}
+                    <div style={subnote}>Intermédiaires de la méthode exposés ci-dessus ; seuls les coefficients de calage propriétaires (facteurs de portance) restent côté serveur (DoD §8).</div>
                   </>
                 )}
               </div>
@@ -408,11 +414,11 @@ export default function TerzaghiPage() {
 }
 
 // ── Rendu résultats (§8 : {verdict, rows}) ──
-function ResultTable({ output }: { output: NormalizedCalcOutput }) {
+function ResultTable({ rows }: { rows: CalcOutputRow[] }) {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
       <thead><tr>{['Grandeur', 'Valeur', 'Unité', 'Statut'].map((h) => <th key={h} style={{ textAlign: 'left', fontSize: 10, textTransform: 'uppercase', color: MUTED, padding: '6px 8px', fontWeight: 700, borderBottom: `1px solid ${LINE}` }}>{h}</th>)}</tr></thead>
-      <tbody>{output.rows.map((row, i) => (
+      <tbody>{rows.map((row, i) => (
         <tr key={i}>
           <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}` }}>{row.label}</td>
           <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, fontWeight: 600, textAlign: 'right' }}>{typeof row.value === 'number' ? row.value.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) : row.value}</td>
@@ -432,7 +438,13 @@ function NoteDeCalcul({ output, projet, pv }: { output: NormalizedCalcOutput; pr
         <div style={{ textAlign: 'right', fontSize: 11, color: MUTED }}><b style={{ color: INK }}>{projet ?? '—'}</b><br />{new Date().toLocaleDateString('fr-FR')}</div>
       </div>
       <div style={{ display: 'inline-block', padding: '6px 14px', border: `2px solid ${output.verdict === 'PASS' ? '#2e7d4f' : '#b23a2e'}`, color: output.verdict === 'PASS' ? '#2e7d4f' : '#b23a2e', borderRadius: 8, fontWeight: 800, transform: 'rotate(-1.5deg)', marginBottom: 14 }}>{output.verdict === 'PASS' ? 'CONFORME' : output.verdict === 'FAIL' ? 'NON CONFORME' : 'RÉSULTATS'}</div>
-      <ResultTable output={output} />
+      <ResultTable rows={output.rows} />
+      {output.details && output.details.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 11.5, letterSpacing: 0.4, textTransform: 'uppercase', fontWeight: 700, color: ACCENT, margin: '4px 0 10px' }}>Détails de calcul — intermédiaires de la méthode</div>
+          <ResultTable rows={output.details} />
+        </div>
+      )}
       <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px dashed ${LINE2}`, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>
         Note générée par Terzaghi — formules et coefficients de calage appliqués côté serveur. {pv ? <span style={{ color: '#2e7d4f', fontWeight: 600, fontStyle: 'normal' }}>PV scellé n° {pv.number ?? pv.id} — intégrité + horodatage garantis.</span> : 'Non signée tant que non scellée ; le sceau garantit intégrité + horodatage (ne vaut pas signature électronique qualifiée).'}
       </div>
