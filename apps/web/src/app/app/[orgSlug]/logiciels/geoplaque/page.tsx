@@ -9,7 +9,7 @@
  */
 
 import { useParams } from 'next/navigation';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
@@ -49,15 +49,78 @@ export function buildGeoplaquePayload(f: GeoplaqueForm): Record<string, unknown>
 }
 
 // Couleur d'un stop de la carto (bleu = peu de tassement → rouge = fort).
-function heatColor(t: number): string {
+const HEAT_STOPS = [[44, 111, 191], [40, 160, 170], [120, 175, 70], [230, 180, 40], [192, 57, 43]];
+function heatRGB(t: number): [number, number, number] {
   const c = Math.max(0, Math.min(1, t));
-  const stops = [[44, 111, 191], [40, 160, 170], [120, 175, 70], [230, 180, 40], [192, 57, 43]];
-  const seg = c * (stops.length - 1);
-  const i = Math.min(stops.length - 2, Math.floor(seg));
+  const seg = c * (HEAT_STOPS.length - 1);
+  const i = Math.min(HEAT_STOPS.length - 2, Math.floor(seg));
   const f = seg - i;
-  const a = stops[i], b = stops[i + 1];
+  const a = HEAT_STOPS[i], b = HEAT_STOPS[i + 1];
   const m = (k: number) => Math.round(a[k] + (b[k] - a[k]) * f);
-  return `rgb(${m(0)},${m(1)},${m(2)})`;
+  return [m(0), m(1), m(2)];
+}
+function heatColor(t: number): string {
+  const [r, g, b] = heatRGB(t);
+  return `rgb(${r},${g},${b})`;
+}
+
+/**
+ * Cartographie LISSÉE — rendu 100 % front par interpolation bilinéaire de la grille
+ * d'affichage 48×48 (déjà ré-échantillonnée côté serveur, découplée du maillage EF).
+ * Le lissage est COSMÉTIQUE : il n'ajoute aucune information et ne révèle rien du
+ * maillage (§8) — il améliore seulement la qualité visuelle. On dessine la grille sur
+ * un canvas offscreen puis on l'étire avec le lissage bilinéaire natif du navigateur.
+ */
+function HeatmapCanvas({ heatmap, raftPts }: { heatmap: HeatmapData; raftPts: { x: number; y: number }[] }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const { cols, rows, vals, vMin, vMax, x0, y0, x1, y1 } = heatmap;
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv || cols < 2 || rows < 2) return;
+    const ctx = cv.getContext('2d');
+    if (!ctx) return;
+    const W = cv.width, H = cv.height;
+    // Grille source (cols×rows) → ImageData ; cellules null = transparentes.
+    const off = document.createElement('canvas');
+    off.width = cols; off.height = rows;
+    const octx = off.getContext('2d');
+    if (!octx) return;
+    const img = octx.createImageData(cols, rows);
+    const span = vMax > vMin ? vMax - vMin : 1;
+    for (let i = 0; i < cols * rows; i++) {
+      const v = vals[i];
+      if (v == null || !Number.isFinite(v)) { img.data[i * 4 + 3] = 0; continue; }
+      const [r, g, b] = heatRGB((v - vMin) / span);
+      img.data[i * 4] = r; img.data[i * 4 + 1] = g; img.data[i * 4 + 2] = b; img.data[i * 4 + 3] = 255;
+    }
+    octx.putImageData(img, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    // Étirement lissé + retournement vertical (y vers le haut, convention ingénieur).
+    ctx.save();
+    ctx.translate(0, H); ctx.scale(1, -1);
+    ctx.drawImage(off, 0, 0, cols, rows, 0, 0, W, H);
+    ctx.restore();
+    // Contour du radier (coords modèle → canvas, y vers le haut).
+    if (raftPts.length >= 3 && x1 > x0 && y1 > y0) {
+      ctx.save();
+      ctx.beginPath();
+      raftPts.forEach((p, k) => {
+        const cx = ((p.x - x0) / (x1 - x0)) * W;
+        const cy = H - ((p.y - y0) / (y1 - y0)) * H;
+        if (k === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+      });
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(42,35,51,0.85)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }, [cols, rows, vals, vMin, vMax, x0, y0, x1, y1, raftPts]);
+  const aspect = x1 > x0 ? (y1 - y0) / (x1 - x0) : 1;
+  const W = 460, H = Math.max(180, Math.min(520, Math.round(W * (aspect || 1))));
+  return <canvas ref={ref} width={W} height={H} style={{ width: '100%', maxWidth: W, height: 'auto', border: `1px solid ${LINE}`, borderRadius: 8, background: '#faf8fc' }} role="img" aria-label="Cartographie lissée de déflexion du radier (grille d'affichage ré-échantillonnée, découplée du maillage)" />;
 }
 
 const ACCENT = '#5a3e7c', INK = '#241f2e', MUTED = '#6e6779', LINE = '#ddd6e4', PANEL = '#fdfcff';
@@ -271,16 +334,7 @@ export default function GeoplaquePage() {
                   <div style={secH}>Cartographie des déflexions</div>
                   <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                     <div style={{ flex: '1 1 320px', maxWidth: 480 }}>
-                      <svg viewBox={`${heatmap.x0} ${heatmap.y0} ${heatmap.x1 - heatmap.x0} ${heatmap.y1 - heatmap.y0}`} style={{ width: '100%', height: 'auto', border: `1px solid ${LINE}`, borderRadius: 8, background: '#faf8fc', transform: 'scaleY(-1)' }} role="img" aria-label="Cartographie de déflexion du radier (motif ré-échantillonné, découplé du maillage)">
-                        {heatmap.vals.map((v, idx) => {
-                          if (v === null) return null;
-                          const gx = idx % heatmap.cols, gy = Math.floor(idx / heatmap.cols);
-                          const cw = (heatmap.x1 - heatmap.x0) / (heatmap.cols - 1), ch = (heatmap.y1 - heatmap.y0) / (heatmap.rows - 1);
-                          const t = heatmap.vMax > heatmap.vMin ? (v - heatmap.vMin) / (heatmap.vMax - heatmap.vMin) : 0.5;
-                          return <rect key={idx} x={heatmap.x0 + gx * cw - cw / 2} y={heatmap.y0 + gy * ch - ch / 2} width={cw} height={ch} fill={heatColor(t)} />;
-                        })}
-                        <polygon points={pts.map((p) => `${num(p.x)},${num(p.y)}`).join(' ')} fill="none" stroke="#2a2333" strokeWidth={(heatmap.x1 - heatmap.x0) / 200} vectorEffect="non-scaling-stroke" />
-                      </svg>
+                      <HeatmapCanvas heatmap={heatmap} raftPts={pts.map((p) => ({ x: num(p.x), y: num(p.y) }))} />
                     </div>
                     <div style={{ flex: '0 0 auto', fontSize: 11.5, color: MUTED }}>
                       <div style={{ fontWeight: 600, color: INK, marginBottom: 6 }}>Échelle (mm)</div>
