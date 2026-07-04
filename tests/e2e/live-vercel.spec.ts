@@ -62,7 +62,7 @@ async function login(page: Page) {
   // du formulaire est toujours présent/visible (même vide) → la course se résolvait
   // instantanément et concluait à l'échec à tort (faux négatif).
   try {
-    await page.waitForURL(/\/app\/demo-starfire\/projets/, { timeout: 60_000 });
+    await page.waitForURL(/\/app\/demo-starfire\/(logiciels|projets)/, { timeout: 60_000 });
   } catch {
     const alertTxt = (await page.getByRole('alert').first().textContent().catch(() => '')) ?? '';
     await shot(page, 'B1-ECHEC-login');
@@ -111,10 +111,11 @@ test.describe('LIVE — Parcours utilisateur app en ligne (Vercel ↔ Render)', 
   });
 
   // ---- B1 : Login réel ----------------------------------------------------
-  test('B1 — login réel : formulaire soumis → redirection /app/demo-starfire/projets', async () => {
+  test('B1 — login réel : formulaire soumis → accueil galerie GEOFAM', async () => {
     await login(page);
-    await expect(page.getByRole('heading', { name: 'Mes projets' })).toBeVisible({ timeout: NAV });
-    await shot(page, 'B1-projets-apres-login');
+    // L'accueil est désormais la galerie des logiciels GEOFAM.
+    await expect(page.getByRole('heading', { name: 'GEOFAM' })).toBeVisible({ timeout: NAV });
+    await shot(page, 'B1-accueil-galerie');
   });
 
   // ---- C1 : Liste projets -------------------------------------------------
@@ -140,7 +141,9 @@ test.describe('LIVE — Parcours utilisateur app en ligne (Vercel ↔ Render)', 
 
   // ---- C3 : Ouvrir le projet → onglet Calculs par défaut ------------------
   test('C3 — ouvrir le projet → redirection onglet Calculs (F-02)', async () => {
-    await page.getByRole('link', { name: /Chaussee RN1/i }).first().click();
+    // La carte projet est un role="listitem" (aria-label « Projet … Chaussee RN1 »),
+    // pas un <a> — clic via le rôle réel.
+    await page.getByRole('listitem', { name: /Chaussee RN1/i }).first().click();
     await expect(page).toHaveURL(/\/projets\/[^/]+\/calculs/, { timeout: NAV });
     await page.waitForLoadState('networkidle', { timeout: NAV }).catch(() => {});
     await shot(page, 'C3-onglet-calculs');

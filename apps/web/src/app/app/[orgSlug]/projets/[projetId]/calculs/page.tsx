@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import CalculsClient from './CalculsClient';
 
 export const metadata: Metadata = {
-  title: 'Calculs — ROADSEN',
+  title: 'Calculs — GEOFAM',
 };
 
 interface Props {

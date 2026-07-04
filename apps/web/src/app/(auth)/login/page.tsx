@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import LoginClient from './LoginClient';
 
 export const metadata: Metadata = {
-  title: 'Connexion — ROADSEN',
+  title: 'Connexion — GEOFAM',
 };
 
 export default function LoginPage() {

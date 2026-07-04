@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import ProjetsClient from './ProjetsClient';
 
 export const metadata: Metadata = {
-  title: 'Mes projets — ROADSEN',
+  title: 'Mes projets — GEOFAM',
 };
 
 interface Props {

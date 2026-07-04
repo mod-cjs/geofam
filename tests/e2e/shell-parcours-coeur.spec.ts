@@ -114,48 +114,34 @@ test.describe('D-01 — Parcours cœur : login → projets → calcul → PV', (
     await expect(page).toHaveURL(/\/calculs/, { timeout: 6000 });
   });
 
-  test('given l onglet Calculs, when je sélectionne un moteur et saisis les champs, then les résultats s affichent', async ({
+  // Alignement workflow : les calculs se lancent depuis les logiciels, plus depuis
+  // le projet. L'onglet Calculs est un HISTORIQUE en lecture seule.
+  test('given l onglet Calculs en lecture seule, when je clique Nouveau calcul, then je suis renvoyé vers la galerie des logiciels', async ({
     page,
   }) => {
-    // Naviguer directement vers les calculs du premier projet mock
     await page.goto(BASE_URL + '/app/be-routes-dakar/projets/proj_01/calculs?demo=active');
 
-    // Choisir un moteur (C-01 — sélecteur moteur)
-    const burmisterBtn = page.getByRole('button', { name: /burmister|chaussée/i }).first();
-    await expect(burmisterBtn).toBeVisible({ timeout: 8000 });
-    await burmisterBtn.click();
+    const nouveau = page.getByRole('button', { name: /nouveau calcul/i }).first();
+    await expect(nouveau).toBeVisible({ timeout: 8000 });
+    await nouveau.click();
 
-    // Remplir le libellé (champ requis)
-    const labelInput = page.getByLabel(/libellé du calcul/i);
-    await expect(labelInput).toBeVisible({ timeout: 5000 });
-    await labelInput.fill('Test Playwright E2E');
-
-    // Cliquer sur Calculer
-    await page.getByRole('button', { name: /calculer/i }).click();
-
-    // Les résultats doivent apparaître (mock répond instantanément)
-    await expect(page.getByText(/résultat|résultats/i)).toBeVisible({ timeout: 10000 });
+    // Renvoi vers la galerie GEOFAM (point d'entrée unique pour lancer un calcul).
+    await expect(page).toHaveURL(/\/logiciels$/, { timeout: 8000 });
+    await expect(page.getByRole('heading', { name: 'GEOFAM' })).toBeVisible({ timeout: 6000 });
   });
 
-  test('given un calcul terminé, when je clique Émettre un PV, then le modal C-02 s ouvre', async ({
+  test('given l historique des calculs, when je sélectionne un calcul, then ses résultats s affichent en lecture seule (aucune émission de PV ici)', async ({
     page,
   }) => {
-    // Les mocks incluent des calculs déjà DONE — naviguer vers un calcul existant
     await page.goto(BASE_URL + '/app/be-routes-dakar/projets/proj_01/calculs?demo=active');
 
-    // Sélectionner un calcul existant avec statut DONE dans la liste gauche
-    const calcRow = page.getByRole('button').filter({ hasText: /dimensionnement|burmister/i }).first();
+    const calcRow = page.getByRole('button').filter({ hasText: /dimensionnement|burmister|terzaghi/i }).first();
     await expect(calcRow).toBeVisible({ timeout: 8000 });
     await calcRow.click();
 
-    // Bouton Émettre un PV
-    const emettreBtn = page.getByRole('button', { name: /émettre un pv/i });
-    await expect(emettreBtn).toBeVisible({ timeout: 5000 });
-    await emettreBtn.click();
-
-    // Modal C-02 doit s'ouvrir
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 4000 });
-    await expect(page.getByText(/procès-verbal|note d'honnêteté/i)).toBeVisible();
+    // Vue lecture : mention explicite + AUCUN bouton d'émission de PV dans cet écran.
+    await expect(page.getByText(/lecture seule/i).first()).toBeVisible({ timeout: 6000 });
+    await expect(page.getByRole('button', { name: /émettre un pv/i })).toHaveCount(0);
   });
 
   test('given l onglet PV, when je visite, then les PV scellés s affichent avec badge "Scellé"', async ({
