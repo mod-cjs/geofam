@@ -231,4 +231,26 @@ describe('radier — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     // Seuls les champs d'ingenierie + coords de charges : pas de mesh/loc nodal.
     expect(Object.keys(wp).sort()).toEqual(['L', 'beta', 'ds', 'ki', 'kj', 'p1', 'p2']);
   });
+
+  it("champDeflexion : heatmap d'affichage 48x48 DECOUPLEE du maillage, remplie, sans cle nodale", () => {
+    const fx = RADIER_FIXTURES.find((f) => f.id === 'carre-charge-centree');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const env = runRadier(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    const cd = env.output.champDeflexion;
+    // Anti-regression : `sol.w` est un Float64Array -> la garde doit l'accepter.
+    expect(cd, 'champDeflexion present').toBeTruthy();
+    if (!cd) return;
+    // Grille d'affichage FIXE (48x48), DECOUPLEE du maillage EF.
+    expect(cd.cols).toBe(48);
+    expect(cd.rows).toBe(48);
+    expect(cd.vals.length).toBe(cd.cols * cd.rows);
+    expect(Number.isFinite(cd.vMin) && Number.isFinite(cd.vMax)).toBe(true);
+    // Le radier est effectivement rendu (pas entierement masque).
+    expect(cd.vals.some((v) => v != null)).toBe(true);
+    // Cles STRICTEMENT d'affichage : aucune valeur nodale / indice / topologie.
+    expect(Object.keys(cd).sort()).toEqual(['cols', 'rows', 'vMax', 'vMin', 'vals', 'x0', 'x1', 'y0', 'y1']);
+  });
 });

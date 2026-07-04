@@ -217,10 +217,13 @@ function buildHeatmap(R: Record<string, unknown>): unknown {
   const nodeX = R.nodeX,
     nodeY = R.nodeY,
     wv = R.w;
-  if (!Array.isArray(nodeX) || !Array.isArray(nodeY) || !Array.isArray(wv)) return undefined;
-  const xs = nodeX as number[],
-    ys = nodeY as number[],
-    ws = wv as number[];
+  // Accepte tableaux ET tableaux TYPÉS : le champ nodal `w` (sol.w) est un Float64Array,
+  // pour lequel Array.isArray() renvoie false. ArrayBuffer.isView couvre les typed arrays.
+  const isNumArr = (a: unknown): a is ArrayLike<number> => Array.isArray(a) || ArrayBuffer.isView(a);
+  if (!isNumArr(nodeX) || !isNumArr(nodeY) || !isNumArr(wv)) return undefined;
+  const xs = nodeX as ArrayLike<number>,
+    ys = nodeY as ArrayLike<number>,
+    ws = wv as ArrayLike<number>;
   const N = Math.min(xs.length, ys.length, ws.length);
   if (N < 3) return undefined;
   let x0 = Infinity,
@@ -240,8 +243,12 @@ function buildHeatmap(R: Record<string, unknown>): unknown {
   const G = 48; // resolution d'affichage FIXE, DECOUPLEE du maillage
   const cw = (x1 - x0) / (G - 1),
     ch = (y1 - y0) / (G - 1);
-  const eps2 = Math.pow(Math.max(cw, ch) * 0.9, 2); // lissage ~ cellule d'affichage
-  const maxD2 = Math.pow(Math.max(cw, ch) * 1.6, 2); // masque hors radier
+  // Espacement representatif des nœuds : le maillage peut etre plus GROSSIER que la
+  // grille d'affichage. On borne le lissage et le masque sur l'echelle du maillage,
+  // sinon des points INTERIEURS (loin d'un nœud) seraient masques a tort.
+  const spacing = Math.sqrt(((x1 - x0) * (y1 - y0)) / Math.max(1, N)) || Math.max(cw, ch);
+  const eps2 = Math.pow(spacing * 0.6, 2); // lissage ~ echelle du maillage
+  const maxD2 = Math.pow(spacing * 1.25, 2); // masque hors radier
   const vals: (number | null)[] = new Array(G * G).fill(null);
   let vMin = Infinity,
     vMax = -Infinity;
