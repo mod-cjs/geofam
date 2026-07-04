@@ -22,6 +22,7 @@ import {
   Menu,
   X,
   Route,
+  Layers,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
@@ -69,6 +70,12 @@ function useLogicielsItems(orgSlug: string): NavItem[] {
       label: 'ROADSENS — Chaussées',
       icon: <Route size={20} strokeWidth={1.5} aria-hidden="true" />,
       href: `/app/${orgSlug}/logiciels/roadsens`,
+    },
+    {
+      id: 'terzaghi',
+      label: 'Terzaghi — Fondations superficielles',
+      icon: <Layers size={20} strokeWidth={1.5} aria-hidden="true" />,
+      href: `/app/${orgSlug}/logiciels/terzaghi`,
     },
   ];
 }
