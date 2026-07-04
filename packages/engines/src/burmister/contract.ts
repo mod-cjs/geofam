@@ -162,7 +162,15 @@ const TrafficSchema = z
  * Charge de reference (jumelage). `r`/`sh`/`ks` valent 'auto' (calcul AGEROUTE)
  * ou un nombre (override manuel) — exactement comme le HTML (`cp.r='auto'`...).
  */
-const AutoOrNum = z.union([z.literal('auto'), z.number().finite()]);
+// SECURITE (audit adverse) : r/sh/ks sont imposables par le client ('auto' ou valeur)
+// et pilotent la deformation ADMISSIBLE de fatigue -> le VERDICT `conforme`. La branche
+// numerique DOIT etre BORNEE a une plage physique LCPC saine : sans borne, `ks=1000`
+// gonflait l'admissible x1000 -> chaussee non conforme -> CONFORME (faux PASS scelle au
+// PV). Plages larges (contiennent toutes les valeurs LCPC legitimes) mais finies ;
+// bornes exactes a confirmer par l'expert (STARFIRE). r risque % ; sh (cm) ; ks O(1).
+const AutoOrRisk = z.union([z.literal('auto'), z.number().finite().min(0.001).max(50)]);
+const AutoOrSh = z.union([z.literal('auto'), z.number().finite().min(0).max(20)]);
+const AutoOrKs = z.union([z.literal('auto'), z.number().finite().min(0.1).max(2)]);
 const LoadSchema = z
   .object({
     /** Pression de contact (MPa). */
@@ -171,12 +179,12 @@ const LoadSchema = z
     a: z.number().finite().min(0.01).max(1),
     /** Entraxe du jumelage (m). */
     d: z.number().finite().min(0).max(2),
-    /** Risque effectif : 'auto' (Tab. 70) ou % impose. */
-    r: AutoOrNum.optional(),
-    /** Sh (cm) : 'auto' (Tab. VI.2.4) ou impose. */
-    sh: AutoOrNum.optional(),
-    /** ks : 'auto' (couche sous-jacente) ou impose. */
-    ks: AutoOrNum.optional(),
+    /** Risque effectif : 'auto' (Tab. 70) ou % impose (borne 0,001-50 %). */
+    r: AutoOrRisk.optional(),
+    /** Sh (cm) : 'auto' (Tab. VI.2.4) ou impose (borne 0-20 cm). */
+    sh: AutoOrSh.optional(),
+    /** ks : 'auto' (couche sous-jacente) ou impose (borne 0,1-2). */
+    ks: AutoOrKs.optional(),
   })
   .strict();
 
