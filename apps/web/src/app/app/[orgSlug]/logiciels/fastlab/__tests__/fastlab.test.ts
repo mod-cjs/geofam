@@ -16,6 +16,11 @@ function form(over: Partial<FastlabForm> = {}): FastlabForm {
     sieves: { gr_2: '90', gr_0_08: '30', gr_20: '' },
     ll: [{ x: '15', t: '15', h: '29', s: '25' }, { x: '', t: '', h: '', s: '' }, { x: '', t: '', h: '', s: '' }, { x: '', t: '', h: '', s: '' }],
     pl: [{ t: '10', h: '16', s: '15' }, { t: '', h: '', s: '' }],
+    vbs: { conc: '10', prise1: '30', frac1: '100', w1: '4', V1: '101', prise2: '', frac2: '', w2: '', V2: '' },
+    prMould: 'A', prType: 'n',
+    prPoints: [{ mh: '1836.6', t: '18', h: '74', s: '68' }, { mh: '', t: '', h: '', s: '' }],
+    cbMethod: 'box', cbShape: 'sq', cbDim: '60', cbRs: '2.65',
+    cbPoints: [{ N: '0.36', P: '0.197', rho: '1950', w: '18.5' }, { N: '', P: '', rho: '', w: '' }],
     ...over,
   };
 }
@@ -31,6 +36,17 @@ describe('buildFastlabPayload — structure', () => {
     expect(p.gr_2).toBe('90');
     expect(p.ll_x1).toBe('15');
     expect(p.pl_t1).toBe('10');
+  });
+
+  it('mappe VBS + Proctor + CBR aux clés moteur', () => {
+    const p = buildFastlabPayload(form());
+    expect(p.v_conc).toBe('10');
+    expect(p.v_prise1).toBe('30');
+    expect(p.pr_mould).toBe('A');
+    expect(p.prType).toBe('n');
+    expect(p.pr_mh1).toBe('1836.6');
+    expect(p.ciMethod).toBe('box');
+    expect(p.ci_N1).toBe('0.36');
   });
 
   it('omet les champs vides (pas de clé bruit)', () => {

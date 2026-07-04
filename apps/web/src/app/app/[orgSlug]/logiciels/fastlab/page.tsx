@@ -19,6 +19,8 @@ import { useOrgId } from '@/lib/org-context';
 interface WaterS { t: string; h: string; s: string }
 interface LLPoint { x: string; t: string; h: string; s: string }
 interface PLPoint { t: string; h: string; s: string }
+interface PrPoint { mh: string; t: string; h: string; s: string }
+interface CbPoint { N: string; P: string; rho: string; w: string }
 
 const SIEVES: Array<{ key: string; label: string }> = [
   { key: 'gr_20', label: '20 mm' }, { key: 'gr_16', label: '16 mm' }, { key: 'gr_10', label: '10 mm' },
@@ -32,6 +34,9 @@ export interface FastlabForm {
   water: WaterS[];
   gr_M: string; sieves: Record<string, string>;
   ll: LLPoint[]; pl: PLPoint[];
+  vbs: Record<string, string>;
+  prMould: string; prType: string; prPoints: PrPoint[];
+  cbMethod: string; cbShape: string; cbDim: string; cbRs: string; cbPoints: CbPoint[];
 }
 
 /** Payload API PUR (DoD §8 : mesures brutes de labo, chaînes ; classification serveur). */
@@ -43,6 +48,18 @@ export function buildFastlabPayload(f: FastlabForm): Record<string, unknown> {
   for (const [k, v] of Object.entries(f.sieves)) if (v.trim() !== '') p[k] = v;
   f.ll.forEach((r, i) => { const n = i + 1; if (r.x) p[`ll_x${n}`] = r.x; if (r.t) p[`ll_t${n}`] = r.t; if (r.h) p[`ll_h${n}`] = r.h; if (r.s) p[`ll_s${n}`] = r.s; });
   f.pl.forEach((r, i) => { const n = i + 1; if (r.t) p[`pl_t${n}`] = r.t; if (r.h) p[`pl_h${n}`] = r.h; if (r.s) p[`pl_s${n}`] = r.s; });
+  // VBS (bleu de méthylène) — NF P94-068
+  for (const [k, v] of Object.entries(f.vbs)) if (v.trim() !== '') p[`v_${k}`] = v;
+  // Proctor — moule + type + points de compactage (mh = masse humide + moule)
+  if (f.prMould) p.pr_mould = f.prMould;
+  if (f.prType) p.prType = f.prType;
+  f.prPoints.forEach((r, i) => { const n = i + 1; if (r.mh) p[`pr_mh${n}`] = r.mh; if (r.t) p[`pr_t${n}`] = r.t; if (r.h) p[`pr_h${n}`] = r.h; if (r.s) p[`pr_s${n}`] = r.s; });
+  // CBR/IPI — méthode + géométrie + points (enfoncement N, force P, ρ, w par énergie)
+  if (f.cbMethod) p.ciMethod = f.cbMethod;
+  if (f.cbShape) p.ci_shape = f.cbShape;
+  if (f.cbDim) p.ci_dim = f.cbDim;
+  if (f.cbRs) p.ci_rs = f.cbRs;
+  f.cbPoints.forEach((r, i) => { const n = i + 1; if (r.N) p[`ci_N${n}`] = r.N; if (r.P) p[`ci_P${n}`] = r.P; if (r.rho) p[`ci_rho${n}`] = r.rho; if (r.w) p[`ci_w${n}`] = r.w; });
   return p;
 }
 
@@ -82,13 +99,28 @@ export default function FastlabPage() {
     { x: '28', t: '15.00', h: '28.70', s: '25.00' }, { x: '34', t: '15.00', h: '28.55', s: '25.00' },
   ]);
   const [pl, setPl] = useState<PLPoint[]>([{ t: '10.00', h: '16.00', s: '15.00' }, { t: '10.00', h: '16.05', s: '15.04' }]);
+  const [vbs, setVbs] = useState<Record<string, string>>({ conc: '10', prise1: '30', frac1: '100', w1: '4.0', V1: '101', prise2: '30', frac2: '100', w2: '4.0', V2: '101' });
+  const [prMould, setPrMould] = useState('A');
+  const [prType, setPrType] = useState('n');
+  const [prPoints, setPrPoints] = useState<PrPoint[]>([
+    { mh: '1836.6', t: '18.0', h: '74.0', s: '68.0' }, { mh: '1944.8', t: '18.0', h: '75.0', s: '68.0' },
+    { mh: '2022.6', t: '18.0', h: '76.0', s: '68.0' }, { mh: '2024.1', t: '18.0', h: '77.0', s: '68.0' }, { mh: '1990.6', t: '18.0', h: '78.0', s: '68.0' },
+  ]);
+  const [cbMethod, setCbMethod] = useState('box');
+  const [cbShape, setCbShape] = useState('sq');
+  const [cbDim, setCbDim] = useState('60');
+  const [cbRs, setCbRs] = useState('2.65');
+  const [cbPoints, setCbPoints] = useState<CbPoint[]>([
+    { N: '0.36', P: '0.197', rho: '1950', w: '18.5' }, { N: '0.72', P: '0.365', rho: '1965', w: '18.0' },
+    { N: '1.08', P: '0.533', rho: '1940', w: '18.8' }, { N: '1.44', P: '0.700', rho: '1970', w: '17.6' },
+  ]);
 
   const [calculating, setCalculating] = useState(false);
   const [calcResult, setCalcResult] = useState<CalcResult | null>(null);
   const [calcError, setCalcError] = useState<string | null>(null);
   const [emittingPv, setEmittingPv] = useState(false);
   const [pvResult, setPvResult] = useState<OfficialPv | null>(null);
-  const [tab, setTab] = useState<'ident' | 'eau' | 'atterberg' | 'resultat'>('ident');
+  const [tab, setTab] = useState<'ident' | 'eau' | 'atterberg' | 'vbs' | 'proctor' | 'cbr' | 'resultat'>('ident');
 
   useEffect(() => {
     if (!orgId) return;
@@ -99,7 +131,8 @@ export default function FastlabPage() {
 
   const buildPayload = useCallback(() => buildFastlabPayload({
     ident: { ...ident, geo: ident.geo ?? '' }, water, gr_M, sieves, ll, pl,
-  }), [ident, water, gr_M, sieves, ll, pl]);
+    vbs, prMould, prType, prPoints, cbMethod, cbShape, cbDim, cbRs, cbPoints,
+  }), [ident, water, gr_M, sieves, ll, pl, vbs, prMould, prType, prPoints, cbMethod, cbShape, cbDim, cbRs, cbPoints]);
 
   const handleCalculer = useCallback(async () => {
     if (!orgId || !projectId) return;
@@ -155,7 +188,7 @@ export default function FastlabPage() {
       {calcError && <div style={{ ...card, background: '#f5efe0', borderColor: '#ddd0a8', color: '#7a5a1e' }} role="alert">{calcError}</div>}
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: `1px solid ${LINE}`, flexWrap: 'wrap' }} role="tablist">
-        {([['ident', 'Identification'], ['eau', 'Eau & granulométrie'], ['atterberg', 'Limites d’Atterberg'], ['resultat', 'Classe GTR']] as const).map(([id, t]) => (
+        {([['ident', 'Identification'], ['eau', 'Eau & granulométrie'], ['atterberg', 'Limites d’Atterberg'], ['vbs', 'Bleu (VBS)'], ['proctor', 'Proctor'], ['cbr', 'CBR / IPI'], ['resultat', 'Classe GTR']] as const).map(([id, t]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
             style={{ border: 'none', background: 'none', padding: '9px 13px', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', color: tab === id ? ACCENT : MUTED, borderBottom: tab === id ? `2px solid ${ACCENT}` : '2px solid transparent' }}>
             {t}
@@ -226,6 +259,76 @@ export default function FastlabPage() {
             </table>
           </div>
         </>
+      )}
+
+      {tab === 'vbs' && (
+        <div style={card}>
+          <div style={secH}>Valeur de bleu de méthylène (VBS) — NF P94-068</div>
+          <div style={{ maxWidth: 240, marginBottom: 12 }}><label style={lbl}>Concentration solution (g/L)</label><input style={inp} value={vbs.conc ?? ''} onChange={(e) => setVbs((p) => ({ ...p, conc: e.target.value }))} /></div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead><tr>{['Essai', 'Prise (g)', 'Fraction 0/2 (%)', 'w (%)', 'V bleu (mL)'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <tbody>{[1, 2].map((n) => (
+              <tr key={n}>
+                <td style={{ padding: 2, color: MUTED, fontSize: 11 }}>{n}</td>
+                {(['prise', 'frac', 'w', 'V'] as const).map((k) => { const key = `${k}${n}`; return <td key={k} style={{ padding: 2 }}><input style={inp} value={vbs[key] ?? ''} onChange={(e) => setVbs((p) => ({ ...p, [key]: e.target.value }))} /></td>; })}
+              </tr>
+            ))}</tbody>
+          </table>
+          <div style={{ marginTop: 10, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Le VBS caractérise la fraction 0/2 mm — voie de classement alternative à l&apos;indice de plasticité pour la famille de sol.</div>
+        </div>
+      )}
+
+      {tab === 'proctor' && (
+        <div style={card}>
+          <div style={secH}>Essai Proctor — NF EN 13286-2</div>
+          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div><label style={lbl}>Moule</label>
+              <select style={{ ...inp, width: 220 }} value={prMould} onChange={(e) => setPrMould(e.target.value)}>
+                <option value="A">A — Ø101,6 × h116,4</option><option value="B">B — Ø152 × h116,4</option><option value="C">C — Ø250 × h200</option>
+              </select>
+            </div>
+            <div><label style={lbl}>Énergie de compactage</label>
+              <div style={{ display: 'flex', gap: 6 }}>{([['n', 'Normal'], ['m45', 'Modifié 4,5 kg'], ['m15', 'Modifié 15 kg']] as const).map(([v, l]) => (
+                <button key={v} onClick={() => setPrType(v)} style={{ border: `1px solid ${prType === v ? ACCENT : LINE}`, background: prType === v ? '#eef1df' : '#fff', color: prType === v ? ACCENT : MUTED, borderRadius: 7, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>{l}</button>
+              ))}</div>
+            </div>
+          </div>
+          <div style={secH}>Points de compactage</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead><tr>{['Point', 'Humide + moule (g)', 'Tare (g)', 'Humide + tare', 'Sec + tare'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <tbody>{prPoints.map((r, i) => (
+              <tr key={i}>
+                <td style={{ padding: 2, color: MUTED, fontSize: 11 }}>{i + 1}</td>
+                {(['mh', 't', 'h', 's'] as const).map((k) => <td key={k} style={{ padding: 2 }}><input style={inp} value={r[k]} onChange={(e) => setPrPoints((a) => a.map((q, j) => j === i ? { ...q, [k]: e.target.value } : q))} /></td>)}
+              </tr>
+            ))}</tbody>
+          </table>
+          <button onClick={() => setPrPoints((a) => [...a, { mh: '', t: '', h: '', s: '' }])} style={{ marginTop: 8, border: `1px dashed ${ACCENT}`, background: '#eef1df', color: ACCENT, borderRadius: 7, padding: '6px 11px', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>+ Point</button>
+          <div style={{ marginTop: 10, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Le Proctor donne w_OPN et ρ_d;max — il détermine l&apos;état hydrique (th/h/m/s/ts) qui complète la classe GTR.</div>
+        </div>
+      )}
+
+      {tab === 'cbr' && (
+        <div style={card}>
+          <div style={secH}>Indice CBR / IPI — NF P94-078</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
+            <div><label style={lbl}>Méthode</label><select style={inp} value={cbMethod} onChange={(e) => setCbMethod(e.target.value)}><option value="box">Boîte</option><option value="ring">Anneau</option></select></div>
+            <div><label style={lbl}>Forme du poinçon</label><select style={inp} value={cbShape} onChange={(e) => setCbShape(e.target.value)}><option value="sq">Carrée</option><option value="circ">Circulaire</option></select></div>
+            <div><label style={lbl}>Dimension (mm)</label><input style={inp} value={cbDim} onChange={(e) => setCbDim(e.target.value)} /></div>
+            <div><label style={lbl}>ρ_s (Mg/m³)</label><input style={inp} value={cbRs} onChange={(e) => setCbRs(e.target.value)} /></div>
+          </div>
+          <div style={secH}>Points (par énergie)</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead><tr>{['Point', 'Enfoncement (mm)', 'Force (kN)', 'ρ (kg/m³)', 'w (%)'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <tbody>{cbPoints.map((r, i) => (
+              <tr key={i}>
+                <td style={{ padding: 2, color: MUTED, fontSize: 11 }}>{i + 1}</td>
+                {(['N', 'P', 'rho', 'w'] as const).map((k) => <td key={k} style={{ padding: 2 }}><input style={inp} value={r[k]} onChange={(e) => setCbPoints((a) => a.map((q, j) => j === i ? { ...q, [k]: e.target.value } : q))} /></td>)}
+              </tr>
+            ))}</tbody>
+          </table>
+          <div style={{ marginTop: 10, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>L&apos;indice CBR/IPI caractérise la portance du sol support — paramètre de dimensionnement des chaussées.</div>
+        </div>
       )}
 
       {tab === 'resultat' && (
