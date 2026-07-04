@@ -79,8 +79,9 @@ export default function LoginClient() {
       // Destination : returnTo explicite → 1re org connue → racine (middleware redirige).
       // Plus de slug mock codé en dur.
       const orgs = getStoredOrgs();
+      // Accueil = galerie des logiciels GEOFAM (l'utilisateur choisit un module).
       const destination =
-        returnTo ?? (orgs[0]?.slug ? `/app/${orgs[0].slug}/projets` : '/');
+        returnTo ?? (orgs[0]?.slug ? `/app/${orgs[0].slug}/logiciels` : '/');
       router.push(destination);
     } catch (err: unknown) {
       const apiErr = err as { message?: string };

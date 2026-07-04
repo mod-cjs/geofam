@@ -31,7 +31,7 @@ function FullVariant({ className }: { className?: string }) {
     <div
       className={className}
       style={{ display: "inline-flex", flexDirection: "column", gap: 5 }}
-      aria-label="ROADSEN"
+      aria-label="GEOFAM"
     >
       {/* Wordmark */}
       <span
@@ -45,7 +45,7 @@ function FullVariant({ className }: { className?: string }) {
           userSelect: "none",
         }}
       >
-        ROADSEN
+        GEOFAM
       </span>
       {/* Barre de strates */}
       <StrataBar />
@@ -59,7 +59,7 @@ function GlyphVariant({ size, className }: { size: number; className?: string })
     <div
       className={className}
       style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}
-      aria-label="ROADSEN"
+      aria-label="GEOFAM"
     >
       <span
         style={{
@@ -71,7 +71,7 @@ function GlyphVariant({ size, className }: { size: number; className?: string })
           userSelect: "none",
         }}
       >
-        R
+        G
       </span>
       {/* Filet latérite seul — 2px */}
       <div

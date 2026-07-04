@@ -23,6 +23,7 @@ import {
   X,
   Route,
   Layers,
+  LayoutGrid,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
@@ -47,6 +48,12 @@ interface NavItem {
 
 function useNavItems(orgSlug: string): NavItem[] {
   return [
+    {
+      id: 'accueil',
+      label: 'Accueil — Logiciels',
+      icon: <LayoutGrid size={20} strokeWidth={1.5} aria-hidden="true" />,
+      href: `/app/${orgSlug}/logiciels`,
+    },
     {
       id: 'projets',
       label: 'Mes projets',
@@ -768,6 +775,13 @@ export function Sidebar({ orgSlug }: SidebarProps) {
       /* storage indisponible */
     }
   }, []);
+
+  // Synchronise le décalage du contenu (.shell-main) avec la largeur réelle de la
+  // sidebar : sans ça, au repli (240→64) un espace vide reste à gauche.
+  useEffect(() => {
+    document.documentElement.style.setProperty('--shell-sidebar-w', collapsed ? '64px' : '240px');
+  }, [collapsed]);
+
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const toggleCollapse = useCallback(() => {

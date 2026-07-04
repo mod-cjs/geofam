@@ -70,7 +70,7 @@ export default async function ShellLayout({ children, params }: ShellLayoutProps
         /* Décalage sidebar desktop */
         @media (min-width: 1024px) {
           .shell-main {
-            margin-left: 240px;
+            margin-left: var(--shell-sidebar-w, 240px);
             transition: margin-left var(--dur-base) var(--ease-state);
           }
         }
