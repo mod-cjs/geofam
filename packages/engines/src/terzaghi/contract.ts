@@ -39,7 +39,27 @@ import { z } from 'zod';
 // ---------------------------------------------------------------------------
 
 /** Valeur numerique tolerante : nombre fini OU chaine (parsee par le moteur). */
-const NumOrStr = z.union([z.number().finite(), z.string().max(32)]);
+// Le front envoie les nombres en TEXTE brut (inputs). On tolere donc les chaines,
+// mais on REJETTE une chaine NON VIDE qui ne represente pas un nombre fini une fois
+// coercee comme le fait le moteur (`num()` : trim, espaces retires, virgule -> point,
+// puis Number). Une chaine vide reste toleree (absence intentionnelle, ex. `pl:''` ->
+// le moteur lit NaN et ignore/defaute). Sans ce garde-fou, `c = "abc"` etait
+// silencieusement absorbe -> resultat FAUX mais plausible, scellable dans un PV
+// (faille #1, audit adverse). Le calage sur `num()` garde les decimales a virgule
+// (`"1,5"`) valides et rejette `"abc"` / `"Infinity"` / `"NaN"` / `"1e999"`.
+const NumOrStr = z.union([
+  z.number().finite(),
+  z
+    .string()
+    .max(32)
+    .refine(
+      (s) => {
+        const t = s.trim().replace(/\s/g, '').replace(',', '.');
+        return t === '' || Number.isFinite(Number(t));
+      },
+      { message: 'valeur numerique invalide' },
+    ),
+]);
 /** Champ numerique facultatif (vide possible : le moteur lit alors NaN). */
 const OptNumOrStr = NumOrStr.optional();
 
