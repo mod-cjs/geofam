@@ -113,6 +113,13 @@ export interface NormalizedCalcOutput {
   /** 'NA' = moteur d'extraction/classification (pas de verdict de conformité). */
   verdict: 'PASS' | 'FAIL' | 'NA';
   rows: CalcOutputRow[];
+  /**
+   * Détails de calcul — intermédiaires de MÉTHODE PUBLICS (contraintes σ,
+   * déformations ε intermédiaires, modules pondérés). Whitelistés par un builder
+   * dédié (jamais copie brute) ; JAMAIS de coefficient de calage (DoD §8,
+   * rescope « méthode transparente »). Absent si le moteur n'en fournit pas.
+   */
+  details?: CalcOutputRow[];
 }
 
 export interface CalcResult {

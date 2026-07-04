@@ -233,6 +233,35 @@ function shapeOutput(D: Record<string, unknown>): unknown {
     };
   }
 
+  // --- DETAILS DE CALCUL — intermediaires de METHODE PUBLICS (rescope §8) ---
+  // Grandeurs calculees de la methode Burmister/LCPC. On n'y met JAMAIS de
+  // coefficient de calage (e6/kr/ks/kc/sh/ukth) : ceux-ci restent serveur.
+  {
+    const kpa = (v: unknown): number | null => (fin(v) ? v * 1000 : null); // MPa -> kPa
+    const mdef = (v: unknown): number | null => (fin(v) ? v : null);
+    const s0 = (D.s0 ?? {}) as Record<string, unknown>;
+    const sd2 = (D.sd2 ?? {}) as Record<string, unknown>;
+    out.details = {
+      E1_pond: fin(D.E1) ? D.E1 : 0,
+      nu1_pond: fin(D.nu1) ? D.nu1 : 0,
+      E_psc: fin(D.Eref) ? D.Eref : 0,
+      nu_psc: fin(D.nuRef) ? D.nuRef : 0,
+      risque_pct: fin(D.rEff) ? D.rEff : 0,
+      sigmaZ_r0: kpa(s0.sz),
+      sigmaR_r0: kpa(s0.sr),
+      sigmaZ_d2: kpa(sd2.sz),
+      sigmaR_d2: kpa(sd2.sr),
+      epsilonT_r0: mdef(D.et0),
+      epsilonT_d2: mdef(D.etM),
+      epsilonT: mdef(D.et),
+      epsilonT_adm: mdef(D.etA),
+      epsilonZ_axe: mdef(D.ez0),
+      epsilonZ_mid: mdef(D.ezM),
+      epsilonZ: fin(D.ez) ? D.ez : 0,
+      epsilonZ_adm: fin(D.ezA) ? D.ezA : 0,
+    };
+  }
+
   return out;
 }
 

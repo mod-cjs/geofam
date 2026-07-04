@@ -149,6 +149,26 @@ describe('burmister — contrat de sortie (whitelist stricte, anti-fuite)', () =
     expect(() => BurmisterOutputSchema.parse(pollue)).toThrow(/[Uu]nrecognized/);
   });
 
+  it('details expose les intermediaires PUBLICS mais AUCUN coefficient de calage (rescope §8)', () => {
+    const fx = BURMISTER_FIXTURES[0];
+    if (!fx) return;
+    const env = runBurmister(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    const d = (env.output as { details?: Record<string, unknown> }).details;
+    expect(d, 'details present').toBeTruthy();
+    if (!d) return;
+    // Intermediaires PUBLICS presents (methode transparente)
+    for (const k of ['E1_pond', 'nu1_pond', 'epsilonZ', 'epsilonZ_adm', 'risque_pct']) {
+      expect(Object.prototype.hasOwnProperty.call(d, k), `public ${k} present`).toBe(true);
+    }
+    // AUCUN coefficient de CALAGE ne doit apparaitre dans details (fail-closed)
+    const dk = new Set<string>();
+    collectKeys(d, dk);
+    const CALAGE = ['e6', 'b', 'kc', 'kr', 'ks', 'sh', 'ub', 'ukc', 'usn', 'ukth', 'sig', 'kmix', 'Kmix'];
+    expect(CALAGE.filter((k) => dk.has(k)), 'aucun coefficient de calage dans details').toEqual([]);
+  });
+
   it('CALIBRATION VERROUILLEE : une entree forgee portant `materials` (calibration substituee) est REJETEE (400, fail-closed)', () => {
     // INTEGRITE PV : le contrat d'entree ne doit JAMAIS accepter une calibration de
     // fatigue fournie par le client — sinon une requete forgee pourrait la faire

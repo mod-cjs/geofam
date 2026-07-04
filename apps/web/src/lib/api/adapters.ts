@@ -357,6 +357,37 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
   return rows;
 }
 
+/**
+ * DÉTAILS DE CALCUL burmister — intermédiaires de MÉTHODE PUBLICS (rescope §8
+ * « méthode transparente »). Lit UNIQUEMENT les champs NOMMÉS de `o.details`
+ * (déjà whitelistés par `DetailsSchema` côté serveur) ; fail-closed : aucune
+ * copie d'objet brut, JAMAIS de coefficient de calage (ε₆/b/kc/kr/ks/Sh/kθ).
+ */
+function buildBurmisterDetails(o: Record<string, unknown>): CalcOutputRow[] {
+  const d = o.details;
+  if (d == null || typeof d !== 'object') return [];
+  const g = d as Record<string, unknown>;
+  const rows: CalcOutputRow[] = [];
+  pushRow(rows, 'Module pondéré du paquet lié Ē₁', g.E1_pond, 'MPa');
+  pushRow(rows, 'Coefficient de Poisson pondéré ν̄₁', g.nu1_pond, '');
+  pushRow(rows, 'Module plateforme support (PSC)', g.E_psc, 'MPa');
+  pushRow(rows, 'ν plateforme support', g.nu_psc, '');
+  pushRow(rows, 'Risque effectif', g.risque_pct, '%');
+  pushRow(rows, 'σ_z interface critique (r=0)', g.sigmaZ_r0, 'kPa');
+  pushRow(rows, 'σ_r interface critique (r=0)', g.sigmaR_r0, 'kPa');
+  pushRow(rows, 'σ_z entre roues (r=d/2, ×2)', g.sigmaZ_d2, 'kPa');
+  pushRow(rows, 'σ_r entre roues (r=d/2, ×2)', g.sigmaR_d2, 'kPa');
+  pushRow(rows, 'ε_t sous roue (r=0)', g.epsilonT_r0, 'μdef');
+  pushRow(rows, 'ε_t entre roues (r=d/2)', g.epsilonT_d2, 'μdef');
+  pushRow(rows, 'ε_t retenue (max)', g.epsilonT, 'μdef');
+  pushRow(rows, 'ε_t admissible', g.epsilonT_adm, 'μdef');
+  pushRow(rows, 'ε_z axe de roue (sommet PSC)', g.epsilonZ_axe, 'μdef');
+  pushRow(rows, 'ε_z entre-jumelage', g.epsilonZ_mid, 'μdef');
+  pushRow(rows, 'ε_z retenue (max)', g.epsilonZ, 'μdef');
+  pushRow(rows, 'ε_z admissible', g.epsilonZ_adm, 'μdef');
+  return rows;
+}
+
 /** Libellés d'état-limite (affichage). */
 const TERZAGHI_ETAT_LABEL: Record<string, string> = {
   ELU_F: 'ELU fond.',
@@ -808,6 +839,7 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
     return {
       verdict: o.conforme === true ? 'PASS' : 'FAIL',
       rows: buildBurmisterRows(o),
+      details: buildBurmisterDetails(o),
     };
   }
   if (typeof o.verdict === 'string' && Array.isArray(o.rows)) {

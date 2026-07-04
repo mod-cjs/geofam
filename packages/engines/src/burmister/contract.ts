@@ -247,6 +247,36 @@ const OrnierageSchema = z
  * grandeurs FINALES de chaque critere. Aucune contrainte brute, aucun coefficient
  * de fatigue, aucun intermediaire de propagateur.
  */
+/**
+ * DETAILS DE CALCUL — intermediaires de la METHODE PUBLIEE (rescope §8
+ * « methode transparente », decision titulaire). On expose les grandeurs
+ * calculees de la methode Burmister/LCPC (contraintes sigma, deformations
+ * epsilon intermediaires, modules ponderes) ; on n'expose JAMAIS les
+ * coefficients de CALAGE proprietaires (e6, b, kc, kr, ks, Sh, ktheta, delta),
+ * qui restent serveur. Objet FACULTATIF (absent en cas d'erreur de calcul).
+ */
+const DetailsSchema = z
+  .object({
+    E1_pond: z.number().finite(),
+    nu1_pond: z.number().finite(),
+    E_psc: z.number().finite(),
+    nu_psc: z.number().finite(),
+    risque_pct: z.number().finite(),
+    sigmaZ_r0: z.number().finite().nullable(),
+    sigmaR_r0: z.number().finite().nullable(),
+    sigmaZ_d2: z.number().finite().nullable(),
+    sigmaR_d2: z.number().finite().nullable(),
+    epsilonT_r0: z.number().finite().nullable(),
+    epsilonT_d2: z.number().finite().nullable(),
+    epsilonT: z.number().finite().nullable(),
+    epsilonT_adm: z.number().finite().nullable(),
+    epsilonZ_axe: z.number().finite().nullable(),
+    epsilonZ_mid: z.number().finite().nullable(),
+    epsilonZ: z.number().finite(),
+    epsilonZ_adm: z.number().finite(),
+  })
+  .strict();
+
 export const BurmisterOutputSchema = z
   .object({
     /** Erreur de calcul (science levee) : message borne, sans intermediaire. */
@@ -279,6 +309,8 @@ export const BurmisterOutputSchema = z
     fatigue: FatigueSchema.optional(),
     /** Critere d'orniarage (sol support). */
     ornierage: OrnierageSchema,
+    /** Details de calcul — intermediaires de methode PUBLICS (cf. DetailsSchema). */
+    details: DetailsSchema.optional(),
   })
   .strict();
 export type BurmisterOutput = z.infer<typeof BurmisterOutputSchema>;

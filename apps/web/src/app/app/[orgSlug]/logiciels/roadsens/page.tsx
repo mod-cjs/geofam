@@ -3052,6 +3052,7 @@ function TabDetails({ result }: { result: CalcResult | null }) {
 
   const output = result.output as NormalizedCalcOutput | null;
   const rows = Array.isArray(output?.rows) ? (output!.rows as CalcOutputRow[]) : [];
+  const details = Array.isArray(output?.details) ? (output!.details as CalcOutputRow[]) : [];
 
   return (
     <div data-testid="tab-details">
@@ -3059,9 +3060,10 @@ function TabDetails({ result }: { result: CalcResult | null }) {
         Récapitulatif des critères — calcul n° {result.id.slice(-8)}
       </SectionTitle>
       <Note>
-        Résultats de la méthode Transfer Matrix (Burmister exact, n couches). Les formules
-        et coefficients internes de calage restent côté serveur (DoD §8). Seuls les
-        résultats de vérification (grandeurs sollicitantes et admissibles) sont affichés.
+        Résultats de la méthode Transfer Matrix (Burmister exact, n couches). Les
+        intermédiaires de la méthode (contraintes σ, déformations ε, modules pondérés)
+        sont exposés ci-dessous ; seuls les coefficients de calage propriétaires (ε₆, b,
+        kc, kr, ks, Sh, kθ) restent côté serveur (DoD §8).
       </Note>
 
       {rows.length === 0 ? (
@@ -3169,6 +3171,39 @@ function TabDetails({ result }: { result: CalcResult | null }) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {details.length > 0 && (
+        <>
+          <SectionTitle>Détails de calcul — intermédiaires de la méthode</SectionTitle>
+          <div style={{ overflowX: 'auto', marginTop: 14 }}>
+            <table
+              style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12.5, background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderRadius: 12, overflow: 'hidden' }}
+              aria-label="Détails de calcul ROADSENS — intermédiaires de méthode"
+            >
+              <thead>
+                <tr>
+                  {['Grandeur', 'Valeur', 'Unité'].map((thh) => (
+                    <th key={thh} style={{ textAlign: 'left', padding: '9px 12px', background: 'var(--surface-canvas)', fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-subtle)', whiteSpace: 'nowrap' }}>
+                      {thh}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {details.map((row, i) => (
+                  <tr key={i} style={{ borderBottom: i < details.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                    <td style={{ padding: '8px 12px', fontWeight: 500, color: 'var(--text-primary)' }}>{row.label}</td>
+                    <td style={{ padding: '8px 12px', fontFamily: 'var(--font-mono, monospace)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)' }}>
+                      {typeof row.value === 'number' ? fmtNum(row.value, 2) : row.value}
+                    </td>
+                    <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontSize: 11 }}>{row.unit || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       <Note>
