@@ -36,7 +36,7 @@ const ENGINE_META: Record<string, { nom: string; route?: string }> = {
   burmister: { nom: 'ROADSENS — Chaussées', route: 'roadsens' },
   terzaghi: { nom: 'Terzaghi — Fondations superficielles', route: 'terzaghi' },
   pieux: { nom: 'CASAGRANDE — Pieux', route: 'casagrande' },
-  radier: { nom: 'GEOPLAQUE — Radier' },
+  radier: { nom: 'GEOPLAQUE — Radier', route: 'geoplaque' },
   pressiometre: { nom: 'PressioPro — Pressiomètre' },
   labo: { nom: 'FASTLAB — Laboratoire' },
 };

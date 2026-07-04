@@ -120,6 +120,26 @@ export interface NormalizedCalcOutput {
    * rescope « méthode transparente »). Absent si le moteur n'en fournit pas.
    */
   details?: CalcOutputRow[];
+  /**
+   * Champ de résultat RÉ-ÉCHANTILLONNÉ pour affichage (heatmap radier) — grille
+   * FIXE découplée du maillage EF. Montre le MOTIF (résultat), jamais les valeurs
+   * nodales/indices/topologie (méthode). Décision STARFIRE+expert (rescope §8).
+   */
+  heatmap?: HeatmapData;
+}
+
+/** Grille d'affichage d'un champ (heatmap) — découplée du maillage. */
+export interface HeatmapData {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  cols: number;
+  rows: number;
+  /** Valeurs de la grille d'affichage (row-major) ; null = hors domaine. */
+  vals: (number | null)[];
+  vMin: number;
+  vMax: number;
 }
 
 export interface CalcResult {

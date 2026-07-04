@@ -25,6 +25,7 @@ import {
   Layers,
   LayoutGrid,
   Columns3,
+  Grid3x3,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
@@ -90,6 +91,12 @@ function useLogicielsItems(orgSlug: string): NavItem[] {
       label: 'CASAGRANDE — Pieux',
       icon: <Columns3 size={20} strokeWidth={1.5} aria-hidden="true" />,
       href: `/app/${orgSlug}/logiciels/casagrande`,
+    },
+    {
+      id: 'geoplaque',
+      label: 'GEOPLAQUE — Radier',
+      icon: <Grid3x3 size={20} strokeWidth={1.5} aria-hidden="true" />,
+      href: `/app/${orgSlug}/logiciels/geoplaque`,
     },
   ];
 }

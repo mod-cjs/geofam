@@ -13,6 +13,7 @@ import type {
   CalcStatus,
   CalcOutputRow,
   NormalizedCalcOutput,
+  HeatmapData,
   OfficialPv,
   EntitlementsResponse,
   Project,
@@ -697,6 +698,25 @@ function buildRadierRows(o: Record<string, unknown>): CalcOutputRow[] {
 }
 
 /**
+ * HEATMAP radier — grille d'affichage RÉ-ÉCHANTILLONNÉE (déjà découplée du maillage
+ * côté serveur). Lit UNIQUEMENT les champs nommés de `o.champDeflexion` (fail-closed
+ * §8) ; jamais de valeurs nodales/indices/topologie. Garde-fous de cohérence.
+ */
+function buildRadierHeatmap(o: Record<string, unknown>): HeatmapData | undefined {
+  const h = o.champDeflexion;
+  if (h == null || typeof h !== 'object') return undefined;
+  const g = h as Record<string, unknown>;
+  const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const x0 = num(g.x0), y0 = num(g.y0), x1 = num(g.x1), y1 = num(g.y1);
+  const cols = num(g.cols), rows = num(g.rows), vMin = num(g.vMin), vMax = num(g.vMax);
+  if (x0 === null || y0 === null || x1 === null || y1 === null || cols === null || rows === null || vMin === null || vMax === null) return undefined;
+  if (!Array.isArray(g.vals) || cols < 2 || rows < 2 || cols * rows > 4096) return undefined;
+  const vals = (g.vals as unknown[]).map((v) => (typeof v === 'number' && Number.isFinite(v) ? v : null));
+  if (vals.length !== cols * rows) return undefined;
+  return { x0, y0, x1, y1, cols, rows, vals, vMin, vMax };
+}
+
+/**
  * labo — classification GTR (NF P 11-300) + paramètres d'identification.
  * La classe est un RÉSULTAT textuel. Clés nommées (fail-closed §8).
  */
@@ -914,7 +934,7 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
   }
   // radier (plaque/sol multicouche) : déflexions/distorsions — pas de verdict (NA)
   if (typeof o.betaGov === 'number' || 'nRafts' in o) {
-    return { verdict: 'NA', rows: buildRadierRows(o) };
+    return { verdict: 'NA', rows: buildRadierRows(o), heatmap: buildRadierHeatmap(o) };
   }
   // labo (classification GTR) : classe + paramètres — pas de verdict (NA)
   if (o.classe != null && typeof o.classe === 'object') {

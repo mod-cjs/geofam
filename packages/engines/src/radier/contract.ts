@@ -259,6 +259,28 @@ const WorstPairSchema = z
  * ×1000 de l'outil d'origine GEOPLAQUE_V10 (sur-rapport). Confirmation STARFIRE/expert en
  * attente pour figer l'unité sur un PV opposable (cf. mémoire roadsen-radier-units).
  */
+/**
+ * HEATMAP D'AFFICHAGE — grille FIXE ~48×48 DECOUPLEE du maillage EF (re-echantillonnage
+ * du champ de deflexion par ponderation inverse-distance lissee). Expose le MOTIF de
+ * deflexion (le RESULTAT), JAMAIS les valeurs nodales brutes, les indices de nœuds, ni
+ * la topologie du maillage (la METHODE). Decision STARFIRE + expert (rescope §8
+ * « methode transparente »). Cles DISTINCTES (vals/cols/rows) pour ne pas collisionner
+ * avec les noms nodaux interdits (w/nodeX/nodeY/nx/blocks).
+ */
+const HeatmapSchema = z
+  .object({
+    x0: z.number().finite(),
+    y0: z.number().finite(),
+    x1: z.number().finite(),
+    y1: z.number().finite(),
+    cols: z.number().int().min(2).max(64),
+    rows: z.number().int().min(2).max(64),
+    vals: z.array(z.number().finite().nullable()).max(4096),
+    vMin: z.number().finite(),
+    vMax: z.number().finite(),
+  })
+  .strict();
+
 export const RadierOutputSchema = z
   .object({
     /** Erreur de calcul (garde du moteur / science levee) : message borne. */
@@ -287,6 +309,8 @@ export const RadierOutputSchema = z
     nRafts: z.number().int(),
     /** Pire distorsion entre charges voisines (null si < 2 charges ponctuelles). */
     worstLoadPair: WorstPairSchema,
+    /** Champ de deflexion RE-ECHANTILLONNE pour affichage (grille decouplee du maillage). */
+    champDeflexion: HeatmapSchema.optional(),
   })
   .strict();
 export type RadierOutput = z.infer<typeof RadierOutputSchema>;

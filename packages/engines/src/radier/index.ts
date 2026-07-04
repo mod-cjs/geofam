@@ -206,6 +206,74 @@ function loc(o: unknown): { x: number; y: number } | null {
  * puis re-strippes par projectEngineOutput (defense en profondeur). On n'expose QUE
  * les VALEURS scalaires + worstLoadPair (coords de charges SAISIES, verifiees verbatim).
  */
+/**
+ * HEATMAP D'AFFICHAGE — re-echantillonne le champ nodal `w` sur une grille FIXE
+ * (~48×48) DECOUPLEE du maillage EF (ponderation inverse-distance lissee) + masque
+ * hors radier. On lit `R.nodeX/nodeY/w` en interne mais on N'EXPOSE QUE la grille
+ * d'affichage (vals) : jamais les valeurs nodales, les indices, ni la topologie du
+ * maillage. Le RESULTAT (motif de deflexion), pas la METHODE. Cf. §8 / STARFIRE.
+ */
+function buildHeatmap(R: Record<string, unknown>): unknown {
+  const nodeX = R.nodeX,
+    nodeY = R.nodeY,
+    wv = R.w;
+  if (!Array.isArray(nodeX) || !Array.isArray(nodeY) || !Array.isArray(wv)) return undefined;
+  const xs = nodeX as number[],
+    ys = nodeY as number[],
+    ws = wv as number[];
+  const N = Math.min(xs.length, ys.length, ws.length);
+  if (N < 3) return undefined;
+  let x0 = Infinity,
+    y0 = Infinity,
+    x1 = -Infinity,
+    y1 = -Infinity;
+  for (let i = 0; i < N; i++) {
+    const xi = xs[i],
+      yi = ys[i];
+    if (xi === undefined || yi === undefined || !fin(xi) || !fin(yi)) continue;
+    if (xi < x0) x0 = xi;
+    if (xi > x1) x1 = xi;
+    if (yi < y0) y0 = yi;
+    if (yi > y1) y1 = yi;
+  }
+  if (!fin(x0) || x1 <= x0 || y1 <= y0) return undefined;
+  const G = 48; // resolution d'affichage FIXE, DECOUPLEE du maillage
+  const cw = (x1 - x0) / (G - 1),
+    ch = (y1 - y0) / (G - 1);
+  const eps2 = Math.pow(Math.max(cw, ch) * 0.9, 2); // lissage ~ cellule d'affichage
+  const maxD2 = Math.pow(Math.max(cw, ch) * 1.6, 2); // masque hors radier
+  const vals: (number | null)[] = new Array(G * G).fill(null);
+  let vMin = Infinity,
+    vMax = -Infinity;
+  for (let gy = 0; gy < G; gy++) {
+    for (let gx = 0; gx < G; gx++) {
+      const px = x0 + gx * cw,
+        py = y0 + gy * ch;
+      let sw = 0,
+        swv = 0,
+        nd = Infinity;
+      for (let i = 0; i < N; i++) {
+        const xi = xs[i],
+          yi = ys[i],
+          wi = ws[i];
+        if (xi === undefined || yi === undefined) continue;
+        const d2 = (px - xi) ** 2 + (py - yi) ** 2;
+        if (d2 < nd) nd = d2;
+        const wgt = 1 / (d2 + eps2);
+        sw += wgt;
+        swv += wgt * (wi !== undefined && fin(wi) ? wi : 0);
+      }
+      if (nd > maxD2 || sw === 0) continue; // hors radier -> null
+      const val = swv / sw;
+      vals[gy * G + gx] = val;
+      if (val < vMin) vMin = val;
+      if (val > vMax) vMax = val;
+    }
+  }
+  if (!fin(vMin) || !fin(vMax)) return undefined;
+  return { x0, y0, x1, y1, cols: G, rows: G, vals, vMin, vMax };
+}
+
 function shapeOutput(R: Record<string, unknown>): unknown {
   const empty = {
     wMax: 0,
@@ -254,6 +322,7 @@ function shapeOutput(R: Record<string, unknown>): unknown {
 
   // NB : on NE lit MEME PAS diag.wMaxAt / diag.tiltAt / diag.betaGovAt : ces
   // localisations derivees du maillage ne franchissent jamais la projection.
+  const hm = buildHeatmap(R);
   return {
     erreur: null,
     warnings,
@@ -268,6 +337,8 @@ function shapeOutput(R: Record<string, unknown>): unknown {
     betaGov: fin(diag.betaGov) ? diag.betaGov : 0,
     nRafts: fin(diag.nRafts) ? diag.nRafts : 0,
     worstLoadPair,
+    // Heatmap RE-ECHANTILLONNEE (decouplee du maillage) — le motif, pas la methode.
+    ...(hm ? { champDeflexion: hm } : {}),
   };
 }
 
