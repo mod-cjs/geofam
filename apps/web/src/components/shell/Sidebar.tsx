@@ -27,6 +27,7 @@ import {
   Columns3,
   Grid3x3,
   Gauge,
+  FlaskConical,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
@@ -104,6 +105,12 @@ function useLogicielsItems(orgSlug: string): NavItem[] {
       label: 'PressioPro — Pressiomètre',
       icon: <Gauge size={20} strokeWidth={1.5} aria-hidden="true" />,
       href: `/app/${orgSlug}/logiciels/pressiopro`,
+    },
+    {
+      id: 'fastlab',
+      label: 'FASTLAB — Laboratoire',
+      icon: <FlaskConical size={20} strokeWidth={1.5} aria-hidden="true" />,
+      href: `/app/${orgSlug}/logiciels/fastlab`,
     },
   ];
 }

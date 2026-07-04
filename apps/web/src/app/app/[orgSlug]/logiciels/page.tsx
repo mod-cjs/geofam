@@ -25,7 +25,7 @@ const LOGICIELS: Logiciel[] = [
   { id: 'casagrande', nom: 'CASAGRANDE', tagline: 'Fondations profondes — pieux', domaine: 'NF P 94-262 / Eurocode 7', accent: '#1f4e4a', status: 'live' },
   { id: 'geoplaque', nom: 'GEOPLAQUE', tagline: 'Radier & plaque', domaine: 'Éléments finis · EC7 annexe H', accent: '#5a3e7c', status: 'live' },
   { id: 'pressiopro', nom: 'PressioPro', tagline: 'Essai pressiométrique', domaine: 'Pressiomètre Ménard', accent: '#963b28', status: 'live' },
-  { id: 'fastlab', nom: 'FASTLAB', tagline: 'Classification laboratoire', domaine: 'GTR · œdomètre', accent: '#6b7a2e', status: 'soon' },
+  { id: 'fastlab', nom: 'FASTLAB', tagline: 'Classification laboratoire', domaine: 'GTR · NF P11-300', accent: '#6b7a2e', status: 'live' },
 ];
 
 export default function LogicielsGallery() {
