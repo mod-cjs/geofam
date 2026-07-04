@@ -26,6 +26,7 @@ import {
   LayoutGrid,
   Columns3,
   Grid3x3,
+  Gauge,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
@@ -97,6 +98,12 @@ function useLogicielsItems(orgSlug: string): NavItem[] {
       label: 'GEOPLAQUE — Radier',
       icon: <Grid3x3 size={20} strokeWidth={1.5} aria-hidden="true" />,
       href: `/app/${orgSlug}/logiciels/geoplaque`,
+    },
+    {
+      id: 'pressiopro',
+      label: 'PressioPro — Pressiomètre',
+      icon: <Gauge size={20} strokeWidth={1.5} aria-hidden="true" />,
+      href: `/app/${orgSlug}/logiciels/pressiopro`,
     },
   ];
 }

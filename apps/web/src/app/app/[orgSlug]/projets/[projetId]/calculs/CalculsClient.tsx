@@ -37,7 +37,7 @@ const ENGINE_META: Record<string, { nom: string; route?: string }> = {
   terzaghi: { nom: 'Terzaghi — Fondations superficielles', route: 'terzaghi' },
   pieux: { nom: 'CASAGRANDE — Pieux', route: 'casagrande' },
   radier: { nom: 'GEOPLAQUE — Radier', route: 'geoplaque' },
-  pressiometre: { nom: 'PressioPro — Pressiomètre' },
+  pressiometre: { nom: 'PressioPro — Pressiomètre', route: 'pressiopro' },
   labo: { nom: 'FASTLAB — Laboratoire' },
 };
 function slugOf(engineId: string): string {
