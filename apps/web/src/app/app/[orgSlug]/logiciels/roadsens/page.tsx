@@ -25,6 +25,7 @@ import type {
   OfficialPv,
   EntitlementsResponse,
 } from '@/lib/api/types';
+import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { useOrgId } from '@/lib/org-context';
 
 // ---------------------------------------------------------------------------
@@ -799,7 +800,7 @@ export default function RoadsensPage() {
   // ── Projets ─────────────────────────────────────────────────────────────
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<string>('');
-  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [, setProjectsLoading] = useState(false);
 
   // ── Entitlements ─────────────────────────────────────────────────────────
   const [entitlements, setEntitlements] = useState<EntitlementsResponse | null>(null);
@@ -1065,42 +1066,20 @@ export default function RoadsensPage() {
           >
             Projet
           </label>
-          <select
-            id="roadsens-projet"
+          <ProjectPicker
+            orgId={orgId}
+            domain="CH"
+            projects={projects}
+            setProjects={setProjects}
             value={projectId}
-            onChange={(e) => {
-              setProjectId(e.target.value);
+            onChange={(id) => {
+              setProjectId(id);
               setCalcResult(null);
               setPvResult(null);
             }}
-            disabled={projectsLoading || projects.length === 0}
-            aria-label="Sélectionner un projet de chaussée"
-            style={{
-              padding: '6px 9px',
-              fontSize: 12.5,
-              color: 'var(--text-primary)',
-              background: 'var(--surface-base)',
-              border: '1px solid var(--border-default)',
-              borderRadius: 8,
-              fontFamily: 'inherit',
-              minWidth: 180,
-            }}
-          >
-            {projects.length === 0 ? (
-              <option value="">
-                {projectsLoading ? 'Chargement…' : 'Aucun projet CH'}
-              </option>
-            ) : (
-              <>
-                {!projectId && <option value="">Sélectionner…</option>}
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </>
-            )}
-          </select>
+            accent="#1a4a7a"
+            width={190}
+          />
         </div>
 
         {/* Bouton Calculer */}
@@ -2227,7 +2206,7 @@ function TabParametres({ load, onUpdate }: { load: Load; onUpdate: (l: Load) => 
       <Note>
         Les coefficients de fatigue (ε₆, b, kc, Sh) sont appliqués côté serveur uniquement
         et ne sont pas exposés ici. Le résultat de vérification (ε_t/ε_t,adm) sera affiché
-        dans l'onglet Résultats après calcul.
+        dans l&apos;onglet Résultats après calcul.
       </Note>
 
       <SectionTitle>Moteur ROADSENS — Burmister multi-couche exact</SectionTitle>
@@ -2900,7 +2879,7 @@ function TabResultats({
 
       <Note>
         Le PV est généré et scellé (HMAC) côté serveur. Il ne peut être modifié après
-        émission. La vérification d'intégrité en ligne sera disponible en Phase 2
+        émission. La vérification d&apos;intégrité en ligne sera disponible en Phase 2
         (certificat horodaté tiers).
       </Note>
     </div>

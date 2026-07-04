@@ -12,6 +12,7 @@
 import { useParams } from 'next/navigation';
 import { useState, useCallback, useEffect, Fragment } from 'react';
 
+import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, OfficialPv } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
@@ -218,9 +219,7 @@ export default function TerzaghiPage() {
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'flex-end', gap: 12 }}>
           <div><label style={lbl} htmlFor="tz-projet">Projet</label>
-            <select id="tz-projet" style={{ ...inp, width: 220 }} value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              <option value="">Sélectionner…</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            <ProjectPicker orgId={orgId} domain="FD" projects={projects} setProjects={setProjects} value={projectId} onChange={setProjectId} accent={ACCENT} width={220} />
           </div>
           <button data-testid="btn-calculer" onClick={handleCalculer} disabled={calcDisabled} aria-busy={calculating} title={!projectId ? 'Sélectionnez un projet avant de calculer' : undefined}
             style={{ background: calcDisabled ? '#c9beb0' : ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '10px 18px', fontSize: 14, fontWeight: 600, cursor: calcDisabled ? 'not-allowed' : 'pointer' }}>

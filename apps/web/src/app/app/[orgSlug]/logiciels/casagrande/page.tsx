@@ -11,6 +11,7 @@
 import { useParams } from 'next/navigation';
 import { useState, useCallback, useEffect } from 'react';
 
+import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, OfficialPv } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
@@ -203,10 +204,7 @@ export default function CasagrandePage() {
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'flex-end', gap: 12 }}>
           <div>
             <label style={lbl} htmlFor="cg-projet">Projet</label>
-            <select id="cg-projet" style={{ ...inp, width: 240 }} value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              <option value="">Sélectionner…</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            <ProjectPicker orgId={orgId} domain="FD" projects={projects} setProjects={setProjects} value={projectId} onChange={setProjectId} accent={ACCENT} width={240} />
           </div>
           <button data-testid="btn-calculer" onClick={handleCalculer} disabled={calcDisabled} aria-busy={calculating}
             title={!projectId ? 'Sélectionnez un projet avant de calculer' : undefined}
