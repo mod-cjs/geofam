@@ -9,7 +9,7 @@
  */
 
 import { useParams } from 'next/navigation';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, Fragment } from 'react';
 
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type {
@@ -91,6 +91,34 @@ const ESSAIS: { v: Essai; l: string }[] = [
   { v: 'labo', l: 'Laboratoire (c, φ)' },
 ];
 
+// Tables normatives des guides (valeurs verbatim de l'outil client — NF P 94-261).
+const FRAC: Record<string, string> = { '1': '1', '2/3': '0.67', '1/2': '0.5', '1/3': '0.33', '1/4': '0.25' };
+// α rhéologique de Ménard — tableaux H.2.1.1.1 / H.2.1.1.2 (colonnes Argile / Limon / Sable / Grave).
+const ALPHA_SOL: { etat: string; tourbe: string; cols: [string, string][] }[] = [
+  { etat: 'Surconsolidé ou très serré', tourbe: '—', cols: [['> 16', '1'], ['> 14', '2/3'], ['> 12', '1/2'], ['> 10', '1/3']] },
+  { etat: 'Normalement consolidé ou serré', tourbe: '1', cols: [['9 – 16', '2/3'], ['8 – 14', '1/2'], ['7 – 12', '1/3'], ['6 – 10', '1/4']] },
+  { etat: 'Surconsolidé altéré, remanié ou lâche', tourbe: '1', cols: [['9 – 16', '2/3'], ['8 – 14', '1/2'], ['5 – 7', '1/3'], ['—', '—']] },
+];
+const ALPHA_ROCHER: [string, string][] = [['Très peu fracturé', '2/3'], ['Normalement fracturé', '1/2'], ['Très fracturé', '1/3'], ['Très altéré', '2/3']];
+// α de Sanglerat — tableau J.2.3 (M = α·qc) : [type, qc, plage, valeur].
+const SANG_ROWS: [string, string, string, string][] = [
+  ['Argile peu plastique', '< 0,7', '3 à 8', '5'],
+  ['Argile peu plastique', '0,7 à 2', '2 à 5', '3'],
+  ['Argile peu plastique', '> 2', '1 à 2,5', '1,5'],
+  ['Limon peu plastique', '< 2', '3 à 6', '4'],
+  ['Limon peu plastique', '> 2', '1 à 2', '1,5'],
+  ['Argile / limon très plastique', '< 2', '2 à 6', '3'],
+  ['Argile / limon très plastique', '> 2', '1 à 2', '1,5'],
+  ['Limon très organique', '< 1,2', '2 à 8', '4'],
+  ['Tourbe / argile très org. (w 50–100 %)', '< 0,7', '1,5 à 4', '2'],
+  ['Tourbe / argile très org. (w 100–200 %)', '< 0,7', '1 à 1,5', '1,2'],
+  ['Tourbe / argile très org. (w > 200 %)', '< 0,7', '0,4 à 1,0', '0,7'],
+  ['Craie', '2 à 3', '2 à 4', '3'],
+  ['Craie', '> 3', '1,5 à 3', '2'],
+  ['Sable', '< 5', '2', '2'],
+  ['Sable', '> 10', '1,5', '1,5'],
+];
+
 // ---------------------------------------------------------------------------
 // Styles (accent terre Terzaghi)
 // ---------------------------------------------------------------------------
@@ -110,6 +138,11 @@ const grid3: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 
 const th: React.CSSProperties = { textAlign: 'left', fontSize: 10, textTransform: 'uppercase', color: MUTED, padding: '0 5px 6px', fontWeight: 700 };
 const delBtn: React.CSSProperties = { border: `1px solid ${LINE}`, background: '#fff', borderRadius: 6, padding: '5px 8px', cursor: 'pointer', color: '#963b28', fontSize: 12 };
 const addBtn: React.CSSProperties = { marginTop: 8, border: `1px dashed ${ACCENT}`, background: '#f4edd8', color: ACCENT, borderRadius: 7, padding: '7px 12px', cursor: 'pointer', fontWeight: 600, fontSize: 12.5 };
+const gtable: React.CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 12 };
+const gth: React.CSSProperties = { border: `1px solid ${LINE}`, background: '#f3f1e8', padding: '5px 7px', fontSize: 10.5, color: MUTED, fontWeight: 700, textAlign: 'center' };
+const gtd: React.CSSProperties = { border: `1px solid ${LINE}`, padding: '4px 7px', textAlign: 'center' };
+const gtdL: React.CSSProperties = { border: `1px solid ${LINE}`, padding: '4px 7px', textAlign: 'left' };
+const aval: React.CSSProperties = { border: `1px solid ${ACCENT}`, background: '#f4edd8', color: ACCENT, borderRadius: 5, padding: '3px 9px', cursor: 'pointer', fontWeight: 700, fontSize: 12, fontFamily: 'inherit' };
 
 // ---------------------------------------------------------------------------
 // Coupe transversale (schématique, DISPLAY ONLY)
@@ -214,6 +247,9 @@ export default function TerzaghiPage() {
   const [emittingPv, setEmittingPv] = useState(false);
   const [pvResult, setPvResult] = useState<OfficialPv | null>(null);
   const [tab, setTab] = useState<'fond' | 'sondage' | 'charges' | 'resultats'>('fond');
+  const [guide, setGuide] = useState<'alpha' | 'sang' | null>(null);
+  const applyAlpha = (frac: string) => { const v = FRAC[frac] ?? frac; setSondage((p) => p.map((r) => ({ ...r, al: v }))); setGuide(null); };
+  const applySang = (v: string) => { setAlphaSang(v.replace(',', '.')); setGuide(null); };
 
   useEffect(() => {
     if (!orgId) return;
@@ -386,7 +422,12 @@ export default function TerzaghiPage() {
                 <select style={inp} value={profilMode} onChange={(e) => setProfilMode(e.target.value as ProfilMode)}><option value="essais">Par essais in situ</option><option value="couches">Par couches</option></select>
               </div>
               {essai === 'penetro' && (
-                <div><label style={lbl}>α Sanglerat (M = α·qc)</label><input style={inp} value={alphaSang} onChange={(e) => setAlphaSang(e.target.value)} placeholder="auto" /></div>
+                <div>
+                  <label style={{ ...lbl, display: 'flex', alignItems: 'center', gap: 6 }}>α Sanglerat (M = α·qc)
+                    <button type="button" onClick={() => setGuide('sang')} title="Guide du coefficient de Sanglerat" style={{ border: `1px solid ${LINE}`, background: '#fff', color: ACCENT, borderRadius: 5, width: 18, height: 18, lineHeight: '1', cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: 0 }}>?</button>
+                  </label>
+                  <input style={inp} value={alphaSang} onChange={(e) => setAlphaSang(e.target.value)} placeholder="auto" />
+                </div>
               )}
             </div>
           </div>
@@ -397,9 +438,14 @@ export default function TerzaghiPage() {
       {tab === 'sondage' && (
         <div style={card}>
           <div style={secH}>Sondage in situ</div>
-          <div style={{ ...grid2, marginBottom: 12 }}>
+          <div style={{ ...grid2, marginBottom: 12, alignItems: 'flex-end' }}>
             <div><label style={lbl}>Méthode d&apos;essai</label>
               <select style={inp} value={essai} onChange={(e) => setEssai(e.target.value as Essai)}>{ESSAIS.map((x) => <option key={x.v} value={x.v}>{x.l}</option>)}</select>
+            </div>
+            <div>
+              <button type="button" onClick={() => setGuide('alpha')} style={{ border: `1px solid ${LINE}`, background: '#fff', color: ACCENT, borderRadius: 7, padding: '7px 12px', cursor: 'pointer', fontWeight: 600, fontSize: 12.5, fontFamily: 'inherit' }}>
+                ? Guide de choix de α (Ménard)
+              </button>
             </div>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -483,6 +529,54 @@ export default function TerzaghiPage() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* Modals d'aide (guides normatifs NF P 94-261) */}
+      {guide && (
+        <div role="dialog" aria-modal="true" aria-label={guide === 'alpha' ? 'Guide du coefficient rhéologique' : 'Guide du coefficient de Sanglerat'} onClick={() => setGuide(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(25,22,15,.45)', display: 'grid', placeItems: 'center', zIndex: 100, padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: PANEL, borderRadius: 12, maxWidth: 740, width: '100%', maxHeight: '86vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '14px 18px', borderBottom: `1px solid ${LINE}`, position: 'sticky', top: 0, background: PANEL }}>
+              <h3 style={{ margin: 0, fontSize: 15, color: INK }}>{guide === 'alpha' ? 'Choisir le coefficient rhéologique α (Ménard)' : 'Coefficient α de Sanglerat — M = α·qc'}</h3>
+              <button onClick={() => setGuide(null)} aria-label="Fermer" style={{ marginLeft: 'auto', border: 'none', background: 'none', fontSize: 22, cursor: 'pointer', color: MUTED, lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ padding: '16px 18px' }}>
+              {guide === 'alpha' ? (
+                <>
+                  <p style={{ fontSize: 12, color: MUTED, marginTop: 0 }}>α dépend de la nature du terrain et de son état de consolidation/serrage, estimé via E<sub>M</sub>/p<sub>l</sub> (NF P 94-261, tab. H.2.1.1). <strong>Cliquez une valeur</strong> pour l&apos;appliquer à toute la colonne α du sondage.</p>
+                  <table style={gtable}>
+                    <thead>
+                      <tr><th style={gth} rowSpan={2}>État du terrain</th><th style={gth}>Tourbe</th><th style={gth} colSpan={2}>Argile</th><th style={gth} colSpan={2}>Limon</th><th style={gth} colSpan={2}>Sable</th><th style={gth} colSpan={2}>Grave</th></tr>
+                      <tr><th style={gth}>α</th>{[0, 1, 2, 3].map((k) => <Fragment key={k}><th style={gth}>E/p</th><th style={gth}>α</th></Fragment>)}</tr>
+                    </thead>
+                    <tbody>
+                      {ALPHA_SOL.map((r, i) => (
+                        <tr key={i}>
+                          <td style={gtdL}>{r.etat}</td>
+                          <td style={gtd}>{r.tourbe === '—' ? '—' : <button style={aval} onClick={() => applyAlpha(r.tourbe)}>{r.tourbe}</button>}</td>
+                          {r.cols.map(([rg, al], j) => <Fragment key={j}><td style={gtd}>{rg}</td><td style={gtd}>{al === '—' ? '—' : <button style={aval} onClick={() => applyAlpha(al)}>{al}</button>}</td></Fragment>)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <table style={{ ...gtable, maxWidth: 340, marginTop: 12 }}>
+                    <thead><tr><th style={gth}>Rocher</th><th style={gth}>α</th></tr></thead>
+                    <tbody>{ALPHA_ROCHER.map(([n, al], i) => <tr key={i}><td style={gtdL}>{n}</td><td style={gtd}><button style={aval} onClick={() => applyAlpha(al)}>{al}</button></td></tr>)}</tbody>
+                  </table>
+                  <p style={{ fontSize: 11, color: MUTED }}>Décimales appliquées : 1 · 2/3→0,67 · 1/2→0,5 · 1/3→0,33 · 1/4→0,25.</p>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize: 12, color: MUTED, marginTop: 0 }}>Pour le tassement œdométrique (annexe J.4.1), M = α·q<sub>c</sub> (NF P 94-261, tab. J.2.3). <strong>Cliquez une valeur</strong> pour l&apos;appliquer. Un choix prudent (valeur basse) majore le tassement.</p>
+                  <table style={gtable}>
+                    <thead><tr><th style={gth}>Type de sol</th><th style={gth}>q<sub>c</sub> (MPa)</th><th style={gth}>α (plage)</th><th style={gth}>Valeur</th></tr></thead>
+                    <tbody>{SANG_ROWS.map((r, i) => <tr key={i}><td style={gtdL}>{r[0]}</td><td style={gtd}>{r[1]}</td><td style={gtd}>{r[2]}</td><td style={gtd}><button style={aval} onClick={() => applySang(r[3])}>{r[3]}</button></td></tr>)}</tbody>
+                  </table>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
