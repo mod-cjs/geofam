@@ -35,7 +35,7 @@ const ENGINE_ID_ALIAS: Record<string, string> = {
 const ENGINE_META: Record<string, { nom: string; route?: string }> = {
   burmister: { nom: 'ROADSENS — Chaussées', route: 'roadsens' },
   terzaghi: { nom: 'Terzaghi — Fondations superficielles', route: 'terzaghi' },
-  pieux: { nom: 'CASAGRANDE — Pieux' },
+  pieux: { nom: 'CASAGRANDE — Pieux', route: 'casagrande' },
   radier: { nom: 'GEOPLAQUE — Radier' },
   pressiometre: { nom: 'PressioPro — Pressiomètre' },
   labo: { nom: 'FASTLAB — Laboratoire' },

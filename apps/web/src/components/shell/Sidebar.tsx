@@ -24,6 +24,7 @@ import {
   Route,
   Layers,
   LayoutGrid,
+  Columns3,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
@@ -83,6 +84,12 @@ function useLogicielsItems(orgSlug: string): NavItem[] {
       label: 'Terzaghi — Fondations superficielles',
       icon: <Layers size={20} strokeWidth={1.5} aria-hidden="true" />,
       href: `/app/${orgSlug}/logiciels/terzaghi`,
+    },
+    {
+      id: 'casagrande',
+      label: 'CASAGRANDE — Pieux',
+      icon: <Columns3 size={20} strokeWidth={1.5} aria-hidden="true" />,
+      href: `/app/${orgSlug}/logiciels/casagrande`,
     },
   ];
 }
