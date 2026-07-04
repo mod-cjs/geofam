@@ -161,6 +161,24 @@ export function redactConfidentialWarnings(warnings: readonly string[]): string[
   return warnings.map((w) => redactConfidentialWarning(w));
 }
 
+// Signatures d'EXCEPTION JS interne. Defense en profondeur (parite avec pressiometre,
+// ou la meme classe de fuite etait CONFIRMEE) : on n'expose jamais un message
+// d'exception technique brut au client. Les messages de DOMAINE (FR) ne matchent pas
+// et restent visibles (redactes des valeurs sensibles).
+const INTERNAL_JS_ERROR =
+  /cannot read|cannot access|is not a function|is not defined|is not iterable|reading '|of undefined|of null|type\s?error|reference\s?error|undefined is|null is/i;
+
+/**
+ * Nettoie le message d'erreur expose au client : une exception JS interne devient un
+ * message generique ; une erreur de domaine passe (redactee des valeurs confidentielles).
+ */
+export function sanitizeEngineError(text: string): string {
+  if (INTERNAL_JS_ERROR.test(text)) {
+    return 'Donnees d essai non exploitables : mesures incoherentes ou insuffisantes.';
+  }
+  return redactConfidentialWarning(text);
+}
+
 /** Nombre fini ou null (la plupart des resultats sont null si l'essai n'est pas saisi). */
 function nn(x: unknown): number | null {
   return fin(x) ? x : null;
@@ -194,7 +212,7 @@ function shapeOutput(R: Record<string, unknown>): unknown {
   // Cas d'erreur de calcul (science levee).
   if (typeof R.err === 'string') {
     return {
-      erreur: redactConfidentialWarning(R.err),
+      erreur: sanitizeEngineError(R.err),
       warnings: [],
       wn: null,
       dmax: null,
