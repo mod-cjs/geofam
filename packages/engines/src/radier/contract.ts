@@ -91,7 +91,25 @@ const RaftSchema = z
     /** Epaisseur e (m). */
     e: z.number().finite().min(0.001).max(100),
   })
-  .strict();
+  .strict()
+  // SECURITE/INTEGRITE (audit adverse) : rejette un contour DEGENERE (aire shoelace
+  // quasi nulle) — sommets alignes OU polygone auto-intersectant (bowtie). Sans ce
+  // garde-fou, un tel contour produisait un resultat vide silencieux (wMax=0, sans
+  // erreur), scellable dans un PV comme un calcul valide.
+  .refine(
+    (raft) => {
+      const p = raft.pts;
+      let a = 0;
+      for (let i = 0; i < p.length; i++) {
+        const pi = p[i];
+        const pj = p[(i + 1) % p.length];
+        if (!pi || !pj) return false;
+        a += pi.x * pj.y - pj.x * pi.y;
+      }
+      return Math.abs(a) / 2 > 1e-6;
+    },
+    { message: 'polygone de plaque degenere (aire quasi nulle : sommets alignes ou contour auto-intersectant)' },
+  );
 
 /** Charge ponctuelle (kN + moments kN·m). */
 const PointLoadSchema = z
