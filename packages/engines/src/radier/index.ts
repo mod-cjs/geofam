@@ -243,12 +243,14 @@ function buildHeatmap(R: Record<string, unknown>): unknown {
   const G = 48; // resolution d'affichage FIXE, DECOUPLEE du maillage
   const cw = (x1 - x0) / (G - 1),
     ch = (y1 - y0) / (G - 1);
-  // Espacement representatif des nœuds : le maillage peut etre plus GROSSIER que la
-  // grille d'affichage. On borne le lissage et le masque sur l'echelle du maillage,
-  // sinon des points INTERIEURS (loin d'un nœud) seraient masques a tort.
-  const spacing = Math.sqrt(((x1 - x0) * (y1 - y0)) / Math.max(1, N)) || Math.max(cw, ch);
-  const eps2 = Math.pow(spacing * 0.6, 2); // lissage ~ echelle du maillage
-  const maxD2 = Math.pow(spacing * 1.25, 2); // masque hors radier
+  // §8 (audit adverse) : le lissage et le masque sont bases sur la grille d'AFFICHAGE
+  // (cw/ch) et NON sur l'espacement des nœuds sqrt(aire/N). Ainsi le rendu est INVARIANT
+  // au maillage : un balayage de `mesh` (donc de N) ne modifie pas la nettete du champ
+  // ni la finesse du bord masque -> le pas de maillage EF n'est plus inferable. Masque
+  // genereux (x3 cellule) pour remplir le radier aux resolutions usuelles.
+  const cell = Math.max(cw, ch);
+  const eps2 = Math.pow(cell * 1.5, 2); // lissage ~ cellule d'affichage (invariant N)
+  const maxD2 = Math.pow(cell * 3, 2); // masque hors radier (invariant N)
   const vals: (number | null)[] = new Array(G * G).fill(null);
   let vMin = Infinity,
     vMax = -Infinity;

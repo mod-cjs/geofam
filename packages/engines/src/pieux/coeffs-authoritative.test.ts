@@ -14,7 +14,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { PIEUX_DEFAULT_COEFFS } from './contract.js';
+import { PIEUX_DEFAULT_COEFFS, PieuxInputSchema } from './contract.js';
 import { runPieux } from './index.js';
 
 // Pieu volontairement SOUS-DIMENSIONNE (charge elevee / resistance modeste) : FAIL normatif.
@@ -66,15 +66,28 @@ describe('pieux — coeffs de securite autoritatifs serveur (anti-falsification)
     expect(env.output.allOk).toBe(false);
   });
 
-  it('des coeffs client tous favorables NE changent PAS le verdict (ignores serveur)', () => {
-    const normatif = runPieux(BASE);
-    const manipule = runPieux({ ...BASE, coeffs: ATTACK_COEFFS });
-    expect(normatif.ok && manipule.ok).toBe(true);
-    if (!normatif.ok || !manipule.ok) return;
-    // Le verdict + le taux gouvernant sont IDENTIQUES : la manipulation est sans effet.
-    expect(manipule.output.allOk).toBe(normatif.output.allOk);
-    expect(manipule.output.allOk).toBe(false);
-    expect(manipule.output.tauxGouvernant).toBeCloseTo(normatif.output.tauxGouvernant, 6);
-    expect(manipule.output.RcD).toBeCloseTo(normatif.output.RcD, 6);
+  it('des coeffs client NON NORMATIFS sont REJETES a l entree (400, fail-closed)', () => {
+    // Rejet EXPLICITE au schema : l'input scelle ne peut donc jamais contenir de coeffs
+    // non normatifs -> invariant « scelle = calcule » (pas d'override silencieux).
+    expect(() => runPieux({ ...BASE, coeffs: ATTACK_COEFFS })).toThrow();
+    const r = PieuxInputSchema.safeParse({ ...BASE, coeffs: ATTACK_COEFFS });
+    expect(r.success).toBe(false);
+  });
+
+  it('les coeffs NORMATIFS passent et l input parse conserve exactement PIEUX_DEFAULT_COEFFS', () => {
+    const parsed = PieuxInputSchema.parse(BASE) as { coeffs: typeof PIEUX_DEFAULT_COEFFS };
+    expect(parsed.coeffs).toEqual(PIEUX_DEFAULT_COEFFS);
+  });
+
+  // GOLDEN-MASTER sur runPieux (chemin REELLEMENT servi : parse + coeffs autoritatifs +
+  // frottement negatif). L'equivalence-portage ne teste que computePieux -> ce sentinelle
+  // fige le verdict/taux/RcD du chemin serveur (regression). Valeurs a co-valider expert.
+  it('runPieux : sortie servie figee (sentinelle de non-regression)', () => {
+    const env = runPieux(BASE);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    expect(env.output.allOk).toBe(false);
+    expect(env.output.tauxGouvernant).toBeCloseTo(6.7423, 3);
+    expect(env.output.RcD).toBeCloseTo(678.5517, 3);
   });
 });

@@ -41,4 +41,15 @@ describe('burmister — bornage r/sh/ks (anti-falsification verdict)', () => {
     expect(BurmisterInputSchema.safeParse(withLoad({ sh: -1 })).success).toBe(false);
     expect(BurmisterInputSchema.safeParse(withLoad({ ks: -0.5 })).success).toBe(false);
   });
+  // Durcissement post-challenge : ks est un facteur de REDUCTION (<= 1) ; sh a un
+  // plancher physique (dispersion de construction non nulle).
+  it('REJETTE ks > 1 (facteur de reduction : x2 admissible = faux PASS marginal)', () => {
+    expect(BurmisterInputSchema.safeParse(withLoad({ ks: 2 })).success).toBe(false);
+    expect(BurmisterInputSchema.safeParse(withLoad({ ks: 1.5 })).success).toBe(false);
+  });
+  it('REJETTE sh = 0 (annule la dispersion, sens non sur) ; accepte ks=1 et sh=0,5', () => {
+    expect(BurmisterInputSchema.safeParse(withLoad({ sh: 0 })).success).toBe(false);
+    expect(BurmisterInputSchema.safeParse(withLoad({ ks: 1 })).success).toBe(true);
+    expect(BurmisterInputSchema.safeParse(withLoad({ sh: 0.5 })).success).toBe(true);
+  });
 });

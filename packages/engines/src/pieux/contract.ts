@@ -167,8 +167,10 @@ const CoeffsSchema = z
   })
   .strict();
 
-/** Coefficients par DEFAUT (identiques aux `value=` du HTML d'origine). */
-export const PIEUX_DEFAULT_COEFFS: PieuxInput['coeffs'] = {
+/** Coefficients par DEFAUT (identiques aux `value=` du HTML d'origine). Type via
+ * `CoeffsSchema` (et non `PieuxInput['coeffs']`) pour eviter une reference de type
+ * circulaire : l'InputSchema normalise `coeffs` vers cette constante (.transform). */
+export const PIEUX_DEFAULT_COEFFS: z.infer<typeof CoeffsSchema> = {
   k_gG: 1.35,
   k_gQ: 1.5,
   k_gb: 1.1,
@@ -271,7 +273,21 @@ export const PieuxInputSchema = z
     /** Redistribution par structure rigide. */
     o_redis: z.enum(['oui', 'non']),
     grp: GroupSchema,
-    coeffs: CoeffsSchema,
+    // SECURITE (audit adverse) : les coefficients partiels EC7 sont AUTORITATIFS
+    // SERVEUR. On REJETTE (400) toute valeur non normative des l'ENTREE (.refine, seul
+    // effet tolere par le contrat ; .transform est interdit). Consequence : l'input
+    // PROJETE/PERSISTE/SCELLE ne peut contenir que les coeffs normatifs = ceux qui ont
+    // calcule (invariant « scelle = calcule » restaure ; un PV ne peut plus afficher des
+    // coeffs client qui n'ont pas produit le resultat). Rejet EXPLICITE (fail-closed) au
+    // lieu d'un override silencieux. Reactiver des facteurs par projet = feature gouvernee
+    // (expert + STARFIRE) avec disclosure au PV.
+    coeffs: CoeffsSchema.refine(
+      (c) =>
+        (Object.keys(PIEUX_DEFAULT_COEFFS) as Array<keyof typeof PIEUX_DEFAULT_COEFFS>).every(
+          (k) => c[k] === PIEUX_DEFAULT_COEFFS[k],
+        ),
+      { message: 'coefficients partiels non normatifs : autoritatifs serveur (valeurs reglementaires imposees)' },
+    ),
     /** Profil de couches (>= 1). */
     layers: z.array(LayerSchema).min(1).max(100),
     /** Penetrogramme q_c(z) ; vide -> genere depuis les qc de couches (methode CPT). */

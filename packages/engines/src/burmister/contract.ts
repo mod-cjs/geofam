@@ -165,12 +165,18 @@ const TrafficSchema = z
 // SECURITE (audit adverse) : r/sh/ks sont imposables par le client ('auto' ou valeur)
 // et pilotent la deformation ADMISSIBLE de fatigue -> le VERDICT `conforme`. La branche
 // numerique DOIT etre BORNEE a une plage physique LCPC saine : sans borne, `ks=1000`
-// gonflait l'admissible x1000 -> chaussee non conforme -> CONFORME (faux PASS scelle au
-// PV). Plages larges (contiennent toutes les valeurs LCPC legitimes) mais finies ;
-// bornes exactes a confirmer par l'expert (STARFIRE). r risque % ; sh (cm) ; ks O(1).
+// gonflait l'admissible x1000 -> faux PASS scelle au PV.
+// - `ks` = coefficient de DISCONTINUITE : facteur de REDUCTION, physiquement <= 1
+//   (ksLCPC(E) ne renvoie jamais > 1). Plafonne a 1,0 (le challenge a montre que ks=2
+//   laissait encore x2 l'admissible = faux PASS marginal).
+// - `sh` (cm) : ecart-type de construction. sh=0 annule le terme de dispersion (sens NON
+//   SUR) -> plancher 0,5 cm (borne physique prudente).
+// - `r` (risque %) : borne 0,001-50 (au-dela = non physique). r=50 -> reduction de
+//   risque nulle (borne haute assumee).
+// Plages exactes (sh plancher, r haut) a CONFIRMER par l'expert (STARFIRE) + disclosure PV.
 const AutoOrRisk = z.union([z.literal('auto'), z.number().finite().min(0.001).max(50)]);
-const AutoOrSh = z.union([z.literal('auto'), z.number().finite().min(0).max(20)]);
-const AutoOrKs = z.union([z.literal('auto'), z.number().finite().min(0.1).max(2)]);
+const AutoOrSh = z.union([z.literal('auto'), z.number().finite().min(0.5).max(20)]);
+const AutoOrKs = z.union([z.literal('auto'), z.number().finite().min(0.1).max(1)]);
 const LoadSchema = z
   .object({
     /** Pression de contact (MPa). */

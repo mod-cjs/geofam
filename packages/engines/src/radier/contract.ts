@@ -92,24 +92,63 @@ const RaftSchema = z
     e: z.number().finite().min(0.001).max(100),
   })
   .strict()
-  // SECURITE/INTEGRITE (audit adverse) : rejette un contour DEGENERE (aire shoelace
-  // quasi nulle) — sommets alignes OU polygone auto-intersectant (bowtie). Sans ce
-  // garde-fou, un tel contour produisait un resultat vide silencieux (wMax=0, sans
-  // erreur), scellable dans un PV comme un calcul valide.
-  .refine(
-    (raft) => {
-      const p = raft.pts;
-      let a = 0;
-      for (let i = 0; i < p.length; i++) {
-        const pi = p[i];
-        const pj = p[(i + 1) % p.length];
-        if (!pi || !pj) return false;
-        a += pi.x * pj.y - pj.x * pi.y;
-      }
-      return Math.abs(a) / 2 > 1e-6;
-    },
-    { message: 'polygone de plaque degenere (aire quasi nulle : sommets alignes ou contour auto-intersectant)' },
-  );
+  // SECURITE/INTEGRITE (audit adverse) : rejette un contour DEGENERE. DEUX controles
+  // (le challenge a montre qu'une aire ~0 seule ratait un bowtie ASYMETRIQUE d'aire
+  // non nulle) : (1) aire shoelace quasi nulle (sommets alignes / bowtie symetrique) ;
+  // (2) AUTO-INTERSECTION (deux aretes NON adjacentes se croisent). Sans ca, un contour
+  // non simple produisait un resultat vide/incoherent silencieux, scellable dans un PV.
+  .refine((raft) => polygonAireOk(raft.pts) && polygonSimple(raft.pts), {
+    message:
+      'polygone de plaque degenere : aire quasi nulle OU contour auto-intersectant (non simple)',
+  });
+
+/** Aire shoelace non degeneree (> 1e-6). */
+function polygonAireOk(p: ReadonlyArray<{ x: number; y: number }>): boolean {
+  let a = 0;
+  for (let i = 0; i < p.length; i++) {
+    const pi = p[i];
+    const pj = p[(i + 1) % p.length];
+    if (!pi || !pj) return false;
+    a += pi.x * pj.y - pj.x * pi.y;
+  }
+  return Math.abs(a) / 2 > 1e-6;
+}
+
+/** Orientation du triplet (a,b,c) : >0 gauche, <0 droite, 0 aligne. */
+function orient(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }): number {
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+/** Deux segments [p1,p2] et [p3,p4] se croisent-ils (intersection propre) ? */
+function segmentsCroisent(
+  p1: { x: number; y: number }, p2: { x: number; y: number },
+  p3: { x: number; y: number }, p4: { x: number; y: number },
+): boolean {
+  const d1 = orient(p3, p4, p1);
+  const d2 = orient(p3, p4, p2);
+  const d3 = orient(p1, p2, p3);
+  const d4 = orient(p1, p2, p4);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+/** Polygone SIMPLE : aucune paire d'aretes NON adjacentes ne se croise (O(n²), n<=200). */
+function polygonSimple(p: ReadonlyArray<{ x: number; y: number }>): boolean {
+  const n = p.length;
+  for (let i = 0; i < n; i++) {
+    const a = p[i];
+    const b = p[(i + 1) % n];
+    if (!a || !b) return false;
+    for (let j = i + 1; j < n; j++) {
+      // Ignore les aretes adjacentes (partagent un sommet) et l'arete elle-meme.
+      if (j === i || (j + 1) % n === i || (i + 1) % n === j) continue;
+      const c = p[j];
+      const d = p[(j + 1) % n];
+      if (!c || !d) return false;
+      if (segmentsCroisent(a, b, c, d)) return false;
+    }
+  }
+  return true;
+}
 
 /** Charge ponctuelle (kN + moments kN·m). */
 const PointLoadSchema = z

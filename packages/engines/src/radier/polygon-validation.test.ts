@@ -35,6 +35,14 @@ const COLLINEAIRE = [
   { x: 3, y: 0 },
   { x: 6, y: 0 },
 ]; // sommets alignes -> aire 0
+// Bowtie ASYMETRIQUE : aire shoelace NON nulle (passe le controle d'aire) mais aretes
+// non adjacentes qui SE CROISENT -> doit etre rejete par le controle de simplicite.
+const BOWTIE_ASYM = [
+  { x: 0, y: 0 },
+  { x: 4, y: 0 },
+  { x: 0, y: 3 },
+  { x: 4, y: 3 },
+];
 
 describe('RaftSchema — rejet des polygones degeneres (faille bowtie)', () => {
   it('accepte un radier carre valide', () => {
@@ -45,5 +53,9 @@ describe('RaftSchema — rejet des polygones degeneres (faille bowtie)', () => {
   });
   it('REJETTE un contour a sommets alignes (aire nulle)', () => {
     expect(RadierInputSchema.safeParse(withPts(COLLINEAIRE)).success).toBe(false);
+  });
+  it('REJETTE un bowtie ASYMETRIQUE (aire non nulle mais aretes croisees)', () => {
+    // Verifie que le controle de SIMPLICITE (et pas seulement l'aire) mord.
+    expect(RadierInputSchema.safeParse(withPts(BOWTIE_ASYM)).success).toBe(false);
   });
 });
