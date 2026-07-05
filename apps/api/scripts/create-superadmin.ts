@@ -80,9 +80,20 @@ async function main(): Promise<void> {
   }
   const { email, password, fullName } = parsed.data;
 
-  const client = new Client({ connectionString: url });
+  // SSL requis par les DB managées (Render/etc.) ; ignoré sur un socket local.
+  const needsSsl = /render\.com|amazonaws|\bsslmode=require\b/.test(url);
+  const client = new Client({
+    connectionString: url,
+    ...(needsSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+  });
   await client.connect();
   try {
+    // `users` est en FORCE RLS : un rôle propriétaire NON superuser (cas Render managé)
+    // y est soumis. On pose le drapeau `app.auth_bootstrap` (même branche RLS d'identité
+    // que les fonctions DEFINER) pour que l'INSERT/UPDATE d'identité passe. Sur un superuser
+    // local (Docker) la RLS est déjà contournée -> sans effet. Le credential admin qui lance
+    // ce script possède de toute façon la table (il pourrait DISABLE RLS) : geste minimal.
+    await client.query(`SELECT set_config('app.auth_bootstrap', 'on', false)`);
     // Montre l'ENVIRONNEMENT cible (base/host/rôle) — le mot de passe n'est JAMAIS affiché.
     const who = await client.query<{
       db: string;
