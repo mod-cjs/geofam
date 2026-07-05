@@ -102,9 +102,9 @@ const EXTRA_SECTIONS: ExtraSection[] = [
   { tab: 'la', label: 'Los Angeles', title: 'Los Angeles (LA)', norm: 'NF EN 1097-2', note: 'LA = (M − m) / M × 100.',
     selects: [{ id: 'laVar', l: 'Variante', opts: [['std', 'Standard'], ['rb', 'Roches dures'], ['alt', 'Alternative']] }],
     groups: [{ fields: [{ id: 'la_M', l: 'Masse initiale M (g)' }, { id: 'la_m', l: 'Masse retenue 1,6 mm (g)' }, { id: 'la_ti', l: 'Passant initial (%)' }, { id: 'la_pi', l: 'Passant après (%)' }] }] },
-  { tab: 'mde', label: 'Micro-Deval', title: 'Micro-Deval (MDE)', norm: 'NF EN 1097-1', note: 'Résistance à l’usure.',
-    selects: [{ id: 'mdeVar', l: 'Variante', opts: [['std', 'Standard'], ['rb', 'Roches'], ['alt', 'Alt.']] }, { id: 'mdeWet', l: 'Milieu', opts: [['h', 'Humide'], ['s', 'Sec']] }],
-    groups: [{ fields: [{ id: 'mde_charge', l: 'Charge abrasive (g)' }, { id: 'mde_eau', l: 'Eau (mL)' }, { id: 'mde_tours', l: 'Nombre de tours' }, { id: 'mde_ti', l: 'Passant initial (%)' }, { id: 'mde_pi', l: 'Passant 1,6 mm (%)' }] }] },
+  { tab: 'mde', label: 'Micro-Deval', title: 'Micro-Deval (MDE)', norm: 'NF EN 1097-1', note: 'MDE = (M − m) / M × 100 (moyenne des déterminations).',
+    selects: [{ id: 'mdeVar', l: 'Variante', opts: [['std', 'Standard'], ['rb', 'Roches'], ['alt', 'Alt.']] }, { id: 'mdeMode', l: 'Mode', opts: [['norme', 'Normalisé'], ['camp', 'Campagne']] }],
+    tables: [{ title: 'Déterminations', cols: [{ prefix: 'md_M', l: 'Masse initiale M (g)' }, { prefix: 'md_m', l: 'Retenu 1,6 mm m (g)' }], rows: 2 }] },
   { tab: 'sz', label: 'Fragmentation', title: 'Fragmentation par impact (SZ)', norm: 'NF EN 1097-2 §6',
     groups: [{ fields: [{ id: 'sz_M', l: 'Masse M (g)' }, { id: 'sz_8', l: 'Refus 8 mm (g)' }, { id: 'sz_5', l: 'Refus 5 mm (g)' }, { id: 'sz_2', l: 'Refus 2 mm (g)' }, { id: 'sz_0_63', l: 'Refus 0,63 mm (g)' }, { id: 'sz_0_2', l: 'Refus 0,2 mm (g)' }] }] },
   { tab: 'sulf', label: 'Sulfates', title: 'Teneur en sulfates', norm: 'NF EN 1744-1',
@@ -116,24 +116,31 @@ const EXTRA_SECTIONS: ExtraSection[] = [
   { tab: 'ucs', label: 'Compression', title: 'Compression simple (Rc)', norm: 'NF EN ISO 17892-7', note: 'q_u = F / A.',
     groups: [{ fields: [{ id: 'uc_d', l: 'Diamètre (mm)' }, { id: 'uc_h', l: 'Hauteur (mm)' }, { id: 'uc_f', l: 'Force max (kN)' }, { id: 'uc_dl', l: 'Déformation à rupture (mm)' }] }] },
   { tab: 'dens', label: 'Densités', title: 'Masses volumiques (ρ, ρ_s)', norm: 'NF EN ISO 17892-2/3',
-    selects: [{ id: 'rs_liq', l: 'Liquide pycnomètre', opts: [['water', 'Eau distillée'], ['other', 'Autre (ρ saisie)']] }],
-    groups: [{ title: 'Particules solides ρ_s', fields: [{ id: 'rs_T', l: 'Température (°C)' }, { id: 'rs_rL', l: 'ρ liquide (auto si eau)' }] }, { title: 'Apparente ρ (éprouvette prismatique)', fields: [{ id: 'd_L', l: 'Longueur (mm)' }, { id: 'd_W', l: 'Largeur (mm)' }, { id: 'd_H', l: 'Hauteur (mm)' }, { id: 'd_m', l: 'Masse (g)' }, { id: 'd_w', l: 'Teneur en eau (%)' }] }] },
+    selects: [{ id: 'rsMethod', l: 'Méthode ρ_s', opts: [['A', 'Méthode A'], ['B', 'Méthode B']] }, { id: 'rs_liq', l: 'Liquide', opts: [['water', 'Eau distillée'], ['other', 'Autre (ρ saisie)']] }],
+    groups: [{ title: 'Conditions ρ_s', fields: [{ id: 'rs_T', l: 'Température (°C)' }, { id: 'rs_rL', l: 'ρ liquide (auto si eau)' }] }, { title: 'Apparente ρ (éprouvette prismatique)', fields: [{ id: 'd_L', l: 'Longueur (mm)' }, { id: 'd_W', l: 'Largeur (mm)' }, { id: 'd_H', l: 'Hauteur (mm)' }, { id: 'd_m', l: 'Masse (g)' }, { id: 'd_w', l: 'Teneur en eau (%)' }] }],
+    tables: [{ title: 'ρ_s — pycnomètre (déterminations)', cols: [{ prefix: 'rs2_m0_', l: 'Pycno vide m₀ (g)' }, { prefix: 'rs2_m1_', l: 'Pycno + eau m₁ (g)' }, { prefix: 'rs2_mx_', l: 'Pycno + sol mₓ (g)' }, { prefix: 'rs2_m3_', l: 'Pycno + sol + eau m₃ (g)' }], rows: 2 }] },
 ];
 
 const EXTRA_DEFAULTS: Record<string, string> = {
-  laVar: 'std', mdeVar: 'std', mdeWet: 'h', permMode: 'var', su_type: 'SS', rs_liq: 'water',
+  laVar: 'std', mdeVar: 'std', mdeMode: 'norme', permMode: 'var', su_type: 'SS', rs_liq: 'water', rsMethod: 'A',
+  md_M1: '500', md_m1: '60', md_M2: '500', md_m2: '62',
+  rs2_m0_1: '650', rs2_m1_1: '1500', rs2_mx_1: '750', rs2_m3_1: '1560', rs2_m0_2: '650', rs2_m1_2: '1500', rs2_mx_2: '751', rs2_m3_2: '1561',
   oe_H0: '20.0', oe_D: '70.0', oe_md: '119.3', oe_rs: '2.70',
   oe_s1: '10', oe_dh1: '0.05', oe_s2: '20', oe_dh2: '0.12', oe_s3: '40', oe_dh3: '0.24', oe_s4: '80', oe_dh4: '0.45', oe_s5: '160', oe_dh5: '0.78', oe_s6: '320', oe_dh6: '1.18', oe_s7: '640', oe_dh7: '1.60', oe_s8: '160', oe_dh8: '1.52', oe_s9: '40', oe_dh9: '1.40',
   tu_s3_1: '50', tu_df_1: '120', tu_s3_2: '100', tu_df_2: '124', tu_s3_3: '150', tu_df_3: '118',
   tc_s3_1: '50', tc_s1_1: '180', tc_s3_2: '100', tc_s1_2: '300', tc_s3_3: '200', tc_s1_3: '520',
   es_h1_1: '120', es_h2_1: '78', es_h1_2: '122', es_h2_2: '80',
   la_M: '5000', la_m: '4100', la_ti: '12.5', la_pi: '65',
-  mde_charge: '5000', mde_eau: '2500', mde_tours: '12000', mde_ti: '100', mde_pi: '70',
   sz_M: '2000', sz_8: '100', sz_5: '200', sz_2: '400', sz_0_63: '600', sz_0_2: '700',
   su_M: '10', su_ba: '0.5', su_f: '0.343',
   pe_a: '1.0', pe_Av: '20', pe_Lv: '10', pe_h1: '100', pe_h2: '40', pe_tv: '120',
   uc_d: '50', uc_h: '100', uc_f: '0.18', uc_dl: '1.5',
   rs_T: '20', d_L: '50', d_W: '50', d_H: '50', d_m: '240', d_w: '12',
+  // CBR complet (méthode moules + courbe pénétration + gonflement)
+  cbType: 'cbr', cb_cible: '95', cb_s25: '13.35', cb_s5: '20', cb_K: '1',
+  cb_tot0: '11500', cb_moule0: '7500', cb_vol0: '2305', cb_w0: '16', cb_tot1: '11300', cb_moule1: '7500', cb_vol1: '2305', cb_w1: '16', cb_tot2: '11000', cb_moule2: '7500', cb_vol2: '2305', cb_w2: '16',
+  cb_pen_0_6: '12', cb_pen_0_9: '18', cb_pen_1_6: '9', cb_pen_1_9: '14', cb_pen_2_6: '6', cb_pen_2_9: '9',
+  cb_H00: '127', cb_gonf0: '0.8', cb_H01: '127', cb_gonf1: '1.0',
 };
 
 /** Rendu générique d'une section d'essai additionnelle (data-driven). */
@@ -435,6 +442,21 @@ export default function FastlabPage() {
               <tr key={i}>
                 <td style={{ padding: 2, color: MUTED, fontSize: 11 }}>{i + 1}</td>
                 {(['N', 'P', 'rho', 'w'] as const).map((k) => <td key={k} style={{ padding: 2 }}><input style={inp} value={r[k]} onChange={(e) => setCbPoints((a) => a.map((q, j) => j === i ? { ...q, [k]: e.target.value } : q))} /></td>)}
+              </tr>
+            ))}</tbody>
+          </table>
+          <div style={{ ...secH, marginTop: 16 }}>Poinçonnement CBR — moules compactés</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginBottom: 10 }}>
+            {([['cb_cible', 'Compacité cible (%)'], ['cb_s25', 'Force à 2,5 mm (kN)'], ['cb_s5', 'Force à 5 mm (kN)'], ['cb_K', 'Coefficient K']] as const).map(([id, l]) => (
+              <div key={id}><label style={lbl}>{l}</label><input style={inp} value={extra[id] ?? ''} onChange={(e) => setExtra((p) => ({ ...p, [id]: e.target.value }))} /></div>
+            ))}
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead><tr>{['Moule', 'Masse tot. (g)', 'Masse moule (g)', 'Volume (cm³)', 'w (%)', 'Enf. 2,5', 'Enf. 5', 'H₀ (mm)', 'Gonfl. (mm)'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <tbody>{[0, 1, 2].map((m) => (
+              <tr key={m}>
+                <td style={{ padding: 2, color: MUTED, fontSize: 11 }}>{m + 1}</td>
+                {[`cb_tot${m}`, `cb_moule${m}`, `cb_vol${m}`, `cb_w${m}`, `cb_pen_${m}_6`, `cb_pen_${m}_9`, `cb_H0${m}`, `cb_gonf${m}`].map((id) => <td key={id} style={{ padding: 2 }}><input style={{ ...inp, padding: '5px 6px' }} value={extra[id] ?? ''} onChange={(e) => setExtra((p) => ({ ...p, [id]: e.target.value }))} /></td>)}
               </tr>
             ))}</tbody>
           </table>
