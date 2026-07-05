@@ -2,11 +2,11 @@
 
 /**
  * AdminSidebar — back-office SUPERADMIN.
- * 2 entrées : Organisations / Utilisateurs.
+ * 5 entrées : Tableau de bord / Organisations / Abonnements / Audit / Utilisateurs.
  * Même palette que la Sidebar tenant (--surface-nav asphalte).
  */
 
-import { Building2, Users } from 'lucide-react';
+import { Building2, LayoutDashboard, ScrollText, Users, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -14,10 +14,28 @@ import { Logotype } from '@/components/ui/Logotype';
 
 const NAV_ITEMS = [
   {
+    id: 'dashboard',
+    label: 'Tableau de bord',
+    icon: <LayoutDashboard size={20} strokeWidth={1.5} aria-hidden="true" />,
+    href: '/admin',
+  },
+  {
     id: 'orgs',
     label: 'Organisations',
     icon: <Building2 size={20} strokeWidth={1.5} aria-hidden="true" />,
     href: '/admin/orgs',
+  },
+  {
+    id: 'subscriptions',
+    label: 'Abonnements',
+    icon: <Wallet size={20} strokeWidth={1.5} aria-hidden="true" />,
+    href: '/admin/subscriptions',
+  },
+  {
+    id: 'audit',
+    label: 'Audit',
+    icon: <ScrollText size={20} strokeWidth={1.5} aria-hidden="true" />,
+    href: '/admin/audit',
   },
   {
     id: 'users',
@@ -31,6 +49,9 @@ export function AdminSidebar() {
   const pathname = usePathname();
 
   function isActive(href: string) {
+    // '/admin' est le préfixe de TOUTES les routes back-office : l'entrée
+    // Tableau de bord ne doit être active QUE sur /admin exactement.
+    if (href === '/admin') return pathname === '/admin';
     return pathname.startsWith(href);
   }
 

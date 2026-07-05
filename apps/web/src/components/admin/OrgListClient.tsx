@@ -3,7 +3,12 @@
 /**
  * Partie interactive de /admin/orgs :
  * - Champ de recherche (met à jour l'URL query param `q`)
- * - Filtre statut (query param `status`)
+ * - Filtre statut (query param `status`) + tri (query param `sort`) — FAITS EN
+ *   SQL côté backend (admin_list_orgs enrichi, 0014) : le Server Component
+ *   parent envoie déjà la page filtrée/triée, ce composant ne fait que
+ *   refléter les paramètres dans l'URL.
+ * - Pagination (limit/offset) : contrôles Précédent/Suivant — au-delà de 50
+ *   orgs, la page suivante devient enfin atteignable.
  * - Tableau dense (données reçues du Server Component parent)
  */
 
@@ -23,13 +28,24 @@ const STATUS_OPTIONS: { value: OrgStatus | ''; label: string }[] = [
   { value: 'ARCHIVED', label: 'Archivé' },
 ];
 
+const SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'Tri par défaut (nom)' },
+  { value: 'name', label: 'Nom' },
+  { value: 'createdAt', label: 'Date de création' },
+  { value: 'quota', label: 'Quota' },
+  { value: 'expiration', label: 'Expiration' },
+];
+
 interface OrgListClientProps {
   orgs: AdminOrgListItem[];
   q: string;
   status: string;
+  sort: string;
+  limit: number;
+  offset: number;
 }
 
-export function OrgListClient({ orgs, q, status }: OrgListClientProps) {
+export function OrgListClient({ orgs, q, status, sort, limit, offset }: OrgListClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -43,11 +59,25 @@ export function OrgListClient({ orgs, q, status }: OrgListClientProps) {
       } else {
         params.delete(key);
       }
+      // Changer la recherche/le filtre/le tri repart de la 1re page.
+      params.delete('offset');
       startTransition(() => {
         router.replace(`${pathname}?${params.toString()}`);
       });
     },
     [router, pathname, searchParams],
+  );
+
+  const goToOffset = useCallback(
+    (newOffset: number) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (newOffset > 0) params.set('offset', String(newOffset));
+      else params.delete('offset');
+      startTransition(() => {
+        router.replace(`${pathname}?${params.toString()}`);
+      });
+    },
+    [pathname, router, searchParams],
   );
 
   return (
@@ -126,6 +156,35 @@ export function OrgListClient({ orgs, q, status }: OrgListClientProps) {
           }}
         >
           {STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+
+        {/* Tri */}
+        <select
+          aria-label="Trier par"
+          value={sort}
+          onChange={(e) => updateParam('sort', e.target.value)}
+          style={{
+            height: 32,
+            padding: '0 28px 0 10px',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-base)',
+            fontSize: 'var(--text-sm)',
+            background: 'var(--surface-base)',
+            color: 'var(--text-primary)',
+            cursor: 'pointer',
+            appearance: 'none',
+            backgroundImage:
+              "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7077' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'right 8px center',
+            outline: 'none',
+          }}
+        >
+          {SORT_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
@@ -322,6 +381,54 @@ export function OrgListClient({ orgs, q, status }: OrgListClientProps) {
             </tbody>
           </table>
         )}
+      </div>
+
+      {/* Pagination — au-delà de `limit`, les orgs suivantes étaient inatteignables
+          (aucun contrôle) : Précédent/Suivant naviguent par pas de `limit`. */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          gap: 'var(--sp-2)',
+          marginTop: 'var(--sp-3)',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => goToOffset(Math.max(0, offset - limit))}
+          disabled={offset === 0}
+          style={{
+            height: 32,
+            padding: '0 14px',
+            background: 'var(--surface-base)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-base)',
+            fontSize: 'var(--text-sm)',
+            cursor: 'pointer',
+            opacity: offset === 0 ? 0.5 : 1,
+          }}
+        >
+          Précédent
+        </button>
+        <button
+          type="button"
+          onClick={() => goToOffset(offset + limit)}
+          disabled={orgs.length < limit}
+          style={{
+            height: 32,
+            padding: '0 14px',
+            background: 'var(--surface-base)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-base)',
+            fontSize: 'var(--text-sm)',
+            cursor: 'pointer',
+            opacity: orgs.length < limit ? 0.5 : 1,
+          }}
+        >
+          Suivant
+        </button>
       </div>
     </div>
   );

@@ -76,7 +76,7 @@ export interface AdminUserView {
   nbOrgs: number;
 }
 
-/** Ligne du journal d'audit — GET /admin/orgs/:orgId/audit. */
+/** Ligne du journal d'audit — GET /admin/orgs/:orgId/audit (+ /admin/audit, global). */
 export interface AuditEntryView {
   id: string;
   actorUserId: string;
@@ -86,6 +86,27 @@ export interface AuditEntryView {
   payload: unknown;
   createdAt: string; // ISO
 }
+
+/** Tableau de bord plateforme — GET /admin/stats (cf. admin-stats.service.ts). */
+export interface PlatformStats {
+  orgs: { active: number; suspended: number; archived: number };
+  usersTotal: number;
+  membershipsActive: number;
+  pvTotal: number;
+  quota: { allouTotal: number; consommeTotal: number };
+  abonnements: {
+    expirant30j: number;
+    expires: number;
+    orgsSansAbo: number;
+    orgsQuota90pct: number;
+  };
+}
+
+/** Famille de filtre — GET /admin/subscriptions?filter=. */
+export type SubscriptionFilter = 'expired' | 'expiring' | 'noquota' | 'nosub' | 'withsub';
+
+/** Tri whitelisté — GET /admin/orgs?sort= et /admin/subscriptions?sort=. */
+export type AdminOrgSort = 'name' | 'createdAt' | 'quota' | 'expiration';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -136,20 +157,74 @@ export async function adminGetMe(): Promise<{ platformRole: string | null } | nu
 }
 
 /**
- * Liste paginée des organisations (identité + résumé abo).
- * `q` : filtre optionnel. `limit`/`offset` : pagination.
+ * Liste paginée des organisations (identité + résumé abo), filtre/tri/pagination
+ * FAITS EN SQL cote backend (admin_list_orgs enrichi, 0014) — jamais de filtre
+ * client-side (cause de la pagination faussee corrigee, cf. /admin/orgs).
  */
 export async function adminListOrgs(args?: {
   q?: string;
   limit?: number;
   offset?: number;
+  status?: OrgStatus;
+  sort?: AdminOrgSort;
 }): Promise<AdminOrgListItem[]> {
   const params = new URLSearchParams();
   if (args?.q) params.set('q', args.q);
   if (args?.limit !== undefined) params.set('limit', String(args.limit));
   if (args?.offset !== undefined) params.set('offset', String(args.offset));
+  if (args?.status) params.set('status', args.status);
+  if (args?.sort) params.set('sort', args.sort);
   const qs = params.size > 0 ? `?${params.toString()}` : '';
   const data = await adminGet<AdminOrgListItem[]>(`/admin/orgs${qs}`);
+  return data ?? [];
+}
+
+/** Tableau de bord plateforme (agrégats cross-tenant). Null si erreur/réseau KO. */
+export async function adminGetStats(): Promise<PlatformStats | null> {
+  return adminGet<PlatformStats>('/admin/stats');
+}
+
+/**
+ * Journal d'audit GLOBAL (toutes orgs) — GET /admin/audit. Filtres SQL bornés
+ * (action, actor, from/to ISO) ; limit plafonné à 100 côté backend.
+ */
+export async function adminListGlobalAudit(args?: {
+  action?: string;
+  actor?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<AuditEntryView[]> {
+  const params = new URLSearchParams();
+  if (args?.action) params.set('action', args.action);
+  if (args?.actor) params.set('actor', args.actor);
+  if (args?.from) params.set('from', args.from);
+  if (args?.to) params.set('to', args.to);
+  if (args?.limit !== undefined) params.set('limit', String(args.limit));
+  if (args?.offset !== undefined) params.set('offset', String(args.offset));
+  const qs = params.size > 0 ? `?${params.toString()}` : '';
+  const data = await adminGet<AuditEntryView[]>(`/admin/audit${qs}`);
+  return data ?? [];
+}
+
+/**
+ * Console d'abonnements (vue money-centrée) — GET /admin/subscriptions. Même
+ * forme d'item que listOrgs (org + résumé d'abo), filtrée sur une famille money.
+ */
+export async function adminListSubscriptions(args?: {
+  filter?: SubscriptionFilter;
+  sort?: AdminOrgSort;
+  limit?: number;
+  offset?: number;
+}): Promise<AdminOrgListItem[]> {
+  const params = new URLSearchParams();
+  if (args?.filter) params.set('filter', args.filter);
+  if (args?.sort) params.set('sort', args.sort);
+  if (args?.limit !== undefined) params.set('limit', String(args.limit));
+  if (args?.offset !== undefined) params.set('offset', String(args.offset));
+  const qs = params.size > 0 ? `?${params.toString()}` : '';
+  const data = await adminGet<AdminOrgListItem[]>(`/admin/subscriptions${qs}`);
   return data ?? [];
 }
 
