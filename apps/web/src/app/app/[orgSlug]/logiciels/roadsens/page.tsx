@@ -2001,11 +2001,14 @@ function TabTrafic({
         saisissez-le directement.
       </Note>
 
-      {/* Résumé trafic */}
-      <SectionTitle>Résumé</SectionTitle>
+      {/* Résumé trafic — ESTIMATION à la saisie (aperçu). La valeur qui fait foi est le
+          NE recalculé SERVEUR, affiché dans les résultats après « Calculer » (revue adverse :
+          ne pas juxtaposer deux NE calculés indépendamment comme s'ils étaient équivalents). */}
+      <SectionTitle>Résumé — estimation à la saisie</SectionTitle>
+      <Note>Estimation indicative à partir du trafic saisi (formule AGEROUTE publique). Le NE qui fait foi est celui recalculé côté serveur, dans les résultats.</Note>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         {[
-          { label: 'NE', value: fmtSci(ne), sub: `Classe ${neClass(ne)}` },
+          { label: 'NE (estim.)', value: fmtSci(ne), sub: `Classe ${neClass(ne)}` },
           {
             label: 'NPL cumulé',
             value: fmtSci(365 * traffic.T * Ccum * traffic.dir * traffic.tv),

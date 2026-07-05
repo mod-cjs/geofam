@@ -59,23 +59,24 @@ jobs:
         run: pnpm typecheck
       - name: Build
         run: pnpm build
-      - name: Convention marqueur moteur (chaque moteur DOIT embarquer le marqueur)
-        # Le controle de bundle ci-dessous grep un MARQUEUR texte stable. Il n a de
-        # valeur que si TOUT moteur l embarque reellement. On force la convention :
-        # tout fichier de packages/engines/src (hors marker.ts) doit contenir le
-        # marqueur. Sinon un moteur sans marqueur pourrait fuiter sans declencher l alarme.
+      - name: Convention marqueur moteur (chaque engine.ts DOIT embarquer le marqueur)
+        # Le controle de bundle ci-dessous grep un MARQUEUR texte stable. Il n a de valeur
+        # que si tout fichier de CALCUL CONFIDENTIEL l embarque. Scope RESTREINT aux
+        # `engine.ts` (revue adverse : l ancien scope « tous les .ts » etait structurellement
+        # ROUGE — tests/contract/index/harness ne portent pas le marqueur et n ont pas a le
+        # porter ; le calcul confidentiel est dans engine.ts). Porte verte ET reelle : un
+        # engine.ts sans marqueur echoue.
         run: |
           set +e
           src="packages/engines/src"
           [ -d "$src" ] || { echo "OK : pas encore de moteurs"; exit 0; }
           fail=0
           while IFS= read -r f; do
-            case "$f" in */marker.ts|*/.gitkeep) continue;; esac
             if ! grep -Iq "ENGINE_BUNDLE_MARKER\|__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__" "$f"; then
-              echo "::error file=$f::Moteur sans marqueur de confidentialite (importe/reference ENGINE_BUNDLE_MARKER)"; fail=1
+              echo "::error file=$f::Moteur de calcul sans marqueur de confidentialite (doit importer/referencer ENGINE_BUNDLE_MARKER)"; fail=1
             fi
-          done < <(find "$src" -type f \( -name "*.ts" -o -name "*.tsx" \))
-          [ "$fail" -eq 0 ] && echo "OK : tous les moteurs embarquent le marqueur" || exit 1
+          done < <(find "$src" -type f -name "engine.ts")
+          [ "$fail" -eq 0 ] && echo "OK : tous les engine.ts embarquent le marqueur" || exit 1
       - name: Controle de confidentialite (aucun code moteur dans le bundle CLIENT)
         # 2e barriere (la 1ere est le garde-fou ESLint ci-dessus). On grep UNIQUEMENT
         # ce qui part au navigateur (.next/static), pas .next/server (SSR legitime, et

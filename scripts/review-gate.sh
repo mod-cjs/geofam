@@ -79,23 +79,30 @@ else
   echo "<<< [e2e-backend] Postgres ou .env indisponible"; record "e2e-backend+isolation" FAIL
 fi
 
-# --- 4) Confidentialité DoD §8 (complet uniquement) ------------------
+# --- 4) Confidentialité DoD §8 -------------------------------------------
+# BARRIÈRE #1 — test négatif du garde-fou ESLint (import moteur -> lint DOIT échouer).
+# Ne nécessite AUCUN build -> exécutée TOUJOURS, y compris en --fast (pre-push). La revue
+# adverse a montré que cette barrière était sautée en --fast et que la CI (qui la porte)
+# était bloquée : §8 se retrouvait sans porte automatique. Elle est désormais non
+# contournable au pre-push.
+GUARD_DIR="$WEB/src/__reviewgate_guardcheck__"
+mkdir -p "$GUARD_DIR" 2>/dev/null
+printf "import '@roadsen/engines';\nexport const x = 1;\n" > "$GUARD_DIR/forbidden.ts" 2>/dev/null
+if [ -f "$GUARD_DIR/forbidden.ts" ]; then
+  if $PNPM --filter @roadsen/web lint >/dev/null 2>&1; then
+    echo "<<< [garde-fou-eslint-moteurs] FAIL"; record "garde-fou-eslint-moteurs (DoD8)" FAIL
+  else echo "<<< [garde-fou-eslint-moteurs] PASS"; record "garde-fou-eslint-moteurs (DoD8)" PASS; fi
+  rm -rf "$GUARD_DIR"
+fi
+
+# BARRIÈRE #2 — contrôle de bundle navigateur (grep .next/static). Nécessite le build
+# Next -> gate COMPLET uniquement (trop coûteux au pre-push). fail-closed si non bâti.
 if [ "$FAST" = false ]; then
   if [ -d "$WEB/.next/static" ]; then
     if grep -rIl -e "@roadsen/engines" -e "__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__" "$WEB/.next/static" >/dev/null 2>&1; then
       echo "<<< [confidentialité-bundle] FAIL"; record "confidentialité-bundle (DoD8)" FAIL
     else echo "<<< [confidentialité-bundle] PASS"; record "confidentialité-bundle (DoD8)" PASS; fi
   else echo "<<< [confidentialité-bundle] FAIL — .next/static non bâti : la confidentialité §8 ne peut PAS être vérifiée (fail-closed). Lancer 'pnpm --filter @roadsen/web build' avant le gate complet."; record "confidentialité-bundle (DoD8)" FAIL; fi
-
-  GUARD_DIR="$WEB/src/__reviewgate_guardcheck__"
-  mkdir -p "$GUARD_DIR" 2>/dev/null
-  printf "import '@roadsen/engines';\nexport const x = 1;\n" > "$GUARD_DIR/forbidden.ts" 2>/dev/null
-  if [ -f "$GUARD_DIR/forbidden.ts" ]; then
-    if $PNPM --filter @roadsen/web lint >/dev/null 2>&1; then
-      echo "<<< [garde-fou-eslint-moteurs] FAIL"; record "garde-fou-eslint-moteurs (DoD8)" FAIL
-    else echo "<<< [garde-fou-eslint-moteurs] PASS"; record "garde-fou-eslint-moteurs (DoD8)" PASS; fi
-    rm -rf "$GUARD_DIR"
-  fi
 fi
 
 # --- 5) Garde-fou migrations destructrices ---------------------------
