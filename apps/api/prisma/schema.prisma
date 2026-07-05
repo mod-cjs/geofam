@@ -236,6 +236,28 @@ model Subscription {
   @@map("subscriptions")
 }
 
+// Journal APPEND-ONLY des actions admin (back-office SUPERADMIN, Lot 2). HORS-tenant
+// (cross-tenant par nature : un SUPERADMIN agit sur n'importe quelle org) -> PAS de
+// policy RLS tenant ; RLS FORCE gatee sur app_auth_bootstrap() + immuabilite (triggers
+// 0013). DEFINER-ONLY : ecrit par adjust_quota/renew/... et lu par admin_list_audit
+// (fonctions SECURITY DEFINER) ; le runtime roadsen_app n'a AUCUN GRANT dessus. Ne PAS
+// l'interroger via le client Prisma (RLS -> 0 ligne hors drapeau). idempotencyKey UNIQUE
+// = anti double-credit. Aucune FK : le journal survit a la suppression d'org/user.
+// Portee SQL : voir prisma/migrations/0013_backoffice_admin_mutations/migration.sql.
+model AdminAuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  actorUserId    String   @map("actor_user_id") @db.Uuid
+  action         String
+  targetOrgId    String?  @map("target_org_id") @db.Uuid
+  targetUserId   String?  @map("target_user_id") @db.Uuid
+  payload        Json     @default("{}") @db.JsonB
+  idempotencyKey String   @unique @map("idempotency_key")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([targetOrgId, createdAt])
+  @@map("admin_audit_log")
+}
+
 // Journal d'usage APPEND-ONLY (immuable via triggers 0008 ; runtime sans
 // UPDATE/DELETE). FK COMPOSITE (orgId, subscriptionId) -> subscriptions(orgId, id) :
 // un ledger ne rattache que l'abonnement de SON tenant.

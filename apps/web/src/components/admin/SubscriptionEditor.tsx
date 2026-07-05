@@ -1,0 +1,796 @@
+'use client';
+
+/**
+ * SubscriptionEditor — mutations abonnement (Lot 2).
+ *
+ * Trois actions disponibles depuis l'onglet Abonnement :
+ *  1. Top-up : ajuste le quota (delta + motif OBLIGATOIRE + confirmation).
+ *  2. Renouvellement : nouvelle fenêtre (dateDebut/dateFin) + reset consommation.
+ *  3. Entitlements : édition du pack et des modules débloqués.
+ *
+ * Idempotence : chaque ouverture de modal génère une clé stable (resolveIntentionKey).
+ * Un double-clic ou retry n'entraîne pas de double-crédit.
+ *
+ * Confidentialité DoD §8 : aucun import @roadsen/engines.
+ */
+
+import { useEffect, useId, useRef, useState } from 'react';
+
+import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
+import { QuotaBar } from './QuotaBar';
+import {
+  clientSetEntitlements,
+  clientRenew,
+  clientTopUp,
+} from '@/lib/api/admin-mutations-client';
+import type { AdminOrgDetail, OrgSubscriptionSummary } from '@/lib/api/admin-server';
+
+// Modules connus (même liste que le wizard)
+const ALL_ENTITLEMENTS = [
+  'burmister',
+  'terzaghi',
+  'casagrande',
+  'geoplaque',
+  'pressiopro',
+  'fastlab',
+] as const;
+
+const PACKS = ['ROUTES', 'FONDATIONS', 'COMPLETE'] as const;
+
+interface SubscriptionEditorProps {
+  orgId: string;
+  subscription: OrgSubscriptionSummary | null;
+  onMutated: (detail: AdminOrgDetail) => void;
+}
+
+export function SubscriptionEditor({
+  orgId,
+  subscription,
+  onMutated,
+}: SubscriptionEditorProps) {
+  const [openModal, setOpenModal] = useState<'topup' | 'renew' | 'entitlements' | null>(null);
+
+  function closeModal() {
+    setOpenModal(null);
+  }
+
+  return (
+    <div>
+      {/* Lecture abonnement */}
+      {subscription ? (
+        <SubscriptionReadView subscription={subscription} />
+      ) : (
+        <p
+          style={{
+            padding: '20px 24px',
+            color: 'var(--text-muted)',
+            fontSize: 'var(--text-sm)',
+            margin: 0,
+          }}
+        >
+          Aucun abonnement provisionné. L&apos;organisation ne peut pas calculer tant
+          qu&apos;un abonnement n&apos;est pas posé.
+        </p>
+      )}
+
+      {/* Actions */}
+      <div
+        style={{
+          padding: '16px 24px',
+          borderTop: '1px solid var(--border-subtle)',
+          display: 'flex',
+          gap: 8,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Button variant="action" size="sm" onClick={() => setOpenModal('topup')}>
+          Ajuster le quota
+        </Button>
+        <Button variant="secondary" size="sm" onClick={() => setOpenModal('renew')}>
+          Renouveler
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => setOpenModal('entitlements')}>
+          Modules
+        </Button>
+      </div>
+
+      {/* Modales */}
+      <TopUpModal
+        open={openModal === 'topup'}
+        orgId={orgId}
+        subscription={subscription}
+        onClose={closeModal}
+        onMutated={onMutated}
+      />
+      <RenewModal
+        open={openModal === 'renew'}
+        orgId={orgId}
+        onClose={closeModal}
+        onMutated={onMutated}
+      />
+      <EntitlementsModal
+        open={openModal === 'entitlements'}
+        orgId={orgId}
+        subscription={subscription}
+        onClose={closeModal}
+        onMutated={onMutated}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Lecture (réutilise l'affichage Lot 1 en dl)
+// ---------------------------------------------------------------------------
+
+function SubscriptionReadView({ subscription }: { subscription: OrgSubscriptionSummary }) {
+  const rows: { label: string; value: React.ReactNode }[] = [
+    { label: 'Pack', value: subscription.pack },
+    {
+      label: 'Quota',
+      value: (
+        <QuotaBar
+          consommation={subscription.consommation}
+          quota={subscription.quota}
+          width={160}
+        />
+      ),
+    },
+    { label: 'Consommation', value: `${subscription.consommation} unités` },
+    { label: 'Restant', value: `${subscription.remaining} unités` },
+    {
+      label: 'Expiration',
+      value: (
+        <span
+          style={{
+            color: subscription.expired ? 'var(--status-fail-tx)' : 'inherit',
+            fontWeight: subscription.expired ? 500 : 400,
+          }}
+        >
+          {formatDate(subscription.dateFin)}
+          {subscription.expired && ' — expiré'}
+        </span>
+      ),
+    },
+  ];
+
+  return (
+    <dl
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '160px 1fr',
+        gap: '1px',
+        padding: 0,
+        margin: 0,
+      }}
+    >
+      {rows.map(({ label, value }) => (
+        <React.Fragment key={label}>
+          <dt
+            style={{
+              padding: '12px 16px',
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-secondary)',
+              fontWeight: 500,
+              borderBottom: '1px solid var(--border-subtle)',
+              background: 'rgba(0,0,0,0.01)',
+            }}
+          >
+            {label}
+          </dt>
+          <dd
+            style={{
+              padding: '12px 16px',
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-primary)',
+              borderBottom: '1px solid var(--border-subtle)',
+              margin: 0,
+            }}
+          >
+            {value}
+          </dd>
+        </React.Fragment>
+      ))}
+    </dl>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Modal top-up
+// ---------------------------------------------------------------------------
+
+function TopUpModal({
+  open,
+  orgId,
+  subscription,
+  onClose,
+  onMutated,
+}: {
+  open: boolean;
+  orgId: string;
+  subscription: OrgSubscriptionSummary | null;
+  onClose: () => void;
+  onMutated: (detail: AdminOrgDetail) => void;
+}) {
+  // Clé stable par intention : générée à l'ouverture de la modal, effacée à la fermeture.
+  // On n'écrit jamais dans ref.current pendant le render (react-hooks/refs).
+  const intentionKeyRef = useRef<string | null>(null);
+
+  const [delta, setDelta] = useState('');
+  const [motif, setMotif] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const deltaId = useId();
+  const motifId = useId();
+  const confirmId = useId();
+
+  // Gérer la clé d'idempotence et réinitialiser les champs à chaque ouverture/fermeture.
+  useEffect(() => {
+    if (open) {
+      // Nouvelle intention : générer une clé seulement si la modal vient de s'ouvrir.
+      if (!intentionKeyRef.current) {
+        intentionKeyRef.current = crypto.randomUUID();
+      }
+      setDelta('');
+      setMotif('');
+      setConfirmed(false);
+      setError(undefined);
+    } else {
+      // Fermeture : libérer la clé pour la prochaine intention.
+      intentionKeyRef.current = null;
+    }
+  }, [open]);
+
+  const parsedDelta = parseInt(delta, 10);
+  const canSubmit = canSubmitTopUp({ delta, motif, confirmed }) && !loading;
+
+  const newQuota = subscription && !isNaN(parsedDelta) && parsedDelta !== 0
+    ? subscription.quota + parsedDelta
+    : null;
+
+  async function handleSubmit() {
+    if (!canSubmit || !intentionKeyRef.current) return;
+    setLoading(true);
+    setError(undefined);
+    try {
+      const detail = await clientTopUp(
+        orgId,
+        { delta: parsedDelta, motif: motif.trim() },
+        intentionKeyRef.current,
+      );
+      onMutated(detail);
+      onClose();
+    } catch (err) {
+      setError(extractMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Ajuster le quota"
+      description={
+        subscription
+          ? `Quota actuel : ${subscription.quota} unités — Consommation : ${subscription.consommation}`
+          : 'Aucun abonnement en place.'
+      }
+      size="sm"
+      loading={loading}
+      error={error}
+      footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>
+            Annuler
+          </Button>
+          <Button
+            variant="action"
+            size="sm"
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            loading={loading}
+          >
+            Confirmer l&apos;ajustement
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Delta */}
+        <div>
+          <label
+            htmlFor={deltaId}
+            style={{
+              display: 'block',
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'var(--text-secondary)',
+              marginBottom: 4,
+            }}
+          >
+            Delta <span aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }}>*</span>
+            <span style={{ fontWeight: 400, marginLeft: 4, color: 'var(--text-muted)' }}>
+              (négatif = baisse, positif = hausse)
+            </span>
+          </label>
+          <input
+            id={deltaId}
+            type="number"
+            value={delta}
+            onChange={(e) => setDelta(e.target.value)}
+            placeholder="ex. 50 ou -20"
+            style={fieldStyle}
+            aria-describedby={`${deltaId}-hint`}
+          />
+          {newQuota !== null && (
+            <p
+              id={`${deltaId}-hint`}
+              style={{
+                fontSize: 12,
+                color:
+                  subscription && newQuota < subscription.consommation
+                    ? 'var(--status-fail-tx)'
+                    : 'var(--text-muted)',
+                marginTop: 4,
+              }}
+            >
+              Quota résultant : <strong>{newQuota}</strong> unités
+              {subscription && newQuota < subscription.consommation &&
+                ' — inférieur à la consommation engagée (le backend refusera)'}
+            </p>
+          )}
+        </div>
+
+        {/* Motif obligatoire */}
+        <div>
+          <label
+            htmlFor={motifId}
+            style={{
+              display: 'block',
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'var(--text-secondary)',
+              marginBottom: 4,
+            }}
+          >
+            Motif <span aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }}>*</span>
+          </label>
+          <textarea
+            id={motifId}
+            value={motif}
+            onChange={(e) => setMotif(e.target.value)}
+            placeholder="Ex. : Virement client 05/07 — facture F-2026-042"
+            rows={3}
+            maxLength={500}
+            style={{ ...fieldStyle, resize: 'vertical', height: 'auto' }}
+          />
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+            {motif.length}/500 — consigné dans le journal d&apos;audit
+          </p>
+        </div>
+
+        {/* Confirmation explicite */}
+        <label
+          htmlFor={confirmId}
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
+            cursor: 'pointer',
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-primary)',
+          }}
+        >
+          <input
+            id={confirmId}
+            type="checkbox"
+            checked={confirmed}
+            onChange={(e) => setConfirmed(e.target.checked)}
+            style={{ marginTop: 2, flexShrink: 0 }}
+          />
+          Je confirme cet ajustement de quota.
+        </label>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Modal renouvellement
+// ---------------------------------------------------------------------------
+
+function RenewModal({
+  open,
+  orgId,
+  onClose,
+  onMutated,
+}: {
+  open: boolean;
+  orgId: string;
+  onClose: () => void;
+  onMutated: (detail: AdminOrgDetail) => void;
+}) {
+  const intentionKeyRef = useRef<string | null>(null);
+
+  const [dateDebut, setDateDebut] = useState('');
+  const [dateFin, setDateFin] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const debutId = useId();
+  const finId = useId();
+
+  useEffect(() => {
+    if (open) {
+      if (!intentionKeyRef.current) {
+        intentionKeyRef.current = crypto.randomUUID();
+      }
+      setDateDebut(today());
+      setDateFin(oneYearFromToday());
+      setError(undefined);
+    } else {
+      intentionKeyRef.current = null;
+    }
+  }, [open]);
+
+  const canSubmit =
+    dateDebut.length > 0 && dateFin.length > 0 && dateFin >= dateDebut && !loading;
+
+  async function handleSubmit() {
+    if (!canSubmit || !intentionKeyRef.current) return;
+    setLoading(true);
+    setError(undefined);
+    try {
+      const detail = await clientRenew(
+        orgId,
+        { dateDebut, dateFin },
+        intentionKeyRef.current,
+      );
+      onMutated(detail);
+      onClose();
+    } catch (err) {
+      setError(extractMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Renouveler l'abonnement"
+      size="sm"
+      loading={loading}
+      error={error}
+      footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>
+            Annuler
+          </Button>
+          <Button
+            variant="action"
+            size="sm"
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            loading={loading}
+          >
+            Confirmer le renouvellement
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Avertissement reset consommation */}
+        <div
+          role="note"
+          style={{
+            background: 'var(--status-warn-bg, rgba(255,193,7,0.1))',
+            border: '1px solid var(--status-warn-bd, rgba(255,193,7,0.4))',
+            borderRadius: 'var(--radius-base)',
+            padding: '10px 12px',
+            fontSize: 13,
+            color: 'var(--text-primary)',
+          }}
+        >
+          Le renouvellement remet la consommation à 0 et ouvre une nouvelle fenêtre.
+          Le quota reste inchangé.
+        </div>
+
+        <div>
+          <label
+            htmlFor={debutId}
+            style={labelStyle}
+          >
+            Date de début <span aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }}>*</span>
+          </label>
+          <input
+            id={debutId}
+            type="date"
+            value={dateDebut}
+            onChange={(e) => setDateDebut(e.target.value)}
+            style={fieldStyle}
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor={finId}
+            style={labelStyle}
+          >
+            Date de fin <span aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }}>*</span>
+          </label>
+          <input
+            id={finId}
+            type="date"
+            value={dateFin}
+            onChange={(e) => setDateFin(e.target.value)}
+            min={dateDebut}
+            style={fieldStyle}
+          />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Modal entitlements
+// ---------------------------------------------------------------------------
+
+function EntitlementsModal({
+  open,
+  orgId,
+  subscription,
+  onClose,
+  onMutated,
+}: {
+  open: boolean;
+  orgId: string;
+  subscription: OrgSubscriptionSummary | null;
+  onClose: () => void;
+  onMutated: (detail: AdminOrgDetail) => void;
+}) {
+  const intentionKeyRef = useRef<string | null>(null);
+
+  // L'abonnement n'expose pas `entitlements` directement dans OrgSubscriptionSummary.
+  // On initialise depuis le pack courant (même logique que le wizard).
+  const [pack, setPack] = useState(subscription?.pack ?? 'COMPLETE');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const packId = useId();
+
+  useEffect(() => {
+    if (open) {
+      if (!intentionKeyRef.current) {
+        intentionKeyRef.current = crypto.randomUUID();
+      }
+      const currentPack = subscription?.pack ?? 'COMPLETE';
+      setPack(currentPack);
+      // Initialiser depuis le pack courant (approximation — l'API ne renvoie pas la
+      // liste fine des entitlements dans le résumé abonnement).
+      setSelected(new Set(PACK_ENTITLEMENTS[currentPack] ?? []));
+      setError(undefined);
+    } else {
+      intentionKeyRef.current = null;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  function toggleEntitlement(e: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(e)) next.delete(e);
+      else next.add(e);
+      return next;
+    });
+  }
+
+  async function handleSubmit() {
+    if (loading || !intentionKeyRef.current) return;
+    setLoading(true);
+    setError(undefined);
+    try {
+      const detail = await clientSetEntitlements(
+        orgId,
+        { pack, entitlements: Array.from(selected) },
+        intentionKeyRef.current,
+      );
+      onMutated(detail);
+      onClose();
+    } catch (err) {
+      setError(extractMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Modules débloqués"
+      size="sm"
+      loading={loading}
+      error={error}
+      footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>
+            Annuler
+          </Button>
+          <Button
+            variant="action"
+            size="sm"
+            onClick={handleSubmit}
+            disabled={loading}
+            loading={loading}
+          >
+            Enregistrer
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Pack */}
+        <div>
+          <label htmlFor={packId} style={labelStyle}>
+            Pack
+          </label>
+          <select
+            id={packId}
+            value={pack}
+            onChange={(e) => setPack(e.target.value)}
+            style={fieldStyle}
+          >
+            {PACKS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Modules */}
+        <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
+          <legend
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              color: 'var(--text-secondary)',
+              marginBottom: 8,
+            }}
+          >
+            Modules
+          </legend>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {ALL_ENTITLEMENTS.map((e) => (
+              <label
+                key={e}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-sm)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(e)}
+                  onChange={() => toggleEntitlement(e)}
+                />
+                {e}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Prédicats de validation exportés (testables en isolation — DoD §9)
+// ---------------------------------------------------------------------------
+
+/**
+ * Prédicat de soumission du formulaire top-up.
+ * Exporté pour que les tests couvrent le VRAI prédicat utilisé dans le composant.
+ * `loading` exclu : le composant le combine localement pour ne pas l'exposer au test.
+ */
+export function canSubmitTopUp({
+  delta,
+  motif,
+  confirmed,
+}: {
+  delta: string;
+  motif: string;
+  confirmed: boolean;
+}): boolean {
+  const parsed = parseInt(delta, 10);
+  const deltaValid = !isNaN(parsed) && parsed !== 0;
+  const motifValid = motif.trim().length > 0;
+  return deltaValid && motifValid && confirmed;
+}
+
+// ---------------------------------------------------------------------------
+// Constantes partagées (même que le wizard)
+// ---------------------------------------------------------------------------
+
+const PACK_ENTITLEMENTS: Record<string, string[]> = {
+  ROUTES: ['burmister'],
+  FONDATIONS: ['terzaghi', 'casagrande', 'geoplaque', 'pressiopro'],
+  COMPLETE: ['burmister', 'terzaghi', 'casagrande', 'geoplaque', 'pressiopro', 'fastlab'],
+};
+
+// ---------------------------------------------------------------------------
+// Styles inline partagés
+// ---------------------------------------------------------------------------
+
+const fieldStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '8px 10px',
+  borderRadius: 'var(--radius-base)',
+  border: '1px solid var(--border-default)',
+  fontSize: 'var(--text-sm)',
+  fontFamily: 'var(--font-sans)',
+  background: 'var(--surface-canvas)',
+  color: 'var(--text-primary)',
+  boxSizing: 'border-box',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: 12,
+  fontWeight: 500,
+  color: 'var(--text-secondary)',
+  marginBottom: 4,
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function oneYearFromToday(): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function extractMessage(err: unknown): string {
+  if (
+    err &&
+    typeof err === 'object' &&
+    'message' in err &&
+    typeof (err as { message: unknown }).message === 'string'
+  ) {
+    return (err as { message: string }).message;
+  }
+  return 'Une erreur inattendue est survenue.';
+}
+
+// React needed for JSX Fragment in SubscriptionReadView
+import React from 'react';

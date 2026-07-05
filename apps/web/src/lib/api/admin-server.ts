@@ -76,6 +76,17 @@ export interface AdminUserView {
   nbOrgs: number;
 }
 
+/** Ligne du journal d'audit — GET /admin/orgs/:orgId/audit. */
+export interface AuditEntryView {
+  id: string;
+  actorUserId: string;
+  action: string;
+  targetOrgId: string | null;
+  targetUserId: string | null;
+  payload: unknown;
+  createdAt: string; // ISO
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

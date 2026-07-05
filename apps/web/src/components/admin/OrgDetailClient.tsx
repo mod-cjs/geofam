@@ -1,23 +1,53 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 
 /**
- * Contenu interactif du détail d'une organisation : onglets Membres / Abonnement / Usage.
- * Lecture seule (Lot 1). Les actions (suspension, top-up…) arrivent en Lot 2.
+ * Contenu interactif du détail d'une organisation : onglets Membres / Abonnement / Usage / Audit.
+ *
+ * Lot 1 : lecture seule.
+ * Lot 2 : mutations (suspension org, top-up quota, renouvellement, entitlements,
+ *         changement de rôle, suspension/retrait membre, journal d'audit).
+ *
+ * L'état `detail` est local : initialisé depuis les props serveur, puis mis à jour
+ * après chaque mutation (les endpoints Lot 2 renvoient le détail frais).
+ *
+ * Confidentialité DoD §8 : aucun import @roadsen/engines.
  */
 
 import { Tabs } from '@/components/ui/Tabs';
+import { Button } from '@/components/ui/Button';
 import { OrgStatusBadge } from './OrgStatusBadge';
-import { QuotaBar } from './QuotaBar';
+import { SubscriptionEditor } from './SubscriptionEditor';
+import { MemberActionsRow } from './MemberActionsRow';
+import { OrgSuspendModal } from './OrgSuspendModal';
+import { AuditTab } from './AuditTab';
 import type { AdminOrgDetail } from '@/lib/api/admin-server';
 
 interface OrgDetailClientProps {
   detail: AdminOrgDetail;
 }
 
-export function OrgDetailClient({ detail }: OrgDetailClientProps) {
+export function OrgDetailClient({ detail: initialDetail }: OrgDetailClientProps) {
+  // Détail local : mis à jour après chaque mutation Lot 2
+  const [detail, setDetail] = useState<AdminOrgDetail>(initialDetail);
+  const [suspendOpen, setSuspendOpen] = useState(false);
+
   const { org, members, subscription, usage } = detail;
+
+  function handleMutated(newDetail: AdminOrgDetail) {
+    setDetail(newDetail);
+  }
+
+  /** Mise à jour locale après setMemberActive (endpoint retourne { userId, isActive }). */
+  function handleActiveToggled(userId: string, isActive: boolean) {
+    setDetail((prev) => ({
+      ...prev,
+      members: prev.members.map((m) =>
+        m.userId === userId ? { ...m, isActive } : m,
+      ),
+    }));
+  }
 
   return (
     <div style={{ padding: 'var(--sp-6)' }}>
@@ -95,6 +125,15 @@ export function OrgDetailClient({ detail }: OrgDetailClientProps) {
             <span>Créé le {formatDate(org.createdAt)}</span>
           </div>
         </div>
+
+        {/* Action suspension */}
+        <Button
+          variant={org.status === 'ACTIVE' ? 'danger' : 'secondary'}
+          size="sm"
+          onClick={() => setSuspendOpen(true)}
+        >
+          {org.status === 'ACTIVE' ? 'Suspendre' : 'Réactiver'}
+        </Button>
       </div>
 
       {/* Onglets */}
@@ -111,31 +150,69 @@ export function OrgDetailClient({ detail }: OrgDetailClientProps) {
             {
               id: 'membres',
               label: `Membres (${members.length})`,
-              content: <MembresTab members={members} />,
+              content: (
+                <MembresTab
+                  orgId={org.id}
+                  members={members}
+                  onMutated={handleMutated}
+                  onActiveToggled={handleActiveToggled}
+                />
+              ),
             },
             {
               id: 'abonnement',
               label: 'Abonnement',
-              content: <AbonnementTab subscription={subscription} />,
+              content: (
+                <SubscriptionEditor
+                  orgId={org.id}
+                  subscription={subscription}
+                  onMutated={handleMutated}
+                />
+              ),
             },
             {
               id: 'usage',
               label: 'Usage',
               content: <UsageTab usage={usage} members={members} />,
             },
+            {
+              id: 'audit',
+              label: 'Audit',
+              content: <AuditTab orgId={org.id} />,
+            },
           ]}
           defaultActiveId="membres"
         />
       </div>
+
+      {/* Modal suspension/réactivation d'org */}
+      <OrgSuspendModal
+        open={suspendOpen}
+        orgId={org.id}
+        orgSlug={org.slug}
+        currentStatus={org.status}
+        onClose={() => setSuspendOpen(false)}
+        onMutated={handleMutated}
+      />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Onglet Membres
+// Onglet Membres (avec actions Lot 2)
 // ---------------------------------------------------------------------------
 
-function MembresTab({ members }: { members: AdminOrgDetail['members'] }) {
+function MembresTab({
+  orgId,
+  members,
+  onMutated,
+  onActiveToggled,
+}: {
+  orgId: string;
+  members: AdminOrgDetail['members'];
+  onMutated: (detail: AdminOrgDetail) => void;
+  onActiveToggled: (userId: string, isActive: boolean) => void;
+}) {
   if (members.length === 0) {
     return (
       <div
@@ -155,7 +232,7 @@ function MembresTab({ members }: { members: AdminOrgDetail['members'] }) {
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-          {['Utilisateur', 'Rôle', 'Statut', 'Calculs (mois)'].map((h) => (
+          {['Utilisateur', 'Rôle / Actions', 'Statut', 'Calculs (mois)'].map((h) => (
             <th
               key={h}
               scope="col"
@@ -177,6 +254,7 @@ function MembresTab({ members }: { members: AdminOrgDetail['members'] }) {
       <tbody>
         {members.map((m) => (
           <tr key={m.userId} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+            {/* Identité */}
             <td style={{ padding: '10px 16px' }}>
               <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
                 {m.fullName}
@@ -185,9 +263,18 @@ function MembresTab({ members }: { members: AdminOrgDetail['members'] }) {
                 {m.email}
               </div>
             </td>
-            <td style={{ padding: '10px 16px', color: 'var(--text-secondary)' }}>
-              {m.role}
+
+            {/* Rôle + actions inline */}
+            <td style={{ padding: '10px 16px' }}>
+              <MemberActionsRow
+                orgId={orgId}
+                member={m}
+                onMutated={onMutated}
+                onActiveToggled={onActiveToggled}
+              />
             </td>
+
+            {/* Statut is_active */}
             <td style={{ padding: '10px 16px' }}>
               {m.isActive ? (
                 <span
@@ -217,6 +304,8 @@ function MembresTab({ members }: { members: AdminOrgDetail['members'] }) {
                 </span>
               )}
             </td>
+
+            {/* Calculs */}
             <td
               style={{
                 padding: '10px 16px',
@@ -235,104 +324,7 @@ function MembresTab({ members }: { members: AdminOrgDetail['members'] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Onglet Abonnement
-// ---------------------------------------------------------------------------
-
-function AbonnementTab({
-  subscription,
-}: {
-  subscription: AdminOrgDetail['subscription'];
-}) {
-  if (!subscription) {
-    return (
-      <div
-        style={{
-          padding: '40px 24px',
-          textAlign: 'center',
-          color: 'var(--text-muted)',
-          fontSize: 'var(--text-sm)',
-        }}
-      >
-        Aucun abonnement provisionné. L&apos;organisation ne peut pas calculer tant qu&apos;un
-        abonnement n&apos;est pas posé.
-      </div>
-    );
-  }
-
-  const rows: { label: string; value: React.ReactNode }[] = [
-    { label: 'Pack', value: subscription.pack },
-    {
-      label: 'Quota',
-      value: (
-        <QuotaBar
-          consommation={subscription.consommation}
-          quota={subscription.quota}
-          width={160}
-        />
-      ),
-    },
-    { label: 'Consommation', value: `${subscription.consommation} unités` },
-    { label: 'Restant', value: `${subscription.remaining} unités` },
-    {
-      label: 'Expiration',
-      value: (
-        <span
-          style={{
-            color: subscription.expired ? 'var(--status-fail-tx)' : 'inherit',
-            fontWeight: subscription.expired ? 500 : 400,
-          }}
-        >
-          {formatDate(subscription.dateFin)}
-          {subscription.expired && ' — expiré'}
-        </span>
-      ),
-    },
-  ];
-
-  return (
-    <dl
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '160px 1fr',
-        gap: '1px',
-        padding: 0,
-        margin: 0,
-      }}
-    >
-      {rows.map(({ label, value }) => (
-        // key sur le Fragment — les enfants n'en ont pas besoin
-        <React.Fragment key={label}>
-          <dt
-            style={{
-              padding: '12px 16px',
-              fontSize: 'var(--text-sm)',
-              color: 'var(--text-secondary)',
-              fontWeight: 500,
-              borderBottom: '1px solid var(--border-subtle)',
-              background: 'rgba(0,0,0,0.01)',
-            }}
-          >
-            {label}
-          </dt>
-          <dd
-            style={{
-              padding: '12px 16px',
-              fontSize: 'var(--text-sm)',
-              color: 'var(--text-primary)',
-              borderBottom: '1px solid var(--border-subtle)',
-              margin: 0,
-            }}
-          >
-            {value}
-          </dd>
-        </React.Fragment>
-      ))}
-    </dl>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Onglet Usage
+// Onglet Usage (inchangé depuis Lot 1)
 // ---------------------------------------------------------------------------
 
 function UsageTab({
@@ -346,14 +338,8 @@ function UsageTab({
     <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Résumé */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <MetricCard
-          label="Calculs (mois)"
-          value={String(usage.byKind.CALC)}
-        />
-        <MetricCard
-          label="PV (mois)"
-          value={String(usage.byKind.PV)}
-        />
+        <MetricCard label="Calculs (mois)" value={String(usage.byKind.CALC)} />
+        <MetricCard label="PV (mois)" value={String(usage.byKind.PV)} />
         {usage.consommation !== null && usage.quota !== null && (
           <MetricCard
             label="Consommation globale"
@@ -417,7 +403,7 @@ function UsageTab({
                     style={{ borderBottom: '1px solid var(--border-subtle)' }}
                   >
                     <td style={{ padding: '8px 0', color: 'var(--text-primary)' }}>
-                      {member ? member.fullName : row.userId.slice(0, 8) + '…'}
+                      {member ? member.fullName : `${row.userId.slice(0, 8)}…`}
                     </td>
                     <td
                       style={{

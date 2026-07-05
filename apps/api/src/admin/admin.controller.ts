@@ -1,7 +1,12 @@
+import { randomUUID } from 'node:crypto';
+
 import {
+  BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -27,6 +32,26 @@ import {
   orgIdParam,
   searchUsersQuerySchema,
 } from './admin.dto';
+import type { AuditEntryView } from './admin-mutations.service';
+import { AdminMutationsService } from './admin-mutations.service';
+import type {
+  AuditQuery,
+  EntitlementsDto,
+  RenewDto,
+  SetOrgStatusDto,
+  SetRoleDto,
+  TopUpDto,
+} from './admin-mutations.dto';
+import {
+  auditQuerySchema,
+  entitlementsSchema,
+  mutOrgIdParam,
+  mutUserIdParam,
+  renewSchema,
+  setOrgStatusSchema,
+  setRoleSchema,
+  topUpSchema,
+} from './admin-mutations.dto';
 import type {
   AdminOrgDetail,
   AdminOrgListItem,
@@ -76,6 +101,7 @@ export class AdminController {
     private readonly members: MembersService,
     private readonly orgs: AdminOrgsService,
     private readonly users: AdminUsersService,
+    private readonly mutations: AdminMutationsService,
   ) {}
 
   /**
@@ -241,4 +267,190 @@ export class AdminController {
   ): Promise<OrgMemberView[]> {
     return this.members.listMembers(orgId);
   }
+
+  // ===================================================================
+  //  MUTATIONS money-adjacent (Lot 2). Chaque action TRACE un audit
+  //  (admin_audit_log) et est IDEMPOTENTE sur `Idempotency-Key`. L'ACTEUR
+  //  est le sub du JWT verifie (req.auth.userId), JAMAIS le corps (lecon #42).
+  //  Reponse = detail COMPOSITE frais de l'org (numeros a jour pour le front).
+  // ===================================================================
+
+  /**
+   * POST /admin/orgs/:orgId/subscription/topup — ajuste le quota (motif obligatoire).
+   * Quota resultant < consommation -> 400. MONEY : l'en-tete `Idempotency-Key` est
+   * OBLIGATOIRE (absent -> 400) — pas d'auto-generation : un retry reseau sans cle =
+   * DOUBLE credit. Le front genere une cle stable par action.
+   */
+  @Post('orgs/:orgId/subscription/topup')
+  async topUp(
+    @Param('orgId', new ZodValidationPipe(mutOrgIdParam)) orgId: string,
+    @Body(new ZodValidationPipe(topUpSchema)) body: TopUpDto,
+    @Req() req: AuthedRequest,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<AdminOrgDetail> {
+    await this.mutations.topUpQuota({
+      orgId,
+      delta: body.delta,
+      motif: body.motif,
+      actorUserId: this.actor(req),
+      idempotencyKey: requireIdempotencyKey(idempotencyKey),
+    });
+    return this.orgs.getOrgDetail(orgId);
+  }
+
+  /**
+   * POST /admin/orgs/:orgId/subscription/renew — reset consommation + nouvelle fenetre.
+   * Fenetre invalide (debut > fin) -> 400 (Zod + base). MONEY : `Idempotency-Key`
+   * OBLIGATOIRE (absent -> 400) — un renew rejoue sans cle re-remettrait la
+   * consommation a 0 (perte de trace de conso). Cle stable par action cote front.
+   */
+  @Post('orgs/:orgId/subscription/renew')
+  async renew(
+    @Param('orgId', new ZodValidationPipe(mutOrgIdParam)) orgId: string,
+    @Body(new ZodValidationPipe(renewSchema)) body: RenewDto,
+    @Req() req: AuthedRequest,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<AdminOrgDetail> {
+    await this.mutations.renewSubscription({
+      orgId,
+      dateDebut: body.dateDebut,
+      dateFin: body.dateFin,
+      actorUserId: this.actor(req),
+      idempotencyKey: requireIdempotencyKey(idempotencyKey),
+    });
+    return this.orgs.getOrgDetail(orgId);
+  }
+
+  /**
+   * PATCH /admin/orgs/:orgId/subscription/entitlements — edite pack + modules debloques.
+   */
+  @Patch('orgs/:orgId/subscription/entitlements')
+  async setEntitlements(
+    @Param('orgId', new ZodValidationPipe(mutOrgIdParam)) orgId: string,
+    @Body(new ZodValidationPipe(entitlementsSchema)) body: EntitlementsDto,
+    @Req() req: AuthedRequest,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<AdminOrgDetail> {
+    await this.mutations.setEntitlements({
+      orgId,
+      pack: body.pack,
+      entitlements: body.entitlements,
+      actorUserId: this.actor(req),
+      idempotencyKey: resolveIdempotencyKey(idempotencyKey),
+    });
+    return this.orgs.getOrgDetail(orgId);
+  }
+
+  /**
+   * PATCH /admin/orgs/:orgId/members/:userId/role — change le role tenant (OWNER exclu).
+   * Retrograder le dernier OWNER actif -> 409 ; membre introuvable -> 404.
+   */
+  @Patch('orgs/:orgId/members/:userId/role')
+  async setMemberRole(
+    @Param('orgId', new ZodValidationPipe(mutOrgIdParam)) orgId: string,
+    @Param('userId', new ZodValidationPipe(mutUserIdParam)) userId: string,
+    @Body(new ZodValidationPipe(setRoleSchema)) body: SetRoleDto,
+    @Req() req: AuthedRequest,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<AdminOrgDetail> {
+    await this.mutations.setMemberRole({
+      orgId,
+      userId,
+      role: body.role,
+      actorUserId: this.actor(req),
+      idempotencyKey: resolveIdempotencyKey(idempotencyKey),
+    });
+    return this.orgs.getOrgDetail(orgId);
+  }
+
+  /**
+   * DELETE /admin/orgs/:orgId/members/:userId — retrait SOFT (is_active=false).
+   * Retirer le dernier OWNER actif -> 409 ; membre introuvable -> 404. Reactivation via
+   * PATCH …/members/:userId (isActive=true).
+   */
+  @Delete('orgs/:orgId/members/:userId')
+  async removeMember(
+    @Param('orgId', new ZodValidationPipe(mutOrgIdParam)) orgId: string,
+    @Param('userId', new ZodValidationPipe(mutUserIdParam)) userId: string,
+    @Req() req: AuthedRequest,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<AdminOrgDetail> {
+    await this.mutations.removeMember({
+      orgId,
+      userId,
+      actorUserId: this.actor(req),
+      idempotencyKey: resolveIdempotencyKey(idempotencyKey),
+    });
+    return this.orgs.getOrgDetail(orgId);
+  }
+
+  /**
+   * PATCH /admin/orgs/:orgId/status — suspension / (re)activation / archivage. L'effet
+   * REEL (perte d'acces des membres) est au PROCHAIN APPEL (auth function redefinie, 0013).
+   */
+  @Patch('orgs/:orgId/status')
+  async setOrgStatus(
+    @Param('orgId', new ZodValidationPipe(mutOrgIdParam)) orgId: string,
+    @Body(new ZodValidationPipe(setOrgStatusSchema)) body: SetOrgStatusDto,
+    @Req() req: AuthedRequest,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<AdminOrgDetail> {
+    await this.mutations.setOrgStatus({
+      orgId,
+      status: body.status,
+      actorUserId: this.actor(req),
+      idempotencyKey: resolveIdempotencyKey(idempotencyKey),
+    });
+    return this.orgs.getOrgDetail(orgId);
+  }
+
+  /**
+   * GET /admin/orgs/:orgId/audit — journal d'audit de l'org (mutations tracees).
+   */
+  @Get('orgs/:orgId/audit')
+  async listAudit(
+    @Param('orgId', new ZodValidationPipe(mutOrgIdParam)) orgId: string,
+    @Query(new ZodValidationPipe(auditQuerySchema)) query: AuditQuery,
+  ): Promise<AuditEntryView[]> {
+    return this.mutations.listAudit(orgId, query);
+  }
+
+  /**
+   * Acteur d'une mutation = SUB du JWT verifie (req.auth.userId), JAMAIS le corps
+   * (lecon #42 : l'identite privilegiee vient du serveur). Absence de sub -> 401.
+   */
+  private actor(req: AuthedRequest): string {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      throw new UnauthorizedException('Non authentifie');
+    }
+    return userId;
+  }
+}
+
+/**
+ * Resout la cle d'idempotence pour les mutations NON-money (role/retrait/statut/
+ * entitlements) : en-tete `Idempotency-Key` fourni par le client (voie standard, retries
+ * surs), sinon on en GENERE une (chaque appel devient unique -> pas d'idempotence, mais la
+ * contrainte UNIQUE de admin_audit_log tient toujours). Le client DOIT reutiliser la MEME
+ * cle pour rejouer sans double-effet une action donnee.
+ */
+function resolveIdempotencyKey(header?: string): string {
+  const trimmed = header?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : randomUUID();
+}
+
+/**
+ * EXIGE la cle d'idempotence pour les mutations MONEY (topup / renew) : l'auto-generation
+ * y est INTERDITE (un retry reseau sans en-tete = double credit / reset de conso). En-tete
+ * absent ou vide -> 400 explicite. Le front genere une cle stable par action.
+ */
+function requireIdempotencyKey(header?: string): string {
+  const trimmed = header?.trim();
+  if (!trimmed || trimmed.length === 0) {
+    throw new BadRequestException(
+      'En-tête Idempotency-Key requis pour cette opération money',
+    );
+  }
+  return trimmed;
 }

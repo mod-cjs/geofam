@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 import { AdminController } from './admin.controller';
+import { AdminMutationsService } from './admin-mutations.service';
 import { AdminOrgsService } from './admin-orgs.service';
 import { AdminUsersService } from './admin-users.service';
 import { MembersService } from './members.service';
@@ -22,6 +23,11 @@ import { MembersService } from './members.service';
 @Module({
   imports: [AuthModule, SubscriptionsModule],
   controllers: [AdminController],
-  providers: [MembersService, AdminOrgsService, AdminUsersService],
+  providers: [
+    MembersService,
+    AdminOrgsService,
+    AdminUsersService,
+    AdminMutationsService,
+  ],
 })
 export class AdminModule {}
