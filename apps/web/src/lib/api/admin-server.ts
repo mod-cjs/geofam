@@ -48,7 +48,7 @@ export interface OrgMemberView {
   fullName: string;
   role: string;
   isActive: boolean;
-  calcCount: number;
+  calculsMois: number; // aligné sur le backend (members.service.ts) — évite une colonne vide
 }
 
 export interface OrgUsage {

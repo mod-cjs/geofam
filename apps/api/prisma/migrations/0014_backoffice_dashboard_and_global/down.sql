@@ -8,12 +8,20 @@
 --
 --  CIBLE = etat POST-0013 : admin_list_orgs(int,int,text) et admin_list_audit(uuid,int,int)
 --  dans leur forme 0012/0013 ; PAS de surcharges d'onboarding a 4 args ; PAS de policy
---  stats_bootstrap_read ; PAS de admin_platform_stats. Les corps d'origine (arite 3) de
---  provision_user/org/member + set_member_active ne sont PAS touches par 0014 -> rien a
---  restaurer sur eux.
+--  stats_bootstrap_read ; PAS de admin_platform_stats. Les CORPS arite-3 de
+--  provision_user/org/member + set_member_active ne sont pas redefinis par 0014, MAIS 0014
+--  leur REVOQUE EXECUTE a roadsen_app (durcissement §7) : le rollback RE-GRANT cet EXECUTE
+--  (etat POST-0013, ou roadsen_app pouvait executer les 3-args).
 -- =====================================================================
 
 BEGIN;
+
+-- 0) DURCISSEMENT §7 (REVOKE EXECUTE 3-args) : re-GRANT a roadsen_app pour restaurer
+--    l'etat POST-0013. Les corps arite-3 ne sont pas redefinis, seul leur EXECUTE change.
+GRANT EXECUTE ON FUNCTION "provision_user"(text, text, text)          TO "roadsen_app";
+GRANT EXECUTE ON FUNCTION "provision_org"(text, text, uuid)           TO "roadsen_app";
+GRANT EXECUTE ON FUNCTION "provision_member"(uuid, uuid, "Role")      TO "roadsen_app";
+GRANT EXECUTE ON FUNCTION "set_member_active"(uuid, uuid, boolean)    TO "roadsen_app";
 
 -- 1) Surcharges d'onboarding a 4 args (backport audit) : simple DROP (les corps arite-3
 --    d'origine restent intacts).

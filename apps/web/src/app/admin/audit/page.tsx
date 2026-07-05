@@ -33,7 +33,8 @@ export default async function GlobalAuditPage({ searchParams }: AuditPageProps) 
   const actor = sp.actor?.trim() ?? '';
   const from = sp.from?.trim() ?? '';
   const to = sp.to?.trim() ?? '';
-  const limit = Number.parseInt(sp.limit ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT;
+  // clamp [1,100] : une URL ?limit=500 provoquait un 400 backend (Zod max 100) -> page vide
+  const limit = Math.min(100, Math.max(1, Number.parseInt(sp.limit ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT));
   const offset = Number.parseInt(sp.offset ?? '0', 10) || 0;
 
   const entries = await adminListGlobalAudit({

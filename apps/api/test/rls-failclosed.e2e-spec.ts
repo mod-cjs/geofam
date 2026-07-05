@@ -233,7 +233,23 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
          )
          ORDER BY p.proname`,
       );
-      expect(rows).toHaveLength(6);
+      // Depuis 0014, provision_org / provision_user ont une SURCHARGE 4-args auditee (en
+      // plus de la 3-args) : la requete par NOM renvoie donc >= 6 lignes. On verifie que
+      // les 6 fonctions attendues sont TOUTES presentes (au moins une surcharge) ET que
+      // CHAQUE surcharge (toutes arites) est owned roadsen_auth NON-bypass — c'est la
+      // propriete de securite, insensible au nombre de surcharges.
+      const distinctNames = [...new Set(rows.map((r) => r.proname))].sort();
+      expect(distinctNames).toEqual(
+        [
+          'auth_find_user_by_email',
+          'auth_get_platform_role',
+          'auth_get_user_profile',
+          'auth_user_has_membership',
+          'provision_org',
+          'provision_user',
+        ].sort(),
+      );
+      expect(rows.length).toBeGreaterThanOrEqual(6);
       for (const row of rows) {
         expect(row.owner).toBe('roadsen_auth');
         expect(row.owner_bypassrls).toBe(false); // owner NON-bypass : barriere reelle
@@ -404,11 +420,16 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
       // provision_org pose lui-meme app.current_org (SET LOCAL interne) ET le
       // drapeau app.auth_bootstrap (modele 0007) : il fonctionne a froid SANS
       // BYPASSRLS. Preuve que le bootstrap tient sous owner non-bypass.
+      //
+      // NB (durcissement 0014 §7) : la surcharge 3-args de provision_org n'est PLUS
+      // EXECUTABLE par roadsen_app (REVOKE) — le runtime passe par la 4-args AUDITEE.
+      // On teste donc la 4-args, qui delegue au MEME corps 3-args (comportement de
+      // contexte identique) et trace un ORG_PROVISIONED (nettoye ci-dessous).
       await app!.query(`RESET app.current_org`);
       const slug = `fc-prov-${randomUUID().slice(0, 8)}`;
       const { rows } = await app!.query<{ provision_org: string }>(
-        `SELECT provision_org('Org Provisionnee', $1, $2::uuid) AS provision_org`,
-        [slug, userA],
+        `SELECT provision_org('Org Provisionnee', $1, $2::uuid, $3::uuid) AS provision_org`,
+        [slug, userA, userA],
       );
       expect(rows).toHaveLength(1);
       const newOrg = rows[0].provision_org;
@@ -421,7 +442,17 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
       );
       expect(check.rows[0].n).toBe('1');
 
-      // teardown de l'org provisionnee
+      // teardown de l'org provisionnee + sa trace d'audit (admin_audit_log APPEND-ONLY :
+      // desactiver les triggers le temps du nettoyage, cf. patron admin-dashboard).
+      await admin!.query(`ALTER TABLE admin_audit_log DISABLE TRIGGER USER`);
+      try {
+        await admin!.query(
+          `DELETE FROM admin_audit_log WHERE target_org_id = $1`,
+          [newOrg],
+        );
+      } finally {
+        await admin!.query(`ALTER TABLE admin_audit_log ENABLE TRIGGER USER`);
+      }
       await admin!.query(`DELETE FROM memberships WHERE org_id = $1`, [newOrg]);
       await admin!.query(`DELETE FROM organizations WHERE id = $1`, [newOrg]);
     },
@@ -440,11 +471,14 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
       // CAS A : aucun contexte prealable -> apres provision_org, une requete tenant
       // DOIT RAISE (contexte restaure a vide), et surtout NE PAS retourner les
       // lignes de l'org creee.
+      // 4-args AUDITEE (la 3-args n'est plus EXECUTABLE par roadsen_app, cf. 0014 §7) ;
+      // meme corps 3-args -> meme semantique de contexte. Transaction ROLLBACK -> la
+      // trace d'audit est annulee avec le reste (aucun nettoyage requis).
       await app!.query('BEGIN');
       const slug = `fc-leak-${randomUUID().slice(0, 8)}`;
       const created = await app!.query<{ provision_org: string }>(
-        `SELECT provision_org('Org Leak', $1, $2::uuid) AS provision_org`,
-        [slug, userA],
+        `SELECT provision_org('Org Leak', $1, $2::uuid, $3::uuid) AS provision_org`,
+        [slug, userA, userA],
       );
       const newOrg = created.rows[0].provision_org;
       // Le contexte ne doit PAS avoir fui : app_current_org() RAISE (restaure vide).
@@ -459,10 +493,10 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
       await app!.query('BEGIN');
       await app!.query(`SET LOCAL app.current_org = '${orgA}'`);
       const slugB = `fc-leak-b-${randomUUID().slice(0, 8)}`;
-      await app!.query(`SELECT provision_org('Org Leak B', $1, $2::uuid)`, [
-        slugB,
-        userA,
-      ]);
+      await app!.query(
+        `SELECT provision_org('Org Leak B', $1, $2::uuid, $3::uuid)`,
+        [slugB, userA, userA],
+      );
       // Contexte restaure a orgA : app_current_org() == orgA, pas la nouvelle org.
       const ctx = await app!.query<{ app_current_org: string }>(
         'SELECT app_current_org()',

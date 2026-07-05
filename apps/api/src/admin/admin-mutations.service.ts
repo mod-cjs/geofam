@@ -20,6 +20,24 @@ export interface AuditEntryView {
   createdAt: string; // ISO
 }
 
+/**
+ * Vue LISTE MINIMISEE du journal GLOBAL (GET /admin/audit). Minimisation cote SERVEUR :
+ * le `payload` JSONB brut (quota_before/after, delta, consommation, owner_user_id, slug,
+ * entitlements...) n'est PAS exposé au client — seul le `motif` d'affichage remonte (la
+ * seule cle que l'UI liste consomme, via extractMotif). Le detail COMPLET reste servi par
+ * la route par-org (GET /admin/orgs/:orgId/audit, AuditEntryView) ou une future route detail
+ * — jamais dans la liste globale (minimisation des donnees, CDP).
+ */
+export interface AuditListEntryView {
+  id: string;
+  actorUserId: string;
+  action: string;
+  targetOrgId: string | null;
+  targetUserId: string | null;
+  payload: { motif: string | null }; // minimisé : jamais les montants/owner/slug bruts
+  createdAt: string; // ISO
+}
+
 // Ligne brute de admin_list_audit (snake_case = colonnes SQL).
 interface AuditRow {
   id: string;
@@ -209,8 +227,8 @@ export class AdminMutationsService {
     to?: Date;
     limit?: number;
     offset?: number;
-  }): Promise<AuditEntryView[]> {
-    return this.queryAudit({
+  }): Promise<AuditListEntryView[]> {
+    const rows = await this.queryAudit({
       orgId: null,
       limit: args.limit ?? 50,
       offset: args.offset ?? 0,
@@ -219,6 +237,17 @@ export class AdminMutationsService {
       from: args.from ?? null,
       to: args.to ?? null,
     });
+    // MINIMISATION cote serveur : on ne laisse remonter QUE le motif d'affichage ;
+    // les montants/owner/slug bruts du payload ne quittent PAS le serveur par la liste.
+    return rows.map((r) => ({
+      id: r.id,
+      actorUserId: r.actorUserId,
+      action: r.action,
+      targetOrgId: r.targetOrgId,
+      targetUserId: r.targetUserId,
+      payload: { motif: extractMotif(r.payload) },
+      createdAt: r.createdAt,
+    }));
   }
 
   /** Appel commun a admin_list_audit (per-org ou global). Filtres NULL = ignores en SQL. */
@@ -291,6 +320,19 @@ export class AdminMutationsService {
       throw err;
     }
   }
+}
+
+/**
+ * Extrait le `motif` d'affichage d'un payload d'audit JSONB (la seule cle exposee par la
+ * liste globale minimisee). Retourne null si absent ou non-textuel : le reste du payload
+ * (montants, owner, slug, entitlements...) ne quitte PAS le serveur par cette voie.
+ */
+function extractMotif(payload: unknown): string | null {
+  if (payload && typeof payload === 'object' && 'motif' in payload) {
+    const motif = payload.motif;
+    if (typeof motif === 'string') return motif;
+  }
+  return null;
 }
 
 /**

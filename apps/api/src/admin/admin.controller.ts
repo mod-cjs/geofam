@@ -41,7 +41,10 @@ import {
 } from './admin.dto';
 import type { PlatformStats } from './admin-stats.service';
 import { AdminStatsService } from './admin-stats.service';
-import type { AuditEntryView } from './admin-mutations.service';
+import type {
+  AuditEntryView,
+  AuditListEntryView,
+} from './admin-mutations.service';
 import { AdminMutationsService } from './admin-mutations.service';
 import type {
   AuditQuery,
@@ -127,12 +130,14 @@ export class AdminController {
   /**
    * GET /admin/audit?action=&actor=&from=&to=&limit=&offset= — journal d'audit GLOBAL
    * (toutes orgs). Filtres SQL bornes ; borne cote base (limit <= 100). SUPERADMIN-only.
+   * MINIMISATION : le payload brut n'est PAS renvoye dans la liste (seul le motif) — cf.
+   * AuditListEntryView / listGlobalAudit. Le detail complet reste sur la route par-org.
    */
   @Get('audit')
   async globalAudit(
     @Query(new ZodValidationPipe(globalAuditQuerySchema))
     query: GlobalAuditQuery,
-  ): Promise<AuditEntryView[]> {
+  ): Promise<AuditListEntryView[]> {
     return this.mutations.listGlobalAudit(query);
   }
 

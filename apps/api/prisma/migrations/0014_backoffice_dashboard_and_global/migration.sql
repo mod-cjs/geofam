@@ -44,6 +44,37 @@
 --  ADDITIVE / NON DESTRUCTIVE sur les donnees (CREATE POLICY nouvelles, CREATE OR REPLACE
 --  / DROP+CREATE de fonctions, GRANT). IDEMPOTENTE (IF EXISTS / OR REPLACE / DROP POLICY IF
 --  EXISTS). Reversible : voir down.sql.
+--
+--  =====================================================================
+--  INVARIANT « WHERE org_id OBLIGATOIRE » (grave suite a la revue adverse qa-challenger)
+--  ---------------------------------------------------------------------
+--  Depuis 0014, la policy stats_bootstrap_read (FOR SELECT) ouvre subscriptions ET
+--  official_pvs en LECTURE PLEINE (cross-tenant) a TOUTE fonction SECURITY DEFINER owned
+--  roadsen_auth (le gate est `current_user = 'roadsen_auth'`, vrai dans le corps de
+--  N'IMPORTE quelle DEFINER). CONSEQUENCE : a l'interieur d'une DEFINER, une lecture NON
+--  verrouillante (plain SELECT) n'est PLUS scopee par la RLS au tenant courant — une
+--  requete SANS predicat verrait TOUTES les lignes cross-tenant.
+--
+--  INVARIANT (non negociable) : TOUTE fonction SECURITY DEFINER qui LIT subscriptions ou
+--  official_pvs POUR LE COMPTE D'UNE ORG DONNEE (lecture per-tenant) DOIT porter un
+--  `WHERE org_id = <param>` explicite (ou un JOIN/predicat equivalent bornant a l'org
+--  visee). Retirer ce predicat = fuite cross-tenant money/PV SILENCIEUSE (aucune erreur ;
+--  la RLS ne rattrape plus rien via stats_bootstrap_read pour un plain SELECT). Les
+--  lectures cross-tenant DELIBEREES (agregats de admin_platform_stats, liste de
+--  admin_list_orgs) n'exposent QUE des scalaires/resumes, jamais une ligne tenant brute.
+--
+--  NUANCE MESUREE (defense en profondeur, verifiee empiriquement — NE PAS s'en contenter) :
+--  les 4 lecteurs money DEPLOYES (0008 provision_subscription ; 0013 adjust_quota /
+--  renew_subscription / set_subscription_entitlements) posent AUSSI `app.current_org =
+--  p_org_id` ET lisent en `SELECT ... FOR UPDATE`. Or `FOR UPDATE` RE-APPLIQUE la policy
+--  tenant_isolation (commande UPDATE), que stats_bootstrap_read (FOR SELECT) N'ouvre PAS :
+--  chez eux, retirer le SEUL WHERE ne suffit PAS a fuiter (2e/3e barriere). Le WHERE reste
+--  neanmoins l'invariant a graver : il est la SEULE barriere des lectures NON verrouillantes
+--  per-tenant (tout futur lecteur ; toute lecture hors FOR UPDATE / hors contexte tenant).
+--  SENTINELLE : test/admin-money-invariant.e2e-spec.ts (Postgres reel) — cas 4/5 prouvent
+--  qu'un plain SELECT sans WHERE, sous le contexte exact d'un corps DEFINER, FUIT
+--  cross-tenant ; cas 1-3 prouvent que les fonctions deployees restent org-scopees.
+--  =====================================================================
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -522,3 +553,23 @@ GRANT EXECUTE ON FUNCTION "provision_user"(text, text, text, uuid)              
 GRANT EXECUTE ON FUNCTION "provision_org"(text, text, uuid, uuid)                           TO "roadsen_app";
 GRANT EXECUTE ON FUNCTION "provision_member"(uuid, uuid, "Role", uuid)                      TO "roadsen_app";
 GRANT EXECUTE ON FUNCTION "set_member_active"(uuid, uuid, boolean, uuid)                    TO "roadsen_app";
+
+-- ---------------------------------------------------------------------
+-- 7) DURCISSEMENT : fermeture des surcharges 3-args NON tracees au runtime
+--
+--  Les corps arite-3 (0005/0004/0011) d'onboarding sont l'ancien chemin NON audite
+--  (aucun p_actor_user_id -> aucune trace admin_audit_log). Depuis 0014, le runtime ne
+--  passe QUE par les surcharges 4-args auditees (AuthService.provisionUser/provisionOrg,
+--  MembersService.provisionMember/setMemberActive appellent tous la signature a 4 args).
+--  On retire donc EXECUTE a roadsen_app sur les 3-args : le chemin d'onboarding non trace
+--  n'est PLUS joignable par le runtime (defense en profondeur ; reduit la surface).
+--
+--  L'owner roadsen_auth CONSERVE EXECUTE (privilege d'ownership, non affecte par ce REVOKE)
+--  -> les wrappers 4-args, executes EN TANT QUE roadsen_auth (SECURITY DEFINER), continuent
+--  d'appeler le corps 3-args SANS aucun probleme. Seul roadsen_app perd l'acces DIRECT.
+--  Idempotent (REVOKE d'un privilege absent = no-op). Reversible : down.sql re-GRANT.
+-- ---------------------------------------------------------------------
+REVOKE EXECUTE ON FUNCTION "provision_user"(text, text, text)          FROM "roadsen_app";
+REVOKE EXECUTE ON FUNCTION "provision_org"(text, text, uuid)           FROM "roadsen_app";
+REVOKE EXECUTE ON FUNCTION "provision_member"(uuid, uuid, "Role")      FROM "roadsen_app";
+REVOKE EXECUTE ON FUNCTION "set_member_active"(uuid, uuid, boolean)    FROM "roadsen_app";

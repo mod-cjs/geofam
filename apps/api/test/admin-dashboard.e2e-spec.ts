@@ -579,18 +579,83 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
 
   // --- 6) RBAC --------------------------------------------------------------
 
-  it('6) RBAC : un non-SUPERADMIN sur /stats /audit /subscriptions -> 403', async () => {
+  it('6) RBAC : un non-SUPERADMIN sur /stats /audit /subscriptions /orgs /orgs/:id -> 403', async () => {
     if (!ready()) return;
     const ownerToken = await login(emailOwner(1)); // OWNER d'org1, pas SUPERADMIN
+    // On INCLUT /admin/orgs et une route de DETAIL /admin/orgs/:orgId (verrou contre une
+    // derive future d'un decorateur par-route : le @Roles(SUPERADMIN) de classe DOIT tenir
+    // sur CHAQUE route, y compris le detail parametre). L'orgId cible est une org REELLE
+    // (org1) — un OWNER de CETTE org ne doit MEME PAS acceder au detail via le back-office.
     for (const path of [
       '/admin/stats',
       '/admin/audit',
       '/admin/subscriptions',
+      `/admin/orgs?q=${PREFIX}&limit=10`,
+      `/admin/orgs/${org[0]}`,
     ]) {
       const res = await request(server())
         .get(path)
         .set('authorization', `Bearer ${ownerToken}`);
       expect(res.status).toBe(403);
+    }
+  });
+
+  // --- 8) MINIMISATION du payload d'audit GLOBAL (GET /admin/audit) --------
+  //  Le payload JSONB brut (montants money + owner) ne doit PAS quitter le serveur par
+  //  la LISTE globale : seul le motif d'affichage remonte. On genere un QUOTA_TOPUP (motif
+  //  + delta/quota_before/after/consommation) puis on relit /admin/audit et on prouve que
+  //  le motif est PRESERVE mais que les cles brutes ont DISPARU du payload. On verifie
+  //  aussi qu'un ORG_PROVISIONED ne fuite plus owner_user_id/slug par son payload.
+  it('8) minimisation : GET /admin/audit garde le motif mais retire montants/owner du payload', async () => {
+    if (!ready()) return;
+    superToken = await login(emailSuper());
+    const t0 = new Date(Date.now() - 1000).toISOString();
+
+    // Un top-up trace un QUOTA_TOPUP avec motif + montants bruts dans le payload cote base.
+    const motif = `verif-minimisation-${run}`;
+    const topup = await request(server())
+      .post(`/admin/orgs/${org[0]}/subscription/topup`)
+      .set('authorization', `Bearer ${superToken}`)
+      .set('idempotency-key', `min-${run}`)
+      .send({ delta: 7, motif });
+    expect(topup.status).toBe(201);
+
+    const auditRes = await asSuper(
+      `/admin/audit?from=${encodeURIComponent(t0)}&limit=100`,
+    );
+    expect(auditRes.status).toBe(200);
+    const rows = auditRes.body as {
+      action: string;
+      targetOrgId: string | null;
+      payload: unknown;
+    }[];
+
+    // La ligne QUOTA_TOPUP : motif PRESERVE (l'UI l'affiche), montants ABSENTS du payload.
+    const topupRow = rows.find(
+      (r) => r.action === 'QUOTA_TOPUP' && r.targetOrgId === org[0],
+    );
+    expect(topupRow).toBeDefined();
+    expect((topupRow!.payload as { motif?: unknown }).motif).toBe(motif);
+    const topupPayload = JSON.stringify(topupRow!.payload);
+    for (const leaked of [
+      'delta',
+      'quota_before',
+      'quota_after',
+      'consommation',
+    ]) {
+      expect(topupPayload).not.toContain(leaked);
+    }
+    // Le payload minimise ne porte QUE la cle motif (aucune autre cle brute).
+    expect(Object.keys(topupRow!.payload as object).sort()).toEqual(['motif']);
+
+    // Un ORG_PROVISIONED (payload d'origine = {slug, owner_user_id}) ne fuite plus ces
+    // cles par son payload (motif = null pour cette action, sans montant).
+    const orgProv = rows.find((r) => r.action === 'ORG_PROVISIONED');
+    if (orgProv) {
+      const provPayload = JSON.stringify(orgProv.payload);
+      expect(provPayload).not.toContain('owner_user_id');
+      expect(provPayload).not.toContain('slug');
+      expect(Object.keys(orgProv.payload as object).sort()).toEqual(['motif']);
     }
   });
 });
