@@ -130,3 +130,24 @@ la redéfinition de `auth_user_has_membership` + le re-scoping du GRANT) → `de
 (shell /admin + pages) → `qa-test` (T-ISO + Playwright) → `qa-challenger` (revue adverse,
 **incontournable en Lot 2 = money**). Merge/déploiement préprod = **décision humaine** (zone
 critique isolation + money).
+
+---
+
+## Bootstrap du premier SUPERADMIN (ops)
+Le SUPERADMIN est **volontairement injoignable par l'API** (`provision_user`/`POST /admin/users`
+ne posent jamais `platform_role` — pas d'escalade possible). Le **premier** superadmin de chaque
+environnement se crée avec le **CLI gardé** `apps/api/scripts/create-superadmin.ts`, à exécuter
+avec le **credential ADMIN de la base** (`DATABASE_URL` propriétaire, jamais `roadsen_app`) :
+
+```bash
+DATABASE_URL='postgres://...(admin)...' \
+SUPERADMIN_EMAIL='admin@…' SUPERADMIN_PASSWORD='… ≥ 12 car.' SUPERADMIN_FULL_NAME='Super Admin' \
+CONFIRM_CREATE_SUPERADMIN=oui \
+pnpm --filter @roadsen/api create-superadmin
+```
+Garde-fous : `CONFIRM_CREATE_SUPERADMIN=oui` obligatoire · mot de passe ≥ 12 (mêmes règles que
+l'app) · hachage argon2id (compatible login) · affiche la base cible (jamais le mot de passe) ·
+**idempotent** (déjà SUPERADMIN → no-op) · refuse d'écraser un compte existant sauf `PROMOTE=oui`
+(promotion du rôle sans toucher au mot de passe). Sans ce bootstrap, la console `/admin` est
+inaccessible (aucun compte ne passe `@Roles(SUPERADMIN)`). *(Dette : à durcir en Phase 2 avec le
+rôle money séparé et une rotation documentée.)*
