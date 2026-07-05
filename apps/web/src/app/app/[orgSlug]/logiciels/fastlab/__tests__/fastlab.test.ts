@@ -21,6 +21,7 @@ function form(over: Partial<FastlabForm> = {}): FastlabForm {
     prPoints: [{ mh: '1836.6', t: '18', h: '74', s: '68' }, { mh: '', t: '', h: '', s: '' }],
     cbMethod: 'box', cbShape: 'sq', cbDim: '60', cbRs: '2.65',
     cbPoints: [{ N: '0.36', P: '0.197', rho: '1950', w: '18.5' }, { N: '', P: '', rho: '', w: '' }],
+    extra: { oe_H0: '20', la_M: '5000', tu_s3_1: '50', empty: '' },
     ...over,
   };
 }
@@ -47,6 +48,14 @@ describe('buildFastlabPayload — structure', () => {
     expect(p.pr_mh1).toBe('1836.6');
     expect(p.ciMethod).toBe('box');
     expect(p.ci_N1).toBe('0.36');
+  });
+
+  it('répand les sections additionnelles (extra) aux clés moteur, omet les vides', () => {
+    const p = buildFastlabPayload(form());
+    expect(p.oe_H0).toBe('20');
+    expect(p.la_M).toBe('5000');
+    expect(p.tu_s3_1).toBe('50');
+    expect('empty' in p).toBe(false);
   });
 
   it('omet les champs vides (pas de clé bruit)', () => {

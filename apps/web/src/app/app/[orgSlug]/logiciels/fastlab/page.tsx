@@ -37,6 +37,8 @@ export interface FastlabForm {
   vbs: Record<string, string>;
   prMould: string; prType: string; prPoints: PrPoint[];
   cbMethod: string; cbShape: string; cbDim: string; cbRs: string; cbPoints: CbPoint[];
+  /** Sections d'essais additionnelles — clés = ids moteur exacts (œdo, triaxial, ES, LA, MDE, SZ, sulfates, perméa, UCS, densités). */
+  extra: Record<string, string>;
 }
 
 /** Payload API PUR (DoD §8 : mesures brutes de labo, chaînes ; classification serveur). */
@@ -60,6 +62,8 @@ export function buildFastlabPayload(f: FastlabForm): Record<string, unknown> {
   if (f.cbDim) p.ci_dim = f.cbDim;
   if (f.cbRs) p.ci_rs = f.cbRs;
   f.cbPoints.forEach((r, i) => { const n = i + 1; if (r.N) p[`ci_N${n}`] = r.N; if (r.P) p[`ci_P${n}`] = r.P; if (r.rho) p[`ci_rho${n}`] = r.rho; if (r.w) p[`ci_w${n}`] = r.w; });
+  // Sections additionnelles (œdo, triaxial, ES, LA, MDE, SZ, sulfates, perméa, UCS, densités)
+  for (const [k, v] of Object.entries(f.extra)) if (v.trim() !== '') p[k] = v;
   return p;
 }
 
@@ -76,6 +80,107 @@ const IDENT: Array<{ k: string; l: string }> = [
   { k: 'date', l: 'Date prélèvement' }, { k: 'dessai', l: 'Date essai' }, { k: 'op', l: 'Opérateur' },
   { k: 'ing', l: 'Ingénieur' }, { k: 'labo', l: 'Laboratoire' }, { k: 'nature', l: 'Nature du sol' },
 ];
+
+// ── Sections d'essais additionnelles (fidélité — vagues 2-4) ──────────────────
+// `extra` = Record dont les CLÉS sont les ids moteur EXACTS. buildFastlabPayload les
+// répand tels quels (mesures brutes, chaînes). Rendu générique data-driven.
+interface ExtraField { id: string; l: string }
+interface ExtraTable { title: string; cols: Array<{ prefix: string; l: string }>; rows: number }
+interface ExtraSelect { id: string; l: string; opts: Array<[string, string]> }
+interface ExtraSection { tab: string; label: string; title: string; norm: string; note?: string; selects?: ExtraSelect[]; groups?: Array<{ title?: string; fields: ExtraField[] }>; tables?: ExtraTable[] }
+
+const EXTRA_SECTIONS: ExtraSection[] = [
+  { tab: 'oedo', label: 'Œdomètre', title: 'Essai œdométrique par paliers', norm: 'NF EN ISO 17892-5', note: 'Donne l’indice de compression Cc et de gonflement Cs.',
+    groups: [{ fields: [{ id: 'oe_H0', l: 'Hauteur initiale H₀ (mm)' }, { id: 'oe_D', l: 'Diamètre (mm)' }, { id: 'oe_md', l: 'Masse sèche (g)' }, { id: 'oe_rs', l: 'ρ_s (Mg/m³)' }] }],
+    tables: [{ title: 'Paliers de chargement / déchargement', cols: [{ prefix: 'oe_s', l: 'Contrainte σ (kPa)' }, { prefix: 'oe_dh', l: 'Δh cumulé (mm)' }], rows: 9 }] },
+  { tab: 'triuu', label: 'Triaxial UU', title: 'Triaxial non consolidé non drainé', norm: 'NF EN ISO 17892-8', note: 'Donne la cohésion non drainée c_u.',
+    tables: [{ title: 'Éprouvettes', cols: [{ prefix: 'tu_s3_', l: 'σ₃ (kPa)' }, { prefix: 'tu_df_', l: 'Déviateur à la rupture (kPa)' }], rows: 3 }] },
+  { tab: 'tricu', label: 'Triaxial CU', title: 'Triaxial consolidé (CU / CD)', norm: 'NF EN ISO 17892-9', note: 'Donne c′ et φ′ (enveloppe de rupture).',
+    tables: [{ title: 'Éprouvettes', cols: [{ prefix: 'tc_s3_', l: 'σ₃ (kPa)' }, { prefix: 'tc_s1_', l: 'σ₁ à la rupture (kPa)' }], rows: 3 }] },
+  { tab: 'es', label: 'Équiv. sable', title: 'Équivalent de sable (ES)', norm: 'NF EN 933-8', note: 'ES = h₂ / h₁ × 100.',
+    tables: [{ title: 'Éprouvettes', cols: [{ prefix: 'es_h1_', l: 'h₁ — floculat (mm)' }, { prefix: 'es_h2_', l: 'h₂ — sédiment (mm)' }], rows: 2 }] },
+  { tab: 'la', label: 'Los Angeles', title: 'Los Angeles (LA)', norm: 'NF EN 1097-2', note: 'LA = (M − m) / M × 100.',
+    selects: [{ id: 'laVar', l: 'Variante', opts: [['std', 'Standard'], ['rb', 'Roches dures'], ['alt', 'Alternative']] }],
+    groups: [{ fields: [{ id: 'la_M', l: 'Masse initiale M (g)' }, { id: 'la_m', l: 'Masse retenue 1,6 mm (g)' }, { id: 'la_ti', l: 'Passant initial (%)' }, { id: 'la_pi', l: 'Passant après (%)' }] }] },
+  { tab: 'mde', label: 'Micro-Deval', title: 'Micro-Deval (MDE)', norm: 'NF EN 1097-1', note: 'Résistance à l’usure.',
+    selects: [{ id: 'mdeVar', l: 'Variante', opts: [['std', 'Standard'], ['rb', 'Roches'], ['alt', 'Alt.']] }, { id: 'mdeWet', l: 'Milieu', opts: [['h', 'Humide'], ['s', 'Sec']] }],
+    groups: [{ fields: [{ id: 'mde_charge', l: 'Charge abrasive (g)' }, { id: 'mde_eau', l: 'Eau (mL)' }, { id: 'mde_tours', l: 'Nombre de tours' }, { id: 'mde_ti', l: 'Passant initial (%)' }, { id: 'mde_pi', l: 'Passant 1,6 mm (%)' }] }] },
+  { tab: 'sz', label: 'Fragmentation', title: 'Fragmentation par impact (SZ)', norm: 'NF EN 1097-2 §6',
+    groups: [{ fields: [{ id: 'sz_M', l: 'Masse M (g)' }, { id: 'sz_8', l: 'Refus 8 mm (g)' }, { id: 'sz_5', l: 'Refus 5 mm (g)' }, { id: 'sz_2', l: 'Refus 2 mm (g)' }, { id: 'sz_0_63', l: 'Refus 0,63 mm (g)' }, { id: 'sz_0_2', l: 'Refus 0,2 mm (g)' }] }] },
+  { tab: 'sulf', label: 'Sulfates', title: 'Teneur en sulfates', norm: 'NF EN 1744-1',
+    selects: [{ id: 'su_type', l: 'Type', opts: [['SS', 'Solubles dans l’eau'], ['AS', 'Solubles à l’acide']] }],
+    groups: [{ fields: [{ id: 'su_M', l: 'Prise M (g)' }, { id: 'su_ba', l: 'Masse BaSO₄ (g)' }, { id: 'su_f', l: 'Facteur de conversion' }] }] },
+  { tab: 'perm', label: 'Perméabilité', title: 'Perméabilité k', norm: 'NF EN ISO 17892-11', note: 'Charge variable : k = (a·L)/(A·t) · ln(h₁/h₂).',
+    selects: [{ id: 'permMode', l: 'Mode', opts: [['var', 'Charge variable'], ['const', 'Charge constante']] }],
+    groups: [{ title: 'Charge variable', fields: [{ id: 'pe_a', l: 'Section tube a (cm²)' }, { id: 'pe_Av', l: 'Section éprouvette A (cm²)' }, { id: 'pe_Lv', l: 'Longueur L (cm)' }, { id: 'pe_h1', l: 'Charge h₁ (cm)' }, { id: 'pe_h2', l: 'Charge h₂ (cm)' }, { id: 'pe_tv', l: 'Temps (s)' }] }] },
+  { tab: 'ucs', label: 'Compression', title: 'Compression simple (Rc)', norm: 'NF EN ISO 17892-7', note: 'q_u = F / A.',
+    groups: [{ fields: [{ id: 'uc_d', l: 'Diamètre (mm)' }, { id: 'uc_h', l: 'Hauteur (mm)' }, { id: 'uc_f', l: 'Force max (kN)' }, { id: 'uc_dl', l: 'Déformation à rupture (mm)' }] }] },
+  { tab: 'dens', label: 'Densités', title: 'Masses volumiques (ρ, ρ_s)', norm: 'NF EN ISO 17892-2/3',
+    selects: [{ id: 'rs_liq', l: 'Liquide pycnomètre', opts: [['water', 'Eau distillée'], ['other', 'Autre (ρ saisie)']] }],
+    groups: [{ title: 'Particules solides ρ_s', fields: [{ id: 'rs_T', l: 'Température (°C)' }, { id: 'rs_rL', l: 'ρ liquide (auto si eau)' }] }, { title: 'Apparente ρ (éprouvette prismatique)', fields: [{ id: 'd_L', l: 'Longueur (mm)' }, { id: 'd_W', l: 'Largeur (mm)' }, { id: 'd_H', l: 'Hauteur (mm)' }, { id: 'd_m', l: 'Masse (g)' }, { id: 'd_w', l: 'Teneur en eau (%)' }] }] },
+];
+
+const EXTRA_DEFAULTS: Record<string, string> = {
+  laVar: 'std', mdeVar: 'std', mdeWet: 'h', permMode: 'var', su_type: 'SS', rs_liq: 'water',
+  oe_H0: '20.0', oe_D: '70.0', oe_md: '119.3', oe_rs: '2.70',
+  oe_s1: '10', oe_dh1: '0.05', oe_s2: '20', oe_dh2: '0.12', oe_s3: '40', oe_dh3: '0.24', oe_s4: '80', oe_dh4: '0.45', oe_s5: '160', oe_dh5: '0.78', oe_s6: '320', oe_dh6: '1.18', oe_s7: '640', oe_dh7: '1.60', oe_s8: '160', oe_dh8: '1.52', oe_s9: '40', oe_dh9: '1.40',
+  tu_s3_1: '50', tu_df_1: '120', tu_s3_2: '100', tu_df_2: '124', tu_s3_3: '150', tu_df_3: '118',
+  tc_s3_1: '50', tc_s1_1: '180', tc_s3_2: '100', tc_s1_2: '300', tc_s3_3: '200', tc_s1_3: '520',
+  es_h1_1: '120', es_h2_1: '78', es_h1_2: '122', es_h2_2: '80',
+  la_M: '5000', la_m: '4100', la_ti: '12.5', la_pi: '65',
+  mde_charge: '5000', mde_eau: '2500', mde_tours: '12000', mde_ti: '100', mde_pi: '70',
+  sz_M: '2000', sz_8: '100', sz_5: '200', sz_2: '400', sz_0_63: '600', sz_0_2: '700',
+  su_M: '10', su_ba: '0.5', su_f: '0.343',
+  pe_a: '1.0', pe_Av: '20', pe_Lv: '10', pe_h1: '100', pe_h2: '40', pe_tv: '120',
+  uc_d: '50', uc_h: '100', uc_f: '0.18', uc_dl: '1.5',
+  rs_T: '20', d_L: '50', d_W: '50', d_H: '50', d_m: '240', d_w: '12',
+};
+
+/** Rendu générique d'une section d'essai additionnelle (data-driven). */
+function ExtraView({ s, extra, setExtra }: { s: ExtraSection; extra: Record<string, string>; setExtra: (u: (p: Record<string, string>) => Record<string, string>) => void }) {
+  const set = (id: string, v: string) => setExtra((p) => ({ ...p, [id]: v }));
+  return (
+    <div style={card}>
+      <div style={secH}>{s.title} — {s.norm}</div>
+      {s.selects && s.selects.length > 0 && (
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 12 }}>
+          {s.selects.map((sl) => (
+            <div key={sl.id}><label style={lbl}>{sl.l}</label>
+              <select style={{ ...inp, width: 200 }} value={extra[sl.id] ?? sl.opts[0]?.[0] ?? ''} onChange={(e) => set(sl.id, e.target.value)}>
+                {sl.opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+      {s.groups?.map((g, gi) => (
+        <div key={gi} style={{ marginBottom: 12 }}>
+          {g.title && <div style={{ ...lbl, fontSize: 11, color: ACCENT, marginBottom: 8 }}>{g.title}</div>}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+            {g.fields.map((f) => (
+              <div key={f.id}><label style={lbl}>{f.l}</label><input style={inp} value={extra[f.id] ?? ''} onChange={(e) => set(f.id, e.target.value)} /></div>
+            ))}
+          </div>
+        </div>
+      ))}
+      {s.tables?.map((t, ti) => (
+        <div key={ti} style={{ marginBottom: 12 }}>
+          <div style={{ ...lbl, fontSize: 11, color: ACCENT, marginBottom: 8 }}>{t.title}</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead><tr><th style={th}>#</th>{t.cols.map((c) => <th key={c.prefix} style={th}>{c.l}</th>)}</tr></thead>
+            <tbody>{Array.from({ length: t.rows }, (_, i) => i + 1).map((n) => (
+              <tr key={n}>
+                <td style={{ padding: 2, color: MUTED, fontSize: 11 }}>{n}</td>
+                {t.cols.map((c) => { const id = `${c.prefix}${n}`; return <td key={c.prefix} style={{ padding: 2 }}><input style={inp} value={extra[id] ?? ''} onChange={(e) => set(id, e.target.value)} /></td>; })}
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      ))}
+      {s.note && <div style={{ marginTop: 6, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>{s.note}</div>}
+    </div>
+  );
+}
 
 export default function FastlabPage() {
   const params = useParams<{ orgSlug: string }>();
@@ -114,13 +219,14 @@ export default function FastlabPage() {
     { N: '0.36', P: '0.197', rho: '1950', w: '18.5' }, { N: '0.72', P: '0.365', rho: '1965', w: '18.0' },
     { N: '1.08', P: '0.533', rho: '1940', w: '18.8' }, { N: '1.44', P: '0.700', rho: '1970', w: '17.6' },
   ]);
+  const [extra, setExtra] = useState<Record<string, string>>(EXTRA_DEFAULTS);
 
   const [calculating, setCalculating] = useState(false);
   const [calcResult, setCalcResult] = useState<CalcResult | null>(null);
   const [calcError, setCalcError] = useState<string | null>(null);
   const [emittingPv, setEmittingPv] = useState(false);
   const [pvResult, setPvResult] = useState<OfficialPv | null>(null);
-  const [tab, setTab] = useState<'ident' | 'eau' | 'atterberg' | 'vbs' | 'proctor' | 'cbr' | 'resultat'>('ident');
+  const [tab, setTab] = useState<string>('ident');
 
   useEffect(() => {
     if (!orgId) return;
@@ -131,8 +237,8 @@ export default function FastlabPage() {
 
   const buildPayload = useCallback(() => buildFastlabPayload({
     ident: { ...ident, geo: ident.geo ?? '' }, water, gr_M, sieves, ll, pl,
-    vbs, prMould, prType, prPoints, cbMethod, cbShape, cbDim, cbRs, cbPoints,
-  }), [ident, water, gr_M, sieves, ll, pl, vbs, prMould, prType, prPoints, cbMethod, cbShape, cbDim, cbRs, cbPoints]);
+    vbs, prMould, prType, prPoints, cbMethod, cbShape, cbDim, cbRs, cbPoints, extra,
+  }), [ident, water, gr_M, sieves, ll, pl, vbs, prMould, prType, prPoints, cbMethod, cbShape, cbDim, cbRs, cbPoints, extra]);
 
   const handleCalculer = useCallback(async () => {
     if (!orgId || !projectId) return;
@@ -188,7 +294,12 @@ export default function FastlabPage() {
       {calcError && <div style={{ ...card, background: '#f5efe0', borderColor: '#ddd0a8', color: '#7a5a1e' }} role="alert">{calcError}</div>}
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: `1px solid ${LINE}`, flexWrap: 'wrap' }} role="tablist">
-        {([['ident', 'Identification'], ['eau', 'Eau & granulométrie'], ['atterberg', 'Limites d’Atterberg'], ['vbs', 'Bleu (VBS)'], ['proctor', 'Proctor'], ['cbr', 'CBR / IPI'], ['resultat', 'Classe GTR']] as const).map(([id, t]) => (
+        {([
+          ['ident', 'Identification'], ['eau', 'Eau & granulométrie'], ['atterberg', 'Limites d’Atterberg'],
+          ['vbs', 'Bleu (VBS)'], ['proctor', 'Proctor'], ['cbr', 'CBR / IPI'],
+          ...EXTRA_SECTIONS.map((s) => [s.tab, s.label] as [string, string]),
+          ['resultat', 'Classe GTR'],
+        ] as Array<[string, string]>).map(([id, t]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
             style={{ border: 'none', background: 'none', padding: '9px 13px', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', color: tab === id ? ACCENT : MUTED, borderBottom: tab === id ? `2px solid ${ACCENT}` : '2px solid transparent' }}>
             {t}
@@ -330,6 +441,8 @@ export default function FastlabPage() {
           <div style={{ marginTop: 10, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>L&apos;indice CBR/IPI caractérise la portance du sol support — paramètre de dimensionnement des chaussées.</div>
         </div>
       )}
+
+      {EXTRA_SECTIONS.map((s) => (tab === s.tab ? <ExtraView key={s.tab} s={s} extra={extra} setExtra={setExtra} /> : null))}
 
       {tab === 'resultat' && (
         <div style={card} data-testid="resultat">
