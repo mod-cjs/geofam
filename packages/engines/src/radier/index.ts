@@ -213,7 +213,30 @@ function loc(o: unknown): { x: number; y: number } | null {
  * d'affichage (vals) : jamais les valeurs nodales, les indices, ni la topologie du
  * maillage. Le RESULTAT (motif de deflexion), pas la METHODE. Cf. §8 / STARFIRE.
  */
-function buildHeatmap(R: Record<string, unknown>): unknown {
+/** Point-dans-polygone (ray casting) — pour masquer la heatmap sur le CONTOUR SAISI
+ * du radier (entree utilisateur) et non par distance au nœud : le bord du rendu devient
+ * alors INDEPENDANT du maillage (revue de verification : l'ancien masque `nd` epousait
+ * les positions des nœuds -> un balayage de `mesh` revelait leur placement). */
+function pointInAnyRaft(px: number, py: number, polys: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>): boolean {
+  for (const pts of polys) {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const a = pts[i], b = pts[j];
+      if (!a || !b) continue;
+      const intersect =
+        a.y > py !== b.y > py &&
+        px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x;
+      if (intersect) inside = !inside;
+    }
+    if (inside) return true;
+  }
+  return false;
+}
+
+function buildHeatmap(
+  R: Record<string, unknown>,
+  polys?: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>,
+): unknown {
   const nodeX = R.nodeX,
     nodeY = R.nodeY,
     wv = R.w;
@@ -243,14 +266,18 @@ function buildHeatmap(R: Record<string, unknown>): unknown {
   const G = 48; // resolution d'affichage FIXE, DECOUPLEE du maillage
   const cw = (x1 - x0) / (G - 1),
     ch = (y1 - y0) / (G - 1);
-  // §8 (audit adverse) : le lissage et le masque sont bases sur la grille d'AFFICHAGE
-  // (cw/ch) et NON sur l'espacement des nœuds sqrt(aire/N). Ainsi le rendu est INVARIANT
-  // au maillage : un balayage de `mesh` (donc de N) ne modifie pas la nettete du champ
-  // ni la finesse du bord masque -> le pas de maillage EF n'est plus inferable. Masque
-  // genereux (x3 cellule) pour remplir le radier aux resolutions usuelles.
+  // §8 (audit adverse + passe de verification) : deux garde-fous rendent le maillage EF
+  // NON inferable. (1) LISSAGE : eps2 = max(cellule d'affichage, ESPACEMENT NODAL) — le
+  // plancher a la cellule fige la nettete a maillage fin (invariant N) ; le plancher a
+  // l'espacement nodal garantit qu'a maillage GROSSIER le lissage couvre TOUJOURS au moins
+  // un pas de nœuds -> la trame nodale ne transparait jamais (chaque nœud ne fait plus de
+  // « bosse » IDW visible). (2) MASQUE : point-DANS-POLYGONE contre le CONTOUR SAISI si
+  // disponible (bord independant du maillage) ; sinon repli distance-au-nœud.
   const cell = Math.max(cw, ch);
-  const eps2 = Math.pow(cell * 1.5, 2); // lissage ~ cellule d'affichage (invariant N)
-  const maxD2 = Math.pow(cell * 3, 2); // masque hors radier (invariant N)
+  const nodeSpacing = Math.sqrt(((x1 - x0) * (y1 - y0)) / Math.max(1, N));
+  const eps2 = Math.pow(Math.max(cell * 1.5, nodeSpacing * 1.2), 2);
+  const maxD2 = Math.pow(cell * 3, 2); // repli masque (si contour indisponible)
+  const hasPolys = Array.isArray(polys) && polys.length > 0;
   const vals: (number | null)[] = new Array(G * G).fill(null);
   let vMin = Infinity,
     vMax = -Infinity;
@@ -272,7 +299,10 @@ function buildHeatmap(R: Record<string, unknown>): unknown {
         sw += wgt;
         swv += wgt * (wi !== undefined && fin(wi) ? wi : 0);
       }
-      if (nd > maxD2 || sw === 0) continue; // hors radier -> null
+      // Masque : point-dans-polygone (bord independant du maillage) si contour dispo,
+      // sinon repli distance-au-nœud. sw===0 (aucun nœud) -> null dans tous les cas.
+      const dehors = hasPolys ? !pointInAnyRaft(px, py, polys) : nd > maxD2;
+      if (dehors || sw === 0) continue; // hors radier -> null
       const val = swv / sw;
       vals[gy * G + gx] = val;
       if (val < vMin) vMin = val;
@@ -283,7 +313,10 @@ function buildHeatmap(R: Record<string, unknown>): unknown {
   return { x0, y0, x1, y1, cols: G, rows: G, vals, vMin, vMax };
 }
 
-function shapeOutput(R: Record<string, unknown>): unknown {
+function shapeOutput(
+  R: Record<string, unknown>,
+  polys?: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>,
+): unknown {
   const empty = {
     wMax: 0,
     wMin: 0,
@@ -331,7 +364,7 @@ function shapeOutput(R: Record<string, unknown>): unknown {
 
   // NB : on NE lit MEME PAS diag.wMaxAt / diag.tiltAt / diag.betaGovAt : ces
   // localisations derivees du maillage ne franchissent jamais la projection.
-  const hm = buildHeatmap(R);
+  const hm = buildHeatmap(R, polys);
   return {
     erreur: null,
     warnings,
@@ -380,7 +413,10 @@ function resolveMeta(): {
 export function runRadier(rawInput: unknown): EngineResultEnvelope<RadierOutput> {
   const input: RadierInput = RadierInputSchema.parse(rawInput);
   const rawResult = computeRadier(input, input.opts) as Record<string, unknown>;
-  const shaped = shapeOutput(rawResult);
+  // Contour SAISI des radiers -> masque heatmap point-dans-polygone (bord independant
+  // du maillage). L'input est deja valide/simple (RaftSchema refuse l'auto-intersection).
+  const polys = input.rafts.map((r) => r.pts.map((p) => ({ x: p.x, y: p.y })));
+  const shaped = shapeOutput(rawResult, polys);
   // Re-strip a travers le schema declare : tout champ non whiteliste qui aurait
   // survecu a shapeOutput est retire ici (defense en profondeur, anti-fuite).
   const output = projectEngineOutput(RadierOutputSchema, shaped);

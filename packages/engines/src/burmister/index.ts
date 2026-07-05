@@ -180,6 +180,30 @@ function shapeOutput(D: Record<string, unknown>): unknown {
     };
   }
 
+  // FAIL-CLOSED (passe de verification adverse) : un admissible REQUIS non fini trahit une
+  // entree DEGENEREE. NE = 365·T·C·CAM·dir·tv ; si NE <= 0 (T=0, ou CAM/dir/tv=0), alors
+  // ez_adm = A·NE^(-1/4,5) = pow(0,-x) = Infinity et et_adm = e6·pow(1e6/NE,1/b) = Infinity.
+  // Le moteur coerce ensuite l'admissible en 0/null (fin()), MAIS passZ/passT restent true
+  // (val <= Infinity) -> conforme=true SCELLABLE alors que l'admissible affiche 0 = FAUX PASS.
+  // On refuse : le verdict n'est PAS defini pour un trafic nul, on renvoie une ERREUR. ez_adm
+  // est toujours requise ; et_adm ne l'est que si une couche liee existe et que la fatigue est
+  // exigee. (Aucun faux positif : pour tout NE > 0 fini, les admissibles sont finis.)
+  const ezAdmNonFini = !fin(D.ezA);
+  const etAdmRequisNonFini = D.hasBit === true && D.etReq === true && !fin(D.etA);
+  if (ezAdmNonFini || etAdmRequisNonFini) {
+    return {
+      erreur:
+        'Trafic cumule NE invalide (<= 0) : le dimensionnement de chaussee requiert un trafic strictement positif (renseignez T > 0).',
+      warnings: [],
+      conforme: false,
+      NE: fin(D.NE) ? D.NE : 0,
+      famille: '',
+      epaisseurLiee: 0,
+      epaisseurTotale: 0,
+      ornierage: { valeur: 0, admissible: 0, ok: false },
+    };
+  }
+
   // Canal WARNINGS : ALLOWLIST fail-closed — seuls les messages cures reconnus
   // traversent ; tout texte moteur libre non reconnu est ECARTE (FUITE #2 / #82).
   const warnings = curateWarnings(
