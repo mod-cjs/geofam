@@ -26,12 +26,21 @@ import type { AuthedRequest } from '../auth/request-context';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
-import type { ListOrgsQuery, SearchUsersQuery } from './admin.dto';
+import type {
+  GlobalAuditQuery,
+  ListOrgsQuery,
+  ListSubscriptionsQuery,
+  SearchUsersQuery,
+} from './admin.dto';
 import {
+  globalAuditQuerySchema,
   listOrgsQuerySchema,
+  listSubscriptionsQuerySchema,
   orgIdParam,
   searchUsersQuerySchema,
 } from './admin.dto';
+import type { PlatformStats } from './admin-stats.service';
+import { AdminStatsService } from './admin-stats.service';
 import type { AuditEntryView } from './admin-mutations.service';
 import { AdminMutationsService } from './admin-mutations.service';
 import type {
@@ -102,7 +111,42 @@ export class AdminController {
     private readonly orgs: AdminOrgsService,
     private readonly users: AdminUsersService,
     private readonly mutations: AdminMutationsService,
+    private readonly stats: AdminStatsService,
   ) {}
+
+  /**
+   * GET /admin/stats — tableau de bord plateforme. AGREGATS cross-tenant SEULEMENT
+   * (aucune ligne tenant brute) : orgs par statut, users, memberships actifs, PV emis,
+   * quota alloue/consomme total, sante des abonnements. Source : admin_platform_stats.
+   */
+  @Get('stats')
+  async platformStats(): Promise<PlatformStats> {
+    return this.stats.platformStats();
+  }
+
+  /**
+   * GET /admin/audit?action=&actor=&from=&to=&limit=&offset= — journal d'audit GLOBAL
+   * (toutes orgs). Filtres SQL bornes ; borne cote base (limit <= 100). SUPERADMIN-only.
+   */
+  @Get('audit')
+  async globalAudit(
+    @Query(new ZodValidationPipe(globalAuditQuerySchema))
+    query: GlobalAuditQuery,
+  ): Promise<AuditEntryView[]> {
+    return this.mutations.listGlobalAudit(query);
+  }
+
+  /**
+   * GET /admin/subscriptions?filter=&sort=&limit=&offset= — console d'abonnements
+   * (vue money-centree des orgs). Reutilise admin_list_orgs enrichi (join subscriptions).
+   */
+  @Get('subscriptions')
+  async listSubscriptions(
+    @Query(new ZodValidationPipe(listSubscriptionsQuerySchema))
+    query: ListSubscriptionsQuery,
+  ): Promise<AdminOrgListItem[]> {
+    return this.orgs.listSubscriptions(query);
+  }
 
   /**
    * GET /admin/me — role PLATEFORME de l'appelant, pour la garde du shell /admin
@@ -124,9 +168,10 @@ export class AdminController {
   }
 
   /**
-   * GET /admin/orgs?q=&limit=&offset= — inventaire pagine des organisations
-   * (identite + nb membres + resume d'abonnement). Lecture cross-tenant :
-   * admin_list_orgs (DEFINER) pour l'identite, withTenant pour l'abo (cf. service).
+   * GET /admin/orgs?q=&limit=&offset=&status=&sort= — inventaire pagine des
+   * organisations (identite + nb membres + resume d'abonnement), en UNE passe DEFINER
+   * (admin_list_orgs enrichi, 0014). Filtre par statut + tri { name|createdAt|quota|
+   * expiration } faits EN SQL (cf. service). SUPERADMIN-only.
    */
   @Get('orgs')
   async listOrgs(
@@ -178,11 +223,13 @@ export class AdminController {
   @HttpCode(HttpStatus.CREATED)
   async createUser(
     @Body(new ZodValidationPipe(createUserSchema)) body: CreateUserDto,
+    @Req() req: AuthedRequest,
   ): Promise<{ userId: string }> {
     const userId = await this.auth.provisionUser(
       body.email,
       body.password,
       body.fullName,
+      this.actor(req),
     );
     return { userId };
   }
@@ -196,11 +243,13 @@ export class AdminController {
   @HttpCode(HttpStatus.CREATED)
   async createOrg(
     @Body(new ZodValidationPipe(createOrgSchema)) body: CreateOrgDto,
+    @Req() req: AuthedRequest,
   ): Promise<{ orgId: string }> {
     const orgId = await this.auth.provisionOrg(
       body.name,
       body.slug,
       body.ownerUserId,
+      this.actor(req),
     );
     // Provisionnement de l'abonnement (ADR 0009/0011, manuel P1) — si fourni.
     // Idempotent cote base (ON CONFLICT org_id DO NOTHING) -> sans danger si la
@@ -231,11 +280,13 @@ export class AdminController {
   async addMember(
     @Param('orgId', new ZodValidationPipe(memberOrgIdParam)) orgId: string,
     @Body(new ZodValidationPipe(addMemberSchema)) body: AddMemberDto,
+    @Req() req: AuthedRequest,
   ): Promise<{ membershipId: string }> {
     const membershipId = await this.members.provisionMember(
       orgId,
       body.userId,
       body.role,
+      this.actor(req),
     );
     return { membershipId };
   }
@@ -252,8 +303,14 @@ export class AdminController {
     @Param('userId', new ZodValidationPipe(memberUserIdParam)) userId: string,
     @Body(new ZodValidationPipe(setMemberActiveSchema))
     body: SetMemberActiveDto,
+    @Req() req: AuthedRequest,
   ): Promise<{ userId: string; isActive: boolean }> {
-    await this.members.setMemberActive(orgId, userId, body.isActive);
+    await this.members.setMemberActive(
+      orgId,
+      userId,
+      body.isActive,
+      this.actor(req),
+    );
     return { userId, isActive: body.isActive };
   }
 

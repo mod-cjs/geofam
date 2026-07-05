@@ -206,12 +206,15 @@ export class AuthService {
     email: string,
     password: string,
     fullName: string,
+    actorUserId: string,
   ): Promise<string> {
     const passwordHash = await hashPassword(password);
     try {
+      // Surcharge a 4 args (0014) : trace USER_PROVISIONED dans admin_audit_log,
+      // ATOMIQUEMENT. actorUserId = sub JWT SUPERADMIN (jamais le corps — lecon #42).
       const rows = await this.prisma.asAppRole(
         (tx) => tx.$queryRaw<{ provision_user: string }[]>`
-          SELECT provision_user(${email}, ${passwordHash}, ${fullName})
+          SELECT provision_user(${email}, ${passwordHash}, ${fullName}, ${actorUserId}::uuid)
         `,
       );
       return rows[0].provision_user;
@@ -244,11 +247,14 @@ export class AuthService {
     name: string,
     slug: string,
     ownerUserId: string,
+    actorUserId: string,
   ): Promise<string> {
     try {
+      // Surcharge a 4 args (0014) : trace ORG_PROVISIONED dans admin_audit_log,
+      // ATOMIQUEMENT. actorUserId = sub JWT SUPERADMIN (jamais le corps — lecon #42).
       const rows = await this.prisma.asAppRole(
         (tx) => tx.$queryRaw<{ provision_org: string }[]>`
-          SELECT provision_org(${name}, ${slug}, ${ownerUserId}::uuid)
+          SELECT provision_org(${name}, ${slug}, ${ownerUserId}::uuid, ${actorUserId}::uuid)
         `,
       );
       return rows[0].provision_org;

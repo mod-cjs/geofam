@@ -142,6 +142,18 @@ describe('Onboarding SUPERADMIN (e2e)', () => {
   afterAll(async () => {
     if (admin) {
       try {
+        // Backport 0014 : provision_user/org tracent desormais dans admin_audit_log
+        // (append-only). On purge par acteur (le SUPERADMIN du test) en desactivant le
+        // trigger d'immuabilite le temps du nettoyage.
+        await admin.query(`ALTER TABLE admin_audit_log DISABLE TRIGGER USER`);
+        try {
+          await admin.query(
+            `DELETE FROM admin_audit_log WHERE actor_user_id = $1`,
+            [superId],
+          );
+        } finally {
+          await admin.query(`ALTER TABLE admin_audit_log ENABLE TRIGGER USER`);
+        }
         // Nettoyage des objets crees pendant le test (orgs par slug, users par
         // email), puis du seed. Ordre FK : memberships -> projects -> orgs/users.
         if (createdOrgSlugs.length > 0) {

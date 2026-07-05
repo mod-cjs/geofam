@@ -50,6 +50,8 @@ export interface AdminOrgDetail {
 }
 
 // Lignes brutes des DEFINER (snake_case = colonnes SQL). count() -> bigint (JS BigInt).
+// La liste enrichie (admin_list_orgs, 0014) porte l'identite ET le resume d'abo joint
+// (has_sub + colonnes d'abonnement, NULL si l'org n'a pas d'abonnement).
 interface OrgRow {
   id: string;
   name: string;
@@ -57,6 +59,12 @@ interface OrgRow {
   status: OrgStatus;
   created_at: Date;
   nb_membres: bigint;
+  has_sub: boolean;
+  pack: string | null;
+  quota: number | null;
+  consommation: number | null;
+  date_fin: Date | null;
+  expired: boolean | null;
 }
 interface OrgIdentityRow {
   id: string;
@@ -76,21 +84,19 @@ interface SubRow {
 /**
  * AdminOrgsService — console de LECTURE back-office SUPERADMIN (Lot 1).
  *
- * DECOUPLAGE IDENTITE / DONNEES (invariant 0007, cf. migration 0012) : l'IDENTITE
- * des orgs (organizations + memberships) se lit CROSS-TENANT via des fonctions
- * SECURITY DEFINER appelees sous `asAppRole` (JAMAIS withTenant — sinon la RLS
- * FORCE rendrait 0 ligne). Le RESUME D'ABONNEMENT et l'USAGE sont des DONNEES
- * TENANT (subscriptions / usage_ledger, sans branche bootstrap) : ils se lisent
- * via `withTenant(orgId)` (roadsen_app a le GRANT ; RLS scope a l'org). On ne
- * melange jamais les deux dans un meme appel.
+ * DECOUPLAGE IDENTITE / DONNEES (invariant 0007) : l'IDENTITE des orgs
+ * (organizations + memberships) se lit CROSS-TENANT via des fonctions SECURITY
+ * DEFINER appelees sous `asAppRole` (JAMAIS withTenant — sinon la RLS FORCE rendrait
+ * 0 ligne). Pour le DETAIL d'une org (getOrgDetail), le RESUME D'ABONNEMENT et
+ * l'USAGE restent lus via `withTenant(orgId)` (donnees tenant, RLS scope a l'org).
  *
- * COUT DE LA LISTE (choix assume) : `admin_list_orgs` renvoie l'identite en UNE
- * passe DEFINER ; le resume d'abo est ensuite charge PAR ORG via withTenant
- * (une courte transaction par ligne de la page). C'est un N+1 BORNE par la
- * pagination (limit <= 100). On l'assume plutot que de joindre subscriptions dans
- * le DEFINER, ce qui violerait la separation identite/donnees (subscriptions n'a
- * ni GRANT roadsen_auth ni branche bootstrap ; sa policy RAISE hors contexte).
- * A revoir avec ingenieur-securite si un single-pass devenait necessaire.
+ * LISTE — SINGLE-PASS (0014) : `admin_list_orgs` enrichi JOINT subscriptions et rend
+ * identite + resume d'abo en UNE passe DEFINER, avec filtre/tri/pagination MONEY faits
+ * en SQL (fin du N+1 de 0012 et du tri client-side sur une seule page). Ce join lit
+ * subscriptions CROSS-TENANT via la branche de lecture bootstrap ajoutee en 0014 §1
+ * (revue ingenieur-securite requise) ; la sortie ne porte que le resume deja visible
+ * du SUPERADMIN dans le detail d'org. La separation identite/donnees est donc RELACHEE
+ * POUR CETTE LECTURE (agregat back-office), pas pour les ecritures money.
  */
 @Injectable()
 export class AdminOrgsService {
@@ -100,41 +106,67 @@ export class AdminOrgsService {
   ) {}
 
   /**
-   * Liste paginee des organisations (identite + nb membres via admin_list_orgs),
-   * chaque ligne enrichie de son resume d'abonnement (withTenant, borne par la page).
+   * Liste paginee des organisations (identite + nb membres + RESUME D'ABO), en UNE
+   * passe DEFINER (admin_list_orgs enrichi, 0014). Le tri/filtre/pagination sur les
+   * champs d'abo (quota/expiration/statut d'abo) sont faits en SQL cote base : plus de
+   * N+1 ni de tri client-side sur une seule page (cause de la pagination faussee).
+   * Le join subscriptions est lu cross-tenant via la branche bootstrap (cf. 0014 §1) ;
+   * la sortie ne contient que le resume deja montre au SUPERADMIN dans le detail d'org.
    */
   async listOrgs(args: {
     q?: string;
     limit?: number;
     offset?: number;
+    status?: OrgStatus;
+    sort?: string;
+    subFilter?: string;
   }): Promise<AdminOrgListItem[]> {
     const limit = args.limit ?? 20;
     const offset = args.offset ?? 0;
     const q = args.q ?? null;
+    const status = args.status ?? null;
+    const sort = args.sort ?? null;
+    const subFilter = args.subFilter ?? null;
 
-    // Identite cross-tenant : DEFINER sous asAppRole (drapeau pose dans la fonction).
     const rows = await this.prisma.asAppRole(
       (tx) => tx.$queryRaw<OrgRow[]>`
-        SELECT id, name, slug, status, created_at, nb_membres
-        FROM admin_list_orgs(${limit}::int, ${offset}::int, ${q}::text)
+        SELECT id, name, slug, status, created_at, nb_membres,
+               has_sub, pack, quota, consommation, date_fin, expired
+        FROM admin_list_orgs(
+          ${limit}::int, ${offset}::int, ${q}::text,
+          ${status}::"OrgStatus", ${sort}::text, ${subFilter}::text
+        )
       `,
     );
 
-    // Enrichissement abo PAR ORG (donnee tenant). N+1 borne par la page.
-    const items: AdminOrgListItem[] = [];
-    for (const r of rows) {
-      const subscription = await this.loadSubscription(r.id);
-      items.push({
-        id: r.id,
-        name: r.name,
-        slug: r.slug,
-        status: r.status,
-        createdAt: r.created_at.toISOString(),
-        nbMembres: Number(r.nb_membres),
-        subscription,
-      });
-    }
-    return items;
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      status: r.status,
+      createdAt: r.created_at.toISOString(),
+      nbMembres: Number(r.nb_membres),
+      subscription: toSummary(r),
+    }));
+  }
+
+  /**
+   * Console d'abonnements (vue MONEY-centree) : meme DEFINER que listOrgs, filtree sur
+   * une famille money (expired/expiring/noquota/nosub/withsub) et triable. Renvoie la
+   * meme forme d'item (org + resume d'abo).
+   */
+  async listSubscriptions(args: {
+    filter?: string;
+    sort?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<AdminOrgListItem[]> {
+    return this.listOrgs({
+      limit: args.limit,
+      offset: args.offset,
+      sort: args.sort,
+      subFilter: args.filter,
+    });
   }
 
   /**
@@ -265,4 +297,29 @@ export class AdminOrgsService {
       };
     });
   }
+}
+
+/**
+ * Construit le resume d'abo a partir d'une ligne enrichie de admin_list_orgs (0014).
+ * `null` si l'org n'a pas d'abonnement (has_sub=false -> colonnes d'abo NULL). `expired`
+ * est evalue en base (now() > date_fin), jamais avec l'horloge cliente (TM-1).
+ */
+function toSummary(r: OrgRow): OrgSubscriptionSummary | null {
+  if (
+    !r.has_sub ||
+    r.pack === null ||
+    r.quota === null ||
+    r.date_fin === null
+  ) {
+    return null;
+  }
+  const consommation = r.consommation ?? 0;
+  return {
+    pack: r.pack,
+    quota: r.quota,
+    consommation,
+    remaining: Math.max(0, r.quota - consommation),
+    dateFin: r.date_fin.toISOString(),
+    expired: r.expired ?? false,
+  };
 }

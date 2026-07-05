@@ -183,18 +183,62 @@ export class AdminMutationsService {
 
   /**
    * Journal d'audit d'une org (lecture SUPERADMIN via admin_list_audit, DEFINER).
-   * Borne cote base (limit <= 100). Filtre sur target_org_id.
+   * Borne cote base (limit <= 100). Filtre sur target_org_id ; les filtres globaux
+   * (action/acteur/periode) sont passes NULL ici (voir listGlobalAudit).
    */
   async listAudit(
     orgId: string,
     args: { limit?: number; offset?: number },
   ): Promise<AuditEntryView[]> {
-    const limit = args.limit ?? 50;
-    const offset = args.offset ?? 0;
+    return this.queryAudit({
+      orgId,
+      limit: args.limit ?? 50,
+      offset: args.offset ?? 0,
+    });
+  }
+
+  /**
+   * Journal d'audit GLOBAL (toutes orgs, admin_list_audit avec p_org_id NULL, 0014).
+   * Filtres SQL bornes : action (marqueur exact), actor (uuid), from/to (fenetre). Borne
+   * cote base (limit <= 100). Aucune ligne tenant brute : uniquement le journal admin.
+   */
+  async listGlobalAudit(args: {
+    action?: string;
+    actor?: string;
+    from?: Date;
+    to?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<AuditEntryView[]> {
+    return this.queryAudit({
+      orgId: null,
+      limit: args.limit ?? 50,
+      offset: args.offset ?? 0,
+      action: args.action ?? null,
+      actor: args.actor ?? null,
+      from: args.from ?? null,
+      to: args.to ?? null,
+    });
+  }
+
+  /** Appel commun a admin_list_audit (per-org ou global). Filtres NULL = ignores en SQL. */
+  private async queryAudit(args: {
+    orgId: string | null;
+    limit: number;
+    offset: number;
+    action?: string | null;
+    actor?: string | null;
+    from?: Date | null;
+    to?: Date | null;
+  }): Promise<AuditEntryView[]> {
     const rows = await this.prisma.asAppRole(
       (tx) => tx.$queryRaw<AuditRow[]>`
         SELECT id, actor_user_id, action, target_org_id, target_user_id, payload, created_at
-        FROM admin_list_audit(${orgId}::uuid, ${limit}::int, ${offset}::int)
+        FROM admin_list_audit(
+          ${args.orgId}::uuid, ${args.limit}::int, ${args.offset}::int,
+          ${args.action ?? null}::text, ${args.actor ?? null}::uuid,
+          ${args.from ?? null}::timestamptz, ${args.to ?? null}::timestamptz
+        )
       `,
     );
     return rows.map((r) => ({

@@ -383,7 +383,7 @@ describe('AuthService.provisionUser', () => {
     prisma.$queryRaw.mockResolvedValue([{ provision_user: 'new-uid' }]);
 
     await expect(
-      service.provisionUser('a@x.io', 'clair-secret', 'Alice'),
+      service.provisionUser('a@x.io', 'clair-secret', 'Alice', 'actor-uid'),
     ).resolves.toBe('new-uid');
 
     // Le clair est passe a hashPassword, et c'est le HASH (pas le clair) qui
@@ -401,14 +401,19 @@ describe('AuthService.provisionUser', () => {
     prisma.$queryRaw.mockRejectedValue(rawPgError('23505'));
 
     await expect(
-      service.provisionUser('dup@x.io', 'pw-long-enough', 'Dup'),
+      service.provisionUser('dup@x.io', 'pw-long-enough', 'Dup', 'actor-uid'),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('le message du 409 ne divulgue PAS l email en conflit (anti-enumeration)', async () => {
     prisma.$queryRaw.mockRejectedValue(rawPgError('23505'));
     try {
-      await service.provisionUser('secret@x.io', 'pw-long-enough', 'Dup');
+      await service.provisionUser(
+        'secret@x.io',
+        'pw-long-enough',
+        'Dup',
+        'actor-uid',
+      );
       throw new Error('aurait du lever');
     } catch (e) {
       expect((e as Error).message).not.toContain('secret@x.io');
@@ -418,7 +423,7 @@ describe('AuthService.provisionUser', () => {
   it('propage une erreur INATTENDUE (ni 23505) sans la masquer', async () => {
     prisma.$queryRaw.mockRejectedValue(new Error('boom inattendu'));
     await expect(
-      service.provisionUser('a@x.io', 'pw-long-enough', 'A'),
+      service.provisionUser('a@x.io', 'pw-long-enough', 'A', 'actor-uid'),
     ).rejects.toThrow('boom inattendu');
   });
 });
@@ -443,21 +448,21 @@ describe('AuthService.provisionOrg', () => {
   it('renvoie l uuid de l org creee dans le cas nominal', async () => {
     prisma.$queryRaw.mockResolvedValue([{ provision_org: 'org-uid' }]);
     await expect(
-      service.provisionOrg('BE', 'be-slug', 'owner-uid'),
+      service.provisionOrg('BE', 'be-slug', 'owner-uid', 'actor-uid'),
     ).resolves.toBe('org-uid');
   });
 
   it('mappe un owner INEXISTANT (FK 23503) en 400 BORNE', async () => {
     prisma.$queryRaw.mockRejectedValue(rawPgError('23503'));
     await expect(
-      service.provisionOrg('BE', 'be-slug', 'ghost-uid'),
+      service.provisionOrg('BE', 'be-slug', 'ghost-uid', 'actor-uid'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('mappe un slug DEJA pris (23505) en 409', async () => {
     prisma.$queryRaw.mockRejectedValue(rawPgError('23505'));
     await expect(
-      service.provisionOrg('BE', 'slug-pris', 'owner-uid'),
+      service.provisionOrg('BE', 'slug-pris', 'owner-uid', 'actor-uid'),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 });

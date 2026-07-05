@@ -59,11 +59,14 @@ export class MembersService {
     orgId: string,
     userId: string,
     role: AddableRole,
+    actorUserId: string,
   ): Promise<string> {
     try {
+      // Surcharge a 4 args (0014) : trace MEMBER_ADDED dans admin_audit_log,
+      // ATOMIQUEMENT. actorUserId = sub JWT SUPERADMIN (jamais le corps — lecon #42).
       const rows = await this.prisma.asAppRole(
         (tx) => tx.$queryRaw<{ provision_member: string }[]>`
-          SELECT provision_member(${orgId}::uuid, ${userId}::uuid, ${role}::"Role")
+          SELECT provision_member(${orgId}::uuid, ${userId}::uuid, ${role}::"Role", ${actorUserId}::uuid)
         `,
       );
       return rows[0].provision_member;
@@ -93,8 +96,11 @@ export class MembersService {
     orgId: string,
     userId: string,
     isActive: boolean,
+    actorUserId: string,
   ): Promise<void> {
     try {
+      // Surcharge a 4 args (0014) : trace MEMBER_ACTIVE_SET dans admin_audit_log,
+      // ATOMIQUEMENT. actorUserId = sub JWT SUPERADMIN (jamais le corps — lecon #42).
       // set_member_active RETURNS void. On l'appelle via $executeRaw (et NON $queryRaw) :
       // $queryRaw tente de désérialiser la colonne renvoyée et ÉCHOUE sur le type `void`
       // (« Failed to deserialize column of type 'void' ») -> 500. $executeRaw exécute
@@ -103,7 +109,7 @@ export class MembersService {
       // RETURNS uuid -> lui reste en $queryRaw, l'uuid se désérialise sans problème.)
       await this.prisma.asAppRole(
         (tx) => tx.$executeRaw`
-          SELECT set_member_active(${orgId}::uuid, ${userId}::uuid, ${isActive})
+          SELECT set_member_active(${orgId}::uuid, ${userId}::uuid, ${isActive}, ${actorUserId}::uuid)
         `,
       );
     } catch (err) {

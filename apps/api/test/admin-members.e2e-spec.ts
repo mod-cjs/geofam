@@ -144,7 +144,15 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
     await admin.query(
       `INSERT INTO users (id, email, password_hash, full_name, updated_at) VALUES
         ($1,$2,$7,'Membre React',now()), ($3,$4,$7,'Membre Xt',now()), ($5,$6,$7,'Membre Dual',now())`,
-      [memberReact, emailReact(), memberXt, emailXt(), memberDual, emailDual(), hash],
+      [
+        memberReact,
+        emailReact(),
+        memberXt,
+        emailXt(),
+        memberDual,
+        emailDual(),
+        hash,
+      ],
     );
     await admin.query(
       `INSERT INTO organizations (id, name, slug, "updatedAt") VALUES ($1,'Org A',$2,now()), ($3,'Org B',$4,now())`,
@@ -156,7 +164,16 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
     await admin.query(
       `INSERT INTO memberships (id, org_id, user_id, role) VALUES
         ($1,$2,$3,'OWNER'), ($4,$5,$6,'OWNER'), ($7,$5,$8,'ENGINEER')`,
-      [randomUUID(), orgA, ownerA, randomUUID(), orgB, ownerB, randomUUID(), memberDual],
+      [
+        randomUUID(),
+        orgA,
+        ownerA,
+        randomUUID(),
+        orgB,
+        ownerB,
+        randomUUID(),
+        memberDual,
+      ],
     );
     await admin.query(
       `INSERT INTO projects (id, org_id, name, created_by_id, updated_at) VALUES ($1,$2,'P-A',$3,now())`,
@@ -184,6 +201,17 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
   afterAll(async () => {
     if (admin) {
       try {
+        // Backport 0014 : provision_member/set_member_active tracent desormais dans
+        // admin_audit_log (append-only). Purge par acteur (le SUPERADMIN du test).
+        await admin.query(`ALTER TABLE admin_audit_log DISABLE TRIGGER USER`);
+        try {
+          await admin.query(
+            `DELETE FROM admin_audit_log WHERE actor_user_id = $1`,
+            [superId],
+          );
+        } finally {
+          await admin.query(`ALTER TABLE admin_audit_log ENABLE TRIGGER USER`);
+        }
         // Ordre FK : ledger/calc -> subscriptions/projects -> memberships -> orgs -> users.
         // usage_ledger est APPEND-ONLY (trigger 0008 refuse DELETE) : on désactive les
         // triggers USER le temps du nettoyage (même patron que official_pvs dans
@@ -532,10 +560,10 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
   it('11) barrière DB : provision_member(...,OWNER) direct -> rejeté (P0001)', async () => {
     if (!ready()) return;
     await expect(
-      admin!.query(`SELECT provision_member($1::uuid, $2::uuid, 'OWNER'::"Role")`, [
-        orgA,
-        memberEng,
-      ]),
+      admin!.query(
+        `SELECT provision_member($1::uuid, $2::uuid, 'OWNER'::"Role")`,
+        [orgA, memberEng],
+      ),
     ).rejects.toThrow(/OWNER interdit/i);
   });
 });
