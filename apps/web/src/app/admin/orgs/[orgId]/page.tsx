@@ -36,15 +36,12 @@ export default async function OrgDetailPage({ params }: OrgDetailPageProps) {
           color: 'var(--text-muted)',
         }}
       >
+        {/* Server Component : AUCUN gestionnaire d'événement (onMouseOver/… ) — interdit
+            par React (crash SSR). Le survol est géré en CSS via la classe utilitaire. */}
         <Link
           href="/admin/orgs"
+          className="admin-breadcrumb-link"
           style={{ color: 'var(--text-link)', textDecoration: 'none' }}
-          onMouseOver={(e) => {
-            (e.currentTarget as HTMLElement).style.textDecoration = 'underline';
-          }}
-          onMouseOut={(e) => {
-            (e.currentTarget as HTMLElement).style.textDecoration = 'none';
-          }}
         >
           Organisations
         </Link>

@@ -79,9 +79,14 @@ export default function LoginClient() {
       // Destination : returnTo explicite → 1re org connue → racine (middleware redirige).
       // Plus de slug mock codé en dur.
       const orgs = getStoredOrgs();
-      // Accueil = galerie des logiciels GEOFAM (l'utilisateur choisit un module).
+      // Destination :
+      //  - returnTo explicite prioritaire ;
+      //  - utilisateur tenant (≥ 1 org) → galerie des logiciels GEOFAM de sa 1re org ;
+      //  - AUCUNE org → back-office : c'est le cas du SUPERADMIN (platform_role hors JWT,
+      //    donc invisible ici) qui n'a jamais d'org. La garde serveur /admin revalide le
+      //    rôle (un éventuel utilisateur sans org NI rôle admin est renvoyé par la garde).
       const destination =
-        returnTo ?? (orgs[0]?.slug ? `/app/${orgs[0].slug}/logiciels` : '/');
+        returnTo ?? (orgs[0]?.slug ? `/app/${orgs[0].slug}/logiciels` : '/admin');
       router.push(destination);
     } catch (err: unknown) {
       const apiErr = err as { message?: string };

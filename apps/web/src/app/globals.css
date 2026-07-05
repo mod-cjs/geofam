@@ -320,3 +320,12 @@ td.coeff {
   scrollbar-width: thin;
   scrollbar-color: var(--border-default) transparent;
 }
+
+/* ------------------------------------------------------------------ */
+/* 10. BACK-OFFICE — survol du fil d'Ariane en CSS                     */
+/* (le Server Component de la page détail ne peut PAS porter de        */
+/*  gestionnaire onMouseOver — cela crashe le rendu SSR).              */
+/* ------------------------------------------------------------------ */
+.admin-breadcrumb-link:hover {
+  text-decoration: underline;
+}
