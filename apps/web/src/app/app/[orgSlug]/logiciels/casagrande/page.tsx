@@ -321,7 +321,8 @@ export default function CasagrandePage() {
           </div>
           <div style={card}>
             <div style={secH}>Coefficients partiels EC7 (NA française, DA2)</div>
-            <div style={{ fontSize: 11.5, color: MUTED }}>γ_G = {DEFAULT_COEFFS.k_gG} · γ_Q = {DEFAULT_COEFFS.k_gQ} · γ_b = {DEFAULT_COEFFS.k_gb} · γ_s = {DEFAULT_COEFFS.k_gs} · γ_s;t = {DEFAULT_COEFFS.k_gst} · ξ fluage compression = {DEFAULT_COEFFS.cr_car} · valeurs normatives appliquées.</div>
+            <div style={{ fontSize: 11.5, color: MUTED }}>γ_G = {DEFAULT_COEFFS.k_gG} · γ_Q = {DEFAULT_COEFFS.k_gQ} · γ_b = {DEFAULT_COEFFS.k_gb} · γ_s = {DEFAULT_COEFFS.k_gs} · γ_s;t = {DEFAULT_COEFFS.k_gst} · ξ fluage compression = {DEFAULT_COEFFS.cr_car}.</div>
+            <div style={{ fontSize: 10.5, color: MUTED, fontStyle: 'italic', marginTop: 4 }}>Coefficients partiels <strong>fixés côté serveur</strong> (valeurs réglementaires NF P94-262 DA2), bloc informatif non modifiable : toute valeur non normative envoyée à l&apos;API est rejetée (intégrité du verdict/PV).</div>
           </div>
         </>
       )}

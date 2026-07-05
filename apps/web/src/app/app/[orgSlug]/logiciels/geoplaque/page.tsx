@@ -149,7 +149,7 @@ export default function GeoplaquePage() {
   const [layers, setLayers] = useState<Layer[]>([{ zBase: '10', E: '8', nu: '0.33' }]);
   const [mesh, setMesh] = useState('0.5'); const [decol, setDecol] = useState(false); const [qLim, setQLim] = useState('');
   const [pointLoads, setPointLoads] = useState<PLoad[]>([]);
-  const [lineLoads] = useState<LLoad[]>([]);
+  const [lineLoads, setLineLoads] = useState<LLoad[]>([]);
   const [areaLoads, setAreaLoads] = useState<ALoad[]>([{ x1: '0', y1: '0', x2: '6', y2: '6', q: '50', on: 'raft' }]);
   const [pointSprings, setPointSprings] = useState<PSpring[]>([]);
 
@@ -293,6 +293,19 @@ export default function GeoplaquePage() {
               ))}</tbody>
             </table>
             <button onClick={() => setAreaLoads((a) => [...a, { x1: '', y1: '', x2: '', y2: '', q: '', on: 'raft' }])} style={addBtn}>+ Charge répartie</button>
+          </div>
+          <div style={card}>
+            <div style={secH}>Charges linéiques</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead><tr>{['x1', 'y1', 'x2', 'y2', 'q (kN/m)', ''].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+              <tbody>{lineLoads.map((l, i) => (
+                <tr key={i}>
+                  {(['x1', 'y1', 'x2', 'y2', 'q'] as const).map((k) => <td key={k} style={{ padding: 2 }}><input style={inp} value={l[k]} onChange={(ev) => setLineLoads((a) => a.map((q, j) => j === i ? { ...q, [k]: ev.target.value } : q))} /></td>)}
+                  <td style={{ padding: 2 }}><button onClick={() => setLineLoads((a) => a.filter((_, j) => j !== i))} style={delBtn}>✕</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+            <button onClick={() => setLineLoads((a) => [...a, { x1: '', y1: '', x2: '', y2: '', q: '' }])} style={addBtn}>+ Charge linéique</button>
           </div>
           <div style={card}>
             <div style={secH}>Charges ponctuelles</div>

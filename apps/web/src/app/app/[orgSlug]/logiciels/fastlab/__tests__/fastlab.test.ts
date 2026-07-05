@@ -67,10 +67,25 @@ describe('buildFastlabPayload — structure', () => {
   });
 });
 
-describe('buildFastlabPayload — DoD §8', () => {
-  it('ne contient aucune grandeur de RÉSULTAT (classe/Ip/VBS côté serveur)', () => {
+describe('buildFastlabPayload — DoD §8 (ALLOWLIST fail-closed)', () => {
+  // ALLOWLIST (et non denylist) suite au challenge : TOUTE clé du payload doit être une
+  // mesure brute / un toggle CONNU. Une clé inconnue (ex. futur champ de RÉSULTAT
+  // classe/ip/vbs...) fait ECHOUER le test — fail-closed, pas de liste noire a maintenir.
+  const ALLOWED_PREFIX = /^(m_|w_|gr_|ll_|pl_|v_|pr_|ci_|cb_|oe_|tu_|tc_|es_|la_|md_|mc_|sz_|su_|pe_|uc_|rs_|rs2_|d_|di_|dd_|ra_)/;
+  const ALLOWED_TOGGLES = new Set([
+    'gr_M', 'prType', 'ciMethod', 'ci_shape', 'laVar', 'mdeVar', 'mdeMode', 'mdeWet',
+    'permMode', 'su_type', 'rsMethod', 'cbType', 'densMethod', 'densShape',
+  ]);
+
+  it('toute clé du payload est une mesure/toggle connu (aucune grandeur de résultat)', () => {
     const p = buildFastlabPayload(form());
-    for (const forbidden of ['classe', 'ip', 'wl', 'wp', 'vbs', 'p80', 'dmax', 'code', 'path']) {
+    const inconnues = Object.keys(p).filter((k) => !ALLOWED_PREFIX.test(k) && !ALLOWED_TOGGLES.has(k));
+    expect(inconnues, `clés hors allowlist (fuite de résultat ?) : ${inconnues.join(', ')}`).toEqual([]);
+  });
+
+  it('aucune clé de résultat connue ne fuit', () => {
+    const p = buildFastlabPayload(form());
+    for (const forbidden of ['classe', 'ip', 'wl', 'wp', 'vbs', 'p80', 'dmax', 'code', 'path', 'cbr', 'mde', 'rhos', 'es', 'la']) {
       expect(Object.prototype.hasOwnProperty.call(p, forbidden)).toBe(false);
     }
   });
