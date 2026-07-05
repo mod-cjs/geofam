@@ -85,6 +85,9 @@ model Membership {
   orgId     String   @map("org_id") @db.Uuid
   userId    String   @map("user_id") @db.Uuid
   role      Role
+  // Suspension d'accès sans suppression (migration 0010). Un membre inactif ne
+  // porte plus de rôle : auth_user_has_membership filtre is_active=true.
+  isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
 
   org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -115,8 +118,8 @@ model Project {
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 
-  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  calcs    CalcResult[]
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  calcs CalcResult[]
 
   @@unique([orgId, id]) // cible de FK COMPOSITE (org_id, .) des tables enfant (0006)
   @@index([orgId])
@@ -225,7 +228,7 @@ model Subscription {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz()
 
-  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org    Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
   ledger UsageLedger[]
 
   @@unique([orgId, id]) // cible de la FK COMPOSITE (org_id, .) du ledger

@@ -1,4 +1,13 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 
 import { AuthService } from '../auth/auth.service';
 import { NoTenant, Roles } from '../auth/decorators';
@@ -6,6 +15,16 @@ import type { CreateOrgDto, CreateUserDto } from '../auth/dto';
 import { createOrgSchema, createUserSchema } from '../auth/dto';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+
+import type { AddMemberDto, SetMemberActiveDto } from './members.dto';
+import {
+  addMemberSchema,
+  memberOrgIdParam,
+  memberUserIdParam,
+  setMemberActiveSchema,
+} from './members.dto';
+import type { OrgMemberView } from './members.service';
+import { MembersService } from './members.service';
 
 /**
  * AdminController — back-office plateforme (onboarding SUPERADMIN).
@@ -35,6 +54,7 @@ export class AdminController {
   constructor(
     private readonly auth: AuthService,
     private readonly subscriptions: SubscriptionsService,
+    private readonly members: MembersService,
   ) {}
 
   /**
@@ -85,5 +105,54 @@ export class AdminController {
       });
     }
     return { orgId };
+  }
+
+  /**
+   * Attache un membre a une organisation EXISTANTE (accès contrôlés multi-membres,
+   * P1). `orgId` vient du PATH (org existante), `userId` du corps (compte
+   * existant) — jamais une identité arbitraire (leçon #42). `role` ∈ {ADMIN,
+   * ENGINEER, TECHNICIAN, VIEWER} (OWNER refusé par le schema). Un ré-ajout ->
+   * 409 ; un userId/orgId inexistant -> 400. Renvoie 201 + l'id du membership.
+   */
+  @Post('orgs/:orgId/members')
+  @HttpCode(HttpStatus.CREATED)
+  async addMember(
+    @Param('orgId', new ZodValidationPipe(memberOrgIdParam)) orgId: string,
+    @Body(new ZodValidationPipe(addMemberSchema)) body: AddMemberDto,
+  ): Promise<{ membershipId: string }> {
+    const membershipId = await this.members.provisionMember(
+      orgId,
+      body.userId,
+      body.role,
+    );
+    return { membershipId };
+  }
+
+  /**
+   * Suspend (isActive=false) ou réactive (true) un membre. La suspension prend
+   * effet AU PROCHAIN APPEL (le TenantGuard relit le membership actif en base, cf.
+   * ADR 0010) — aucune rotation de token. Anti-lockout : suspendre le dernier
+   * OWNER actif -> 409. Membre introuvable -> 404.
+   */
+  @Patch('orgs/:orgId/members/:userId')
+  async setMemberActive(
+    @Param('orgId', new ZodValidationPipe(memberOrgIdParam)) orgId: string,
+    @Param('userId', new ZodValidationPipe(memberUserIdParam)) userId: string,
+    @Body(new ZodValidationPipe(setMemberActiveSchema))
+    body: SetMemberActiveDto,
+  ): Promise<{ userId: string; isActive: boolean }> {
+    await this.members.setMemberActive(orgId, userId, body.isActive);
+    return { userId, isActive: body.isActive };
+  }
+
+  /**
+   * Liste les membres d'une organisation (identité + calculs du mois par membre).
+   * Inclut les membres suspendus (pour les réactiver depuis le back-office).
+   */
+  @Get('orgs/:orgId/members')
+  async listMembers(
+    @Param('orgId', new ZodValidationPipe(memberOrgIdParam)) orgId: string,
+  ): Promise<OrgMemberView[]> {
+    return this.members.listMembers(orgId);
   }
 }

@@ -34,7 +34,8 @@ C'est ce que P1 ajoute, plus le champ `is_active` pour suspendre proprement.
 
 ---
 
-## 4. LOT 1 — Schéma & migration `0010_membership_status_and_provision_member`
+## 4. LOT 1 — Schéma & migration `0011_membership_status_and_provision_member`
+> (renumérotée 0010 → 0011 au build : recette porte déjà `0010_project_domain_description`.)
 
 **(a) Colonne `is_active`** (migration légère, sans downtime) :
 ```sql
@@ -139,7 +140,7 @@ déployable préprod (rollback via `down.sql`) · **revue adverse `qa-challenger
 (zone sécurité = passage obligé) · doc (ce cadrage + note API).
 
 ## 9. Séquencement & effort
-1. **Migration 0010** (schéma + 3 fonctions + patch + down + test n°1) — ~1 j.
+1. **Migration 0011** (schéma + 3 fonctions + patch + down + test n°1) — ~1 j.
 2. **API back-office** (3 routes + service + DTO Zod) — ~0,5 j.
 3. **Tests isolation/escalade/quota** (n°2–6) — ~0,5 j.
 4. **Revue `qa-challenger`** + corrections — ~0,5 j.
