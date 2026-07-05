@@ -79,6 +79,20 @@ describe('pieux — coeffs de securite autoritatifs serveur (anti-falsification)
     expect(parsed.coeffs).toEqual(PIEUX_DEFAULT_COEFFS);
   });
 
+  // SENTINELLE DE COUPLAGE FRONT/BACK (revue de verification) : le front CASAGRANDE ne peut
+  // PAS importer ce schema (frontiere DoD §8) -> il DUPLIQUE les 14 valeurs en dur. Le refine
+  // exige desormais l'egalite EXACTE : toute divergence ferait echouer TOUT calcul pieux en
+  // prod (400) sans qu'aucun typecheck ne le voie. On FIGE ici les 14 valeurs normatives :
+  // si elles changent, ce test ROUGE force a repercuter le changement dans le descripteur
+  // front (apps/web/src/lib/engine-descriptors.ts, coeffs CASAGRANDE).
+  it('les 14 coeffs normatifs sont FIGES (miroir a maintenir avec le front CASAGRANDE)', () => {
+    expect(PIEUX_DEFAULT_COEFFS).toEqual({
+      k_gG: 1.35, k_gQ: 1.5, k_gb: 1.1, k_gs: 1.1, k_gst: 1.15, k_psi2: 0.3,
+      cr_b_b: 0.7, cr_b_s: 0.7, cr_f_b: 0.5, cr_f_s: 0.7,
+      cr_car: 0.9, cr_qp: 1.1, cr_car_t: 1.1, cr_qp_t: 1.5,
+    });
+  });
+
   // GOLDEN-MASTER sur runPieux (chemin REELLEMENT servi : parse + coeffs autoritatifs +
   // frottement negatif). L'equivalence-portage ne teste que computePieux -> ce sentinelle
   // fige le verdict/taux/RcD du chemin serveur (regression). Valeurs a co-valider expert.

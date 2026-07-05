@@ -186,8 +186,21 @@ export class PvService {
           recomputed.output,
         );
         if (canonicalize(recomputedOutput) !== canonicalize(calc.output)) {
+          // On DISTINGUE une derive de version (le moteur a ete mis a jour depuis le calcul
+          // -> divergence LEGITIME) d'une ALTERATION en base. Message non alarmant dans le
+          // 1er cas : l'utilisateur relance le calcul, il n'y a pas de falsification.
+          const versionDrift =
+            recomputed.meta.engineVersion !== calc.engineVersion ||
+            (calc.engineSourceHash != null &&
+              recomputed.meta.engineSourceHash != null &&
+              recomputed.meta.engineSourceHash !== calc.engineSourceHash);
+          if (versionDrift) {
+            throw new ConflictException(
+              'Ce calcul a ete produit par une version anterieure du moteur : relancez le calcul avant d emettre le PV.',
+            );
+          }
           throw new ConflictException(
-            'La sortie stockee ne correspond pas au recalcul serveur (alteration ou version moteur differente) : emission du PV refusee.',
+            'La sortie stockee ne correspond pas au recalcul serveur (alteration detectee) : emission du PV refusee.',
           );
         }
 
