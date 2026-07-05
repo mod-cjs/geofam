@@ -32,7 +32,7 @@ export function buildPressioProPayload(f: PressioProForm): Record<string, unknow
     projet: f.projet,
     label: (f.label || 'Essai').slice(0, 40),
     params: { a: num(f.a), Ph: num(f.Ph), Pe: num(f.Pe), V0: num(f.V0, 535), k0: num(f.k0, 0.5) },
-    gamma: num(f.gamma, 19),
+    gamma: num(f.gamma),
     nappe: num(f.nappe),
     rows: f.rows.map((r) => ({ p: num(r.p), v15: num(r.v15), v30: num(r.v30), v60: num(r.v60) })),
   };

@@ -85,3 +85,37 @@ la **sémantique** restent à trancher par le titulaire de la science.
 
 > Tant que A–D ne sont pas signés, les correctifs **prudents fail-closed** restent en
 > place (ils ne dégradent aucun résultat normatif légitime ; ils bloquent la falsification).
+
+---
+
+## Passe de VÉRIFICATION adverse (05/07) — résidus & décisions restantes
+
+Une 2ᵉ passe qa-challenger a **vérifié** les correctifs. Elle a confirmé pieux-sceau et
+les portes CI, et **trouvé 2 nouvelles failles HAUTE** (corrigées + testées : burmister
+**faux PASS via trafic nul NE=0** ; radier **heatmap encore inférable au maillage**), plus
+le test manquant du re-exec PV (ajouté). Restent ces points **non bloquants** :
+
+- **F. Canal warnings — fail-closed de CANAL (MOYENNE, §8).** `burmister` écarte tout
+  warning non reconnu (drop total) ; `terzaghi`/`pressiometre`/`pieux` font *redact-and-pass*
+  (ils masquent `label = nombre` mais laissent passer le reste du texte). Une valeur
+  confidentielle formulée **sans `=`** (« q_ce vaut 1,23 ») traverserait. Atténué (moteurs
+  figés, format `=` connu). **Décision :** aligner les 3 sur le drop-total type burmister,
+  OU acter le *redact-and-pass* comme résidu tracé. → titulaire (zone §8).
+- **G. Disclosure ks/sh au PV (MOYENNE, auditabilité vs §8).** Un `ks`/`sh` **imposé**
+  borné-mais-agressif (ks=1, sh=0,5, r=50) maximise l'admissible sans laisser de trace au
+  PV. Disclosure souhaitable, MAIS le `ks` **auto-calculé** est un calage confidentiel :
+  ne divulguer que la **valeur imposée** (choix ingénieur) + le **mode** (auto/manuel),
+  jamais la valeur auto. → confirmer que la valeur imposée n'est pas §8-sensible (expert).
+- **H. Re-exec PV — résidu de portée (FAIBLE).** La re-exécution ferme la falsification
+  de l'**output seul**. Un attaquant avec `UPDATE` sur `calc_results` peut réécrire
+  **input + output de façon cohérente** (moteur exécuté hors-ligne) : le re-exec passe.
+  Fermeture durable = sceller au calcul, ou rendre `calc_results.output` append-only. Porté
+  par `ingenieur-securite`.
+- **I. `r` (risque) — borne continue vs table discrète (FAIBLE).** Le schéma accepte
+  r ∈ [0,001 ; 50] mais le moteur ne lit que {5,10,15,25,50} (retombe sur 10 % sinon).
+  Fidèle au HTML signé. **Décision expert :** restreindre l'enum à ces 5 valeurs ?
+- **Mineurs** (software, sans décision science) : test de non-collision de normalisation
+  des labels bénins (esprit-mutation) ; couvrir subpaths/relatifs dans le test négatif
+  ESLint ; `record FAIL` si le guardcheck ESLint n'a pas pu être écrit (pas de skip
+  silencieux) ; `pressiopro` γ par défaut 19 fabriqué silencieusement (retirer) ; warning
+  terzaghi « iβ = 1 » sur-rédigé (reformuler sans `= nombre`).

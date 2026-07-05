@@ -93,6 +93,11 @@ if [ -f "$GUARD_DIR/forbidden.ts" ]; then
     echo "<<< [garde-fou-eslint-moteurs] FAIL"; record "garde-fou-eslint-moteurs (DoD8)" FAIL
   else echo "<<< [garde-fou-eslint-moteurs] PASS"; record "garde-fou-eslint-moteurs (DoD8)" PASS; fi
   rm -rf "$GUARD_DIR"
+else
+  # FAIL-CLOSED (verification adverse) : si le fichier guardcheck n'a pas pu etre ecrit
+  # (permission, FS plein), NE JAMAIS sauter en silence -> barriere NON prouvee = ROUGE.
+  echo "<<< [garde-fou-eslint-moteurs] FAIL — guardcheck non ecrit (barriere §8 non prouvee)"
+  record "garde-fou-eslint-moteurs (DoD8)" FAIL
 fi
 
 # BARRIÈRE #2 — contrôle de bundle navigateur (grep .next/static). Nécessite le build
