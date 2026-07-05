@@ -146,17 +146,17 @@ export default function TerzaghiPage() {
   const [profilMode, setProfilMode] = useState<ProfilMode>('couches');
   const [alphaSang, setAlphaSang] = useState('');
   const [sondage, setSondage] = useState<SondageRow[]>([
-    { z: '1', pl: '0.8', em: '8', al: '', qc: '' }, { z: '3', pl: '1.2', em: '12', al: '', qc: '' }, { z: '5', pl: '1.6', em: '16', al: '', qc: '' },
+    { z: '', pl: '', em: '', al: '', qc: '' }, { z: '', pl: '', em: '', al: '', qc: '' }, { z: '', pl: '', em: '', al: '', qc: '' },
   ]);
   const [solCat, setSolCat] = useState<SolCat>('sables');
-  const [nappe, setNappe] = useState(''); const [gAvant, setGAvant] = useState('20'); const [gApres, setGApres] = useState('20'); const [gSous, setGSous] = useState('');
+  const [nappe, setNappe] = useState(''); const [gAvant, setGAvant] = useState(''); const [gApres, setGApres] = useState(''); const [gSous, setGSous] = useState('');
   const [c, setC] = useState(''); const [phi, setPhi] = useState(''); const [eYoung, setEYoung] = useState(''); const [nuSol, setNuSol] = useState('0.33');
   const [cphiOn, setCphiOn] = useState(false); const [cphiMode, setCphiMode] = useState<CphiMode>('auto');
-  const [forme, setForme] = useState<Forme>('carree'); const [B, setB] = useState('2'); const [L, setL] = useState('2'); const [D, setD] = useState('1');
+  const [forme, setForme] = useState<Forme>('carree'); const [B, setB] = useState(''); const [L, setL] = useState(''); const [D, setD] = useState('');
   const [talusOn, setTalusOn] = useState(false); const [beta, setBeta] = useState(''); const [dTalus, setDTalus] = useState(''); const [talusDir, setTalusDir] = useState<TalusDir>('ext');
   const [beton, setBeton] = useState<'coule' | 'prefa'>('coule');
   const [charges, setCharges] = useState<ChargeRow[]>([
-    { etat: 'ELU_F', fz: '900', fx: '', fy: '', mx: '', my: '' }, { etat: 'ELS_C', fz: '650', fx: '', fy: '', mx: '', my: '' },
+    { etat: 'ELU_F', fz: '', fx: '', fy: '', mx: '', my: '' }, { etat: 'ELS_C', fz: '', fx: '', fy: '', mx: '', my: '' },
   ]);
 
   const [calculating, setCalculating] = useState(false);

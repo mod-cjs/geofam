@@ -84,17 +84,15 @@ export default function PressioProPage() {
   const [projectId, setProjectId] = useState('');
   const [, setEnt] = useState<EntitlementsResponse | null>(null);
 
-  const [label, setLabel] = useState('BH-01 / 3,0 m');
+  const [label, setLabel] = useState('');
+  // Appareillage (constantes de sonde/calibrage) conservees comme gabarit ; les MESURES
+  // (paliers, nappe) sont vides par defaut (revue adverse : pas de PV sur donnees fictives).
   const [a, setA] = useState('0.5'); const [Ph, setPh] = useState('0'); const [Pe, setPe] = useState('0');
   const [V0, setV0] = useState('535'); const [k0, setK0] = useState('0.5');
-  const [gamma, setGamma] = useState('19'); const [nappe, setNappe] = useState('0');
+  const [gamma, setGamma] = useState(''); const [nappe, setNappe] = useState('');
   const [rows, setRows] = useState<Row[]>([
-    { p: '2', v15: '90', v30: '95', v60: '100' },
-    { p: '4', v15: '130', v30: '135', v60: '140' },
-    { p: '6', v15: '175', v30: '182', v60: '189' },
-    { p: '8', v15: '230', v30: '245', v60: '262' },
-    { p: '10', v15: '320', v30: '355', v60: '400' },
-    { p: '12', v15: '480', v30: '560', v60: '660' },
+    { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' },
+    { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' },
   ]);
 
   const [calculating, setCalculating] = useState(false);

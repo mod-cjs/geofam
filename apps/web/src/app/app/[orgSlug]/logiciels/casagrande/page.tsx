@@ -130,9 +130,9 @@ export default function CasagrandePage() {
   const [da, setDa] = useState<Da>('da2');
   const [sens, setSens] = useState<Sens>('comp');
   const [essais, setEssais] = useState<'oui' | 'non'>('non');
-  const [cG, setCG] = useState('900');
-  const [cQ, setCQ] = useState('300');
-  const [nappe, setNappe] = useState('2');
+  const [cG, setCG] = useState('');
+  const [cQ, setCQ] = useState('');
+  const [nappe, setNappe] = useState('');
   const [nprofil, setNprofil] = useState('1');
   const [surf, setSurf] = useState('0');
   const [redis, setRedis] = useState<'oui' | 'non'>('non');
@@ -144,8 +144,8 @@ export default function CasagrandePage() {
   const [arm, setArm] = useState<'arme' | 'nonarme'>('arme');
   const [k3, setK3] = useState<'1.0' | '1.2'>('1.0');
   const [layers, setLayers] = useState<LayerRow[]>([
-    { soil: 'argile', th: '6', pl: '0.8', em: '8', qc: '', c: '', phi: '', gamma: '' },
-    { soil: 'sable', th: '10', pl: '1.5', em: '15', qc: '', c: '', phi: '', gamma: '' },
+    { soil: 'argile', th: '', pl: '', em: '', qc: '', c: '', phi: '', gamma: '' },
+    { soil: 'sable', th: '', pl: '', em: '', qc: '', c: '', phi: '', gamma: '' },
   ]);
 
   const [calculating, setCalculating] = useState(false);

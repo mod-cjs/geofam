@@ -146,11 +146,11 @@ export default function GeoplaquePage() {
 
   const [pts, setPts] = useState<Pt[]>([{ x: '0', y: '0' }, { x: '6', y: '0' }, { x: '6', y: '6' }, { x: '0', y: '6' }]);
   const [E, setE] = useState('30000'); const [nu, setNu] = useState('0.2'); const [e, setEp] = useState('0.4');
-  const [layers, setLayers] = useState<Layer[]>([{ zBase: '10', E: '8', nu: '0.33' }]);
+  const [layers, setLayers] = useState<Layer[]>([{ zBase: '', E: '', nu: '0.33' }]);
   const [mesh, setMesh] = useState('0.5'); const [decol, setDecol] = useState(false); const [qLim, setQLim] = useState('');
   const [pointLoads, setPointLoads] = useState<PLoad[]>([]);
   const [lineLoads, setLineLoads] = useState<LLoad[]>([]);
-  const [areaLoads, setAreaLoads] = useState<ALoad[]>([{ x1: '0', y1: '0', x2: '6', y2: '6', q: '50', on: 'raft' }]);
+  const [areaLoads, setAreaLoads] = useState<ALoad[]>([{ x1: '0', y1: '0', x2: '6', y2: '6', q: '', on: 'raft' }]);
   const [pointSprings, setPointSprings] = useState<PSpring[]>([]);
 
   const [calculating, setCalculating] = useState(false);

@@ -22,6 +22,17 @@ interface PLPoint { t: string; h: string; s: string }
 interface PrPoint { mh: string; t: string; h: string; s: string }
 interface CbPoint { N: string; P: string; rho: string; w: string }
 
+// Lignes de mesure VIDES (formulaires vides par defaut — revue adverse).
+const emptyW = (): WaterS => ({ t: '', h: '', s: '' });
+const emptyLL = (): LLPoint => ({ x: '', t: '', h: '', s: '' });
+const emptyPL = (): PLPoint => ({ t: '', h: '', s: '' });
+const emptyPr = (): PrPoint => ({ mh: '', t: '', h: '', s: '' });
+const emptyCb = (): CbPoint => ({ N: '', P: '', rho: '', w: '' });
+// Toggles de METHODE/equipement uniquement (pas de mesure) — conserves par defaut.
+const EXTRA_TOGGLE_DEFAULTS: Record<string, string> = {
+  laVar: 'std', mdeVar: 'std', mdeMode: 'norme', permMode: 'var', su_type: 'SS', rs_liq: 'water', rsMethod: 'A', cbType: 'cbr',
+};
+
 const SIEVES: Array<{ key: string; label: string }> = [
   { key: 'gr_20', label: '20 mm' }, { key: 'gr_16', label: '16 mm' }, { key: 'gr_10', label: '10 mm' },
   { key: 'gr_8', label: '8 mm' }, { key: 'gr_6_3', label: '6,3 mm' }, { key: 'gr_5', label: '5 mm' },
@@ -121,27 +132,6 @@ const EXTRA_SECTIONS: ExtraSection[] = [
     tables: [{ title: 'ρ_s — pycnomètre (déterminations)', cols: [{ prefix: 'rs2_m0_', l: 'Pycno vide m₀ (g)' }, { prefix: 'rs2_m1_', l: 'Pycno + eau m₁ (g)' }, { prefix: 'rs2_mx_', l: 'Pycno + sol mₓ (g)' }, { prefix: 'rs2_m3_', l: 'Pycno + sol + eau m₃ (g)' }], rows: 2 }] },
 ];
 
-const EXTRA_DEFAULTS: Record<string, string> = {
-  laVar: 'std', mdeVar: 'std', mdeMode: 'norme', permMode: 'var', su_type: 'SS', rs_liq: 'water', rsMethod: 'A',
-  md_M1: '500', md_m1: '60', md_M2: '500', md_m2: '62',
-  rs2_m0_1: '650', rs2_m1_1: '1500', rs2_mx_1: '750', rs2_m3_1: '1560', rs2_m0_2: '650', rs2_m1_2: '1500', rs2_mx_2: '751', rs2_m3_2: '1561',
-  oe_H0: '20.0', oe_D: '70.0', oe_md: '119.3', oe_rs: '2.70',
-  oe_s1: '10', oe_dh1: '0.05', oe_s2: '20', oe_dh2: '0.12', oe_s3: '40', oe_dh3: '0.24', oe_s4: '80', oe_dh4: '0.45', oe_s5: '160', oe_dh5: '0.78', oe_s6: '320', oe_dh6: '1.18', oe_s7: '640', oe_dh7: '1.60', oe_s8: '160', oe_dh8: '1.52', oe_s9: '40', oe_dh9: '1.40',
-  tu_s3_1: '50', tu_df_1: '120', tu_s3_2: '100', tu_df_2: '124', tu_s3_3: '150', tu_df_3: '118',
-  tc_s3_1: '50', tc_s1_1: '180', tc_s3_2: '100', tc_s1_2: '300', tc_s3_3: '200', tc_s1_3: '520',
-  es_h1_1: '120', es_h2_1: '78', es_h1_2: '122', es_h2_2: '80',
-  la_M: '5000', la_m: '4100', la_ti: '12.5', la_pi: '65',
-  sz_M: '2000', sz_8: '100', sz_5: '200', sz_2: '400', sz_0_63: '600', sz_0_2: '700',
-  su_M: '10', su_ba: '0.5', su_f: '0.343',
-  pe_a: '1.0', pe_Av: '20', pe_Lv: '10', pe_h1: '100', pe_h2: '40', pe_tv: '120',
-  uc_d: '50', uc_h: '100', uc_f: '0.18', uc_dl: '1.5',
-  rs_T: '20', d_L: '50', d_W: '50', d_H: '50', d_m: '240', d_w: '12',
-  // CBR complet (méthode moules + courbe pénétration + gonflement)
-  cbType: 'cbr', cb_cible: '95', cb_s25: '13.35', cb_s5: '20', cb_K: '1',
-  cb_tot0: '11500', cb_moule0: '7500', cb_vol0: '2305', cb_w0: '16', cb_tot1: '11300', cb_moule1: '7500', cb_vol1: '2305', cb_w1: '16', cb_tot2: '11000', cb_moule2: '7500', cb_vol2: '2305', cb_w2: '16',
-  cb_pen_0_6: '12', cb_pen_0_9: '18', cb_pen_1_6: '9', cb_pen_1_9: '14', cb_pen_2_6: '6', cb_pen_2_9: '9',
-  cb_H00: '127', cb_gonf0: '0.8', cb_H01: '127', cb_gonf1: '1.0',
-};
 
 /** Rendu générique d'une section d'essai additionnelle (data-driven). */
 function ExtraView({ s, extra, setExtra }: { s: ExtraSection; extra: Record<string, string>; setExtra: (u: (p: Record<string, string>) => Record<string, string>) => void }) {
@@ -200,33 +190,25 @@ export default function FastlabPage() {
   const [projectId, setProjectId] = useState('');
   const [, setEnt] = useState<EntitlementsResponse | null>(null);
 
-  const [ident, setIdent] = useState<Record<string, string>>({ ref: 'SC2 — 1,20 m', nature: 'Limon argileux brun' });
-  const [water, setWater] = useState<WaterS[]>([
-    { t: '20.00', h: '138.00', s: '120.00' }, { t: '21.50', h: '149.50', s: '130.00' }, { t: '19.80', h: '126.60', s: '110.30' },
-  ]);
-  const [gr_M, setGrM] = useState('1000');
-  const [sieves, setSieves] = useState<Record<string, string>>({ gr_20: '5', gr_16: '15', gr_10: '30', gr_8: '25', gr_6_3: '30', gr_5: '35', gr_4: '40', gr_2: '90', gr_1: '80', gr_0_5: '60', gr_0_2: '40', gr_0_08: '30' });
-  const [ll, setLl] = useState<LLPoint[]>([
-    { x: '15', t: '15.00', h: '29.05', s: '25.00' }, { x: '22', t: '15.00', h: '28.88', s: '25.00' },
-    { x: '28', t: '15.00', h: '28.70', s: '25.00' }, { x: '34', t: '15.00', h: '28.55', s: '25.00' },
-  ]);
-  const [pl, setPl] = useState<PLPoint[]>([{ t: '10.00', h: '16.00', s: '15.00' }, { t: '10.00', h: '16.05', s: '15.04' }]);
-  const [vbs, setVbs] = useState<Record<string, string>>({ conc: '10', prise1: '30', frac1: '100', w1: '4.0', V1: '101', prise2: '30', frac2: '100', w2: '4.0', V2: '101' });
+  // FORMULAIRES VIDES par defaut (revue adverse) : aucune mesure d'exemple pre-remplie
+  // -> pas de PV scelle sur des donnees fictives. On conserve uniquement l'equipement et
+  // les toggles de methode (moule, type d'essai, variantes) via EXTRA_DEFAULTS/consts.
+  const [ident, setIdent] = useState<Record<string, string>>({});
+  const [water, setWater] = useState<WaterS[]>([emptyW(), emptyW(), emptyW()]);
+  const [gr_M, setGrM] = useState('');
+  const [sieves, setSieves] = useState<Record<string, string>>({});
+  const [ll, setLl] = useState<LLPoint[]>([emptyLL(), emptyLL(), emptyLL(), emptyLL()]);
+  const [pl, setPl] = useState<PLPoint[]>([emptyPL(), emptyPL()]);
+  const [vbs, setVbs] = useState<Record<string, string>>({});
   const [prMould, setPrMould] = useState('A');
   const [prType, setPrType] = useState('n');
-  const [prPoints, setPrPoints] = useState<PrPoint[]>([
-    { mh: '1836.6', t: '18.0', h: '74.0', s: '68.0' }, { mh: '1944.8', t: '18.0', h: '75.0', s: '68.0' },
-    { mh: '2022.6', t: '18.0', h: '76.0', s: '68.0' }, { mh: '2024.1', t: '18.0', h: '77.0', s: '68.0' }, { mh: '1990.6', t: '18.0', h: '78.0', s: '68.0' },
-  ]);
+  const [prPoints, setPrPoints] = useState<PrPoint[]>([emptyPr(), emptyPr(), emptyPr(), emptyPr(), emptyPr()]);
   const [cbMethod, setCbMethod] = useState('box');
   const [cbShape, setCbShape] = useState('sq');
-  const [cbDim, setCbDim] = useState('60');
-  const [cbRs, setCbRs] = useState('2.65');
-  const [cbPoints, setCbPoints] = useState<CbPoint[]>([
-    { N: '0.36', P: '0.197', rho: '1950', w: '18.5' }, { N: '0.72', P: '0.365', rho: '1965', w: '18.0' },
-    { N: '1.08', P: '0.533', rho: '1940', w: '18.8' }, { N: '1.44', P: '0.700', rho: '1970', w: '17.6' },
-  ]);
-  const [extra, setExtra] = useState<Record<string, string>>(EXTRA_DEFAULTS);
+  const [cbDim, setCbDim] = useState('');
+  const [cbRs, setCbRs] = useState('');
+  const [cbPoints, setCbPoints] = useState<CbPoint[]>([emptyCb(), emptyCb(), emptyCb(), emptyCb()]);
+  const [extra, setExtra] = useState<Record<string, string>>({ ...EXTRA_TOGGLE_DEFAULTS });
 
   const [calculating, setCalculating] = useState(false);
   const [calcResult, setCalcResult] = useState<CalcResult | null>(null);

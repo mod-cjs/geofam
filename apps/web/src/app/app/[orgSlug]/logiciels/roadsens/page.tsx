@@ -758,7 +758,9 @@ const DEFAULT_LAYERS: Layer[] = [
   { id: 3, mat: 'GL1', h: 0.25, E: 200, nu: 0.35 },
 ];
 const DEFAULT_PF: PF = { cls: 'PF2', E: 50, nu: 0.35 };
-const DEFAULT_TRAFFIC: Traffic = { T: 150, C: 0.9, N: 20, tau: 4.0, dir: 1.0, tv: 1.0 };
+// Trafic a 0 par defaut (revue adverse) : force la saisie du trafic projet avant tout
+// resultat/PV. La structure (DEFAULT_LAYERS) reste un gabarit de conception a modifier.
+const DEFAULT_TRAFFIC: Traffic = { T: 0, C: 0.9, N: 20, tau: 4.0, dir: 1.0, tv: 1.0 };
 const DEFAULT_LOAD: Load = {
   p: 0.662,
   a: 0.125,
