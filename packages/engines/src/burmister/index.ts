@@ -91,52 +91,36 @@ function fin(x: unknown): x is number {
  * intermediaire calcule : on ne le vise pas (pas d'etiquette confidentielle a sa
  * gauche).
  */
-const CONFIDENTIAL_WARNING_LABELS: readonly RegExp[] = [
-  // Contraintes brutes du tenseur (formes HTML balisees et brutes).
-  /σ_?z/g,
-  /σ_?r/g,
-  /σ_?θ/g,
-  /σ<sub>[zrθ]<\/sub>/g,
-  // Coefficients de calage de fatigue.
-  /\bkr\b/g,
-  /\bks\b/g,
-  /\bkc\b/g,
-  /kθ/g,
-  /\bkth\b/g,
-  /\bSh\b/g,
-  /ε₆/g,
-  /σ₆/g,
-  // Deformations sollicitantes intermediaires par position (et0/etM) — DISTINCTES
-  // des ε_t/ε_z FINALS exposes : on masque la valeur si elle est interpolee dans
-  // un texte. On vise les formes HTML (ε_t(r=0)) et brutes (et0/etM).
-  /ε_?t\s*\(\s*r\s*=\s*0\s*\)/g,
-  /ε_?t\s*\(\s*r\s*=\s*d\/2\s*\)/g,
-  /\bet0\b/g,
-  /\betM\b/g,
-  // Module pondere du paquet lie E₁ (E1) — intermediaire de structure, distinct
-  // des epaisseurs/classes affichables.
-  /E₁/g,
-  /\bE1\b/g,
-];
+// ALLOWLIST fail-closed (revue adverse — parite radier #54 / pieux #48). On masque
+// TOUTE valeur `<token> = <nombre> [unite]` SAUF si `<token>` est BENIN. Remplace la
+// BLACKLIST (fail-open) : une etiquette confidentielle NON prevue (contrainte σ_z/σ_r/σ_θ,
+// coefficients de calage kr/ks/kc/kθ/Sh/ε₆, intermediaires et0/etM/E1, discriminant Kmix
+// = K...) est masquee par DEFAUT, sans avoir a l'enumerer. Benins = geometrie/exposes
+// susceptibles d'apparaitre en `= <nombre>` (epaisseurs, NE). Kmix (K) n'y est PAS.
+const BENIGN_VALUE_LABELS: ReadonlySet<string> = new Set<string>([
+  'ne', 'he', 'epaisseurliee', 'epaisseurtotale', 'nrafts',
+]);
+
+/** Normalise une etiquette : minuscule + non-alphanumeriques retires (fail-closed). */
+function normalizeLabel(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
 
 /**
- * Redacte la VALEUR confidentielle accolee a une etiquette confidentielle dans
- * un texte. Remplace `<label> = <nombre> [unite]` par `<label> (valeur
- * confidentielle masquee)`. Fail-closed. Ne touche QUE la valeur LIEE a
- * l'etiquette : les autres nombres (epaisseurs en cm/m, classes, NE) sont
- * preserves.
+ * Redacte la VALEUR `<token> = <nombre> [unite]` d'un texte, sauf token BENIN. Les prose
+ * (epaisseurs en m, classes) sans motif `= <nombre>` sont preservees. TOKEN = tout
+ * symbole non espace / non `=` (couvre σ/ε/K et formes non-ASCII).
  */
 export function redactConfidentialWarning(text: string): string {
-  let out = text;
-  for (const label of CONFIDENTIAL_WARNING_LABELS) {
-    const src = label.source;
-    const valued = new RegExp(
-      `(${src})\\s*=\\s*-?[0-9][0-9.,\\u202f\\s]*(?:MPa|kPa|μdef|µdef|cm|m)?`,
-      'g',
-    );
-    out = out.replace(valued, '$1 (valeur confidentielle masquee)');
-  }
-  return out;
+  const valued = new RegExp(
+    '([^\\s=]+)\\s*=\\s*(-?[0-9][0-9.,e \\u202f\\s+-]*(?:MPa|kPa|\\u03bcdef|\\u00b5def|kN|mm|cm|m|%)?)',
+    'g',
+  );
+  return text.replace(valued, (whole, token: string) => {
+    const norm = normalizeLabel(token);
+    if (norm !== '' && BENIGN_VALUE_LABELS.has(norm)) return whole;
+    return `${token} (valeur confidentielle masquee)`;
+  });
 }
 
 /** Applique la redaction a TOUS les messages (canal erreur — defense en profondeur). */

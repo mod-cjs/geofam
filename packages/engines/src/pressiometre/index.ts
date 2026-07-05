@@ -99,45 +99,22 @@ function fin(x: unknown): x is number {
  * deja echappes (`0\\.5`, `×` n'est pas un metacaractere). `\b` ne borne PAS sur
  * `_` ni `×` : on n'utilise donc PAS `\b` pour `_dV`/`a×Pmax` (cf. piege challenger).
  */
-const CONFIDENTIAL_WARNING_LABELS: readonly RegExp[] = [
-  // Decomposition de la contrainte au repos (formes HTML balisees et brutes).
-  /σ_?h0/g,
-  /σ_?v0/g,
-  /σ'_?v0/g,
-  /σ<sub>h0<\/sub>/g,
-  /σ<sub>v0<\/sub>/g,
-  /\bsigH0\b/g,
-  /\bsigV0\b/g,
-  /\bu0\b/g,
-  // Pressions/volumes de calage bruts de la plage pseudo-elastique.
-  /\bpE\b/g,
-  /\bp0\b/g,
-  /\bPf\b/g,
-  /\bVE\b/g,
-  /\bV0c\b/g,
-  /\bVf\b/g,
-  /\bpS\b/g,
-  // Analyse de pente de la plage pseudo-elastique (§D.5.1).
-  /\bmE\b/g,
-  /\bbeta\b/g,
-  /β/g,
-  // --- ETIQUETTES REELLEMENT EMISES par les 2 console.warn du moteur (MINEUR-4/1) ---
-  // Warn « a trop grand » : `a=<n> trop grand (a×Pmax=<n> > 0.5×V60_moy=<n>) ...`
-  // (le piege \b : `\ba\b` matche le `a=` initial ; `a×Pmax`/`V60_moy` ne sont pas
-  //  bornables par \b a droite — on les cible litteralement.)
-  /\ba\b/g,
-  /a×Pmax/g,
-  /\bPmax\b/g,
-  /0\.5×V60_moy/g,
-  /\bV60_moy\b/g,
-  // Warn « EM=0 » : `calcDepth: _dV=<n> _dP=<n> ... Vérifiez p0I=<n> pfI=<n>`
-  // (indices internes de seuils — `\bp0\b`/`\bpfI?\b` NE matchent PAS `p0I`/`pfI` :
-  //  on cible les formes EXACTES emises.)
-  /_dV/g,
-  /_dP/g,
-  /\bp0I\b/g,
-  /\bpfI\b/g,
-];
+// ALLOWLIST fail-closed (revue adverse — parite radier #54 / pieux #48). On masque
+// TOUTE valeur `<token> = <nombre> [unite]` SAUF si `<token>` est BENIN. Remplace la
+// BLACKLIST (fail-open) : une etiquette confidentielle NON prevue (contrainte au repos,
+// calage pseudo-elastique, pente, intermediaires _dV/_dP, seuils p0I/pfI...) est
+// desormais masquee par DEFAUT, plus besoin de les enumerer. Benins = uniquement les
+// RESULTATS DEJA EXPOSES (sortie whitelistee) susceptibles d'apparaitre en `= <nombre>`
+// dans un warning : pL/pL*/pf*/EM/ratio. Distinguables apres normalisation : 'pl'
+// (expose) vs 'pe'/'p0'/'pf' (calage) ; 'em' (expose) vs 'me' (pente).
+const BENIGN_VALUE_LABELS: ReadonlySet<string> = new Set<string>([
+  'pl', 'plnette', 'pfnette', 'em', 'ratioempl',
+]);
+
+/** Normalise une etiquette : minuscule + non-alphanumeriques retires (fail-closed). */
+function normalizeLabel(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
 
 /**
  * Redacte la VALEUR confidentielle accolee a une etiquette confidentielle dans
@@ -147,16 +124,17 @@ const CONFIDENTIAL_WARNING_LABELS: readonly RegExp[] = [
  * preserves.
  */
 export function redactConfidentialWarning(text: string): string {
-  let out = text;
-  for (const label of CONFIDENTIAL_WARNING_LABELS) {
-    const src = label.source;
-    const valued = new RegExp(
-      `(${src})\\s*=\\s*-?[0-9][0-9.,\\u202f\\s]*(?:MPa|kPa|bar|cm³|cm3|cm|m)?`,
-      'g',
-    );
-    out = out.replace(valued, '$1 (valeur confidentielle masquee)');
-  }
-  return out;
+  // TOKEN = tout symbole NON espace / NON `=` (couvre lettres grecques β/σ, indices,
+  // `_dV`, `a×Pmax`... — sinon une etiquette non-ASCII echapperait au masque).
+  const valued = new RegExp(
+    '([^\\s=]+)\\s*=\\s*(-?[0-9][0-9.,e \\u202f\\s+-]*(?:MPa|kPa|bar|cm\\u00b3|cm3|cm|mm|m|%)?)',
+    'g',
+  );
+  return text.replace(valued, (whole, token: string) => {
+    const norm = normalizeLabel(token);
+    if (norm !== '' && BENIGN_VALUE_LABELS.has(norm)) return whole;
+    return `${token} (valeur confidentielle masquee)`;
+  });
 }
 
 /** Applique la redaction a TOUS les warnings (point de passage oblige). */

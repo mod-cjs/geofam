@@ -76,38 +76,37 @@ function fin(x: unknown): x is number {
  * formule autrement. Le SEUIL (« < 1,5 MPa ») n'est PAS un intermediaire calcule
  * (c'est une constante normative) : on le conserve.
  */
-const CONFIDENTIAL_WARNING_LABELS: readonly RegExp[] = [
-  // p_le* (pression limite equivalente) — formes HTML et brute.
-  /p<sub>le<\/sub>\*/g,
-  /\bple\*?/g,
-  // q_ce (resistance de pointe equivalente) — formes HTML et brute.
-  /q<sub>ce<\/sub>/g,
-  /\bqce\b/g,
-];
-
 /**
- * Redacte la VALEUR confidentielle accolee a une etiquette confidentielle dans
- * un warning. On remplace `<label> = <nombre> [MPa]` par `<label> (valeur
- * confidentielle masquee)`. Fail-closed : si le format venait a changer, on
- * masque malgre tout toute occurrence `<label> = <nombre>`.
- *
- * On ne redacte QUE la valeur LIEE a l'etiquette : les autres nombres du warning
- * (profondeurs de sondage en m, dimensions geometriques — qui NE sont PAS des
- * intermediaires confidentiels) sont preserves.
+ * ALLOWLIST fail-closed (revue adverse — parite radier #54 / pieux #48). On masque
+ * TOUTE valeur `<token> = <nombre> [unite]` SAUF si `<token>` (dernier symbole avant
+ * le `=`) est dans une allowlist BENIGNE explicite. Inconnu => masque. Remplace la
+ * BLACKLIST fail-open qui ne couvrait que ple* / qce : une etiquette confidentielle non
+ * prevue (ex. discriminant de famille) fuitait. Seuls les libelles GEOMETRIE (deja
+ * exposes / entrees utilisateur) gardent leur valeur ; les prose (« NF P94-261 »,
+ * « Sondage limite a X m ») n'ont pas de motif `= <nombre>` et sont preserves.
  */
+const BENIGN_VALUE_LABELS: ReadonlySet<string> = new Set([
+  'b', 'l', 'd', 'lb', // semelle : largeur B, longueur L, encastrement D, ratio L/B
+]);
+
+/** Normalise une etiquette : minuscule + non-alphanumeriques retires. Les labels
+ * BENINS (geometrie B/L/D) sont ASCII ; toute etiquette confidentielle (ple/qce/formes
+ * HTML/discriminant) normalise vers autre chose que benin => masquee (fail-closed). */
+function normalizeLabel(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 export function redactConfidentialWarning(text: string): string {
-  let out = text;
-  for (const label of CONFIDENTIAL_WARNING_LABELS) {
-    // `<label>` suivi (apres espaces/=) d'un nombre FR optionnellement suivi de l'unite.
-    // Ex : « q<sub>ce</sub> = 1,23 MPa », « ple* = 0,15 MPa ».
-    const src = label.source;
-    const valued = new RegExp(
-      `(${src})\\s*=\\s*-?[0-9][0-9.,\\u202f\\s]*(?:MPa|kPa|kN|°)?`,
-      'g',
-    );
-    out = out.replace(valued, '$1 (valeur confidentielle masquee)');
-  }
-  return out;
+  // TOKEN = tout symbole NON espace / NON `=` (couvre etiquettes non-ASCII).
+  const valued = new RegExp(
+    '([^\\s=]+)\\s*=\\s*(-?[0-9][0-9.,e \\u202f\\s+-]*(?:MPa|kPa|kN|MN|mm|cm|m|%|\\u00b0)?)',
+    'g',
+  );
+  return text.replace(valued, (whole, token: string) => {
+    const norm = normalizeLabel(token);
+    if (norm !== '' && BENIGN_VALUE_LABELS.has(norm)) return whole;
+    return `${token} (valeur confidentielle masquee)`;
+  });
 }
 
 /**
