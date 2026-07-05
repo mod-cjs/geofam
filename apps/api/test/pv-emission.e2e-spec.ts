@@ -445,6 +445,44 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
     expect(Number((count.rows[0] as { n: number }).n)).toBe(1);
   });
 
+  // --- 4ter) INTEGRITE A L'EMISSION : re-execution du moteur (revue de verification) ---
+  // calc_results est MUTABLE (roadsen_app a UPDATE). emitFromCalc RE-EXECUTE le moteur sur
+  // l'input stocke et REFUSE de sceller si la sortie recomputee differe de la sortie stockee.
+  // Sentinelle DoD §9 : sans elle, supprimer la comparaison canonicalize resterait vert.
+
+  it('4ter) INTEGRITE : output de calc_results ALTERE en base -> emission refusee (409)', async () => {
+    if (!ready()) return;
+    const token = await login(emailEng());
+    const c = await calc(token, orgA, projectA, 'burmister', burmisterInput);
+    expect(c.status).toBe(201);
+    const calcId = String((c.body as { calcResultId: string }).calcResultId);
+    // ALTERATION directe (superuser : bypasse RLS, simule un abus du privilege UPDATE de
+    // roadsen_app) — on trafique la sortie SANS re-executer le moteur.
+    await admin!.query(
+      `UPDATE calc_results SET output = jsonb_set(output, '{NE}', '999999999'::jsonb) WHERE id = $1`,
+      [calcId],
+    );
+    const e = await emit(token, orgA, projectA, calcId);
+    // La re-execution serveur recompute la vraie sortie != stockee -> refus fail-closed.
+    expect(e.status).toBe(409);
+    // Aucun PV scelle sur la sortie falsifiee.
+    const count = await admin!.query(
+      `SELECT count(*)::int AS n FROM official_pvs WHERE calc_result_id = $1`,
+      [calcId],
+    );
+    expect(Number((count.rows[0] as { n: number }).n)).toBe(0);
+  });
+
+  it('4quater) INTEGRITE : un calcul LEGITIME (non altere) s emet normalement (pas de faux positif)', async () => {
+    if (!ready()) return;
+    const token = await login(emailEng());
+    const c = await calc(token, orgA, projectA, 'burmister', burmisterInput);
+    const calcId = String((c.body as { calcResultId: string }).calcResultId);
+    const e = await emit(token, orgA, projectA, calcId);
+    // Re-execution reproduit la sortie a l'identique (round-trip JSONB) -> scelle (201).
+    expect(e.status).toBe(201);
+  });
+
   // --- 5) IMMUABILITE -------------------------------------------------------
 
   it('5) IMMUABILITE : UPDATE direct d un official_pv -> refuse (trigger)', async () => {
