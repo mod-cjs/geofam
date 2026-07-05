@@ -7,15 +7,34 @@ import {
   Param,
   Patch,
   Post,
+  Query,
+  Req,
+  UnauthorizedException,
 } from '@nestjs/common';
+import type { PlatformRole } from '@prisma/client';
 
 import { AuthService } from '../auth/auth.service';
 import { NoTenant, Roles } from '../auth/decorators';
 import type { CreateOrgDto, CreateUserDto } from '../auth/dto';
 import { createOrgSchema, createUserSchema } from '../auth/dto';
+import type { AuthedRequest } from '../auth/request-context';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
+import type { ListOrgsQuery, SearchUsersQuery } from './admin.dto';
+import {
+  listOrgsQuerySchema,
+  orgIdParam,
+  searchUsersQuerySchema,
+} from './admin.dto';
+import type {
+  AdminOrgDetail,
+  AdminOrgListItem,
+  OrgUsage,
+} from './admin-orgs.service';
+import { AdminOrgsService } from './admin-orgs.service';
+import type { AdminUserView } from './admin-users.service';
+import { AdminUsersService } from './admin-users.service';
 import type { AddMemberDto, SetMemberActiveDto } from './members.dto';
 import {
   addMemberSchema,
@@ -55,7 +74,74 @@ export class AdminController {
     private readonly auth: AuthService,
     private readonly subscriptions: SubscriptionsService,
     private readonly members: MembersService,
+    private readonly orgs: AdminOrgsService,
+    private readonly users: AdminUsersService,
   ) {}
+
+  /**
+   * GET /admin/me — role PLATEFORME de l'appelant, pour la garde du shell /admin
+   * cote front (Server Component). @Roles(SUPERADMIN) herite de la classe : un
+   * non-SUPERADMIN recoit 403 (le front le traite en redirect/404 anti-enum). Le
+   * corps { platformRole } confirme le role a un appelant autorise. L'identite
+   * vient du SUB du JWT verifie (req.auth.userId) — jamais d'une valeur cliente.
+   */
+  @Get('me')
+  async me(
+    @Req() req: AuthedRequest,
+  ): Promise<{ platformRole: PlatformRole | null }> {
+    const userId = req.auth?.userId;
+    if (!userId) {
+      throw new UnauthorizedException('Non authentifie');
+    }
+    const platformRole = await this.auth.platformRole(userId);
+    return { platformRole };
+  }
+
+  /**
+   * GET /admin/orgs?q=&limit=&offset= — inventaire pagine des organisations
+   * (identite + nb membres + resume d'abonnement). Lecture cross-tenant :
+   * admin_list_orgs (DEFINER) pour l'identite, withTenant pour l'abo (cf. service).
+   */
+  @Get('orgs')
+  async listOrgs(
+    @Query(new ZodValidationPipe(listOrgsQuerySchema)) query: ListOrgsQuery,
+  ): Promise<AdminOrgListItem[]> {
+    return this.orgs.listOrgs(query);
+  }
+
+  /**
+   * GET /admin/orgs/:orgId — detail COMPOSITE d'une org (identite + membres +
+   * abonnement + usage du mois). Un orgId inconnu -> 404.
+   */
+  @Get('orgs/:orgId')
+  async getOrg(
+    @Param('orgId', new ZodValidationPipe(orgIdParam)) orgId: string,
+  ): Promise<AdminOrgDetail> {
+    return this.orgs.getOrgDetail(orgId);
+  }
+
+  /**
+   * GET /admin/orgs/:orgId/usage — agregat d'usage du mois courant (consommation/
+   * quota, ventilation CALC/PV, par membre). Donnee tenant, lue via withTenant.
+   */
+  @Get('orgs/:orgId/usage')
+  async getOrgUsage(
+    @Param('orgId', new ZodValidationPipe(orgIdParam)) orgId: string,
+  ): Promise<OrgUsage> {
+    return this.orgs.getUsage(orgId);
+  }
+
+  /**
+   * GET /admin/users?q=&limit= — recherche d'utilisateurs par email/nom (identite,
+   * admin_search_users DEFINER). Clot le workflow « ajouter un membre a une org ».
+   */
+  @Get('users')
+  async searchUsers(
+    @Query(new ZodValidationPipe(searchUsersQuerySchema))
+    query: SearchUsersQuery,
+  ): Promise<AdminUserView[]> {
+    return this.users.searchUsers(query);
+  }
 
   /**
    * Cree un utilisateur. Renvoie 201 + l'id cree. Le mot de passe initial est

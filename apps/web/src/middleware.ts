@@ -45,6 +45,9 @@ const MOCK_ORGS: Record<string, string> = {
 };
 
 const PROTECTED_PREFIX = '/app/';
+/** Préfixe du back-office SUPERADMIN. Protection 1er rideau (présence du token).
+ *  La décision de privilège (SUPERADMIN) reste dans AdminLayout (Server Component). */
+const ADMIN_PREFIX = '/admin';
 const AUTH_ROUTES = ['/login'];
 
 // ---------------------------------------------------------------------------
@@ -105,6 +108,21 @@ async function realModeMiddleware(request: NextRequest): Promise<NextResponse> {
         );
       }
     }
+    return NextResponse.next();
+  }
+
+  // ---- Routes back-office /admin/** — 1er rideau : présence du token ----
+  // La décision de privilège (SUPERADMIN vs non-SUPERADMIN) est dans AdminLayout
+  // (Server Component) qui appelle GET /admin/me côté serveur. Ici on assure
+  // simplement qu'un utilisateur non authentifié est renvoyé vers /login.
+  if (pathname.startsWith(ADMIN_PREFIX + '/') || pathname === ADMIN_PREFIX) {
+    if (!rawToken) {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('returnTo', pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+    // Token présent : laisser passer — AdminLayout vérifie le rôle côté serveur.
+    // Pas d'injection de X-Org-Id (le SUPERADMIN n'a pas d'org).
     return NextResponse.next();
   }
 
@@ -179,6 +197,19 @@ function mockModeMiddleware(request: NextRequest): NextResponse {
     if (authCookie?.value) {
       return NextResponse.redirect(new URL('/app/be-routes-dakar/projets', request.url));
     }
+    return NextResponse.next();
+  }
+
+  // Routes back-office /admin/** (mode mock) — 1er rideau token
+  if (pathname.startsWith(ADMIN_PREFIX + '/') || pathname === ADMIN_PREFIX) {
+    const authCookie = request.cookies.get('roadsen_mock_auth');
+    if (!authCookie?.value) {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('returnTo', pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+    // En mode mock, AdminLayout appelle GET /admin/me (backend absent) → null →
+    // il redirige vers /login. Le back-office n'est accessible qu'en mode réel.
     return NextResponse.next();
   }
 
