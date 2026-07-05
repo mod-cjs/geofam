@@ -81,5 +81,13 @@ export function findEngineDispatch(
     : undefined;
 }
 
+/** registryId (= meta.engineId persiste) -> entree de dispatch. Pour re-executer le
+ * moteur a l'emission d'un PV (l'integrite : le calc_result est mutable). */
+export function findEngineDispatchByRegistryId(
+  registryId: string,
+): EngineDispatchEntry | undefined {
+  return Object.values(ENGINE_DISPATCH).find((e) => e.registryId === registryId);
+}
+
 /** Liste des slugs supportes (pour message d'erreur borne). */
 export const SUPPORTED_ENGINE_SLUGS = Object.keys(ENGINE_DISPATCH);

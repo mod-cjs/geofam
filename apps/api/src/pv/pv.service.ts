@@ -8,6 +8,7 @@ import type { OfficialPv } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import {
   canonicalize,
+  projectEngineOutput,
   sealContentHash,
   sealHmac,
   verifySeal,
@@ -18,6 +19,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { requireOrgId } from '../tenant/tenant-context';
 
+import { findEngineDispatchByRegistryId } from './engine-dispatch';
 import { renderPvPdf } from './pdf/pv-pdf';
 import { resolveVerdict } from './verdict';
 
@@ -160,6 +162,34 @@ export class PvService {
       `;
         const seq = Number(seqRows[0]?.allocate_pv_number ?? 0);
         const pvNumber = formatPvNumber(org.slug, year, seq);
+
+        // INTEGRITE (revue adverse) : calc_results est MUTABLE (roadsen_app a UPDATE).
+        // On RE-EXECUTE le moteur sur l'input stocke et on REFUSE de sceller si la sortie
+        // recomputee differe de la sortie stockee -> le PV scelle correspond TOUJOURS a ce
+        // que le moteur produit REELLEMENT (pas une sortie alteree en base entre calcul et
+        // emission). Fail-closed : moteur indisponible / non reproductible / divergent
+        // (ex. version moteur changee depuis le calcul) -> emission REFUSEE.
+        const dispatch = findEngineDispatchByRegistryId(calc.engineId);
+        if (!dispatch) {
+          throw new ServiceUnavailableException(
+            `Moteur « ${calc.engineId} » indisponible pour re-verification a l'emission du PV.`,
+          );
+        }
+        const recomputed = dispatch.run(calc.input);
+        if (!recomputed.ok) {
+          throw new ConflictException(
+            'Le calcul ne peut plus etre reproduit par le moteur : emission du PV refusee (integrite).',
+          );
+        }
+        const recomputedOutput = projectEngineOutput(
+          dispatch.contract.outputSchema,
+          recomputed.output,
+        );
+        if (canonicalize(recomputedOutput) !== canonicalize(calc.output)) {
+          throw new ConflictException(
+            'La sortie stockee ne correspond pas au recalcul serveur (alteration ou version moteur differente) : emission du PV refusee.',
+          );
+        }
 
         // VERDICT (ADR 0012) — resolu depuis l'engineId scelle (registryId) et la
         // sortie persistee. FAIL-CLOSED : resolveVerdict LEVE si un moteur a
