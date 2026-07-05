@@ -187,9 +187,9 @@ const LoadSchema = z
     d: z.number().finite().min(0).max(2),
     /** Risque effectif : 'auto' (Tab. 70) ou % impose (borne 0,001-50 %). */
     r: AutoOrRisk.optional(),
-    /** Sh (cm) : 'auto' (Tab. VI.2.4) ou impose (borne 0-20 cm). */
+    /** Sh (cm) : 'auto' (Tab. VI.2.4) ou impose (borne 0,5-20 cm). */
     sh: AutoOrSh.optional(),
-    /** ks : 'auto' (couche sous-jacente) ou impose (borne 0,1-2). */
+    /** ks : 'auto' (couche sous-jacente) ou impose (borne 0,1-1 ; facteur de reduction <=1). */
     ks: AutoOrKs.optional(),
   })
   .strict();

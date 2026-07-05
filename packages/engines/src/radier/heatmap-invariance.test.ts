@@ -53,7 +53,7 @@ describe('radier heatmap — invariance du bord au maillage (§8 anti-inference)
     const span = Math.max(...fin.vals.filter((v): v is number => v !== null).map(Math.abs), 1e-9);
     for (let i = 0; i < fin.vals.length; i++) {
       const a = fin.vals[i], b = gros.vals[i];
-      if (a === null || b === null) continue;
+      if (a === null || a === undefined || b === null || b === undefined) continue;
       maxRel = Math.max(maxRel, Math.abs(a - b) / span);
       n++;
     }

@@ -59,3 +59,18 @@ describe('RaftSchema — rejet des polygones degeneres (faille bowtie)', () => {
     expect(RadierInputSchema.safeParse(withPts(BOWTIE_ASYM)).success).toBe(false);
   });
 });
+
+describe('RadierInputSchema — rejet des modeles SANS charge (faux resultat zero)', () => {
+  const base = withPts(CARRE);
+  it('accepte un modele avec une charge repartie non nulle', () => {
+    expect(RadierInputSchema.safeParse(base).success).toBe(true);
+  });
+  it('REJETTE un modele dont toutes les charges sont nulles (resultat de zeros scellable)', () => {
+    const zero = { ...base, areaLoads: [{ x1: 0, y1: 0, x2: 6, y2: 6, q: 0, on: 'raft' }] };
+    expect(RadierInputSchema.safeParse(zero).success).toBe(false);
+  });
+  it('REJETTE un modele SANS aucune charge', () => {
+    const sansCharge = { ...base, areaLoads: [] };
+    expect(RadierInputSchema.safeParse(sansCharge).success).toBe(false);
+  });
+});

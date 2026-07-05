@@ -266,7 +266,21 @@ export const RadierInputSchema = z
     layers: z.array(LayerSchema).min(1).max(50),
     opts: OptsSchema,
   })
-  .strict();
+  .strict()
+  // FAIL-CLOSED (passe de verification) : un modele SANS AUCUNE charge non nulle produit un
+  // champ de tassement nul, fini et « valide » -> un resultat de ZEROS scellable en PV sur
+  // un formulaire quasi vide. On exige au moins une charge (ponctuelle Fz/Mx/My, lineique q
+  // ou repartie q) non nulle. Les ressorts sont des APPUIS, pas des charges -> exclus.
+  .refine(
+    (m) =>
+      m.pointLoads.some((l) => l.Fz !== 0 || (l.Mx ?? 0) !== 0 || (l.My ?? 0) !== 0) ||
+      m.lineLoads.some((l) => l.q !== 0) ||
+      m.areaLoads.some((l) => l.q !== 0),
+    {
+      message:
+        'Aucune charge appliquee : le modele doit comporter au moins une charge non nulle (ponctuelle, lineique ou repartie).',
+    },
+  );
 export type RadierInput = z.infer<typeof RadierInputSchema>;
 
 // ---------------------------------------------------------------------------

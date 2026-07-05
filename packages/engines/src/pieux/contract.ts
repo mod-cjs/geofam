@@ -22,8 +22,8 @@
  *   - `o_nprofil`/`o_surf`/`o_redis` : nombre de profils de sol, surface investiguee
  *     (m²), redistribution par structure rigide ('oui'/'non') — facteurs xi ;
  *   - `grp`      : effet de groupe { grp_n, grp_m, grp_s } (files, pieux/file, entraxe) ;
- *   - `coeffs`   : coefficients partiels EDITABLES (NA francaise DA2 + fluage) — memes
- *     defauts que le HTML ; injectes pour fidelite ;
+ *   - `coeffs`   : coefficients partiels AUTORITATIFS SERVEUR (NA francaise DA2 + fluage) —
+ *     valeurs reglementaires imposees ; toute valeur non normative est REJETEE (400) ;
  *   - `layers`   : profil de couches [{ soil, th, pl, em, qc, c, phi, gamma }] ;
  *   - `cpt`      : penetrogramme q_c(z) { step, pts:[{z,qc}] } (methode CPT).
  *
@@ -130,9 +130,10 @@ const GroupSchema = z
   .strict();
 
 /**
- * Coefficients partiels EDITABLES (NA francaise DA2 + fluage 14.2.2). Defauts
- * identiques au HTML (champs `value=` des inputs). On les declare en entree pour
- * rester FIDELE au comportement d'origine ; l'appelant peut conserver les defauts.
+ * Coefficients partiels AUTORITATIFS SERVEUR (NA francaise DA2 + fluage 14.2.2). Valeurs
+ * reglementaires figees (identiques au HTML). Ils pilotent un VERDICT scelle au PV : le
+ * schema REJETTE (400) toute valeur non strictement egale a PIEUX_DEFAULT_COEFFS (refine
+ * ci-dessous) -> aucun coeff favorable falsifie ne peut entrer. NON editables par le client.
  */
 const CoeffsSchema = z
   .object({
@@ -167,9 +168,10 @@ const CoeffsSchema = z
   })
   .strict();
 
-/** Coefficients par DEFAUT (identiques aux `value=` du HTML d'origine). Type via
+/** Coefficients NORMATIFS imposes (identiques aux `value=` du HTML d'origine). Type via
  * `CoeffsSchema` (et non `PieuxInput['coeffs']`) pour eviter une reference de type
- * circulaire : l'InputSchema normalise `coeffs` vers cette constante (.transform). */
+ * circulaire. L'InputSchema REJETTE (via .refine) tout `coeffs` != cette constante — il
+ * ne les normalise PAS silencieusement (pas de .transform : interdit par le contrat). */
 export const PIEUX_DEFAULT_COEFFS: z.infer<typeof CoeffsSchema> = {
   k_gG: 1.35,
   k_gQ: 1.5,
