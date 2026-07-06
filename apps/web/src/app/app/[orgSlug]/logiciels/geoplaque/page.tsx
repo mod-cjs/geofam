@@ -9,7 +9,7 @@
  */
 
 import { useParams } from 'next/navigation';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
@@ -64,63 +64,151 @@ function heatColor(t: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
+// --- DAO : géométrie partagée (contour + charges/appuis), aspect PRÉSERVÉ ------------
+
+interface ModelPt { x: number; y: number }
+interface ModelLoads {
+  points: ModelPt[]; // charges ponctuelles (Fz)
+  springs: ModelPt[]; // ressorts
+  lines: { a: ModelPt; b: ModelPt }[]; // charges linéiques
+  areas: { a: ModelPt; b: ModelPt }[]; // charges réparties (emprise rect.)
+}
+const NO_LOADS: ModelLoads = { points: [], springs: [], lines: [], areas: [] };
+
+/** Ray-casting : le point (px,py) est-il dans le polygone du radier ? (contrôle hors-radier) */
+function pointInPoly(px: number, py: number, poly: ModelPt[]): boolean {
+  if (poly.length < 3) return true; // radier non défini → ne pas fausser l'alerte
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+    if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
 /**
- * Cartographie LISSÉE — rendu 100 % front par interpolation bilinéaire de la grille
- * d'affichage 48×48 (déjà ré-échantillonnée côté serveur, découplée du maillage EF).
- * Le lissage est COSMÉTIQUE : il n'ajoute aucune information et ne révèle rien du
- * maillage (§8) — il améliore seulement la qualité visuelle. On dessine la grille sur
- * un canvas offscreen puis on l'étire avec le lissage bilinéaire natif du navigateur.
+ * Transformation modèle→canvas à ÉCHELLE UNIFORME (letterbox) : le radier n'est JAMAIS
+ * anamorphosé (correction audit DAO — l'ancien rendu étirait x et y indépendamment vers
+ * un gabarit fixe). Le domaine est centré avec un padding ; les proportions réelles sont
+ * conservées quel que soit l'élancement du radier.
  */
-function HeatmapCanvas({ heatmap, raftPts }: { heatmap: HeatmapData; raftPts: { x: number; y: number }[] }) {
+function fitTransform(W: number, H: number, pad: number, x0: number, y0: number, x1: number, y1: number) {
+  const dx = Math.max(x1 - x0, 1e-9), dy = Math.max(y1 - y0, 1e-9);
+  const s = Math.min((W - 2 * pad) / dx, (H - 2 * pad) / dy);
+  const cw = dx * s, ch = dy * s;
+  const ox = (W - cw) / 2, oy = (H - ch) / 2;
+  const tf = (mx: number, my: number): [number, number] => [ox + (mx - x0) * s, H - oy - (my - y0) * s];
+  return { tf, ox, oy, cw, ch, s };
+}
+
+/** Dessine le contour du radier, les sommets numérotés et les charges/appuis (glyphes). */
+function drawOverlay(ctx: CanvasRenderingContext2D, tf: (x: number, y: number) => [number, number], raftPts: ModelPt[], loads: ModelLoads) {
+  // Contour
+  if (raftPts.length >= 3) {
+    ctx.save();
+    ctx.beginPath();
+    raftPts.forEach((p, k) => { const [cx, cy] = tf(p.x, p.y); if (k === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy); });
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(42,35,51,0.9)'; ctx.lineWidth = 1.6; ctx.stroke();
+    // sommets numérotés
+    ctx.fillStyle = ACCENT; ctx.font = '10px sans-serif';
+    raftPts.forEach((p, k) => { const [cx, cy] = tf(p.x, p.y); ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, 2 * Math.PI); ctx.fill(); ctx.fillText(String(k + 1), cx + 4, cy - 4); });
+    ctx.restore();
+  }
+  // Charges réparties (emprise) puis linéiques
+  ctx.save();
+  ctx.strokeStyle = 'rgba(90,62,124,0.55)'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.2;
+  loads.areas.forEach(({ a, b }) => { const [ax, ay] = tf(a.x, a.y); const [bx, by] = tf(b.x, b.y); ctx.strokeRect(Math.min(ax, bx), Math.min(ay, by), Math.abs(bx - ax), Math.abs(by - ay)); });
+  ctx.restore();
+  ctx.save();
+  ctx.strokeStyle = 'rgba(192,57,43,0.8)'; ctx.lineWidth = 2;
+  loads.lines.forEach(({ a, b }) => { const [ax, ay] = tf(a.x, a.y); const [bx, by] = tf(b.x, b.y); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); });
+  ctx.restore();
+  // Ressorts (carrés verts)
+  ctx.save();
+  ctx.fillStyle = 'rgba(40,160,110,0.9)';
+  loads.springs.forEach((p) => { const [cx, cy] = tf(p.x, p.y); ctx.fillRect(cx - 3, cy - 3, 6, 6); });
+  ctx.restore();
+  // Charges ponctuelles (cercle plein ; ROUGE + croix si HORS radier)
+  loads.points.forEach((p) => {
+    const [cx, cy] = tf(p.x, p.y);
+    const outside = !pointInPoly(p.x, p.y, raftPts);
+    ctx.save();
+    ctx.fillStyle = outside ? '#c0392b' : ACCENT;
+    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 2 * Math.PI); ctx.fill();
+    if (outside) { ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(cx - 6, cy - 6); ctx.lineTo(cx + 6, cy + 6); ctx.moveTo(cx + 6, cy - 6); ctx.lineTo(cx - 6, cy + 6); ctx.stroke(); }
+    ctx.restore();
+  });
+}
+
+/**
+ * Cartographie LISSÉE + overlay géométrique (contour + charges). Interpolation bilinéaire
+ * de la grille d'affichage 48×48 (ré-échantillonnée serveur, découplée du maillage — §8).
+ * Aspect PRÉSERVÉ (letterbox) : le radier n'est plus anamorphosé.
+ */
+function HeatmapCanvas({ heatmap, raftPts, loads = NO_LOADS }: { heatmap: HeatmapData; raftPts: ModelPt[]; loads?: ModelLoads }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const { cols, rows, vals, vMin, vMax, x0, y0, x1, y1 } = heatmap;
   useEffect(() => {
     const cv = ref.current;
-    if (!cv || cols < 2 || rows < 2) return;
+    if (!cv) return;
     const ctx = cv.getContext('2d');
     if (!ctx) return;
-    const W = cv.width, H = cv.height;
-    // Grille source (cols×rows) → ImageData ; cellules null = transparentes.
-    const off = document.createElement('canvas');
-    off.width = cols; off.height = rows;
-    const octx = off.getContext('2d');
-    if (!octx) return;
-    const img = octx.createImageData(cols, rows);
-    const span = vMax > vMin ? vMax - vMin : 1;
-    for (let i = 0; i < cols * rows; i++) {
-      const v = vals[i];
-      if (v == null || !Number.isFinite(v)) { img.data[i * 4 + 3] = 0; continue; }
-      const [r, g, b] = heatRGB((v - vMin) / span);
-      img.data[i * 4] = r; img.data[i * 4 + 1] = g; img.data[i * 4 + 2] = b; img.data[i * 4 + 3] = 255;
-    }
-    octx.putImageData(img, 0, 0);
+    const W = cv.width, H = cv.height, pad = 16;
     ctx.clearRect(0, 0, W, H);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    // Étirement lissé + retournement vertical (y vers le haut, convention ingénieur).
-    ctx.save();
-    ctx.translate(0, H); ctx.scale(1, -1);
-    ctx.drawImage(off, 0, 0, cols, rows, 0, 0, W, H);
-    ctx.restore();
-    // Contour du radier (coords modèle → canvas, y vers le haut).
-    if (raftPts.length >= 3 && x1 > x0 && y1 > y0) {
-      ctx.save();
-      ctx.beginPath();
-      raftPts.forEach((p, k) => {
-        const cx = ((p.x - x0) / (x1 - x0)) * W;
-        const cy = H - ((p.y - y0) / (y1 - y0)) * H;
-        if (k === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
-      });
-      ctx.closePath();
-      ctx.strokeStyle = 'rgba(42,35,51,0.85)';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      ctx.restore();
+    if (!(x1 > x0 && y1 > y0)) return;
+    const { tf, ox, oy, cw, ch } = fitTransform(W, H, pad, x0, y0, x1, y1);
+    // Champ (si dispo) dans la boîte de contenu, à échelle uniforme + flip vertical.
+    if (cols >= 2 && rows >= 2) {
+      const off = document.createElement('canvas');
+      off.width = cols; off.height = rows;
+      const octx = off.getContext('2d');
+      if (octx) {
+        const img = octx.createImageData(cols, rows);
+        const span = vMax > vMin ? vMax - vMin : 1;
+        for (let i = 0; i < cols * rows; i++) {
+          const v = vals[i];
+          if (v == null || !Number.isFinite(v)) { img.data[i * 4 + 3] = 0; continue; }
+          const [r, g, b] = heatRGB((v - vMin) / span);
+          img.data[i * 4] = r; img.data[i * 4 + 1] = g; img.data[i * 4 + 2] = b; img.data[i * 4 + 3] = 255;
+        }
+        octx.putImageData(img, 0, 0);
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        ctx.save();
+        ctx.translate(ox, H - oy); ctx.scale(1, -1);
+        ctx.drawImage(off, 0, 0, cols, rows, 0, 0, cw, ch);
+        ctx.restore();
+      }
     }
-  }, [cols, rows, vals, vMin, vMax, x0, y0, x1, y1, raftPts]);
-  const aspect = x1 > x0 ? (y1 - y0) / (x1 - x0) : 1;
-  const W = 460, H = Math.max(180, Math.min(520, Math.round(W * (aspect || 1))));
-  return <canvas ref={ref} width={W} height={H} style={{ width: '100%', maxWidth: W, height: 'auto', border: `1px solid ${LINE}`, borderRadius: 8, background: '#faf8fc' }} role="img" aria-label="Cartographie lissée de déflexion du radier (grille d'affichage ré-échantillonnée, découplée du maillage)" />;
+    drawOverlay(ctx, tf, raftPts, loads);
+  }, [cols, rows, vals, vMin, vMax, x0, y0, x1, y1, raftPts, loads]);
+  return <canvas ref={ref} width={460} height={340} style={{ width: '100%', maxWidth: 460, height: 'auto', border: `1px solid ${LINE}`, borderRadius: 8, background: '#faf8fc' }} role="img" aria-label="Cartographie de déflexion du radier (aspect préservé) avec contour et charges" />;
+}
+
+/**
+ * Vue en PLAN (schéma d'implantation, avant calcul) — contour du radier + sommets +
+ * charges/appuis positionnés, avec surlignage des charges ponctuelles HORS radier.
+ * Domaine calculé sur l'emprise réelle (radier + charges). Aucun maillage, aucun calcul
+ * (§8) — géométrie SAISIE par l'utilisateur uniquement.
+ */
+function PlanView({ raftPts, loads }: { raftPts: ModelPt[]; loads: ModelLoads }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const cv = ref.current; if (!cv) return;
+    const ctx = cv.getContext('2d'); if (!ctx) return;
+    const W = cv.width, H = cv.height, pad = 18;
+    ctx.clearRect(0, 0, W, H);
+    const xs: number[] = [], ys: number[] = [];
+    const push = (p: ModelPt) => { if (Number.isFinite(p.x) && Number.isFinite(p.y)) { xs.push(p.x); ys.push(p.y); } };
+    raftPts.forEach(push); loads.points.forEach(push); loads.springs.forEach(push);
+    loads.lines.forEach(({ a, b }) => { push(a); push(b); }); loads.areas.forEach(({ a, b }) => { push(a); push(b); });
+    if (xs.length < 2) { ctx.fillStyle = MUTED; ctx.font = '12px sans-serif'; ctx.fillText('Définissez le radier et les charges', 12, H / 2); return; }
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const dx = x1 - x0 || 1, dy = y1 - y0 || 1;
+    const { tf } = fitTransform(W, H, pad, x0 - 0.05 * dx, y0 - 0.05 * dy, x1 + 0.05 * dx, y1 + 0.05 * dy);
+    drawOverlay(ctx, tf, raftPts, loads);
+  }, [raftPts, loads]);
+  return <canvas ref={ref} width={440} height={300} style={{ width: '100%', maxWidth: 440, height: 'auto', border: `1px solid ${LINE}`, borderRadius: 8, background: '#faf8fc' }} role="img" aria-label="Vue en plan du radier : contour, sommets et charges (charges hors radier en rouge)" />;
 }
 
 const ACCENT = '#5a3e7c', INK = '#241f2e', MUTED = '#6e6779', LINE = '#ddd6e4', PANEL = '#fdfcff';
@@ -159,6 +247,31 @@ export default function GeoplaquePage() {
   const [emittingPv, setEmittingPv] = useState(false);
   const [pvResult, setPvResult] = useState<OfficialPv | null>(null);
   const [tab, setTab] = useState<'modele' | 'charges' | 'resultats'>('modele');
+
+  // Géométrie parsée pour le DAO (contour + charges), en coords MODÈLE. numU => undefined
+  // si vide/invalide : une charge incomplète n'est PAS dessinée (pas de glyphe fantôme).
+  const raftModelPts = useMemo<ModelPt[]>(
+    () => pts.map((p) => ({ x: numU(p.x), y: numU(p.y) })).filter((p): p is ModelPt => p.x !== undefined && p.y !== undefined),
+    [pts],
+  );
+  const mloads = useMemo<ModelLoads>(() => {
+    const pt = (x?: number, y?: number): ModelPt | null => (x !== undefined && y !== undefined ? { x, y } : null);
+    const seg = (x1?: number, y1?: number, x2?: number, y2?: number) => {
+      const a = pt(x1, y1), b = pt(x2, y2);
+      return a && b ? { a, b } : null;
+    };
+    return {
+      points: pointLoads.map((l) => pt(numU(l.x), numU(l.y))).filter((p): p is ModelPt => p !== null),
+      springs: pointSprings.map((s) => pt(numU(s.x), numU(s.y))).filter((p): p is ModelPt => p !== null),
+      lines: lineLoads.map((l) => seg(numU(l.x1), numU(l.y1), numU(l.x2), numU(l.y2))).filter((s): s is { a: ModelPt; b: ModelPt } => s !== null),
+      areas: areaLoads.map((l) => seg(numU(l.x1), numU(l.y1), numU(l.x2), numU(l.y2))).filter((s): s is { a: ModelPt; b: ModelPt } => s !== null),
+    };
+  }, [pointLoads, pointSprings, lineLoads, areaLoads]);
+  // Charges ponctuelles HORS emprise du radier (contrôle DAO).
+  const outsideLoads = useMemo(
+    () => mloads.points.filter((p) => !pointInPoly(p.x, p.y, raftModelPts)).length,
+    [mloads, raftModelPts],
+  );
 
   useEffect(() => {
     if (!orgId) return;
@@ -281,6 +394,21 @@ export default function GeoplaquePage() {
       {tab === 'charges' && (
         <>
           <div style={card}>
+            <div style={secH}>Vue en plan (schéma d'implantation)</div>
+            <PlanView raftPts={raftModelPts} loads={mloads} />
+            <div style={{ marginTop: 8, fontSize: 11, color: MUTED, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              <span><span style={{ color: ACCENT }}>●</span> charge ponctuelle</span>
+              <span><span style={{ color: '#28a06e' }}>■</span> ressort</span>
+              <span><span style={{ color: '#c0392b' }}>—</span> charge linéique</span>
+              <span style={{ color: '#8a7fa0' }}>▭ charge répartie</span>
+            </div>
+            {outsideLoads > 0 && (
+              <div role="alert" style={{ marginTop: 8, padding: '7px 10px', borderRadius: 7, background: '#fdecea', color: '#8a2d1f', fontSize: 12, fontWeight: 600 }}>
+                ⚠ {outsideLoads} charge{outsideLoads > 1 ? 's' : ''} ponctuelle{outsideLoads > 1 ? 's' : ''} HORS de l&apos;emprise du radier (en rouge sur le plan) — vérifiez les coordonnées.
+              </div>
+            )}
+          </div>
+          <div style={card}>
             <div style={secH}>Charges réparties</div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead><tr>{['x1', 'y1', 'x2', 'y2', 'q (kPa)', 'sur', ''].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
@@ -347,7 +475,7 @@ export default function GeoplaquePage() {
                   <div style={secH}>Cartographie des déflexions</div>
                   <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                     <div style={{ flex: '1 1 320px', maxWidth: 480 }}>
-                      <HeatmapCanvas heatmap={heatmap} raftPts={pts.map((p) => ({ x: num(p.x), y: num(p.y) }))} />
+                      <HeatmapCanvas heatmap={heatmap} raftPts={raftModelPts} loads={mloads} />
                     </div>
                     <div style={{ flex: '0 0 auto', fontSize: 11.5, color: MUTED }}>
                       <div style={{ fontWeight: 600, color: INK, marginBottom: 6 }}>Échelle (mm)</div>
@@ -374,6 +502,15 @@ export default function GeoplaquePage() {
                   </tr>
                 ))}</tbody>
               </table>
+              {Array.isArray((output as { warnings?: unknown }).warnings) &&
+                ((output as { warnings?: string[] }).warnings?.length ?? 0) > 0 && (
+                  <div role="alert" style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: '#fff7e6', border: '1px solid #f0d38a' }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#8a6d1f', marginBottom: 4 }}>Avertissements du calcul</div>
+                    <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#6e5a1f' }}>
+                      {(output as { warnings?: string[] }).warnings?.map((w, i) => <li key={i}>{w}</li>)}
+                    </ul>
+                  </div>
+                )}
               <div style={{ marginTop: 12, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Calcul éléments finis côté serveur. La cartographie est un champ d&apos;affichage ré-échantillonné ; le maillage et les valeurs nodales restent serveur (§8).</div>
 
               <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
