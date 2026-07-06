@@ -241,6 +241,61 @@ describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’af
     ).toBe(false);
   });
 
+  it('MAJEUR-1 : structure CONFORME + phase 2 dépassée mais NON requise -> ligne SANS status fail (informatif)', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            conforme: true,
+            famille: 'semi-rigide',
+            fatigue: { ok: true, requis: true, rigide: true, valeur: 1.3, admissible: 1.6 },
+            ornierage: { ok: true, valeur: 400, admissible: 511 },
+            // phase 2 dépassée MAIS non requise -> ne doit pas porter status 'fail'
+            // (sinon un ✗ rouge s'afficherait sous un verdict PASS = contradiction).
+            fatiguePhase2: { valeur: 509.37, admissible: 201.54, ok: false, requis: false, couche: 1 },
+            fatigueInverse: null,
+            couchesTraitees: [
+              { couche: 2, mode: 'semi-collée', valeur: 0.27, admissible: 0.42, ok: true, requis: true },
+            ],
+            couchesGranulaires: [],
+          },
+        }),
+      ).output,
+    );
+    expect(out.verdict).toBe('PASS');
+    const p2 = out.rows.find((r) => r.label.startsWith('Fatigue phase 2'));
+    expect(p2).toBeDefined();
+    // AUCUN status 'fail' sur un critère non requis (rendu informatif).
+    expect(p2!.status).toBeUndefined();
+  });
+
+  it('MAJEUR-1 : ε_z granulaire EXEMPTÉ qui dépasse (requis=false) -> détail SANS status fail', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            conforme: true,
+            famille: 'souple à faible trafic',
+            fatigue: { ok: true, requis: false, rigide: false, valeur: 300, admissible: 450 },
+            ornierage: { ok: true, valeur: 400, admissible: 511 },
+            couchesGranulaires: [
+              { couche: 2, valeur: 2107.23, admissible: 1600.7, ok: false, requis: false },
+            ],
+          },
+        }),
+      ).output,
+    );
+    expect(out.verdict).toBe('PASS');
+    const cg = (out.details ?? []).find((r) => r.label.startsWith('ε_z sommet couche granulaire'));
+    expect(cg).toBeDefined();
+    expect(cg!.status).toBeUndefined();
+    // le critère principal ε_t, non requis pour cette famille, n'est pas 'fail' non plus.
+    const soll = out.rows.find((r) => r.label.startsWith('Déformation sollicitante'));
+    expect(soll?.status).toBeUndefined();
+  });
+
   it('given structure souple (pas de critère secondaire), then AUCUNE ligne phase 2/inverse/couche traitée', () => {
     const out = asNormalized(
       adaptCalcResult(

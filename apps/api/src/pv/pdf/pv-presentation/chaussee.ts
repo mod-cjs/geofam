@@ -46,6 +46,12 @@ export const CHAUSSEE_PRESENTATION: PresentationModel = {
       valuePath: 'fatigue.valeur',
       admissiblePath: 'fatigue.admissible',
       format: { decimals: 0, unit: 'µdef' },
+      // Verdict public : requis=false (souple à faible trafic) -> rendu informatif.
+      requisPath: 'fatigue.requis',
+      // MAJEUR-2 : familles RIGIDES (fatigue.rigide=true) -> σt en MPa (pas µdef).
+      rigideFlagPath: 'fatigue.rigide',
+      rigideLabel: 'Fatigue des couches traitées (σt)',
+      rigideFormat: { decimals: 3, unit: 'MPa' },
     },
     {
       label: 'Déformation du sol support (εz)', // [STARFIRE] εz = orniérage / déformation permanente
@@ -63,6 +69,9 @@ export const CHAUSSEE_PRESENTATION: PresentationModel = {
       admissiblePath: 'fatiguePhase2.admissible',
       format: { decimals: 0, unit: 'µdef' },
       optional: true,
+      // MAJEUR-1 : non requis pour un semi-rigide Kmix<0,5 -> informatif (jamais ✗
+      // sous CONFORME). requis=true (mixte Kmix>=0,5) -> verdict normal.
+      requisPath: 'fatiguePhase2.requis',
     },
     {
       label: 'Structure inverse — base MTLH profond (σt)', // [STARFIRE] §4.5
@@ -70,6 +79,8 @@ export const CHAUSSEE_PRESENTATION: PresentationModel = {
       admissiblePath: 'fatigueInverse.admissible',
       format: { decimals: 3, unit: 'MPa' },
       optional: true,
+      // Toujours requis (okSt2 toujours plié) — chemin symétrique, verdict normal.
+      requisPath: 'fatigueInverse.requis',
     },
   ],
 
@@ -85,6 +96,9 @@ export const CHAUSSEE_PRESENTATION: PresentationModel = {
       valueKey: 'valeur',
       admissibleKey: 'admissible',
       okKey: 'ok',
+      // Critère σt rigide principal : toujours requis (verdict normal) ; le drapeau
+      // est lu pour rester cohérent si une évolution du moteur l'exemptait.
+      requisKey: 'requis',
       format: { decimals: 3, unit: 'MPa' },
     },
     {
@@ -94,6 +108,9 @@ export const CHAUSSEE_PRESENTATION: PresentationModel = {
       valueKey: 'valeur',
       admissibleKey: 'admissible',
       okKey: 'ok',
+      // MAJEUR-1 : couche granulaire EXEMPTÉE (§4.1.2, requis=false) -> informatif,
+      // jamais un ✗ sous CONFORME même si ε_z dépasse le seuil.
+      requisKey: 'requis',
       format: { decimals: 0, unit: 'µdef' },
     },
   ],

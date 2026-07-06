@@ -308,6 +308,13 @@ const CritereCoucheSchema = z
     admissible: z.number().finite(),
     /** Critere verifie ? (valeur <= admissible). */
     ok: z.boolean(),
+    /**
+     * Critere PLIE dans le verdict `conforme` pour cette famille ? Booleen de
+     * VERDICT public (§8, pas un flag de methode). `false` = INFORMATIF : le
+     * critere est affiche mais ne peut PAS contredire le bandeau (phase 2 mixte
+     * §4.4.1 non exigee quand etReq=false).
+     */
+    requis: z.boolean(),
     /** N° de couche concernee (1-based, ordre de la structure haut->bas). */
     couche: z.number().int().min(1),
   })
@@ -333,6 +340,13 @@ const CoucheTraiteeSchema = z
     admissible: z.number().finite(),
     /** Critere verifie ? (valeur <= admissible). */
     ok: z.boolean(),
+    /**
+     * Critere PLIE dans le verdict `conforme` ? (§8, booleen de verdict public).
+     * Les couches traitees portent le critere σ_t rigide PRINCIPAL, toujours plie
+     * pour une famille rigide -> `true`. `false` = INFORMATIF (jamais un ✗ sous un
+     * bandeau CONFORME).
+     */
+    requis: z.boolean(),
   })
   .strict();
 
@@ -351,6 +365,12 @@ const CoucheGranulaireSchema = z
     admissible: z.number().finite(),
     /** ε_z <= ε_z,adm ? */
     ok: z.boolean(),
+    /**
+     * ε_z granulaire PLIE dans le verdict `conforme` ? (§8, booleen de verdict
+     * public). Exempte pour les chaussees SOUPLES a faible trafic (§4.1.2,
+     * gntReq=false) -> `false` = INFORMATIF. « Autres cas » -> `true`.
+     */
+    requis: z.boolean(),
   })
   .strict();
 

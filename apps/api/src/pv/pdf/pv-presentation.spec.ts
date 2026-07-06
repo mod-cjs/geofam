@@ -360,6 +360,101 @@ describe('#71 — critères SECONDAIRES au PV (complétude d’affichage)', () =
   });
 });
 
+describe('#71 MAJEUR-1 — un critère secondaire NON requis ne contredit JAMAIS le bandeau CONFORME', () => {
+  const prev = process.env.PV_SIGNING_SECRET;
+  beforeAll(() => {
+    process.env.PV_SIGNING_SECRET = SECRET;
+  });
+  afterAll(() => {
+    if (prev === undefined) delete process.env.PV_SIGNING_SECRET;
+    else process.env.PV_SIGNING_SECRET = prev;
+  });
+
+  /**
+   * Structure CONFORME (verdict scellé true) dont la PHASE 2 mixte est dépassée
+   * (253 %) mais NON requise (requis=false). L'ancien rendu recalculait `ok` du
+   * taux -> croix bordeaux ✗ sous un bandeau CONFORME (contradiction). Idem le
+   * détail ε_z granulaire exempté (requis=false) qui dépasse.
+   */
+  const SEMI_RIGIDE_CONFORME = {
+    ...(CHAUSSEE_OUTPUT as Record<string, unknown>),
+    conforme: true,
+    famille: 'semi-rigide',
+    // critère PRINCIPAL rigide (σ_t) requis + vérifié -> coche navy légitime.
+    fatigue: { rigide: true, valeur: 0.3345, admissible: 0.384, ok: true, requis: true },
+    ornierage: { valeur: 400, admissible: 511, ok: true },
+    // PHASE 2 dépassée mais NON requise (etReq=false) -> informatif, pas de croix.
+    fatiguePhase2: { valeur: 509.37, admissible: 201.54, ok: false, requis: false, couche: 1 },
+    fatigueInverse: null,
+    couchesTraitees: [
+      { couche: 2, mode: 'semi-collée', valeur: 0.2697, admissible: 0.4225, ok: true, requis: true },
+      { couche: 3, mode: 'semi-collée', valeur: 0.3345, admissible: 0.384, ok: true, requis: true },
+    ],
+    // ε_z granulaire exempté (§4.1.2) qui dépasse : requis=false -> informatif.
+    couchesGranulaires: [
+      { couche: 2, valeur: 2107.23, admissible: 1600.7, ok: false, requis: false },
+    ],
+  } as SealableValue;
+
+  it('CONFORME + secondaire non requis dépassé -> AUCUNE croix bordeaux (pas de ✗ contradictoire)', () => {
+    const def = buildPvDocDefinition(makeChausseePv({ output: SEMI_RIGIDE_CONFORME }));
+    const marks = collectCanvasLines(def.content);
+    // Un critère secondaire non requis à 253 % ne doit produire AUCUN picto ✗ (croix
+    // = 2 lignes toutes en COLORS.alert). Sous un bandeau CONFORME, il n'y a aucun
+    // critère requis en échec -> zéro croix.
+    const croix = marks.filter(
+      (m) => m.length >= 2 && m.every((l) => l.lineColor === COLORS.alert),
+    );
+    expect(croix.length).toBe(0);
+    // le bandeau reste CONFORME.
+    const text = collectPvPdfText(makeChausseePv({ output: SEMI_RIGIDE_CONFORME }));
+    expect(text).toContain('CONFORME');
+    expect(text).not.toContain('NON CONFORME');
+  });
+
+  it('le critère non requis reste AFFICHÉ mais marqué informatif (jamais omis silencieusement)', () => {
+    const text = collectPvPdfText(makeChausseePv({ output: SEMI_RIGIDE_CONFORME }));
+    // phase 2 toujours visible (complétude) …
+    expect(text).toContain('Fatigue phase 2');
+    // … mais présentée en informatif (pas de verdict ✗). Le nom de flag « requis »
+    // ne fuite pas (§8) : on emploie « informatif ». (« rigide » n'est PAS testé ici :
+    // il apparaît légitimement dans le libellé PUBLIC de famille « semi-rigide ».)
+    expect(text).toContain('informatif');
+    expect(text.toLowerCase().includes('requis')).toBe(false);
+  });
+});
+
+describe('#71 MAJEUR-2 — critère de fatigue PRINCIPAL des familles RIGIDES : σ_t / MPa (pas « µdef »)', () => {
+  const prev = process.env.PV_SIGNING_SECRET;
+  beforeAll(() => {
+    process.env.PV_SIGNING_SECRET = SECRET;
+  });
+  afterAll(() => {
+    if (prev === undefined) delete process.env.PV_SIGNING_SECRET;
+    else process.env.PV_SIGNING_SECRET = prev;
+  });
+
+  const RIGIDE_OUTPUT = {
+    ...(CHAUSSEE_OUTPUT as Record<string, unknown>),
+    conforme: true,
+    famille: 'semi-rigide',
+    // fatigue.rigide=true -> valeur = σ_t en MPa (pas ε_t en µdef).
+    fatigue: { rigide: true, valeur: 1.301, admissible: 1.6, ok: true, requis: true },
+    ornierage: { valeur: 400, admissible: 511, ok: true },
+  } as SealableValue;
+
+  it('la ligne de vérification fatigue affiche MPa + valeur σ_t (jamais « µdef » ni « 0 »)', () => {
+    const def = buildPvDocDefinition(makeChausseePv({ output: RIGIDE_OUTPUT }));
+    // On cible la ligne de vérification de fatigue (1re cellule = libellé) et on
+    // lit la cellule « Calculé ». Elle doit porter l'unité MPa et la valeur σ_t.
+    const cell = findVerifCalcCell(def.content, 'Fatigue des couches traitées');
+    expect(cell).not.toBeNull();
+    expect(cell!).toContain('MPa');
+    expect(cell!).toContain('1,3'); // 1,301 MPa (3 décimales) — pas « 0 » ni µdef
+    expect(cell!.includes('µdef')).toBe(false);
+  });
+});
+
 describe('#71 — fallback (moteur sans modèle)', () => {
   const prev = process.env.PV_SIGNING_SECRET;
   beforeAll(() => {
@@ -625,6 +720,51 @@ function findRowValue(
             cellText(row[0]) === label
           ) {
             found = { value: cellText(row[1]), unit: cellText(row[2]) };
+            return;
+          }
+        }
+      }
+      Object.values(o).forEach(walk);
+    }
+  };
+  walk(content);
+  return found;
+}
+
+/**
+ * Cherche la 1re LIGNE de table dont la 1re cellule texte COMMENCE par `labelPrefix`
+ * et renvoie le texte de la 2e cellule (colonne « Calculé » de la table de
+ * vérifications, 5 colonnes). null si introuvable.
+ */
+function findVerifCalcCell(content: unknown, labelPrefix: string): string | null {
+  let found: string | null = null;
+  const cellText = (c: unknown): string => {
+    if (
+      c &&
+      typeof c === 'object' &&
+      typeof (c as { text?: unknown }).text === 'string'
+    ) {
+      return (c as { text: string }).text;
+    }
+    return '';
+  };
+  const walk = (n: unknown): void => {
+    if (found || n == null) return;
+    if (Array.isArray(n)) {
+      n.forEach(walk);
+      return;
+    }
+    if (typeof n === 'object') {
+      const o = n as Record<string, unknown>;
+      const table = o.table as { body?: unknown[][] } | undefined;
+      if (table?.body) {
+        for (const row of table.body) {
+          if (
+            Array.isArray(row) &&
+            row.length >= 2 &&
+            cellText(row[0]).startsWith(labelPrefix)
+          ) {
+            found = cellText(row[1]);
             return;
           }
         }

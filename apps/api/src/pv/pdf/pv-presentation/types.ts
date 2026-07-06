@@ -95,6 +95,25 @@ export interface CriterionSpec {
    * critère est OMIS (banner + table vérifications) — pas de ligne « — » trompeuse.
    */
   optional?: boolean;
+  /**
+   * Chemin d'un booléen de VERDICT (§8, public) indiquant si le critère est PLIÉ
+   * dans `conforme` pour cette structure (ex. "fatigue.requis"). Quand il résout
+   * vers `false`, le critère est rendu INFORMATIF : PAS de picto ✓/✗, exclu du
+   * bandeau, jamais dominant — il ne peut donc JAMAIS contredire le verdict scellé.
+   * Absent / undefined -> critère traité comme requis (rendu verdict normal).
+   */
+  requisPath?: FieldPath;
+  /**
+   * VARIANTE RIGIDE (MTLH/béton) : chemin d'un booléen (ex. "fatigue.rigide") qui,
+   * lorsqu'il résout vers `true`, bascule le critère sur `rigideLabel`/`rigideFormat`
+   * (σ_t en MPa) au lieu du libellé/format bitumineux (ε_t en µdef). Aligné sur le
+   * web (adapters.ts). Le flag lui-même n'est PAS rendu (§8) — seul le libellé change.
+   */
+  rigideFlagPath?: FieldPath;
+  /** Libellé alternatif quand `rigideFlagPath` résout `true` (ne contient pas le flag). */
+  rigideLabel?: string;
+  /** Format alternatif quand `rigideFlagPath` résout `true` (ex. MPa / 3 décimales). */
+  rigideFormat?: NumberFormat;
 }
 
 /**
@@ -117,6 +136,13 @@ export interface LayerTableSpec {
   admissibleKey?: string;
   /** Sous-clé du booléen de verdict (picto ✓/✗). */
   okKey: string;
+  /**
+   * Sous-clé d'un booléen de VERDICT public (§8) indiquant si l'élément est PLIÉ
+   * dans `conforme` (ex. "requis"). Quand il résout `false` sur un élément, sa
+   * ligne est rendue INFORMATIVE (pas de picto ✓/✗) : un ε_z granulaire exempté
+   * (§4.1.2) ne peut PAS contredire le bandeau. Absent -> élément traité requis.
+   */
+  requisKey?: string;
   /** Format d'affichage de valeur/admissible (unité). */
   format?: NumberFormat;
 }

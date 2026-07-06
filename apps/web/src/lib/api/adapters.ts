@@ -317,6 +317,18 @@ function safeBurmisterFamille(raw: unknown): string {
  * (FUITE #1 / issue #81). Exclus : `warnings`/`erreur` (texte libre, canal séparé),
  * `conforme` (porté par le verdict, pas une ligne numérique).
  */
+/**
+ * Statut d'affichage d'un critère PLIÉ ou non dans le verdict `conforme` (§8,
+ * booléen public). `requis===false` -> INFORMATIF : status `undefined` (aucun picto
+ * ✓/✗) pour qu'un critère non exigé ne contredise JAMAIS un verdict PASS (MAJEUR-1).
+ * `requis` absent/undefined -> traité comme requis (rétro-compat des sorties sans le
+ * flag). Sinon status dérivé de `ok`.
+ */
+function requisStatus(requis: unknown, ok: unknown): 'ok' | 'fail' | undefined {
+  if (requis === false) return undefined;
+  return ok === true ? 'ok' : 'fail';
+}
+
 function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
 
@@ -338,10 +350,15 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
       valeur?: unknown;
       admissible?: unknown;
       ok?: unknown;
+      requis?: unknown;
     };
     const rigide = fa.rigide === true;
     const unit = rigide ? 'MPa' : 'μdef';
-    const fok: 'ok' | 'fail' = fa.ok === true ? 'ok' : 'fail';
+    // MAJEUR-1 : un critère NON requis (souple à faible trafic) est INFORMATIF —
+    // pas de status ✓/✗ (sinon un ✗ rouge cohabiterait avec un verdict PASS). Le
+    // verdict `conforme` ne plie que les critères requis ; l'affichage doit refléter
+    // ce périmètre. `requis` absent/undefined -> traité comme requis (rétro-compat).
+    const fok: 'ok' | 'fail' | undefined = requisStatus(fa.requis, fa.ok);
     pushRow(
       rows,
       rigide ? 'Contrainte sollicitante σ_t' : 'Déformation sollicitante ε_t',
@@ -370,9 +387,10 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
   // quand applicable (objet non-null) — sinon la structure n'est pas concernée.
   const p2 = o.fatiguePhase2;
   if (p2 != null && typeof p2 === 'object') {
-    const pa = p2 as { valeur?: unknown; admissible?: unknown; ok?: unknown; couche?: unknown };
+    const pa = p2 as { valeur?: unknown; admissible?: unknown; ok?: unknown; requis?: unknown; couche?: unknown };
     const suffix = typeof pa.couche === 'number' ? ` (couche ${pa.couche})` : '';
-    const pok: 'ok' | 'fail' = pa.ok === true ? 'ok' : 'fail';
+    // MAJEUR-1 : phase 2 non requise (semi-rigide Kmix<0,5) -> informatif (pas de ✗).
+    const pok = requisStatus(pa.requis, pa.ok);
     pushRow(rows, `Fatigue phase 2 — base bitumineuse ε_t${suffix}`, pa.valeur, 'μdef', pok);
     pushRow(rows, 'Fatigue phase 2 — ε_t admissible', pa.admissible, 'μdef');
   }
@@ -381,9 +399,10 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
   // segment MTLH profond. Affiché SEULEMENT quand applicable.
   const inv = o.fatigueInverse;
   if (inv != null && typeof inv === 'object') {
-    const ia = inv as { valeur?: unknown; admissible?: unknown; ok?: unknown; couche?: unknown };
+    const ia = inv as { valeur?: unknown; admissible?: unknown; ok?: unknown; requis?: unknown; couche?: unknown };
     const suffix = typeof ia.couche === 'number' ? ` (couche ${ia.couche})` : '';
-    const iok: 'ok' | 'fail' = ia.ok === true ? 'ok' : 'fail';
+    // Inverse : toujours requis (okSt2 toujours plié) — chemin symétrique.
+    const iok = requisStatus(ia.requis, ia.ok);
     pushRow(rows, `Structure inverse — base MTLH profond σ_t${suffix}`, ia.valeur, 'MPa', iok);
     pushRow(rows, 'Structure inverse — σ_t admissible', ia.admissible, 'MPa');
   }
@@ -437,13 +456,16 @@ function buildBurmisterDetails(o: Record<string, unknown>): CalcOutputRow[] {
         valeur?: unknown;
         admissible?: unknown;
         ok?: unknown;
+        requis?: unknown;
       };
       const n = typeof c.couche === 'number' ? c.couche : '?';
       const mode = typeof c.mode === 'string' ? c.mode : '';
       const label = mode
         ? `σ_t couche traitée ${n} (interface ${mode})`
         : `σ_t couche traitée ${n}`;
-      const cok: 'ok' | 'fail' = c.ok === true ? 'ok' : 'fail';
+      // Critère σ_t rigide principal : toujours requis (verdict normal) ; on lit le
+      // drapeau pour rester cohérent si une évolution du moteur l'exemptait.
+      const cok = requisStatus(c.requis, c.ok);
       pushRow(rows, label, c.valeur, 'MPa', cok);
       pushRow(rows, `σ_t admissible couche ${n}`, c.admissible, 'MPa');
     }
@@ -455,9 +477,11 @@ function buildBurmisterDetails(o: Record<string, unknown>): CalcOutputRow[] {
   if (Array.isArray(cg)) {
     for (const item of cg) {
       if (item == null || typeof item !== 'object') continue;
-      const c = item as { couche?: unknown; valeur?: unknown; ok?: unknown };
+      const c = item as { couche?: unknown; valeur?: unknown; ok?: unknown; requis?: unknown };
       const n = typeof c.couche === 'number' ? c.couche : '?';
-      const gok: 'ok' | 'fail' = c.ok === true ? 'ok' : 'fail';
+      // MAJEUR-1 : ε_z granulaire exempté (§4.1.2, requis=false) -> informatif (pas
+      // de ✗ sous un verdict PASS), même si la couche dépasse son seuil.
+      const gok = requisStatus(c.requis, c.ok);
       pushRow(rows, `ε_z sommet couche granulaire ${n}`, c.valeur, 'μdef', gok);
     }
   }

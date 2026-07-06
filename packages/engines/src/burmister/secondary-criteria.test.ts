@@ -98,6 +98,65 @@ describe('critères secondaires AGEROUTE — exposés en sortie projetée', () =
     expect(cg[0]!.valeur as number).toBeGreaterThan(0);
   });
 
+  // ---------------------------------------------------------------------------
+  // FLAG requis/exempté (MAJEUR-1) — un critère NON plié dans `conforme` DOIT être
+  // marqué requis=false, pour que l'affichage le rende INFORMATIF (jamais un ✗ sous
+  // un bandeau CONFORME). Le flag est un booléen de VERDICT public (§8), lu depuis
+  // D.etReq (fatigue/phase 2), D.gq (ε_z granulaire), toujours plié pour l'inverse.
+  // ---------------------------------------------------------------------------
+  it('MAJEUR-1 semi-rigide (Kmix<0,5) : structure CONFORME, mais phase 2 dépassée = NON requise (requis=false)', () => {
+    const o = outputOf('semi-rigide-glc') as Record<string, unknown>;
+    // La structure est globalement conforme (le critère σ_t rigide principal passe).
+    expect(o.conforme).toBe(true);
+    // Le critère PRINCIPAL rigide (σ_t par couche) EST requis (okMain toujours plié
+    // pour une famille rigide, même quand etReq=false).
+    const fat = o.fatigue as Record<string, unknown>;
+    expect(fat.requis).toBe(true);
+    // La PHASE 2 mixte (§4.4.1) est dépassée (253 %) MAIS non pliée dans le verdict
+    // (etReq=false pour semi-rigide) -> requis=false : l'affichage doit l'informatif.
+    const p2 = o.fatiguePhase2 as Record<string, unknown>;
+    expect(p2.ok).toBe(false);
+    expect(p2.requis).toBe(false);
+    // Les couches traitées (critère principal rigide) restent requises.
+    for (const c of o.couchesTraitees as Array<Record<string, unknown>>) {
+      expect(c.requis).toBe(true);
+    }
+  });
+
+  it('MAJEUR-1 souple à faible trafic : ε_z granulaire EXEMPTÉ (§4.1.2) -> couchesGranulaires.requis=false', () => {
+    const o = outputOf('souple-faible-trafic') as Record<string, unknown>;
+    expect(o.conforme).toBe(true);
+    // ε_t bitumineux informatif pour cette famille (etReq=false, non rigide).
+    expect((o.fatigue as Record<string, unknown>).requis).toBe(false);
+    // Détail ε_z par couche granulaire : exempté (gntReq=false) -> requis=false,
+    // même la couche qui dépasse (2107 µdef) ne doit PAS contredire le verdict.
+    const cg = o.couchesGranulaires as Array<Record<string, unknown>>;
+    expect(cg.length).toBeGreaterThan(0);
+    for (const c of cg) expect(c.requis).toBe(false);
+    // au moins une couche dépasse son admissible tout en étant exemptée.
+    expect(cg.some((c) => c.ok === false)).toBe(true);
+  });
+
+  it('MAJEUR-1 inverse : σ_t inverse TOUJOURS requis ; ε_z granulaire requis (autres cas §4.1.2)', () => {
+    const o = outputOf('inverse-mtlh-profond') as Record<string, unknown>;
+    const inv = o.fatigueInverse as Record<string, unknown>;
+    expect(inv.requis).toBe(true);
+    // structure inverse = « autres cas » du §4.1.2 -> ε_z granulaire est vérifié.
+    for (const c of o.couchesGranulaires as Array<Record<string, unknown>>) {
+      expect(c.requis).toBe(true);
+    }
+  });
+
+  it('MAJEUR-1 béton rigide (BC5) : critère σ_t principal REQUIS même quand etReq=false', () => {
+    const o = outputOf('beton-multi-bc5') as Record<string, unknown>;
+    // Non conforme, mais le critère principal rigide EST requis (folded via okMain) :
+    // il ne doit surtout PAS être marqué informatif (c'est le motif de non-conformité).
+    expect((o.fatigue as Record<string, unknown>).requis).toBe(true);
+    for (const c of o.couchesTraitees as Array<Record<string, unknown>>) {
+      expect(c.requis).toBe(true);
+    }
+  });
+
   it('STRUCTURE SOUPLE/BITUMINEUSE : aucun critère secondaire (null propre, pas de 0 trompeur)', () => {
     const o = outputOf('souple-faible-trafic') as Record<string, unknown>;
     // pas de phase 2, pas d'inverse, pas de couche traitée.

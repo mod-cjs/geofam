@@ -97,6 +97,35 @@ function activeCriteria(
   });
 }
 
+/**
+ * Présentation EFFECTIVE d'un critère, résolue depuis la donnée scellée :
+ *  - `requis` : le critère est-il PLIÉ dans `conforme` ? (requisPath -> booléen de
+ *    verdict public §8). `false` = INFORMATIF : pas de picto ✓/✗, exclu du bandeau,
+ *    jamais dominant -> ne peut PAS contredire le verdict scellé. Absent -> requis.
+ *  - `label`/`format` : variante RIGIDE (MTLH/béton, σt MPa) quand rigideFlagPath
+ *    résout `true` (MAJEUR-2), sinon le libellé/format bitumineux (εt µdef). Le flag
+ *    lui-même n'est jamais rendu (§8) — seul le libellé/format change.
+ */
+interface EffectiveCriterion {
+  label: string;
+  format?: NumberFormat;
+  requis: boolean;
+}
+function effectiveCriterion(
+  output: Record<string, unknown>,
+  c: CriterionSpec,
+): EffectiveCriterion {
+  const rigide = c.rigideFlagPath
+    ? resolvePath(output, c.rigideFlagPath) === true
+    : false;
+  return {
+    label: rigide && c.rigideLabel ? c.rigideLabel : c.label,
+    format: rigide && c.rigideFormat ? c.rigideFormat : c.format,
+    // fail-safe : seul un `false` EXPLICITE dégrade en informatif (absent -> requis).
+    requis: c.requisPath ? resolvePath(output, c.requisPath) !== false : true,
+  };
+}
+
 function buildVerdictBanner(
   output: Record<string, unknown>,
   model: PresentationModel,
@@ -106,26 +135,31 @@ function buildVerdictBanner(
   const label = conforme ? model.verdict.labelTrue : model.verdict.labelFalse;
   const fill = conforme ? COLORS.navy : COLORS.alert;
 
-  // Colonnes internes : verdict 40 % + un encart par critère (taux de travail).
-  const criteriaCols: Content[] = activeCriteria(output, model).map((c) => {
-    const value = resolvePath(output, c.valuePath);
-    const adm = resolvePath(output, c.admissiblePath);
-    const rate = workRate(value, adm);
-    const rateText = rate == null ? '—' : `${Math.round(rate)} %`;
-    return {
-      width: '*',
-      stack: [
-        { text: c.label, color: COLORS.white, fontSize: 7 },
-        {
-          text: `Taux de travail : ${rateText}`,
-          color: COLORS.white,
-          fontSize: 8,
-          bold: true,
-          margin: [0, 1, 0, 0],
-        },
-      ],
-    };
-  });
+  // Colonnes internes : verdict 40 % + un encart par critère DIMENSIONNANT (taux de
+  // travail). Les critères INFORMATIFS (requis=false) sont EXCLUS du bandeau : leur
+  // taux (ex. 253 % d'une phase 2 non exigée) ne doit pas cohabiter avec CONFORME.
+  const criteriaCols: Content[] = activeCriteria(output, model)
+    .map((c) => ({ c, eff: effectiveCriterion(output, c) }))
+    .filter(({ eff }) => eff.requis)
+    .map(({ c, eff }) => {
+      const value = resolvePath(output, c.valuePath);
+      const adm = resolvePath(output, c.admissiblePath);
+      const rate = workRate(value, adm);
+      const rateText = rate == null ? '—' : `${Math.round(rate)} %`;
+      return {
+        width: '*',
+        stack: [
+          { text: eff.label, color: COLORS.white, fontSize: 7 },
+          {
+            text: `Taux de travail : ${rateText}`,
+            color: COLORS.white,
+            fontSize: 8,
+            bold: true,
+            margin: [0, 1, 0, 0],
+          },
+        ],
+      };
+    });
 
   return {
     margin: [0, 10, 0, 4],
@@ -177,30 +211,33 @@ function buildVerificationsTable(
   ];
 
   const rows = activeCriteria(output, model).map((c) => {
+    const eff = effectiveCriterion(output, c);
     const value = resolvePath(output, c.valuePath);
     const adm = resolvePath(output, c.admissiblePath);
     const rate = workRate(value, adm);
     const ok = rate != null && rate <= 100;
-    const v = formatValue(value, c.format);
-    const a = formatValue(adm, c.format);
+    const v = formatValue(value, eff.format);
+    const a = formatValue(adm, eff.format);
     return {
-      label: c.label,
+      label: eff.label,
       calc: `${v.value} ${v.unit}`.trim(),
       adm: `${a.value} ${a.unit}`.trim(),
       rate,
       rateText: rate == null ? '—' : `${Math.round(rate)} %`,
       ok,
+      requis: eff.requis,
     };
   });
 
-  // critère dimensionnant = taux max (parmi ceux calculables).
+  // critère dimensionnant = taux max PARMI LES CRITÈRES REQUIS (un critère
+  // informatif ne peut pas être « dimensionnant » ni contredire le verdict).
   let maxRate = -Infinity;
   for (const r of rows)
-    if (r.rate != null && r.rate > maxRate) maxRate = r.rate;
+    if (r.requis && r.rate != null && r.rate > maxRate) maxRate = r.rate;
 
   const tbody: TableCell[][] = [head];
   for (const r of rows) {
-    const dominant = r.rate != null && r.rate === maxRate;
+    const dominant = r.requis && r.rate != null && r.rate === maxRate;
     const fill = dominant ? COLORS.zebra : undefined;
     tbody.push([
       { text: r.label, style: 'cell', fillColor: fill, bold: dominant },
@@ -213,10 +250,11 @@ function buildVerificationsTable(
         fillColor: fill,
         bold: dominant,
       },
-      // Coche/croix VECTORIELLE (canvas) : Roboto n'a pas U+2713/U+2717 (glyphes
-      // manquants -> carrés). On dessine donc le picto -> rendu net, déterministe,
-      // sans dépendance de fonte. Discret, PAS d'emoji.
-      verdictMarkCell(r.ok, fill),
+      // REQUIS -> picto verdict ✓/✗ (canvas vectoriel : Roboto n'a pas U+2713/U+2717).
+      // INFORMATIF (requis=false) -> marqueur neutre « informatif » (AUCUN picto
+      // ✓/✗) : un critère non exigé ne peut JAMAIS afficher un ✗ contredisant le
+      // bandeau CONFORME (MAJEUR-1). Discret, PAS d'emoji.
+      r.requis ? verdictMarkCell(r.ok, fill) : informativeMarkCell(fill),
     ]);
   }
 
@@ -264,6 +302,11 @@ function buildLayerTable(
       typeof coucheRaw === 'number' ? `Couche ${coucheRaw}` : 'Couche —';
     const v = formatValue(row[spec.valueKey], spec.format);
     const ok = row[spec.okKey] === true;
+    // Élément INFORMATIF (requis=false) : ε_z granulaire exempté (§4.1.2) — pas de
+    // picto ✓/✗, il ne peut pas contredire le bandeau CONFORME (MAJEUR-1). Absent /
+    // undefined -> requis (verdict normal).
+    const requis =
+      spec.requisKey != null ? row[spec.requisKey] !== false : true;
 
     const cells: TableCell[] = [{ text: couche, style: 'cell' }];
     if (withMode) {
@@ -286,7 +329,7 @@ function buildLayerTable(
         alignment: 'right',
       });
     }
-    cells.push(verdictMarkCell(ok));
+    cells.push(requis ? verdictMarkCell(ok) : informativeMarkCell());
     tbody.push(cells);
   }
 
@@ -524,6 +567,10 @@ export function enumerateMappedPaths(model: PresentationModel): Set<string> {
   model.criteria.forEach((c) => {
     mapped.add(c.valuePath);
     mapped.add(c.admissiblePath);
+    // Les flags de VERDICT consommés par le critère (requis/rigide) sont « décidés »
+    // (lus par la logique de rendu) : ils comptent comme mappés pour la complétude.
+    if (c.requisPath) mapped.add(c.requisPath);
+    if (c.rigideFlagPath) mapped.add(c.rigideFlagPath);
   });
   // Les tables PAR COUCHE couvrent leur racine (ex. "couchesTraitees") : chaque
   // sous-clé d'élément est rendue via le spec, la racine suffit à la complétude.
@@ -579,6 +626,22 @@ function verdictMarkCell(ok: boolean, fill?: string): TableCell {
     margin: [0, 2, 0, 0],
     alignment: 'center',
     canvas,
+  };
+}
+
+/**
+ * Cellule NEUTRE d'un critère INFORMATIF (non requis) : aucun picto ✓/✗ — juste un
+ * libellé sobre « informatif ». Un critère non exigé pour la structure ne porte
+ * PAS de verdict et ne peut donc pas contredire le bandeau CONFORME (MAJEUR-1).
+ * Le mot « informatif » ne fuite aucun flag de méthode (§8, verdict public).
+ */
+function informativeMarkCell(fill?: string): TableCell {
+  return {
+    text: 'informatif',
+    style: 'cellMuted',
+    fontSize: 6.5,
+    alignment: 'center',
+    fillColor: fill,
   };
 }
 

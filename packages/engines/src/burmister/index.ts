@@ -231,15 +231,23 @@ function shapeOutput(D: Record<string, unknown>): unknown {
   // --- Critere de fatigue (couche liee), si une couche liee existe ---
   // On expose la valeur sollicitante et l'admissible FINALES + verdict. Les
   // contraintes brutes (s0/sd2/bz) et coefficients (kr/ks/kc/sh/e6) restent serveur.
+  // REQUIS (§8, booleen de verdict public) — le critere PRINCIPAL est PLIE dans
+  // `conforme` quand il est requis. Fidele a la logique passT du moteur (engine.ts
+  // L969-970) : pour une famille RIGIDE (useRig) le critere σ_t principal (okMain)
+  // est TOUJOURS plie, meme si etReq=false ; pour une famille bitumineuse il ne
+  // l'est que si etReq. => requis = useRig || etReq. Un critere principal requis en
+  // echec => conforme=false (jamais un ✗ sous CONFORME) ; un critere principal NON
+  // requis en echec (souple faible trafic) est rendu INFORMATIF par l'affichage.
+  const useRig = D.sig === 1 || D.sig === true;
   if (D.hasBit === true) {
     const et = D.et;
     const etA = D.etA;
     out.fatigue = {
-      rigide: D.sig === 1 || D.sig === true,
+      rigide: useRig,
       valeur: fin(et) ? et : null,
       admissible: fin(etA) ? etA : null,
       ok: D.passT === true,
-      requis: D.etReq === true,
+      requis: useRig || D.etReq === true,
     };
   }
 
@@ -250,23 +258,29 @@ function shapeOutput(D: Record<string, unknown>): unknown {
   const idxToCouche = (i: unknown): number => (fin(i) ? (i as number) + 1 : 1);
 
   // et2 -> phase 2 des structures MIXTES (§4.4.1) : ε_t (µdef) base bitumineuse.
+  // requis = etReq : la phase 2 n'est PLIEE (okEt2) que si etRequis (mixte Kmix>=0,5) ;
+  // pour un semi-rigide Kmix<0,5 (etReq=false) elle est INFORMATIVE (engine.ts L970 :
+  // `useRig ? okMain && (etRequis ? okEt2 : true) : …`). et2 n'existe que sous useRig.
   out.fatiguePhase2 =
     fin(D.et2) && fin(D.et2A)
       ? {
           valeur: D.et2,
           admissible: D.et2A,
           ok: (D.et2 as number) <= (D.et2A as number),
+          requis: D.etReq === true,
           couche: idxToCouche(D.et2i),
         }
       : null;
 
   // st2 -> structures INVERSES (§4.5) : σ_t (MPa) base MTLH profond.
+  // requis = true : okSt2 est TOUJOURS plie dans passT (engine.ts L970 `… && okSt2`).
   out.fatigueInverse =
     fin(D.st2) && fin(D.st2A)
       ? {
           valeur: D.st2,
           admissible: D.st2A,
           ok: (D.st2 as number) <= (D.st2A as number),
+          requis: true,
           couche: idxToCouche(D.st2i),
         }
       : null;
@@ -284,6 +298,9 @@ function shapeOutput(D: Record<string, unknown>): unknown {
                 valeur: r.st as number,
                 admissible: r.adm as number,
                 ok: (r.st as number) <= (r.adm as number),
+                // Critere σ_t rigide PRINCIPAL : toujours plie dans passT (rigL
+                // n'existe que sous useRig, ou okMain est inconditionnellement plie).
+                requis: true,
               },
             ]
           : [],
@@ -292,7 +309,11 @@ function shapeOutput(D: Record<string, unknown>): unknown {
 
   // ezL -> detail ε_z (µdef) par couche granulaire non liee (§4.1.2). L'admissible
   // est le seuil global ε_z,adm (meme catalogue que l'orniérage).
+  // requis = gntReq (D.gq) : ε_z granulaire est EXEMPTE pour les souples a faible
+  // trafic (engine.ts L953,960 : ez_val n'integre ezGNT que si gntReq) -> INFORMATIF
+  // dans ce cas (jamais un ✗ sous CONFORME) ; « autres cas » -> requis=true.
   const ezAdm = fin(D.ezA) ? (D.ezA as number) : null;
+  const ezRequis = D.gq === true;
   out.couchesGranulaires =
     Array.isArray(D.ezL) && ezAdm !== null
       ? (D.ezL as Array<Record<string, unknown>>).flatMap((r) =>
@@ -303,6 +324,7 @@ function shapeOutput(D: Record<string, unknown>): unknown {
                   valeur: r.val as number,
                   admissible: ezAdm,
                   ok: (r.val as number) <= ezAdm,
+                  requis: ezRequis,
                 },
               ]
             : [],
