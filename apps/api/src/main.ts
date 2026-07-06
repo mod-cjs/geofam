@@ -29,8 +29,12 @@ async function bootstrap() {
   const corsOrigins = resolveCorsOrigins();
   app.enableCors({
     origin: corsOrigins.length > 0 ? corsOrigins : true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Recette-Key'],
-    methods: ['GET', 'POST', 'OPTIONS'],
+    // Idempotency-Key : requis par les mutations Lot 2/3 du back-office (admin-mutations-client)
+    // -> sans lui dans allowedHeaders, le preflight CORS echoue et le navigateur bloque toute
+    // mutation (« Failed to fetch »). PATCH/DELETE : idem, les mutations les utilisent (bug
+    // detecte par l'e2e Playwright de mutation).
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Recette-Key', 'Idempotency-Key'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     maxAge: 86400,
   });
 
