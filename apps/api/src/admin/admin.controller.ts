@@ -338,14 +338,12 @@ export class AdminController {
     @Param('orgId', new ZodValidationPipe(memberOrgIdParam)) orgId: string,
     @Body(new ZodValidationPipe(addMemberSchema)) body: AddMemberDto,
     @Req() req: AuthedRequest,
-  ): Promise<{ membershipId: string }> {
-    const membershipId = await this.members.provisionMember(
-      orgId,
-      body.userId,
-      body.role,
-      this.actor(req),
-    );
-    return { membershipId };
+  ): Promise<AdminOrgDetail> {
+    await this.members.provisionMember(orgId, body.userId, body.role, this.actor(req));
+    // Renvoie le detail FRAIS (avec le nouveau membre) — comme les autres mutations
+    // membres : le front (onMutated) reconstruit la table depuis detail.members. Avant,
+    // addMember renvoyait { membershipId } -> la table ne se rafraichissait pas (bug e2e W4).
+    return this.orgs.getOrgDetail(orgId);
   }
 
   /**
