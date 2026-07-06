@@ -9,6 +9,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -83,7 +84,7 @@ import type {
   OrgUsage,
 } from './admin-orgs.service';
 import { AdminOrgsService } from './admin-orgs.service';
-import type { AdminUserView } from './admin-users.service';
+import type { AdminUserDetail, AdminUserView } from './admin-users.service';
 import { AdminUsersService } from './admin-users.service';
 import type { AddMemberDto, SetMemberActiveDto } from './members.dto';
 import {
@@ -257,6 +258,17 @@ export class AdminController {
     query: SearchUsersQuery,
   ): Promise<AdminUserView[]> {
     return this.users.searchUsers(query);
+  }
+
+  /**
+   * GET /admin/users/:userId — fiche d'un utilisateur : identite + ses appartenances
+   * (org + role + statut). Lecture d'IDENTITE (admin_get_user DEFINER). 404 si inconnu.
+   */
+  @Get('users/:userId')
+  async getUser(@Param('userId', ParseUUIDPipe) userId: string): Promise<AdminUserDetail> {
+    const detail = await this.users.getUser(userId);
+    if (!detail) throw new NotFoundException('Utilisateur introuvable');
+    return detail;
   }
 
   /**

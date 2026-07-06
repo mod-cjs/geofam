@@ -287,3 +287,25 @@ export async function adminSearchUsers(args?: {
   const data = await adminGet<AdminUserView[]>(`/admin/users${qs}`);
   return data ?? [];
 }
+
+/** Fiche détaillée d'un utilisateur — GET /admin/users/:id. */
+export interface AdminUserOrgView {
+  orgId: string;
+  orgName: string;
+  orgSlug: string;
+  orgStatus: string;
+  role: string;
+  active: boolean;
+}
+export interface AdminUserDetailView {
+  userId: string;
+  email: string;
+  fullName: string;
+  platformRole: string | null;
+  isActive: boolean;
+  orgs: AdminUserOrgView[];
+}
+
+export async function adminGetUser(userId: string): Promise<AdminUserDetailView | null> {
+  return adminGet<AdminUserDetailView>(`/admin/users/${encodeURIComponent(userId)}`);
+}

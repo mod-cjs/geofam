@@ -23,6 +23,38 @@ interface UserRow {
   nb_orgs: bigint;
 }
 
+/** Fiche détaillée d'un utilisateur : identité + ses appartenances (org + rôle). */
+export interface AdminUserOrg {
+  orgId: string;
+  orgName: string;
+  orgSlug: string;
+  orgStatus: string;
+  role: string;
+  active: boolean;
+}
+export interface AdminUserDetail {
+  userId: string;
+  email: string;
+  fullName: string;
+  platformRole: PlatformRole | null;
+  isActive: boolean;
+  orgs: AdminUserOrg[];
+}
+
+interface UserDetailRow {
+  user_id: string;
+  email: string;
+  full_name: string;
+  platform_role: PlatformRole | null;
+  is_active: boolean;
+  org_id: string | null;
+  org_name: string | null;
+  org_slug: string | null;
+  org_status: string | null;
+  membership_role: string | null;
+  membership_active: boolean | null;
+}
+
 /**
  * AdminUsersService — recherche d'utilisateurs (identite) pour le back-office
  * SUPERADMIN (Lot 1). Cloture le workflow « ajouter un membre a une org
@@ -63,5 +95,36 @@ export class AdminUsersService {
       isActive: r.is_active,
       nbOrgs: Number(r.nb_orgs),
     }));
+  }
+
+  /** Fiche d'un utilisateur : identité + la liste de ses appartenances (org + rôle). */
+  async getUser(userId: string): Promise<AdminUserDetail | null> {
+    const rows = await this.prisma.asAppRole(
+      (tx) => tx.$queryRaw<UserDetailRow[]>`
+        SELECT user_id, email, full_name, platform_role, is_active,
+               org_id, org_name, org_slug, org_status, membership_role, membership_active
+        FROM admin_get_user(${userId}::uuid)
+      `,
+    );
+    if (rows.length === 0) return null;
+    const r = rows[0];
+    const orgs: AdminUserOrg[] = rows
+      .filter((x) => x.org_id != null)
+      .map((x) => ({
+        orgId: x.org_id as string,
+        orgName: x.org_name as string,
+        orgSlug: x.org_slug as string,
+        orgStatus: x.org_status as string,
+        role: x.membership_role as string,
+        active: x.membership_active as boolean,
+      }));
+    return {
+      userId: r.user_id,
+      email: r.email,
+      fullName: r.full_name,
+      platformRole: r.platform_role,
+      isActive: r.is_active,
+      orgs,
+    };
   }
 }

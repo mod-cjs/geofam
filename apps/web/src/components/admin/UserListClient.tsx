@@ -8,6 +8,7 @@
  */
 
 import { Search } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useCallback, useState, useTransition } from 'react';
 
@@ -204,9 +205,13 @@ export function UserListClient({ users, q }: UserListClientProps) {
               {users.map((u) => (
                 <tr key={u.userId} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '10px 14px' }}>
-                    <div style={{ fontWeight: 500, color: 'var(--text-primary)', marginBottom: 2 }}>
+                    <Link
+                      href={`/admin/users/${u.userId}`}
+                      className="admin-breadcrumb-link"
+                      style={{ fontWeight: 500, color: 'var(--text-link)', textDecoration: 'none', marginBottom: 2, display: 'block' }}
+                    >
                       {u.fullName}
-                    </div>
+                    </Link>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
                       {u.email}
                     </div>
