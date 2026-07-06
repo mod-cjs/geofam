@@ -185,6 +185,19 @@ export class PvService {
           dispatch.contract.outputSchema,
           recomputed.output,
         );
+        // GARDE FAIL-CLOSED (revue adverse B1) : un output porteur d'une `erreur` (echec de
+        // garde encode ok:true + zeros par radier/plane-strain/tri-raft) ne doit JAMAIS etre
+        // scelle — sinon PV de zeros « faisant foi » (DoD §5). Defense en profondeur : la
+        // garde de calc-results empeche deja de persister un tel calcul ; on refuse aussi ici.
+        if (
+          recomputedOutput != null &&
+          typeof recomputedOutput === 'object' &&
+          (recomputedOutput as { erreur?: unknown }).erreur != null
+        ) {
+          throw new ConflictException(
+            'Ce calcul est en erreur : emission du PV refusee (aucun livrable scelle sur un calcul echoue).',
+          );
+        }
         if (canonicalize(recomputedOutput) !== canonicalize(calc.output)) {
           // On DISTINGUE une derive de version (le moteur a ete mis a jour depuis le calcul
           // -> divergence LEGITIME) d'une ALTERATION en base. Message non alarmant dans le

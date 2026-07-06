@@ -106,6 +106,25 @@ export class CalcResultsService {
       envelope.output,
     );
 
+    // GARDE FAIL-CLOSED (revue adverse B1) : certains moteurs (radier, plane-strain,
+    // tri-raft) encodent un ECHEC de garde dans `output.erreur` avec ok:true + diagnostics
+    // a ZERO (contrairement a axi qui renvoie ok:false). Persister/sceller cela produirait
+    // un PV de zeros (DoD §5) et bruleraut du quota (DoD §9). Un output porteur d'une erreur
+    // = calcul ECHOUE : rien n'est persiste (meme traitement que !envelope.ok ; aucun
+    // intermediaire ni message brut ne fuit, cf. §8).
+    if (
+      projectedOutput != null &&
+      typeof projectedOutput === 'object' &&
+      (projectedOutput as { erreur?: unknown }).erreur != null
+    ) {
+      return {
+        calcResultId: '',
+        ok: false,
+        meta: envelope.meta,
+        output: undefined,
+      };
+    }
+
     // Meta de tracabilite : la version/sha256 du REGISTRE est la source de verite
     // (les sorties moteur la portent deja via meta ; elles concordent par
     // construction). On la fige dans `meta` ET dans la ligne persistee pour qu'un
