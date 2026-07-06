@@ -46,6 +46,13 @@ export const CHAUSSEE_PRESENTATION: PresentationModel = {
       valuePath: 'fatigue.valeur',
       admissiblePath: 'fatigue.admissible',
       format: { decimals: 0, unit: 'µdef' },
+      // OPTIONNEL : une chaussee TOUTE GRANULAIRE (piste non revetue) n'a pas de couche
+      // liee -> `out.fatigue` ABSENT (pas juste le flag). Sans `optional`, le renderer
+      // affichait quand meme le critere -> taux null -> ✗ sous bandeau CONFORME (re-revue
+      // MAJEUR : le defaut « flag absent => requis » ne couvre pas l'objet critere entier
+      // manquant). `optional` -> `activeCriteria` l'omet quand fatigue.valeur n'est pas fini,
+      // alignant le PV sur le web (qui omet deja la ligne).
+      optional: true,
       // Verdict public : requis=false (souple à faible trafic) -> rendu informatif.
       requisPath: 'fatigue.requis',
       // MAJEUR-2 : familles RIGIDES (fatigue.rigide=true) -> σt en MPa (pas µdef).

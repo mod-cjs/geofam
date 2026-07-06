@@ -412,6 +412,33 @@ describe('#71 MAJEUR-1 — un critère secondaire NON requis ne contredit JAMAIS
     expect(text).not.toContain('NON CONFORME');
   });
 
+  it('GRANULAIRE conforme (piste non revêtue, pas de couche liée) -> critère fatigue OMIS, aucune croix (re-revue MAJEUR)', () => {
+    // Chaussée TOUTE granulaire : `out.fatigue` ABSENT (pas juste le flag). Sans le
+    // `optional` sur criteria[0], le renderer affichait le critère -> taux null -> ✗
+    // sous bandeau CONFORME (contradiction PV-only ; le web omettait deja la ligne).
+    const GRANULAIRE_CONFORME = {
+      ...(CHAUSSEE_OUTPUT as Record<string, unknown>),
+      conforme: true,
+      famille: 'granulaire',
+      fatigue: undefined,
+      ornierage: { valeur: 400, admissible: 511, ok: true },
+      fatiguePhase2: null,
+      fatigueInverse: null,
+      couchesTraitees: [],
+      couchesGranulaires: [],
+    } as SealableValue;
+    const def = buildPvDocDefinition(makeChausseePv({ output: GRANULAIRE_CONFORME }));
+    const croix = collectCanvasLines(def.content).filter(
+      (m) => m.length >= 2 && m.every((l) => l.lineColor === COLORS.alert),
+    );
+    expect(croix.length).toBe(0);
+    const text = collectPvPdfText(makeChausseePv({ output: GRANULAIRE_CONFORME }));
+    expect(text).toContain('CONFORME');
+    expect(text).not.toContain('NON CONFORME');
+    // le critère « Fatigue des couches liées » est OMIS (pas de ligne trompeuse), aligné sur le web.
+    expect(text.includes('Fatigue des couches liées')).toBe(false);
+  });
+
   it('le critère non requis reste AFFICHÉ mais marqué informatif (jamais omis silencieusement)', () => {
     const text = collectPvPdfText(makeChausseePv({ output: SEMI_RIGIDE_CONFORME }));
     // phase 2 toujours visible (complétude) …
