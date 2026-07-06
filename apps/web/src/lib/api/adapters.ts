@@ -967,7 +967,9 @@ function buildLaboRows(o: Record<string, unknown>): CalcOutputRow[] {
   // — Proctor / portance
   pushRow(rows, 'Teneur en eau optimale w_OPN', o.wopn, '%');
   pushRow(rows, 'Densité sèche max ρ_d;max', o.rdmax, 't/m³');
-  pushRow(rows, 'Indice CBR', o.cbr, '');
+  // Le libellé reflète le type d'essai (CBR après immersion / IPI immédiat) — cbrType
+  // est client-safe (résultat, pas méthode) : les deux alimentent la même valeur `cbr`.
+  pushRow(rows, o.cbrType === 'ipi' ? 'Indice IPI' : 'Indice CBR', o.cbr, '');
   pushRow(rows, 'Gonflement', o.gonfl, '%');
   // — Granulats
   pushRow(rows, 'Équivalent de sable ES', o.es, '%');

@@ -20,17 +20,23 @@ interface WaterS { t: string; h: string; s: string }
 interface LLPoint { x: string; t: string; h: string; s: string }
 interface PLPoint { t: string; h: string; s: string }
 interface PrPoint { mh: string; t: string; h: string; s: string }
-interface CbPoint { N: string; P: string; rho: string; w: string }
+/** Éprouvette de cisaillement direct (NF EN ISO 17892-10) : forces + identification. */
+interface CiSpec { N: string; P: string; R: string; rho: string; w: string; nat: string }
+/** Feuille « Cisaillement direct » DÉDIÉE (ne partage RIEN avec le CBR). */
+interface CisailForm { method: string; shape: string; dim: string; Ra: string; Ri: string; rs: string; specs: CiSpec[] }
 
 // Lignes de mesure VIDES (formulaires vides par defaut — revue adverse).
 const emptyW = (): WaterS => ({ t: '', h: '', s: '' });
 const emptyLL = (): LLPoint => ({ x: '', t: '', h: '', s: '' });
 const emptyPL = (): PLPoint => ({ t: '', h: '', s: '' });
 const emptyPr = (): PrPoint => ({ mh: '', t: '', h: '', s: '' });
-const emptyCb = (): CbPoint => ({ N: '', P: '', rho: '', w: '' });
+const emptyCi = (): CiSpec => ({ N: '', P: '', R: '', rho: '', w: '', nat: '' });
+const emptyCisail = (): CisailForm => ({ method: 'box', shape: 'sq', dim: '', Ra: '', Ri: '', rs: '', specs: [emptyCi(), emptyCi(), emptyCi(), emptyCi()] });
 // Toggles de METHODE/equipement uniquement (pas de mesure) — conserves par defaut.
+// NB : cbType (CBR/IPI) et les toggles de cisaillement (ciMethod/ci_shape) sont
+// désormais des champs de FORMULAIRE dédiés (cf. FastlabForm), plus des « extra ».
 const EXTRA_TOGGLE_DEFAULTS: Record<string, string> = {
-  laVar: 'std', mdeVar: 'std', mdeMode: 'norme', permMode: 'var', su_type: 'SS', rs_liq: 'water', rsMethod: 'A', cbType: 'cbr',
+  laVar: 'std', mdeVar: 'std', mdeMode: 'norme', permMode: 'var', su_type: 'SS', rs_liq: 'water', rsMethod: 'A',
 };
 
 const SIEVES: Array<{ key: string; label: string }> = [
@@ -47,7 +53,10 @@ export interface FastlabForm {
   ll: LLPoint[]; pl: PLPoint[];
   vbs: Record<string, string>;
   prMould: string; prType: string; prPoints: PrPoint[];
-  cbMethod: string; cbShape: string; cbDim: string; cbRs: string; cbPoints: CbPoint[];
+  /** Type d'essai de portance : 'cbr' (après immersion) ou 'ipi' (indice portant immédiat). */
+  cbType: string;
+  /** Feuille Cisaillement direct DÉDIÉE (ci_*) — indépendante du CBR. */
+  cisail: CisailForm;
   /** Sections d'essais additionnelles — clés = ids moteur exacts (œdo, triaxial, ES, LA, MDE, SZ, sulfates, perméa, UCS, densités). */
   extra: Record<string, string>;
 }
@@ -67,12 +76,37 @@ export function buildFastlabPayload(f: FastlabForm): Record<string, unknown> {
   if (f.prMould) p.pr_mould = f.prMould;
   if (f.prType) p.prType = f.prType;
   f.prPoints.forEach((r, i) => { const n = i + 1; if (r.mh) p[`pr_mh${n}`] = r.mh; if (r.t) p[`pr_t${n}`] = r.t; if (r.h) p[`pr_h${n}`] = r.h; if (r.s) p[`pr_s${n}`] = r.s; });
-  // CBR/IPI — méthode + géométrie + points (enfoncement N, force P, ρ, w par énergie)
-  if (f.cbMethod) p.ciMethod = f.cbMethod;
-  if (f.cbShape) p.ci_shape = f.cbShape;
-  if (f.cbDim) p.ci_dim = f.cbDim;
-  if (f.cbRs) p.ci_rs = f.cbRs;
-  f.cbPoints.forEach((r, i) => { const n = i + 1; if (r.N) p[`ci_N${n}`] = r.N; if (r.P) p[`ci_P${n}`] = r.P; if (r.rho) p[`ci_rho${n}`] = r.rho; if (r.w) p[`ci_w${n}`] = r.w; });
+  // CBR/IPI — SEUL le type d'essai est un toggle (cbType) ; les mesures de portance
+  // (réf. OPM, moules, poinçonnement, gonflement) sont des cb_* saisis dans `extra`.
+  // AUCUN champ de cisaillement ici : le CBR ne pilote plus calcCisail (fin du misroute).
+  if (f.cbType) p.cbType = f.cbType;
+  // Cisaillement direct (ci_*) — essai DÉDIÉ (NF EN ISO 17892-10), sans lien avec le CBR.
+  // On n'émet les entrées de cisaillement (y compris le toggle de dispositif ciMethod)
+  // QUE si la feuille est réellement renseignée : une feuille intacte ne doit injecter
+  // aucun ci_* (le moteur retombe de toute façon sur ciMethod='box' par défaut).
+  const ci = f.cisail;
+  const ciHasData = ci.dim.trim() !== '' || ci.Ra.trim() !== '' || ci.Ri.trim() !== '' || ci.rs.trim() !== '' ||
+    ci.specs.some((r) => r.N.trim() !== '' || r.P.trim() !== '' || r.R.trim() !== '' || r.rho.trim() !== '' || r.w.trim() !== '' || r.nat.trim() !== '');
+  if (ciHasData) {
+    if (ci.method) p.ciMethod = ci.method;
+    if (ci.method === 'ring') {
+      if (ci.Ra) p.ci_Ra = ci.Ra;
+      if (ci.Ri) p.ci_Ri = ci.Ri;
+    } else {
+      if (ci.shape) p.ci_shape = ci.shape;
+      if (ci.dim) p.ci_dim = ci.dim;
+    }
+    if (ci.rs) p.ci_rs = ci.rs;
+    ci.specs.forEach((r, i) => {
+      const n = i + 1;
+      if (r.N) p[`ci_N${n}`] = r.N;
+      if (r.P) p[`ci_P${n}`] = r.P;
+      if (r.R) p[`ci_R${n}`] = r.R;
+      if (r.rho) p[`ci_rho${n}`] = r.rho;
+      if (r.w) p[`ci_w${n}`] = r.w;
+      if (r.nat) p[`ci_nat${n}`] = r.nat;
+    });
+  }
   // Sections additionnelles (œdo, triaxial, ES, LA, MDE, SZ, sulfates, perméa, UCS, densités)
   for (const [k, v] of Object.entries(f.extra)) if (v.trim() !== '') p[k] = v;
   return p;
@@ -203,11 +237,8 @@ export default function FastlabPage() {
   const [prMould, setPrMould] = useState('A');
   const [prType, setPrType] = useState('n');
   const [prPoints, setPrPoints] = useState<PrPoint[]>([emptyPr(), emptyPr(), emptyPr(), emptyPr(), emptyPr()]);
-  const [cbMethod, setCbMethod] = useState('box');
-  const [cbShape, setCbShape] = useState('sq');
-  const [cbDim, setCbDim] = useState('');
-  const [cbRs, setCbRs] = useState('');
-  const [cbPoints, setCbPoints] = useState<CbPoint[]>([emptyCb(), emptyCb(), emptyCb(), emptyCb()]);
+  const [cbType, setCbType] = useState('cbr');
+  const [cisail, setCisail] = useState<CisailForm>(emptyCisail());
   const [extra, setExtra] = useState<Record<string, string>>({ ...EXTRA_TOGGLE_DEFAULTS });
 
   const [calculating, setCalculating] = useState(false);
@@ -226,8 +257,8 @@ export default function FastlabPage() {
 
   const buildPayload = useCallback(() => buildFastlabPayload({
     ident: { ...ident, geo: ident.geo ?? '' }, water, gr_M, sieves, ll, pl,
-    vbs, prMould, prType, prPoints, cbMethod, cbShape, cbDim, cbRs, cbPoints, extra,
-  }), [ident, water, gr_M, sieves, ll, pl, vbs, prMould, prType, prPoints, cbMethod, cbShape, cbDim, cbRs, cbPoints, extra]);
+    vbs, prMould, prType, prPoints, cbType, cisail, extra,
+  }), [ident, water, gr_M, sieves, ll, pl, vbs, prMould, prType, prPoints, cbType, cisail, extra]);
 
   const handleCalculer = useCallback(async () => {
     if (!orgId || !projectId) return;
@@ -285,7 +316,7 @@ export default function FastlabPage() {
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: `1px solid ${LINE}`, flexWrap: 'wrap' }} role="tablist">
         {([
           ['ident', 'Identification'], ['eau', 'Eau & granulométrie'], ['atterberg', 'Limites d’Atterberg'],
-          ['vbs', 'Bleu (VBS)'], ['proctor', 'Proctor'], ['cbr', 'CBR / IPI'],
+          ['vbs', 'Bleu (VBS)'], ['proctor', 'Proctor'], ['cbr', 'CBR / IPI'], ['cisail', 'Cisaillement'],
           ...EXTRA_SECTIONS.map((s) => [s.tab, s.label] as [string, string]),
           ['resultat', 'Classe GTR'],
         ] as Array<[string, string]>).map(([id, t]) => (
@@ -411,38 +442,73 @@ export default function FastlabPage() {
       {tab === 'cbr' && (
         <div style={card}>
           <div style={secH}>Indice CBR / IPI — NF P94-078</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
-            <div><label style={lbl}>Méthode</label><select style={inp} value={cbMethod} onChange={(e) => setCbMethod(e.target.value)}><option value="box">Boîte</option><option value="ring">Anneau</option></select></div>
-            <div><label style={lbl}>Forme du poinçon</label><select style={inp} value={cbShape} onChange={(e) => setCbShape(e.target.value)}><option value="sq">Carrée</option><option value="circ">Circulaire</option></select></div>
-            <div><label style={lbl}>Dimension (mm)</label><input style={inp} value={cbDim} onChange={(e) => setCbDim(e.target.value)} /></div>
-            <div><label style={lbl}>ρ_s (Mg/m³)</label><input style={inp} value={cbRs} onChange={(e) => setCbRs(e.target.value)} /></div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={lbl}>Type d’essai</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {([['cbr', 'CBR — après immersion (4 j)'], ['ipi', 'IPI — indice portant immédiat']] as const).map(([v, l]) => (
+                <button key={v} data-testid={`cbtype-${v}`} aria-pressed={cbType === v} onClick={() => setCbType(v)}
+                  style={{ border: `1px solid ${cbType === v ? ACCENT : LINE}`, background: cbType === v ? '#eef1df' : '#fff', color: cbType === v ? ACCENT : MUTED, borderRadius: 7, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>{l}</button>
+              ))}
+            </div>
           </div>
-          <div style={secH}>Points (par énergie)</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-            <thead><tr>{['Point', 'Enfoncement (mm)', 'Force (kN)', 'ρ (kg/m³)', 'w (%)'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
-            <tbody>{cbPoints.map((r, i) => (
-              <tr key={i}>
-                <td style={{ padding: 2, color: MUTED, fontSize: 11 }}>{i + 1}</td>
-                {(['N', 'P', 'rho', 'w'] as const).map((k) => <td key={k} style={{ padding: 2 }}><input style={inp} value={r[k]} onChange={(e) => setCbPoints((a) => a.map((q, j) => j === i ? { ...q, [k]: e.target.value } : q))} /></td>)}
-              </tr>
-            ))}</tbody>
-          </table>
-          <div style={{ ...secH, marginTop: 16 }}>Poinçonnement CBR — moules compactés</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginBottom: 10 }}>
-            {([['cb_cible', 'Compacité cible (%)'], ['cb_s25', 'Force à 2,5 mm (kN)'], ['cb_s5', 'Force à 5 mm (kN)'], ['cb_K', 'Coefficient K']] as const).map(([id, l]) => (
+          <div style={secH}>Référence Proctor (OPM)</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
+            {([['cb_ydmax', 'ρ_d max OPM (Mg/m³) — vide = Proctor'], ['cb_wopt', 'w_OPM (%) — vide = Proctor'], ['cb_cible', 'Compacité cible (% OPM)'], ['cb_s25', 'Force réf. 2,5 mm (kN)'], ['cb_s5', 'Force réf. 5 mm (kN)'], ['cb_K', 'Constante anneau K']] as const).map(([id, l]) => (
               <div key={id}><label style={lbl}>{l}</label><input style={inp} value={extra[id] ?? ''} onChange={(e) => setExtra((p) => ({ ...p, [id]: e.target.value }))} /></div>
             ))}
           </div>
+          <div style={secH}>Poinçonnement CBR — moules compactés (55 / 25 / 10 coups)</div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead><tr>{['Moule', 'Masse tot. (g)', 'Masse moule (g)', 'Volume (cm³)', 'w (%)', 'Enf. 2,5', 'Enf. 5', 'H₀ (mm)', 'Gonfl. (mm)'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
-            <tbody>{[0, 1, 2].map((m) => (
+            <thead><tr>{['Moule', 'Masse tot. (g)', 'Masse moule (g)', 'Volume (cm³)', 'w (%)', 'Force 2,5 mm', 'Force 5 mm', 'H₀ (mm)', 'Gonfl. (mm)'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <tbody>{([[0, '55 coups'], [1, '25 coups'], [2, '10 coups']] as const).map(([m, lab]) => (
               <tr key={m}>
-                <td style={{ padding: 2, color: MUTED, fontSize: 11 }}>{m + 1}</td>
+                <td style={{ padding: 2, color: MUTED, fontSize: 11 }}>{lab}</td>
                 {[`cb_tot${m}`, `cb_moule${m}`, `cb_vol${m}`, `cb_w${m}`, `cb_pen_${m}_6`, `cb_pen_${m}_9`, `cb_H0${m}`, `cb_gonf${m}`].map((id) => <td key={id} style={{ padding: 2 }}><input style={{ ...inp, padding: '5px 6px' }} value={extra[id] ?? ''} onChange={(e) => setExtra((p) => ({ ...p, [id]: e.target.value }))} /></td>)}
               </tr>
             ))}</tbody>
           </table>
-          <div style={{ marginTop: 10, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>L&apos;indice CBR/IPI caractérise la portance du sol support — paramètre de dimensionnement des chaussées.</div>
+          <div style={{ marginTop: 10, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Les forces de poinçonnement à 2,5 et 5 mm (colonnes 6-7) déterminent l’indice ; le gonflement n’est rapporté qu’en mode CBR (après immersion). L&apos;indice CBR/IPI caractérise la portance du sol support.</div>
+        </div>
+      )}
+
+      {tab === 'cisail' && (
+        <div style={card}>
+          <div style={secH}>Cisaillement direct — NF EN ISO 17892-10</div>
+          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div><label style={lbl}>Dispositif</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {([['box', 'Boîte de cisaillement'], ['ring', 'Anneau (annulaire)']] as const).map(([v, l]) => (
+                  <button key={v} data-testid={`cimethod-${v}`} aria-pressed={cisail.method === v} onClick={() => setCisail((c) => ({ ...c, method: v }))}
+                    style={{ border: `1px solid ${cisail.method === v ? ACCENT : LINE}`, background: cisail.method === v ? '#eef1df' : '#fff', color: cisail.method === v ? ACCENT : MUTED, borderRadius: 7, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div><label style={lbl}>ρ_s grains (Mg/m³)</label><input style={{ ...inp, width: 150 }} value={cisail.rs} onChange={(e) => setCisail((c) => ({ ...c, rs: e.target.value }))} /></div>
+          </div>
+          {cisail.method === 'box' ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
+              <div><label style={lbl}>Forme éprouvette</label><select style={inp} value={cisail.shape} onChange={(e) => setCisail((c) => ({ ...c, shape: e.target.value }))}><option value="sq">Carrée</option><option value="circ">Circulaire</option></select></div>
+              <div><label style={lbl}>Côté / Ø (mm)</label><input style={inp} value={cisail.dim} onChange={(e) => setCisail((c) => ({ ...c, dim: e.target.value }))} /></div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
+              <div><label style={lbl}>Rayon extérieur R_a (mm)</label><input style={inp} value={cisail.Ra} onChange={(e) => setCisail((c) => ({ ...c, Ra: e.target.value }))} /></div>
+              <div><label style={lbl}>Rayon intérieur R_i (mm)</label><input style={inp} value={cisail.Ri} onChange={(e) => setCisail((c) => ({ ...c, Ri: e.target.value }))} /></div>
+            </div>
+          )}
+          <div style={secH}>Éprouvettes (≥ 3 contraintes normales)</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead><tr>{['#', cisail.method === 'box' ? 'Force verticale N (kN)' : 'Force verticale N (kN)', cisail.method === 'box' ? 'Cisaill. pic P (kN)' : 'Couple pic Mₜ (N·m)', cisail.method === 'box' ? 'Cisaill. résiduel (kN)' : 'Couple résiduel Mₜ (N·m)', 'ρ (kg/m³)', 'w (%)', 'Nature'].map((h, i) => <th key={i} style={th}>{h}</th>)}</tr></thead>
+            <tbody>{cisail.specs.map((r, i) => (
+              <tr key={i}>
+                <td style={{ padding: 2, color: MUTED, fontSize: 11 }}>{i + 1}</td>
+                {(['N', 'P', 'R', 'rho', 'w', 'nat'] as const).map((k) => (
+                  <td key={k} style={{ padding: 2 }}><input style={{ ...inp, padding: '5px 6px', textAlign: k === 'nat' ? 'left' : undefined }} value={r[k]} onChange={(e) => setCisail((c) => ({ ...c, specs: c.specs.map((q, j) => j === i ? { ...q, [k]: e.target.value } : q) }))} /></td>
+                ))}
+              </tr>
+            ))}</tbody>
+          </table>
+          <div style={{ marginTop: 10, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>L’enveloppe de Mohr-Coulomb (régression σ′_v ↔ τ) donne la cohésion c′ et l’angle de frottement φ′ ; la colonne « résiduel » alimente φ′_R. Résultats affichés après calcul.</div>
         </div>
       )}
 
