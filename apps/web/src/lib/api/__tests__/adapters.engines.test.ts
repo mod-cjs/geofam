@@ -128,6 +128,7 @@ const REAL_PRESSIOMETRE = {
   EM: 3.4064,
   ratioEMpL: 7.7574,
   alpha: 0.67,
+  Ey: 5.0842,
   pLDirect: false,
   categorie: 'B',
   categorieLibelle: 'Sol mou (cat. B)',
@@ -479,9 +480,25 @@ describe('adaptCalcResult — pressiomètre Ménard (dépouillement)', () => {
     expect(JSON.stringify(norm)).toContain('Sol mou (cat. B)');
   });
 
-  it('fail-closed : ni alpha (coefficient rhéologique), ni pLDirect, ni code catégorie brut', () => {
+  it('affiche α (Ménard) et le module d Young Ey = EM/α (décision titulaire : intermédiaires publics)', () => {
+    // Retour STARFIRE + décision titulaire (mémoire roadsen-details-transparents-rescope-s8) :
+    // exposer les grandeurs PUBLIQUES du dépouillement — α et Ey figurent dans l'outil
+    // d'origine (Profil : colonne α ; renderResults : « Ey = E/α »). Ce sont des RÉSULTATS,
+    // pas des intermédiaires de méthode (courbe corrigée / calage / pente restent serveur).
     const norm = normalizedOf('pressiometre-menard', REAL_PRESSIOMETRE);
-    expectNoLeak(norm, ['"alpha"', 'pLDirect', '"categorie"']);
+    const rows = norm.rows as CalcOutputRow[];
+    const alpha = rows.find((r) => /coefficient rhéologique α/i.test(r.label));
+    expect(alpha?.value).toBe(0.67);
+    const ey = rows.find((r) => /module.*young.*E_?y|E_?y.*=.*E_?M/i.test(r.label));
+    expect(ey?.value).toBe(5.0842);
+    expect(ey?.unit).toBe('MPa');
+  });
+
+  it('fail-closed : ni pLDirect, ni code catégorie brut ne fuit (raw keys)', () => {
+    // α/Ey sont désormais exposés comme VALEURS de ligne (label+value), jamais comme
+    // clés brutes spreadées : le drapeau pLDirect et le CODE catégorie restent masqués.
+    const norm = normalizedOf('pressiometre-menard', REAL_PRESSIOMETRE);
+    expectNoLeak(norm, ['pLDirect', '"categorie"']);
   });
 });
 

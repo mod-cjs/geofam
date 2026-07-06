@@ -1,10 +1,14 @@
 'use client';
 
 /**
- * PressioPro — Dépouillement d'essai pressiométrique Ménard.
- * Saisie de l'essai (appareillage, paliers P/v15/v30/v60) ; le CALCUL est SERVEUR
- * (moteur `pressiometre` → registryId `pressiometre-menard`). §8 : aucun intermédiaire
- * confidentiel côté navigateur ; la courbe trace les LECTURES saisies + le résultat pL.
+ * PressioPro — Dépouillement d'essai pressiométrique Ménard (NF EN ISO 22476-4).
+ * Fidèle à l'outil client (onglets Projet/Log/Mesures/Résultats/Profil) : appareillage
+ * partagé + PROFIL multi-profondeurs (une profondeur = un dépouillement serveur), coupe
+ * de sondage (Log), sélection manuelle des seuils p₀/p_f, catalogue de sondes (auto-Vs)
+ * et gaines. Le CALCUL est SERVEUR (moteur `pressiometre` → `pressiometre-menard`).
+ * §8 : aucun intermédiaire confidentiel côté navigateur ; la courbe trace les LECTURES
+ * saisies + le résultat p_L ; α et Ey sont des grandeurs de résultat publiques renvoyées
+ * par le serveur.
  */
 
 import { useParams } from 'next/navigation';
@@ -12,23 +16,28 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
-import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, OfficialPv } from '@/lib/api/types';
+import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, CalcOutputRow, OfficialPv } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 
 interface Row { p: string; v15: string; v30: string; v60: string }
 
 const num = (s: string, d = 0): number => { const t = String(s).trim(); if (t === '') return d; const v = Number(t.replace(',', '.')); return Number.isFinite(v) ? v : d; };
+const pd = (label: string): number => { const v = parseFloat(String(label).replace(',', '.')); return Number.isFinite(v) ? v : 0; };
 
 export interface PressioProForm {
   projet?: string; label: string;
   a: string; Ph: string; Pe: string; V0: string; k0: string;
   gamma: string; nappe: string;
   rows: Row[];
+  /** Indice de sélection manuelle du début pseudo-élastique p₀ (-1/absent = auto). */
+  pf_idx?: number;
+  /** Indice de sélection manuelle de la fin de plage p_f (-1/absent = auto). */
+  plm_idx?: number;
 }
 
 /** Payload API PUR (DoD §8 : essai borné, nombres ; ≥ 4 paliers valides requis serveur). */
 export function buildPressioProPayload(f: PressioProForm): Record<string, unknown> {
-  return {
+  const out: Record<string, unknown> = {
     projet: f.projet,
     label: (f.label || 'Essai').slice(0, 40),
     params: { a: num(f.a), Ph: num(f.Ph), Pe: num(f.Pe), V0: num(f.V0, 535), k0: num(f.k0, 0.5) },
@@ -36,7 +45,120 @@ export function buildPressioProPayload(f: PressioProForm): Record<string, unknow
     nappe: num(f.nappe),
     rows: f.rows.map((r) => ({ p: num(r.p), v15: num(r.v15), v30: num(r.v30), v60: num(r.v60) })),
   };
+  // Sélection manuelle des seuils : on ne transmet un indice QUE s'il est choisi
+  // (≥ 0). -1/absent = mode automatique (le moteur détermine p₀/p_f).
+  if (typeof f.pf_idx === 'number' && f.pf_idx >= 0) out.pf_idx = f.pf_idx;
+  if (typeof f.plm_idx === 'number' && f.plm_idx >= 0) out.plm_idx = f.plm_idx;
+  return out;
 }
+
+// ---------------------------------------------------------------------------
+// Catalogue de sondes (Vs auto) et de gaines (coefficient a indicatif) — repris
+// FIDÈLEMENT de l'outil d'origine (onglet Projet/Appareillage). Données de
+// référence pures (aucune science), utilisées pour pré-remplir les champs.
+// ---------------------------------------------------------------------------
+
+export interface SondeItem { group: string; name: string; vs: number }
+export const SONDE_CATALOGUE: readonly SondeItem[] = [
+  { group: 'Sonde Ø 44 mm', name: 'Ø 44 — Tube fendu avec passe', vs: 280 },
+  { group: 'Sonde Ø 44 mm', name: 'Ø 44 — Tube fendu sans passe', vs: 280 },
+  { group: 'Sonde Ø 44 mm', name: 'Ø 44 — Carottier battu (SPT)', vs: 280 },
+  { group: 'Sonde Ø 52 mm', name: 'Ø 52 — Standard NF EN ISO 22476-4', vs: 400 },
+  { group: 'Sonde Ø 52 mm', name: 'Ø 52 — Tube fendu avec passe', vs: 400 },
+  { group: 'Sonde Ø 60 mm', name: 'Ø 60 — Standard', vs: 535 },
+  { group: 'Sonde Ø 60 mm', name: 'Ø 60 — Tube fendu avec passe', vs: 535 },
+  { group: 'Sonde Ø 60 mm', name: 'Ø 60 — Tube fendu sans passe', vs: 535 },
+  { group: 'Sonde Ø 75 mm', name: 'Ø 75 — Standard NF EN ISO 22476-4', vs: 810 },
+  { group: 'Sonde Ø 75 mm', name: 'Ø 75 — Tube fendu avec passe', vs: 810 },
+  { group: 'Sonde Ø 75 mm', name: 'Ø 75 — Tube fendu sans passe', vs: 810 },
+  { group: 'Sonde Ø 75 mm', name: 'Ø 75 — Forage refoulé / battu', vs: 810 },
+  { group: 'Sonde Ø 90 mm', name: 'Ø 90 — Standard', vs: 1200 },
+  { group: 'Sonde Ø 90 mm', name: 'Ø 90 — Grande cavité (roche)', vs: 1200 },
+  { group: 'Autres sondes', name: 'Pencel (Ø 32 mm)', vs: 100 },
+  { group: 'Autres sondes', name: 'Micro-pressiomètre Ø 22 mm', vs: 80 },
+  { group: 'Autres sondes', name: 'Sonde autoforeuse (PAF)', vs: 535 },
+  { group: 'Autres sondes', name: 'Sonde haute pression (HP)', vs: 535 },
+];
+
+/** Vs (cm³) de la sonde sélectionnée, ou null si inconnue (jamais de défaut inventé). */
+export function vsForSonde(name: string): number | null {
+  const s = SONDE_CATALOGUE.find((x) => x.name === name);
+  return s ? s.vs : null;
+}
+
+export interface GaineItem { name: string; a: number }
+export const GAINE_CATALOGUE: readonly GaineItem[] = [
+  { name: 'Gaine 1,5 mm (souple)', a: 0.35 },
+  { name: 'Gaine 3 mm (standard)', a: 0.65 },
+  { name: 'Gaine métallique à lamelles', a: 0.15 },
+  { name: 'Gaine toilée renforcée', a: 0.45 },
+  { name: 'Gaine toilée métallique', a: 0.25 },
+];
+
+/** Coefficient a indicatif de la gaine (documentaire), ou null si inconnue. */
+export function aForGaine(name: string): number | null {
+  const g = GAINE_CATALOGUE.find((x) => x.name === name);
+  return g ? g.a : null;
+}
+
+// ---------------------------------------------------------------------------
+// Agrégation multi-profondeurs (PROFIL) — extraction PURE des grandeurs PUBLIQUES
+// d'un dépouillement serveur (jamais de recalcul côté navigateur : §8).
+// ---------------------------------------------------------------------------
+
+export interface ProfilRow {
+  label: string; z: number;
+  EM: number | null; pL_MPa: number | null; pf_MPa: number | null;
+  ratio: number | null; alpha: number | null; categorie: string | null;
+}
+
+/** Retrouve la valeur numérique d'une ligne de résultat par motif de libellé. */
+function rowNum(rows: CalcOutputRow[], re: RegExp): number | null {
+  const r = rows.find((x) => re.test(x.label));
+  return r && typeof r.value === 'number' ? r.value : null;
+}
+function rowText(rows: CalcOutputRow[], re: RegExp): string | null {
+  const r = rows.find((x) => re.test(x.label));
+  return r && typeof r.value === 'string' ? r.value : null;
+}
+
+/**
+ * Construit une ligne de profil à partir du dépouillement SERVEUR d'une profondeur.
+ * Renvoie null si la sortie n'a pas de résultat exploitable (pas de p_L). Les
+ * pressions sont converties bar → MPa pour le profil (parité outil d'origine).
+ */
+export function buildProfilRow(label: string, output: NormalizedCalcOutput | null): ProfilRow | null {
+  if (!output || !Array.isArray(output.rows) || output.rows.length === 0) return null;
+  const rows = output.rows;
+  const pL_bar = rowNum(rows, /p_L\b/);
+  if (pL_bar === null || !Number.isFinite(pL_bar)) return null;
+  const pf_bar = rowNum(rows, /p_f\*/);
+  return {
+    label, z: pd(label),
+    EM: rowNum(rows, /Module pressiométrique/),
+    pL_MPa: pL_bar / 10,
+    pf_MPa: pf_bar !== null ? pf_bar / 10 : null,
+    ratio: rowNum(rows, /Rapport E_M/),
+    alpha: rowNum(rows, /Coefficient rhéologique/),
+    categorie: rowText(rows, /Catégorie de sol/),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// LOG — coupe de sondage carotté (documentaire). Structure fidèle à l'outil client
+// (NF EN ISO 22475-1 / ISO 14688). Front-local : le moteur ne consomme PAS ces
+// champs (aucune entrée moteur). Persistance/PV = à câbler côté backend (avenant).
+// ---------------------------------------------------------------------------
+
+interface LogLayer { de: string; a: string; nature: string; etat: string; prel: string; qual: string; rqd: string; desc: string }
+const emptyLayer = (): LogLayer => ({ de: '', a: '', nature: '', etat: '', prel: '', qual: '', rqd: '', desc: '' });
+
+interface Depth { id: string; label: string; rows: Row[]; pf_idx: number; plm_idx: number }
+let _did = 0;
+const newDepth = (label: string): Depth => ({ id: `d${++_did}`, label, rows: [
+  { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' },
+  { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' },
+], pf_idx: -1, plm_idx: -1 });
 
 const ACCENT = '#963b28', INK = '#2b1c18', MUTED = '#7a655e', LINE = '#e2d4cf', PANEL = '#fffdfc';
 const card: React.CSSProperties = { background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: '15px 17px', marginBottom: 14 };
@@ -73,6 +195,8 @@ function PressioCurve({ rows, pL }: { rows: Row[]; pL: number | null }) {
   );
 }
 
+type Tab = 'essai' | 'log' | 'mesures' | 'resultats' | 'profil';
+
 export default function PressioProPage() {
   const params = useParams<{ orgSlug: string }>();
   const orgSlug = params?.orgSlug ?? '';
@@ -84,23 +208,31 @@ export default function PressioProPage() {
   const [projectId, setProjectId] = useState('');
   const [, setEnt] = useState<EntitlementsResponse | null>(null);
 
-  const [label, setLabel] = useState('');
-  // Appareillage (constantes de sonde/calibrage) conservees comme gabarit ; les MESURES
-  // (paliers, nappe) sont vides par defaut (revue adverse : pas de PV sur donnees fictives).
-  const [a, setA] = useState('0.5'); const [Ph, setPh] = useState('0'); const [Pe, setPe] = useState('0');
+  // Appareillage PARTAGÉ entre profondeurs (parité outil : getParams() global).
+  const [sonde, setSonde] = useState('Ø 60 — Standard');
+  const [gaine, setGaine] = useState('Gaine 3 mm (standard)');
+  const [a, setA] = useState('0'); const [Ph, setPh] = useState('0'); const [Pe, setPe] = useState('0');
   const [V0, setV0] = useState('535'); const [k0, setK0] = useState('0.5');
   const [gamma, setGamma] = useState(''); const [nappe, setNappe] = useState('');
-  const [rows, setRows] = useState<Row[]>([
-    { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' },
-    { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' },
-  ]);
+
+  // PROFIL multi-profondeurs : source de vérité = depths[] ; cur = profondeur éditée.
+  const [depths, setDepths] = useState<Depth[]>([newDepth('Profondeur 1')]);
+  const [cur, setCur] = useState(0);
+  const d = depths[cur] ?? depths[0];
+
+  // Coupe de sondage (Log) — documentaire, front-local.
+  const [logLayers, setLogLayers] = useState<LogLayer[]>([emptyLayer()]);
 
   const [calculating, setCalculating] = useState(false);
   const [calcResult, setCalcResult] = useState<CalcResult | null>(null);
   const [calcError, setCalcError] = useState<string | null>(null);
   const [emittingPv, setEmittingPv] = useState(false);
   const [pvResult, setPvResult] = useState<OfficialPv | null>(null);
-  const [tab, setTab] = useState<'essai' | 'mesures' | 'resultats'>('essai');
+  const [tab, setTab] = useState<Tab>('essai');
+
+  // PROFIL : résultats de dépouillement par profondeur.
+  const [profil, setProfil] = useState<ProfilRow[]>([]);
+  const [profiling, setProfiling] = useState(false);
 
   useEffect(() => {
     if (!orgId) return;
@@ -109,21 +241,51 @@ export default function PressioProPage() {
       .catch(() => {});
   }, [orgId]);
 
-  const buildPayload = useCallback(() => buildPressioProPayload({
-    projet: projects.find((p) => p.id === projectId)?.name, label, a, Ph, Pe, V0, k0, gamma, nappe, rows,
-  }), [projects, projectId, label, a, Ph, Pe, V0, k0, gamma, nappe, rows]);
+  // Mutations sur la profondeur courante.
+  const patchDepth = useCallback((patch: Partial<Depth>) => {
+    setDepths((ds) => ds.map((x, i) => (i === cur ? { ...x, ...patch } : x)));
+  }, [cur]);
+  const setRows = useCallback((upd: (r: Row[]) => Row[]) => {
+    setDepths((ds) => ds.map((x, i) => (i === cur ? { ...x, rows: upd(x.rows) } : x)));
+  }, [cur]);
+
+  const depthForm = useCallback((dp: Depth): PressioProForm => ({
+    projet: projects.find((p) => p.id === projectId)?.name,
+    label: dp.label, a, Ph, Pe, V0, k0, gamma, nappe, rows: dp.rows, pf_idx: dp.pf_idx, plm_idx: dp.plm_idx,
+  }), [projects, projectId, a, Ph, Pe, V0, k0, gamma, nappe]);
 
   const handleCalculer = useCallback(async () => {
     if (!orgId || !projectId) return;
     setCalculating(true); setCalcError(null); setPvResult(null);
     try {
-      const result = await runCalc(orgId, projectId, { engineId: 'pressiometre', label: `PressioPro — ${label}`.slice(0, 60), params: buildPayload() as Record<string, unknown> });
+      const result = await runCalc(orgId, projectId, { engineId: 'pressiometre', label: `PressioPro — ${d.label}`.slice(0, 60), params: buildPressioProPayload(depthForm(d)) as Record<string, unknown> });
       setCalcResult(result); setTab('resultats');
     } catch (err: unknown) {
       const x = err as { reason?: string; message?: string };
       setCalcError(x?.reason === 'EXPIRED' ? 'Abonnement expiré — calcul impossible.' : x?.reason === 'QUOTA' ? 'Quota de calculs épuisé.' : x?.reason === 'MODULE_NOT_IN_PACK' ? "Le module PressioPro n'est pas inclus dans votre abonnement." : (x?.message ?? 'Erreur lors du calcul. Vérifiez qu’il y a au moins 4 paliers cohérents.'));
     } finally { setCalculating(false); }
-  }, [orgId, projectId, label, buildPayload]);
+  }, [orgId, projectId, d, depthForm]);
+
+  // PROFIL : dépouille CHAQUE profondeur côté serveur puis agrège (aucun calcul navigateur).
+  const handleProfil = useCallback(async () => {
+    if (!orgId || !projectId) return;
+    setProfiling(true); setCalcError(null);
+    try {
+      const out: ProfilRow[] = [];
+      for (const dp of depths) {
+        const valid = dp.rows.filter((r) => num(r.p) > 0 && num(r.v60) > 0).length;
+        if (valid < 4) continue; // parité moteur : ≥ 4 paliers valides
+        const res = await runCalc(orgId, projectId, { engineId: 'pressiometre', label: `PressioPro — ${dp.label}`.slice(0, 60), params: buildPressioProPayload(depthForm(dp)) as Record<string, unknown> });
+        const row = buildProfilRow(dp.label, res.output as NormalizedCalcOutput | null);
+        if (row) out.push(row);
+      }
+      out.sort((x, y) => x.z - y.z);
+      setProfil(out);
+    } catch (err: unknown) {
+      const x = err as { reason?: string; message?: string };
+      setCalcError(x?.reason === 'QUOTA' ? 'Quota de calculs épuisé (le profil dépouille chaque profondeur).' : (x?.message ?? 'Erreur lors du calcul du profil.'));
+    } finally { setProfiling(false); }
+  }, [orgId, projectId, depths, depthForm]);
 
   const handleEmitPv = useCallback(async () => {
     if (!calcResult || !orgId || !projectId) return;
@@ -141,13 +303,15 @@ export default function PressioProPage() {
 
   if (!mounted) return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement de PressioPro" />;
   const calcDisabled = calculating || !projectId || !orgId;
+  // Options de seuils : un item par palier renseigné + « Auto ».
+  const seuilOptions = d.rows.map((r, i) => ({ i, p: num(r.p) })).filter((o) => o.p > 0);
 
   return (
     <div style={{ maxWidth: 1080, margin: '0 auto', padding: '24px 20px 56px', fontFamily: 'inherit', color: INK }}>
       <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 15, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700 }}>PressioPro</div>
-          <div style={{ fontSize: 12, color: MUTED }}>Dépouillement d&apos;essai pressiométrique · Ménard</div>
+          <div style={{ fontSize: 12, color: MUTED }}>Dépouillement d&apos;essai pressiométrique · Ménard · NF EN ISO 22476-4</div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'flex-end', gap: 12 }}>
           <div><label style={lbl} htmlFor="pp-projet">Sondage (projet)</label>
@@ -162,8 +326,23 @@ export default function PressioProPage() {
 
       {calcError && <div style={{ ...card, background: '#f8e7e2', borderColor: '#e0bdb3', color: '#8a2d20' }} role="alert">{calcError}</div>}
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: `1px solid ${LINE}` }} role="tablist">
-        {([['essai', 'Essai & appareillage'], ['mesures', 'Paliers de mesure'], ['resultats', 'Courbe & résultats']] as const).map(([id, t]) => (
+      {/* Barre des profondeurs (parité renderDepthBar) */}
+      <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 14px' }}>
+        <span style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700, color: MUTED, marginRight: 4 }}>Profondeurs</span>
+        {depths.map((dp, i) => (
+          <span key={dp.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <button onClick={() => setCur(i)} data-testid={`depth-tab-${i}`}
+              style={{ border: `1px solid ${i === cur ? ACCENT : LINE}`, background: i === cur ? '#f7ece9' : '#fff', color: i === cur ? ACCENT : INK, borderRadius: 7, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              {dp.label}
+            </button>
+            {depths.length > 1 && <button aria-label={`Supprimer ${dp.label}`} onClick={() => { setDepths((ds) => ds.filter((_, j) => j !== i)); setCur((c) => (c >= i && c > 0 ? c - 1 : c)); }} style={delBtn}>✕</button>}
+          </span>
+        ))}
+        <button onClick={() => { setDepths((ds) => [...ds, newDepth(`Profondeur ${ds.length + 1}`)]); setCur(depths.length); }} style={addBtn} data-testid="add-depth">+ Profondeur</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: `1px solid ${LINE}`, flexWrap: 'wrap' }} role="tablist">
+        {([['essai', 'Projet & appareillage'], ['log', 'Log de sondage'], ['mesures', 'Mesures & seuils'], ['resultats', 'Courbe & résultats'], ['profil', 'Profil']] as const).map(([id, t]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
             style={{ border: 'none', background: 'none', padding: '9px 14px', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', color: tab === id ? ACCENT : MUTED, borderBottom: tab === id ? `2px solid ${ACCENT}` : '2px solid transparent' }}>
             {t}
@@ -174,22 +353,41 @@ export default function PressioProPage() {
       {tab === 'essai' && (
         <>
           <div style={card}>
-            <div style={secH}>Identification</div>
-            <label style={lbl}>Repère (sondage / profondeur)</label>
-            <input style={{ ...inp, maxWidth: 320 }} value={label} onChange={(e) => setLabel(e.target.value)} />
+            <div style={secH}>Identification — profondeur courante</div>
+            <label style={lbl}>Repère (sondage / profondeur) — le préfixe numérique donne z (m)</label>
+            <input style={{ ...inp, maxWidth: 320 }} value={d.label} onChange={(e) => patchDepth({ label: e.target.value })} />
           </div>
           <div style={card}>
-            <div style={secH}>Appareillage (calibrage)</div>
+            <div style={secH}>Appareillage (partagé entre profondeurs)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+              <div>
+                <label style={lbl}>Type de sonde → remplit Vs auto</label>
+                <select style={inp} value={sonde} onChange={(e) => { const v = e.target.value; setSonde(v); const vs = vsForSonde(v); if (vs !== null) setV0(String(vs)); }}>
+                  {Array.from(new Set(SONDE_CATALOGUE.map((s) => s.group))).map((g) => (
+                    <optgroup key={g} label={g}>
+                      {SONDE_CATALOGUE.filter((s) => s.group === g).map((s) => <option key={s.name} value={s.name}>{s.name} — Vs={s.vs} cm³</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Type de gaine (documentaire — a indicatif)</label>
+                <select style={inp} value={gaine} onChange={(e) => setGaine(e.target.value)}>
+                  {GAINE_CATALOGUE.map((g) => <option key={g.name} value={g.name}>{g.name} — a≈{g.a}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 10, fontStyle: 'italic' }}>a vient du <strong>calibrage</strong> (forage libre) — laissez 0 si non effectué. Vs et Pe viennent de l’<strong>étalonnage</strong> (sonde dans l’air). Corrections NF EN ISO 22476-4 Annexe D.</div>
             <div style={grid5}>
-              <div><label style={lbl}>Inertie a</label><input style={inp} value={a} onChange={(e) => setA(e.target.value)} /></div>
+              <div><label style={lbl}>a (cm³/MPa)</label><input style={inp} value={a} onChange={(e) => setA(e.target.value)} /></div>
               <div><label style={lbl}>P_h (bar)</label><input style={inp} value={Ph} onChange={(e) => setPh(e.target.value)} /></div>
               <div><label style={lbl}>P_e (bar)</label><input style={inp} value={Pe} onChange={(e) => setPe(e.target.value)} /></div>
-              <div><label style={lbl}>V₀ (cm³)</label><input style={inp} value={V0} onChange={(e) => setV0(e.target.value)} /></div>
+              <div><label style={lbl}>Vs (cm³)</label><input style={inp} value={V0} onChange={(e) => setV0(e.target.value)} /></div>
               <div><label style={lbl}>K₀</label><input style={inp} value={k0} onChange={(e) => setK0(e.target.value)} /></div>
             </div>
           </div>
           <div style={card}>
-            <div style={secH}>Sol &amp; nappe</div>
+            <div style={secH}>Sol &amp; nappe (pour σ_h0)</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, maxWidth: 320 }}>
               <div><label style={lbl}>Poids volumique γ (kN/m³)</label><input style={inp} value={gamma} onChange={(e) => setGamma(e.target.value)} /></div>
               <div><label style={lbl}>Nappe Z_w (m) — 0 si absente</label><input style={inp} value={nappe} onChange={(e) => setNappe(e.target.value)} /></div>
@@ -198,31 +396,83 @@ export default function PressioProPage() {
         </>
       )}
 
-      {tab === 'mesures' && (
+      {tab === 'log' && (
         <div style={card}>
-          <div style={secH}>Paliers de mesure (≥ 4 valides)</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-            <thead><tr>{['P (bar)', 'V à 15 s', 'V à 30 s', 'V à 60 s', ''].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
-            <tbody>{rows.map((r, i) => (
-              <tr key={i}>
-                {(['p', 'v15', 'v30', 'v60'] as const).map((k) => <td key={k} style={{ padding: 2 }}><input style={inp} value={r[k]} onChange={(e) => setRows((a2) => a2.map((q, j) => j === i ? { ...q, [k]: e.target.value } : q))} /></td>)}
-                <td style={{ padding: 2 }}><button onClick={() => setRows((a2) => a2.length <= 1 ? a2 : a2.filter((_, j) => j !== i))} style={delBtn}>✕</button></td>
-              </tr>
-            ))}</tbody>
-          </table>
-          <button onClick={() => setRows((a2) => [...a2, { p: '', v15: '', v30: '', v60: '' }])} style={addBtn}>+ Ajouter un palier</button>
-          <div style={{ marginTop: 10, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>V₁₅/V₃₀/V₆₀ = volumes lus à 15, 30 et 60 s. Le fluage (V₆₀−V₁₅ ou V₆₀−V₃₀) sert à repérer la pression de fluage p_f.</div>
+          <div style={secH}>Coupe de sondage — sondage carotté (NF EN ISO 22475-1)</div>
+          <p style={{ fontSize: 11, color: MUTED, marginBottom: 10, lineHeight: 1.6 }}>
+            Coupe du sondage carotté (profondeurs en m / TN). Dénomination sol &amp; roche (ISO 14688-1 / 14689-1),
+            état (ISO 14688-2). <b>Prél.</b> = catégorie A/B/C · <b>Qual.</b> = classe 1–5 · <b>RQD</b> = récupération de carotte (%).
+            Section documentaire (non consommée par le calcul).
+          </p>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead><tr>{['De (m)', 'À (m)', 'Nature (14688/89)', 'État (14688-2)', 'Prél.', 'Qual.', 'RQD %', 'Description', ''].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+              <tbody>{logLayers.map((ly, i) => (
+                <tr key={i}>
+                  {(['de', 'a', 'nature', 'etat', 'prel', 'qual', 'rqd', 'desc'] as const).map((k) => (
+                    <td key={k} style={{ padding: 2 }}><input style={inp} value={ly[k]} onChange={(e) => setLogLayers((ls) => ls.map((q, j) => j === i ? { ...q, [k]: e.target.value } : q))} /></td>
+                  ))}
+                  <td style={{ padding: 2 }}><button onClick={() => setLogLayers((ls) => ls.length <= 1 ? ls : ls.filter((_, j) => j !== i))} style={delBtn}>✕</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <button onClick={() => setLogLayers((ls) => [...ls, emptyLayer()])} style={addBtn}>+ Ajouter une couche</button>
+          <div style={{ marginTop: 10, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>La coupe est saisie pour le rapport ; sa reprise dans le PV scellé nécessite un champ dédié côté serveur (à câbler).</div>
         </div>
+      )}
+
+      {tab === 'mesures' && (
+        <>
+          <div style={card}>
+            <div style={secH}>Phase pseudo-élastique — seuils p₀ / p_f ({d.label})</div>
+            <p style={{ fontSize: 11, color: MUTED, marginBottom: 10, lineHeight: 1.6 }}>
+              La courbe de fluage Δ60/30 est plate sur la zone pseudo-élastique. <strong>p₀</strong> = début de la zone plate,
+              <strong> p_f</strong> = fin (remontée du fluage). E_M est calculé entre p₀ et p_f. « Auto » laisse le moteur choisir.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, maxWidth: 560 }}>
+              <div>
+                <label style={lbl}>🔵 p₀ — début zone plate (pseudo-élastique)</label>
+                <select style={inp} value={d.pf_idx} onChange={(e) => patchDepth({ pf_idx: parseInt(e.target.value, 10) })} data-testid="sel-p0">
+                  <option value={-1}>Auto (détermination moteur)</option>
+                  {seuilOptions.map((o) => <option key={o.i} value={o.i}>Palier {o.i + 1} — P = {o.p} bar</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>🔴 p_f — fin zone plate (fluage)</label>
+                <select style={inp} value={d.plm_idx} onChange={(e) => patchDepth({ plm_idx: parseInt(e.target.value, 10) })} data-testid="sel-pf">
+                  <option value={-1}>Auto (détermination moteur)</option>
+                  {seuilOptions.map((o) => <option key={o.i} value={o.i}>Palier {o.i + 1} — P = {o.p} bar</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+          <div style={card}>
+            <div style={secH}>Paliers de mesure (≥ 4 valides) — {d.label}</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead><tr>{['P (bar)', 'V à 15 s', 'V à 30 s', 'V à 60 s', 'Δ60/30', ''].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+              <tbody>{d.rows.map((r, i) => (
+                <tr key={i}>
+                  {(['p', 'v15', 'v30', 'v60'] as const).map((k) => <td key={k} style={{ padding: 2 }}><input style={inp} value={r[k]} onChange={(e) => setRows((a2) => a2.map((q, j) => j === i ? { ...q, [k]: e.target.value } : q))} /></td>)}
+                  <td style={{ padding: '2px 6px', fontSize: 11.5, color: MUTED, textAlign: 'right', minWidth: 48 }}>{num(r.v60) && num(r.v30) ? (num(r.v60) - num(r.v30)).toFixed(1) : ''}</td>
+                  <td style={{ padding: 2 }}><button onClick={() => setRows((a2) => a2.length <= 1 ? a2 : a2.filter((_, j) => j !== i))} style={delBtn}>✕</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+            <button onClick={() => setRows((a2) => [...a2, { p: '', v15: '', v30: '', v60: '' }])} style={addBtn}>+ Ajouter un palier</button>
+            <div style={{ marginTop: 10, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Δ60/30 = fluage (V₆₀−V₃₀) ; sa remontée repère la pression de fluage p_f.</div>
+          </div>
+        </>
       )}
 
       {tab === 'resultats' && (
         <div style={card} data-testid="resultats">
           {!output ? (
-            <div style={{ padding: '2rem', textAlign: 'center', color: MUTED }}>Sélectionnez un sondage et cliquez sur <strong>Dépouiller</strong> pour obtenir p_L, E_M et la classification.</div>
+            <div style={{ padding: '2rem', textAlign: 'center', color: MUTED }}>Sélectionnez un sondage et cliquez sur <strong>Dépouiller</strong> pour obtenir p_L, E_M, α, E_y et la classification.</div>
           ) : (
             <>
-              <div style={secH}>Courbe pressiométrique</div>
-              <PressioCurve rows={rows} pL={pLBar} />
+              <div style={secH}>Courbe pressiométrique — {d.label}</div>
+              <PressioCurve rows={d.rows} pL={pLBar} />
               <div style={{ ...secH, marginTop: 18 }}>Résultats du dépouillement</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead><tr>{['Grandeur', 'Valeur', 'Unité'].map((h) => <th key={h} style={{ ...th, padding: '6px 8px', borderBottom: `1px solid ${LINE}` }}>{h}</th>)}</tr></thead>
@@ -240,6 +490,37 @@ export default function PressioProPage() {
                 {pvResult && <span data-testid="pv-success" style={{ fontSize: 12.5, color: '#2e7d4f', fontWeight: 600 }}>PV scellé émis (n° {pvResult.number ?? pvResult.id}).</span>}
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {tab === 'profil' && (
+        <div style={card} data-testid="profil">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+            <div style={secH}>Profil en profondeur — dépouillement de toutes les profondeurs</div>
+            <button onClick={handleProfil} disabled={profiling || !projectId || !orgId} data-testid="btn-profil"
+              style={{ marginLeft: 'auto', background: profiling ? '#cbb8b2' : ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '8px 15px', fontWeight: 600, cursor: profiling ? 'wait' : 'pointer', fontSize: 13 }}>
+              {profiling ? 'Calcul du profil…' : 'Calculer le profil →'}
+            </button>
+          </div>
+          <p style={{ fontSize: 10.5, color: MUTED, marginBottom: 10, fontStyle: 'italic' }}>Chaque profondeur (≥ 4 paliers valides) est dépouillée côté serveur puis triée par profondeur croissante.</p>
+          {profil.length === 0 ? (
+            <div style={{ padding: '1.5rem', textAlign: 'center', color: MUTED }}>Saisissez plusieurs profondeurs (barre ci-dessus) puis cliquez sur <strong>Calculer le profil</strong>.</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead><tr>{['Prof. (m)', 'E_M (MPa)', 'p_L (MPa)', 'p_f* (MPa)', 'E_M/p_L*', 'α', 'Catégorie'].map((h) => <th key={h} style={{ ...th, padding: '6px 8px', borderBottom: `1px solid ${LINE}` }}>{h}</th>)}</tr></thead>
+              <tbody>{profil.map((r, i) => (
+                <tr key={i} data-testid={`profil-row-${i}`}>
+                  <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, fontWeight: 600 }}>{r.z.toLocaleString('fr-FR')}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, textAlign: 'right' }}>{r.EM?.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) ?? '—'}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, textAlign: 'right' }}>{r.pL_MPa?.toLocaleString('fr-FR', { maximumFractionDigits: 3 }) ?? '—'}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, textAlign: 'right' }}>{r.pf_MPa?.toLocaleString('fr-FR', { maximumFractionDigits: 3 }) ?? '—'}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, textAlign: 'right' }}>{r.ratio?.toLocaleString('fr-FR', { maximumFractionDigits: 1 }) ?? '—'}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, textAlign: 'right' }}>{r.alpha?.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) ?? '—'}</td>
+                  <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, color: MUTED }}>{r.categorie ?? '—'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
           )}
         </div>
       )}

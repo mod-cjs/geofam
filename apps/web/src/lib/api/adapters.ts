@@ -1075,6 +1075,11 @@ function buildPressiometreRows(o: Record<string, unknown>): CalcOutputRow[] {
   pushRow(rows, 'Pression de fluage nette p_f*', o.pfNette, 'bar');
   pushRow(rows, 'Module pressiométrique E_M', o.EM, 'MPa');
   pushRow(rows, 'Rapport E_M / p_L*', o.ratioEMpL, '');
+  // Grandeurs publiques du dépouillement (décision titulaire — mémoire
+  // roadsen-details-transparents-rescope-s8) : coefficient rhéologique α (Ménard)
+  // et module d'Young Ey = E_M/α, calculés SERVEUR et whitelistés (contract.ts).
+  pushRow(rows, 'Coefficient rhéologique α (Ménard)', o.alpha, '');
+  pushRow(rows, 'Module d’Young E_y = E_M/α', o.Ey, 'MPa');
   pushText(rows, 'Catégorie de sol', o.categorieLibelle);
   pushText(rows, 'État de consolidation', o.consolidation);
   return rows;

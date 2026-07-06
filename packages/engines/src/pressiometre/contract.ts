@@ -154,6 +154,12 @@ export const PressiometreOutputSchema = z
     ratioEMpL: z.number().finite(),
     /** Coefficient rheologique alpha (Menard). */
     alpha: z.number().finite(),
+    /**
+     * Module d'Young derive Ey = EM/alpha (MPa). Grandeur de RESULTAT publique
+     * (affichee par l'outil d'origine, « Ey = E/α ») : simple rapport de deux
+     * resultats deja exposes (EM, alpha), aucun intermediaire de methode.
+     */
+    Ey: z.number().finite(),
     /** pL direct mesure ? false = extrapole (§D.4.3). */
     pLDirect: z.boolean(),
     /** Categorie de sol (A..E) — libelle court. */

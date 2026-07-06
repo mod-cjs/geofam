@@ -180,6 +180,7 @@ function shapeOutput(R: Record<string, unknown>): unknown {
       EM: 0,
       ratioEMpL: 0,
       alpha: 0,
+      Ey: 0,
       pLDirect: false,
       categorie: '',
       categorieLibelle: '',
@@ -200,6 +201,10 @@ function shapeOutput(R: Record<string, unknown>): unknown {
     EM: fin(R.EM) ? R.EM : 0,
     ratioEMpL: fin(R.ratio) ? R.ratio : 0,
     alpha: fin(R.alpha) ? R.alpha : 0,
+    // Ey = EM/alpha (module d'Young derive, MPa) — parite HTML `r.EM / r.alpha`.
+    // alpha (getAlpha) est toujours dans {0.25, 0.33, 0.5, 0.67, 1.0} sur un cas
+    // valide (jamais 0) ; garde defensive si intermediaire absent/degrade.
+    Ey: fin(R.EM) && fin(R.alpha) && R.alpha !== 0 ? R.EM / R.alpha : 0,
     // pL_direct est null si la pL a ete extrapolee (§D.4.3) ; non-null = mesure directe.
     pLDirect: R.pL_direct !== null && R.pL_direct !== undefined,
     categorie: typeof R.cat === 'string' ? R.cat : '',

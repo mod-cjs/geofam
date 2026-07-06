@@ -127,6 +127,7 @@ describe('pressiometre — contrat de sortie (whitelist stricte, anti-fuite)', (
       EM: 9.5,
       ratioEMpL: 7.9,
       alpha: 0.5,
+      Ey: 19,
       pLDirect: true,
       categorie: 'C',
       categorieLibelle: 'Sol ferme (cat. C)',
@@ -151,5 +152,20 @@ describe('pressiometre — contrat de sortie (whitelist stricte, anti-fuite)', (
     expect(env.output.categorie).toMatch(/^[A-E]$/);
     // La courbe corrigee ne doit jamais sortir.
     expect(JSON.stringify(env.output)).not.toMatch(/"(C|ext|sigH0|fluage)"\s*:/);
+  });
+
+  it('expose le module d Young Ey = EM/alpha (grandeur de resultat publique)', () => {
+    // Ey est une grandeur FINALE (module d'Young derive), affichee par l'outil
+    // d'origine (renderResults : « Ey = E/α »). Elle est calculee SERVEUR a partir
+    // de deux resultats deja publics (EM, alpha) : aucun intermediaire de methode.
+    const fx = PRESSIOMETRE_FIXTURES.find((f) => f.id === 'demo-4m-seuils-manuels');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const env = runPressiometre(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    expect(Number.isFinite(env.output.Ey)).toBe(true);
+    // Ey == EM / alpha (parite HTML : r.EM / r.alpha).
+    expect(env.output.Ey).toBeCloseTo(env.output.EM / env.output.alpha, 9);
   });
 });
