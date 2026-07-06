@@ -47,22 +47,31 @@ import type {
 } from './admin-mutations.service';
 import { AdminMutationsService } from './admin-mutations.service';
 import type {
+  AttachSubscriptionDto,
   AuditQuery,
   EntitlementsDto,
   RenewDto,
+  ResetPasswordDto,
   SetOrgStatusDto,
   SetRoleDto,
+  SetUserActiveDto,
   TopUpDto,
+  TransferOwnerDto,
 } from './admin-mutations.dto';
 import {
+  attachSubscriptionSchema,
   auditQuerySchema,
   entitlementsSchema,
   mutOrgIdParam,
+  mutUserGlobalIdParam,
   mutUserIdParam,
   renewSchema,
+  resetPasswordSchema,
   setOrgStatusSchema,
   setRoleSchema,
+  setUserActiveSchema,
   topUpSchema,
+  transferOwnerSchema,
 } from './admin-mutations.dto';
 import type {
   AdminOrgDetail,
@@ -475,6 +484,106 @@ export class AdminController {
     @Query(new ZodValidationPipe(auditQuerySchema)) query: AuditQuery,
   ): Promise<AuditEntryView[]> {
     return this.mutations.listAudit(orgId, query);
+  }
+
+  // ===================================================================
+  //  VAGUE 2 — comptes GLOBAUX + rattachement d'abo + transfert d'OWNER.
+  //  Chaque route @NoTenant @Roles(SUPERADMIN) (herite) ; l'ACTEUR est le sub du
+  //  JWT (this.actor(req)), JAMAIS le corps (lecon #42) ; chaque action est TRACEE.
+  // ===================================================================
+
+  /**
+   * PATCH /admin/users/:userId/active — desactive (false) / reactive (true) un compte
+   * GLOBALEMENT. L'effet est immediat au prochain login/refresh (is_active relu en base).
+   * Anti auto-desactivation : un SUPERADMIN qui se coupe l'acces -> 400. User introuvable -> 404.
+   */
+  @Patch('users/:userId/active')
+  async setUserActive(
+    @Param('userId', new ZodValidationPipe(mutUserGlobalIdParam))
+    userId: string,
+    @Body(new ZodValidationPipe(setUserActiveSchema)) body: SetUserActiveDto,
+    @Req() req: AuthedRequest,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<{ userId: string; active: boolean }> {
+    await this.mutations.setUserActive({
+      userId,
+      active: body.active,
+      actorUserId: this.actor(req),
+      idempotencyKey: resolveIdempotencyKey(idempotencyKey),
+    });
+    return { userId, active: body.active };
+  }
+
+  /**
+   * POST /admin/users/:userId/reset-password — reset admin du mot de passe (hache
+   * argon2id cote service ; ni le mdp ni le hash ne sont tracees). Renvoie 200. Mdp faible
+   * (<12) -> 400 (Zod). User introuvable -> 404.
+   */
+  @Post('users/:userId/reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetUserPassword(
+    @Param('userId', new ZodValidationPipe(mutUserGlobalIdParam))
+    userId: string,
+    @Body(new ZodValidationPipe(resetPasswordSchema)) body: ResetPasswordDto,
+    @Req() req: AuthedRequest,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<{ userId: string }> {
+    await this.mutations.resetUserPassword({
+      userId,
+      newPassword: body.newPassword,
+      motif: body.motif,
+      actorUserId: this.actor(req),
+      idempotencyKey: resolveIdempotencyKey(idempotencyKey),
+    });
+    return { userId };
+  }
+
+  /**
+   * POST /admin/orgs/:orgId/subscription — rattache un abonnement a une org EXISTANTE sans
+   * abo (une org sans abo est barree 403 a vie par le SubscriptionGuard). Un abo ACTIF deja
+   * present -> 409 ; org introuvable -> 404. Renvoie 201 + le detail composite frais de l'org.
+   */
+  @Post('orgs/:orgId/subscription')
+  @HttpCode(HttpStatus.CREATED)
+  async attachSubscription(
+    @Param('orgId', new ZodValidationPipe(mutOrgIdParam)) orgId: string,
+    @Body(new ZodValidationPipe(attachSubscriptionSchema))
+    body: AttachSubscriptionDto,
+    @Req() req: AuthedRequest,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<AdminOrgDetail> {
+    await this.mutations.attachSubscription({
+      orgId,
+      pack: body.pack,
+      entitlements: body.entitlements,
+      dateDebut: body.dateDebut,
+      dateFin: body.dateFin,
+      quota: body.quota,
+      actorUserId: this.actor(req),
+      idempotencyKey: resolveIdempotencyKey(idempotencyKey),
+    });
+    return this.orgs.getOrgDetail(orgId);
+  }
+
+  /**
+   * PATCH /admin/orgs/:orgId/owner — transfert d'OWNER : promeut `newOwnerUserId` (OWNER) et
+   * retrograde l'ancien (ADMIN). Le nouvel owner DOIT etre un membre actif -> sinon 400.
+   * Renvoie le detail composite frais de l'org.
+   */
+  @Patch('orgs/:orgId/owner')
+  async transferOwnership(
+    @Param('orgId', new ZodValidationPipe(mutOrgIdParam)) orgId: string,
+    @Body(new ZodValidationPipe(transferOwnerSchema)) body: TransferOwnerDto,
+    @Req() req: AuthedRequest,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<AdminOrgDetail> {
+    await this.mutations.transferOwnership({
+      orgId,
+      newOwnerUserId: body.newOwnerUserId,
+      actorUserId: this.actor(req),
+      idempotencyKey: resolveIdempotencyKey(idempotencyKey),
+    });
+    return this.orgs.getOrgDetail(orgId);
   }
 
   /**

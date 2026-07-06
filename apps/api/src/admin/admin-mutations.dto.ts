@@ -95,3 +95,60 @@ export const auditQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).max(1_000_000).optional(),
 });
 export type AuditQuery = z.infer<typeof auditQuerySchema>;
+
+/* ===================================================================
+ *  VAGUE 2 — comptes GLOBAUX + rattachement d'abo + transfert d'OWNER
+ * =================================================================== */
+
+/** Param de route UUID (userId d'un compte EXISTANT, cible d'une action GLOBALE). */
+export const mutUserGlobalIdParam = z.string().uuid();
+
+/**
+ * PATCH /admin/users/:userId/active — desactive (false) / reactive (true) un compte
+ * GLOBALEMENT (users.is_active). L'anti auto-desactivation (un SUPERADMIN qui se coupe
+ * l'acces) est porte cote base (R0009 -> 400) : l'acteur vient du sub JWT, jamais du corps.
+ */
+export const setUserActiveSchema = z.object({
+  active: z.boolean(),
+});
+export type SetUserActiveDto = z.infer<typeof setUserActiveSchema>;
+
+/**
+ * POST /admin/users/:userId/reset-password — reset admin du mot de passe. `newPassword`
+ * suit les MEMES regles que createUserSchema (min 12 / max 1024, borne haute = anti-DoS
+ * argon2). Le hash est calcule COTE SERVICE ; ni le mdp ni le hash n'entrent dans l'audit
+ * (seul `motif`, optionnel, est trace).
+ */
+export const resetPasswordSchema = z.object({
+  newPassword: z.string().min(12).max(1024),
+  motif: z.string().trim().min(1).max(500).optional(),
+});
+export type ResetPasswordDto = z.infer<typeof resetPasswordSchema>;
+
+/**
+ * POST /admin/orgs/:orgId/subscription — rattache un abonnement a une org EXISTANTE sans
+ * abo. Meme forme que subscriptionInputSchema (pack whiteliste, entitlements, fenetre, quota
+ * fini). La base REFUSE si un abo ACTIF existe deja (409) ; un abo EXPIRE est remplace.
+ */
+export const attachSubscriptionSchema = z
+  .object({
+    pack: z.enum(['ROUTES', 'FONDATIONS', 'COMPLETE']),
+    entitlements: z.array(z.string().trim().min(1)).min(1),
+    dateDebut: z.coerce.date(),
+    dateFin: z.coerce.date(),
+    quota: z.number().int().min(0),
+  })
+  .refine((v) => v.dateDebut <= v.dateFin, {
+    message: 'dateDebut doit preceder dateFin',
+    path: ['dateFin'],
+  });
+export type AttachSubscriptionDto = z.infer<typeof attachSubscriptionSchema>;
+
+/**
+ * PATCH /admin/orgs/:orgId/owner — transfert d'OWNER. `newOwnerUserId` DOIT etre un membre
+ * ACTIF de l'org (re-verifie en base : R0011 -> 400). L'ancien OWNER est retrograde ADMIN.
+ */
+export const transferOwnerSchema = z.object({
+  newOwnerUserId: z.string().uuid(),
+});
+export type TransferOwnerDto = z.infer<typeof transferOwnerSchema>;

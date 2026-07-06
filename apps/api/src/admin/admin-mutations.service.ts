@@ -7,6 +7,7 @@ import {
 import type { OrgStatus, Role } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 
+import { hashPassword } from '../auth/password';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Une ligne du journal d'audit (GET /admin/orgs/:orgId/audit). */
@@ -199,6 +200,99 @@ export class AdminMutationsService {
     );
   }
 
+  // ===================================================================
+  //  VAGUE 2 — comptes GLOBAUX + rattachement d'abo + transfert d'OWNER.
+  //  Meme discipline : DEFINER (0015), asAppRole, audit atomique, actor = sub JWT.
+  // ===================================================================
+
+  /**
+   * DESACTIVATION / REACTIVATION GLOBALE d'un compte (users.is_active). Un SUPERADMIN qui se
+   * desactive lui-meme -> 400 (garde base R0009). User introuvable -> 404. Idempotent.
+   */
+  async setUserActive(args: {
+    userId: string;
+    active: boolean;
+    actorUserId: string;
+    idempotencyKey: string;
+  }): Promise<void> {
+    await this.callVoid(
+      (tx) => tx.$executeRaw`
+        SELECT admin_set_user_active(
+          ${args.userId}::uuid, ${args.active}, ${args.actorUserId}::uuid,
+          ${args.idempotencyKey}::text
+        )
+      `,
+    );
+  }
+
+  /**
+   * RESET du mot de passe (admin). Le hash argon2id est calcule ICI (MEME fonction que le
+   * login) : aucun mot de passe en clair n'atteint la base. Le payload d'audit ne porte QUE le
+   * motif (jamais le mdp ni le hash — garanti cote base). User introuvable -> 404.
+   */
+  async resetUserPassword(args: {
+    userId: string;
+    newPassword: string;
+    motif?: string;
+    actorUserId: string;
+    idempotencyKey: string;
+  }): Promise<void> {
+    const passwordHash = await hashPassword(args.newPassword);
+    await this.callVoid(
+      (tx) => tx.$executeRaw`
+        SELECT admin_reset_user_password(
+          ${args.userId}::uuid, ${passwordHash}::text, ${args.actorUserId}::uuid,
+          ${args.motif ?? null}::text, ${args.idempotencyKey}::text
+        )
+      `,
+    );
+  }
+
+  /**
+   * RATTACHE un abonnement a une org EXISTANTE sans abo. Un abo ACTIF deja present -> 409 ;
+   * org introuvable -> 404 ; fenetre invalide -> 400. Un abo EXPIRE est remplace. Idempotent.
+   */
+  async attachSubscription(args: {
+    orgId: string;
+    pack: string;
+    entitlements: string[];
+    dateDebut: Date;
+    dateFin: Date;
+    quota: number;
+    actorUserId: string;
+    idempotencyKey: string;
+  }): Promise<void> {
+    await this.callVoid(
+      (tx) => tx.$executeRaw`
+        SELECT admin_attach_subscription(
+          ${args.orgId}::uuid, ${args.pack}::text, ${args.entitlements},
+          ${args.dateDebut}, ${args.dateFin}, ${args.quota}::int,
+          ${args.actorUserId}::uuid, ${args.idempotencyKey}::text
+        )
+      `,
+    );
+  }
+
+  /**
+   * TRANSFERT d'OWNER : promeut le nouveau (OWNER), retrograde l'ancien (ADMIN). Le nouvel
+   * owner doit etre un membre ACTIF -> sinon 400 (R0011). Idempotent + trace before/after.
+   */
+  async transferOwnership(args: {
+    orgId: string;
+    newOwnerUserId: string;
+    actorUserId: string;
+    idempotencyKey: string;
+  }): Promise<void> {
+    await this.callVoid(
+      (tx) => tx.$executeRaw`
+        SELECT admin_transfer_ownership(
+          ${args.orgId}::uuid, ${args.newOwnerUserId}::uuid,
+          ${args.actorUserId}::uuid, ${args.idempotencyKey}::text
+        )
+      `,
+    );
+  }
+
   /**
    * Journal d'audit d'une org (lecture SUPERADMIN via admin_list_audit, DEFINER).
    * Borne cote base (limit <= 100). Filtre sur target_org_id ; les filtres globaux
@@ -313,7 +407,25 @@ export class AdminMutationsService {
       if (rawMessageIncludes(err, 'fenetre invalide')) {
         throw new BadRequestException('Fenêtre de renouvellement invalide');
       }
-      // 404 cible introuvable (abonnement / membre / organisation).
+      // 400 anti auto-desactivation d'un SUPERADMIN (Vague 2, R0009).
+      if (rawMessageIncludes(err, 'auto-desactivation')) {
+        throw new BadRequestException(
+          'Impossible de désactiver votre propre compte',
+        );
+      }
+      // 409 rattachement d'abo alors qu'un abo ACTIF existe deja (Vague 2, R0010).
+      if (rawMessageIncludes(err, 'abonnement actif deja present')) {
+        throw new ConflictException(
+          'Un abonnement actif existe déjà pour cette organisation',
+        );
+      }
+      // 400 transfert d'OWNER vers un non-membre / membre inactif (Vague 2, R0011).
+      if (rawMessageIncludes(err, 'membre actif')) {
+        throw new BadRequestException(
+          'Le nouveau propriétaire doit être un membre actif de cette organisation',
+        );
+      }
+      // 404 cible introuvable (abonnement / membre / organisation / utilisateur).
       if (rawMessageIncludes(err, 'introuvable')) {
         throw new NotFoundException('Cible introuvable');
       }
