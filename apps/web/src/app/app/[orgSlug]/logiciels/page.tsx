@@ -23,12 +23,9 @@ const LOGICIELS: Logiciel[] = [
   { id: 'roadsens', nom: 'ROADSENS', tagline: 'Dimensionnement des chaussées', domaine: 'Burmister · AGEROUTE 2015', accent: '#1b3a5b', status: 'live' },
   { id: 'terzaghi', nom: 'Terzaghi', tagline: 'Fondations superficielles', domaine: 'NF P 94-261 / Eurocode 7', accent: '#a65a1e', status: 'live' },
   { id: 'casagrande', nom: 'CASAGRANDE', tagline: 'Fondations profondes — pieux', domaine: 'NF P 94-262 / Eurocode 7', accent: '#1f4e4a', status: 'live' },
-  { id: 'geoplaque', nom: 'GEOPLAQUE', tagline: 'Radier & plaque', domaine: 'Éléments finis · EC7 annexe H', accent: '#5a3e7c', status: 'live' },
+  { id: 'geoplaque', nom: 'GEOPLAQUE', tagline: 'Radier & plaque · 2D (bande/axi/triangulaire)', domaine: 'Éléments finis · EC7 annexe H', accent: '#5a3e7c', status: 'live' },
   { id: 'pressiopro', nom: 'PressioPro', tagline: 'Essai pressiométrique', domaine: 'Pressiomètre Ménard', accent: '#963b28', status: 'live' },
   { id: 'fastlab', nom: 'FASTLAB', tagline: 'Classification laboratoire', domaine: 'GTR · NF P11-300', accent: '#6b7a2e', status: 'live' },
-  { id: 'plane-strain', nom: 'Déf. planes', tagline: 'Bande / poutre (coupe 2D)', domaine: 'Éléments finis · EC7', accent: '#3a6b8a', status: 'live' },
-  { id: 'axi', nom: 'Axisymétrique', tagline: 'Radier / dallage circulaire', domaine: 'Éléments finis · EC7', accent: '#8a5a1e', status: 'live' },
-  { id: 'tri-raft', nom: 'Radier tri.', tagline: 'Maillage triangulaire (DKT)', domaine: 'Éléments finis · EC7', accent: '#5a3e7c', status: 'live' },
 ];
 
 export default function LogicielsGallery() {
