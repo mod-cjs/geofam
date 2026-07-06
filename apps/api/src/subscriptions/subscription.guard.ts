@@ -86,6 +86,20 @@ export class SubscriptionGuard implements CanActivate {
 }
 
 /**
+ * Groupement d'entitlement par LOGICIEL. Les modes GEOPLAQUE (deformations planes,
+ * axisymetrique, radier triangulaire) sont des variantes du meme logiciel que le radier :
+ * ils partagent l'entitlement 'radier' (GEOPLAQUE = 1 module, 4 modes — pas de re-vente).
+ * Seul le CONTROLE d'entitlement est groupe ici ; le dispatch moteur et le ledger d'usage
+ * conservent le slug reel (plane-strain/axi/tri-raft). (Tarification eventuelle des modes
+ * avances = decision titulaire separee, n'affecte pas ce groupement technique.)
+ */
+const ENTITLEMENT_GROUP: Record<string, string> = {
+  'plane-strain': 'radier',
+  axi: 'radier',
+  'tri-raft': 'radier',
+};
+
+/**
  * Resout le `engineId` requis : chaine fixe, ou valeur d'un parametre de route
  * (ex. /calc/:engine). `undefined` si aucune contrainte de module (route qui
  * consomme du quota sans exiger un moteur precis, ex. emission PV).
@@ -95,7 +109,10 @@ function resolveEngineId(
   req: AuthedRequest,
 ): string | undefined {
   if (!ref) return undefined;
-  if (ref.kind === 'fixed') return ref.engineId;
-  const params = req.params as Record<string, string> | undefined;
-  return params?.[ref.param];
+  const raw =
+    ref.kind === 'fixed'
+      ? ref.engineId
+      : (req.params as Record<string, string> | undefined)?.[ref.param];
+  if (raw === undefined) return undefined;
+  return ENTITLEMENT_GROUP[raw] ?? raw;
 }
