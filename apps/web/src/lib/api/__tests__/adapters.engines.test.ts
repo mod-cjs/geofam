@@ -216,6 +216,84 @@ describe('adaptCalcResult — terzaghi (fondation superficielle)', () => {
   });
 });
 
+// ── MAJEUR-1 : l'excentrement DOIT peser dans le verdict global (fin du faux PASS) ──
+// Sentinelle de non-régression. AVANT correctif : terzaghiVerdict ne testait que
+// portanceOk + glissementOk ; un cas excentrement NON vérifié (excOk:false) affichait
+// « Fondation vérifiée » (PASS) — faux PASS scellable dans un PV.
+describe('adaptCalcResult — terzaghi : excentrement dans le verdict (MAJEUR-1)', () => {
+  const CAS_EXC_KO = {
+    idx: 0,
+    etat: 'ELU_F',
+    invalide: false,
+    Rtot: 44046.74,
+    qRvd: 734.11,
+    taux: 0.2778,
+    portanceOk: true, // portance OK
+    Rhd: 900,
+    tauxH: 0.3,
+    glissementOk: true, // glissement OK
+    exc: 0.033, // < limite
+    excLim: 0.06666666666666667,
+    excLimLib: '1/15',
+    excOk: false, // MAIS excentrement NON vérifié
+  };
+
+  it('given un cas portanceOk+glissementOk mais excOk=false, when adapté, then verdict FAIL (plus de faux PASS)', () => {
+    const norm = normalizedOf('fondation-superficielle', {
+      ...REAL_TERZAGHI,
+      cas: [CAS_EXC_KO],
+    });
+    expect(norm.verdict).toBe('FAIL');
+  });
+
+  it('given un cas excOk=true, when adapté, then verdict PASS + ligne excentrement OK affichée', () => {
+    const norm = normalizedOf('fondation-superficielle', {
+      ...REAL_TERZAGHI,
+      cas: [{ ...CAS_EXC_KO, exc: 0.9, excOk: true }],
+    });
+    expect(norm.verdict).toBe('PASS');
+    const excRow = (norm.rows as CalcOutputRow[]).find((r) => /excentr/i.test(r.label));
+    expect(excRow, 'une ligne excentrement doit être affichée').toBeDefined();
+    expect(excRow?.status).toBe('ok');
+  });
+
+  it('given ELU accidentel (excOk absent = non requis), when adapté, then l’excentrement ne fait pas échouer le verdict', () => {
+    const casNonRequis = {
+      idx: 0,
+      etat: 'ELU_A',
+      invalide: false,
+      Rtot: 44046.74,
+      qRvd: 734.11,
+      taux: 0.2778,
+      portanceOk: true,
+      // excOk/exc/excLim absents (ELU_A : excentrement non requis, tab. 5.5)
+    };
+    const norm = normalizedOf('fondation-superficielle', {
+      ...REAL_TERZAGHI,
+      cas: [casNonRequis],
+    });
+    expect(norm.verdict).toBe('PASS');
+  });
+});
+
+// ── MAJEUR-2 : la portance complémentaire c–φ (annexe F) doit s'afficher ──────────
+describe('adaptCalcResult — terzaghi : portance complémentaire c–φ (MAJEUR-2)', () => {
+  it('given un cas avec bloc cphi, when adapté, then une ligne « portance c–φ (annexe F) » est présente', () => {
+    const norm = normalizedOf('fondation-superficielle', {
+      ...REAL_TERZAGHI,
+      cas: [
+        {
+          ...REAL_TERZAGHI.cas[0],
+          etat: 'ELU_F',
+          cphi: { ok: true, taux: 0.72, qRvd: 810.5, Rtot: 40123.4 },
+        },
+      ],
+    });
+    const cphiRow = (norm.rows as CalcOutputRow[]).find((r) => /c–φ|annexe F/i.test(r.label));
+    expect(cphiRow, 'la portance c–φ doit apparaître quand le bloc cphi est présent').toBeDefined();
+  });
+});
+
 describe('adaptCalcResult — pieux (fondation profonde)', () => {
   it('given allOk=true, when adapté, then verdict PASS + résistances complètes', () => {
     const norm = normalizedOf('fondation-profonde-pieux', REAL_PIEUX);

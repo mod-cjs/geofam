@@ -178,6 +178,41 @@ const CaseResultSchema = z
     /** Glissement verifie ? (null si non requis / pas d'effort H). */
     glissementOk: z.boolean().optional(),
 
+    // --- Excentrement (tab. 5.5, verification client-safe) ---
+    // Grandeur PUBLIQUE (derivee des efforts saisis M/Fz et de la geometrie B/L,
+    // affichee dans l'onglet Verifications du moteur d'origine) — PAS un intermediaire
+    // de methode. Sans ces champs, l'excentrement etait STRIPPE et ne pesait plus dans
+    // le verdict (faux PASS, MAJEUR-1). Absents = excentrement NON REQUIS (ELU accidentel).
+    /** Taux de surface comprimee exc = (1 - 2e_B/B)·(1 - 2e_L/L) (–), valeur affichee. */
+    exc: z.number().finite().optional(),
+    /** Limite reglementaire d'excentrement (–), tab. 5.5. */
+    excLim: z.number().finite().optional(),
+    /** Libelle de la limite (« 1/15 », « 1/2 », « 2/3 »…) pour l'affichage « ≥ … ». */
+    excLimLib: z.string().max(16).optional(),
+    /** Excentrement verifie ? (absent = non requis, ex. ELU accidentel). */
+    excOk: z.boolean().optional(),
+
+    // --- Portance complementaire c–φ, annexe F (option « Portance analytique c–φ ») ---
+    // Bloc ASSAINI : uniquement des grandeurs de RESULTAT (verdict + resistances/taux),
+    // JAMAIS les facteurs de portance Nq/Nc/Ng/sq/sc/bq… qui restent SERVEUR (DoD §8).
+    // Projete UNIQUEMENT en methode in situ (pressio/penetro) avec l'option cochee ; en
+    // labo, c–φ est la portance PRINCIPALE, deja portee par Rtot/qRvd/taux/portanceOk.
+    cphi: z
+      .object({
+        /** Portance c–φ verifiee ? */
+        ok: z.boolean().optional(),
+        /** Taux de mobilisation V_d / R_v;d;F (–). */
+        taux: z.number().finite().optional(),
+        /** Contrainte resistante de calcul c–φ q_Rv;d;F (kPa). */
+        qRvd: z.number().finite().optional(),
+        /** Resistance totale de calcul c–φ R_v;d;F (kN ou kN/ml). */
+        Rtot: z.number().finite().optional(),
+        /** Message normatif borne si la portance c–φ est incalculable (domaine). */
+        err: z.string().max(300).optional(),
+      })
+      .strict()
+      .optional(),
+
     // --- Tassement (ELS) ---
     /** Tassement total (m) — methode Menard (pressio). */
     tassement: z.number().finite().optional(),

@@ -77,6 +77,25 @@ describe('resolveVerdict', () => {
       ).toBe<PvVerdict>('NON_CONFORME');
     });
 
+    // MAJEUR-1 (faux PASS scelle) : un cas portant + stable au glissement MAIS dont
+    // l'excentrement echoue (excOk=false) doit sceller NON_CONFORME. Avant correctif,
+    // le PV scellait CONFORME (« Fondation verifiee ») en ignorant l'excentrement.
+    it('excentrement en echec (excOk=false) -> NON_CONFORME (fin du faux PASS scelle)', () => {
+      expect(
+        resolveVerdict('fondation-superficielle', {
+          cas: [{ portanceOk: true, glissementOk: true, excOk: false }],
+        }),
+      ).toBe<PvVerdict>('NON_CONFORME');
+    });
+
+    it('excentrement non requis (excOk absent, ELU acc.) -> ne fait pas echouer le verdict', () => {
+      expect(
+        resolveVerdict('fondation-superficielle', {
+          cas: [{ portanceOk: true, glissementOk: true }],
+        }),
+      ).toBe<PvVerdict>('CONFORME');
+    });
+
     it('FAIL-CLOSED : cas absent -> leve', () => {
       expect(() =>
         resolveVerdict('fondation-superficielle', { quelconque: 1 }),

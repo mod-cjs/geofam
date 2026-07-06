@@ -26,11 +26,21 @@ const FUITES_INTERDITES = [
   'Nq',
   'Nc',
   'Ng',
+  // Facteurs de portance c–φ (annexe F) : le bloc `cphi` EXPOSE est assaini (ok/taux/
+  // qRvd/Rtot/err seulement) ; ces facteurs de forme/inclinaison NE doivent JAMAIS
+  // en sortir. `cphi` n'est plus interdit (cle publique assainie), mais son contenu
+  // brut si — d'ou l'ajout de ces intermediaires ci-dessous.
+  'sq',
+  'sg',
+  'bq',
+  'bg',
+  'iq',
+  'ig',
+  'drained',
   'bv',
   'bB',
   'bL',
   'Ap', // surface comprimee (intermediaire Meyerhof)
-  'cphi',
   'geom',
   'rows',
   'ctx',
@@ -73,6 +83,58 @@ describe('terzaghi — contrat de sortie (whitelist stricte, anti-fuite)', () =>
       expect(fuites, `cles d intermediaire trouvees dans la sortie`).toEqual([]);
     });
   }
+
+  // --- MAJEUR-1 : l'excentrement (grandeur PUBLIQUE) TRAVERSE la projection ---
+  it('[excentrement] exc / excLim / excOk sont projetes pour un cas requis (fin du strip)', () => {
+    const fx = TERZAGHI_FIXTURES.find((f) => f.id === 'pressio-carree-excentree');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const env = runTerzaghi(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    const c0 = env.output.cas[0];
+    expect(c0, 'un cas de charge attendu').toBeDefined();
+    // ELU_F : excentrement REQUIS -> le verdict booleen + la valeur + la limite existent.
+    expect(typeof c0?.excOk).toBe('boolean');
+    expect(Number.isFinite(c0?.exc)).toBe(true);
+    expect(Number.isFinite(c0?.excLim)).toBe(true);
+    expect(typeof c0?.excLimLib).toBe('string');
+  });
+
+  // --- MAJEUR-2 : la portance complementaire c–φ TRAVERSE en methode in situ ---
+  it('[cphi in situ] le bloc cphi (verdict + resistances) est projete quand l option est cochee, SANS facteurs de portance', () => {
+    const fx = TERZAGHI_FIXTURES.find((f) => f.id === 'pressio-nappe'); // cphiOn: true, essai pressio
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const env = runTerzaghi(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    const cphi = env.output.cas[0]?.cphi;
+    expect(cphi, 'le bloc cphi doit etre present en in situ + option cochee').toBeDefined();
+    // Grandeurs de RESULTAT presentes...
+    expect(Number.isFinite(cphi?.Rtot)).toBe(true);
+    expect(Number.isFinite(cphi?.qRvd)).toBe(true);
+    expect(Number.isFinite(cphi?.taux)).toBe(true);
+    // ...mais AUCUN facteur de portance (assainissement §8).
+    const cphiKeys = Object.keys(cphi as Record<string, unknown>);
+    for (const forbidden of ['Nq', 'Nc', 'Ng', 'sq', 'sc', 'bq', 'bc', 'iq', 'ig', 'm']) {
+      expect(cphiKeys, `facteur c–φ « ${forbidden} » ne doit pas fuir`).not.toContain(
+        forbidden,
+      );
+    }
+  });
+
+  it('[cphi labo] en methode c–φ labo, le bloc complementaire cphi n est PAS reproduit (fidelite HTML : porte deja par la portance principale)', () => {
+    const fx = TERZAGHI_FIXTURES.find((f) => f.id === 'labo-cphi-draine');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const env = runTerzaghi(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    // Portance principale portee par Rtot/portanceOk ; pas de bloc cphi redondant.
+    expect(env.output.cas[0]?.cphi).toBeUndefined();
+    expect(env.output.cas[0]?.portanceOk).toBe(true);
+  });
 
   it('la meta porte l identite, la version et le hash source (tracabilite PV)', () => {
     const fx = TERZAGHI_FIXTURES[0];

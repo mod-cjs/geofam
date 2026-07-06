@@ -127,13 +127,19 @@ export function redactConfidentialWarnings(warnings: readonly string[]): string[
  * On n'ajoute un champ numerique optionnel que s'il est FINI (exactOptional :
  * une cle absente plutot qu'un NaN/undefined, conforme a SafeNumber.finite()).
  */
-function shapeOutput(R: {
-  warn?: unknown[];
-  err?: unknown;
-  cases?: unknown[];
-  ctx?: { regime?: unknown } | null;
-  refCap?: Record<string, unknown>;
-}): unknown {
+function shapeOutput(
+  R: {
+    warn?: unknown[];
+    err?: unknown;
+    cases?: unknown[];
+    ctx?: { regime?: unknown } | null;
+    refCap?: Record<string, unknown>;
+  },
+  /** true si methode c–φ labo : le bloc cphi complementaire n'est alors PAS reproduit
+   * (c–φ est la portance PRINCIPALE, deja dans Rtot/qRvd/taux) — fidele au HTML d'origine
+   * (`C.cphi && !X.labo`). */
+  labo: boolean,
+): unknown {
   // MAJEUR-1 : on REDACTE les valeurs d'intermediaires confidentiels de TOUT
   // canal texte libre (erreur globale ET warnings) AVANT exposition. La whitelist
   // couvre les cles structurees ; ce canal texte etait la faille. `erreur` ne
@@ -186,6 +192,40 @@ function shapeOutput(R: {
     if (fin(c.tauxH)) item.tauxH = c.tauxH;
     if (typeof c.glisOk === 'boolean') item.glissementOk = c.glisOk;
 
+    // --- Excentrement (tab. 5.5) — MAJEUR-1 : ces grandeurs PUBLIQUES etaient
+    // strippees, l'excentrement disparaissait de l'affichage ET du verdict (faux
+    // PASS). excOk === null => non requis (ELU accidentel) : on n'attache RIEN et le
+    // front affiche « non requis ». Sinon on projette verdict + valeur + limite. La
+    // VALEUR affichee est le taux de surface comprimee `geom.exc` (l'objet `geom`
+    // lui-meme reste SERVEUR : on n'en lit qu'`exc`, on n'expose pas A'/Ap/Bp/Lp).
+    if (typeof c.excOk === 'boolean') {
+      item.excOk = c.excOk;
+      const geom = c.geom as { exc?: unknown } | undefined;
+      if (geom && fin(geom.exc)) item.exc = geom.exc;
+      if (fin(c.excLim)) item.excLim = c.excLim;
+      if (typeof c.excLimLib === 'string') item.excLimLib = c.excLimLib.slice(0, 16);
+    }
+
+    // --- Portance complementaire c–φ (annexe F) — MAJEUR-2 : bloc ASSAINI (verdict +
+    // resistances de RESULTAT uniquement). Les facteurs Nq/Nc/Ng/sq/sc/bq/… restent
+    // SERVEUR (on ne recopie JAMAIS l'objet brut `c.cphi`, on construit un objet propre).
+    // En labo, c–φ EST la portance principale (deja dans Rtot/qRvd/taux) : pas de bloc
+    // complementaire redondant, comme le HTML (`C.cphi && !X.labo`).
+    if (!labo && c.cphi != null && typeof c.cphi === 'object') {
+      const f = c.cphi as Record<string, unknown>;
+      const cphi: Record<string, unknown> = {};
+      if (typeof f.ok === 'boolean') cphi.ok = f.ok;
+      if (fin(f.taux)) cphi.taux = f.taux;
+      if (fin(f.qRvd)) cphi.qRvd = f.qRvd;
+      if (fin(f.Rtot)) cphi.Rtot = f.Rtot;
+      // `err` = message normatif borne (sans valeur interpolee) ; assaini par defense
+      // en profondeur (redaction fail-closed) avant exposition.
+      if (typeof f.err === 'string') {
+        cphi.err = redactConfidentialWarning(f.err).slice(0, 300);
+      }
+      if (Object.keys(cphi).length > 0) item.cphi = cphi;
+    }
+
     const tass = c.tass as { sf?: unknown } | undefined;
     if (tass && fin(tass.sf)) item.tassement = tass.sf;
     const schm = c.schm as { s?: unknown } | undefined;
@@ -232,7 +272,10 @@ function resolveMeta(): {
 export function runTerzaghi(rawInput: unknown): EngineResultEnvelope<TerzaghiOutput> {
   const input: TerzaghiInput = TerzaghiInputSchema.parse(rawInput);
   const rawResult = computeTerzaghi(input);
-  const shaped = shapeOutput(rawResult as Parameters<typeof shapeOutput>[0]);
+  const shaped = shapeOutput(
+    rawResult as Parameters<typeof shapeOutput>[0],
+    input.essai === 'labo',
+  );
   // Re-strip a travers le schema declare : tout champ non whiteliste qui aurait
   // survecu a shapeOutput est retire ici (defense en profondeur, anti-fuite).
   const output = projectEngineOutput(TerzaghiOutputSchema, shaped);

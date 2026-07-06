@@ -89,8 +89,8 @@ export function resolveVerdict(engineId: string, output: unknown): PvVerdict {
 /**
  * Verdict agrege par cas (terzaghi). FAIL-CLOSED : si `cas` absent, vide, ou un cas
  * valide ne porte pas un `portanceOk` booleen exploitable, on LEVE (pas de PV sans
- * verdict determine). CONFORME ssi tous les cas valides passent portance ET
- * glissement (quand evalue) ; sinon NON_CONFORME.
+ * verdict determine). CONFORME ssi tous les cas valides passent portance, glissement
+ * (quand evalue) ET excentrement (quand requis) ; sinon NON_CONFORME.
  */
 function resolveCasesVerdict(engineId: string, output: unknown): PvVerdict {
   if (typeof output !== 'object' || output === null) {
@@ -114,10 +114,15 @@ function resolveCasesVerdict(engineId: string, output: unknown): PvVerdict {
       throw new VerdictIndeterminableError(engineId);
     }
   }
+  // MAJEUR-1 : l'excentrement (tab. 5.5) pese dans le verdict scelle. `excOk === false`
+  // (excentrement non verifie) -> NON_CONFORME ; `excOk` absent = non requis (ELU
+  // accidentel) -> n'echoue pas. Sans cette clause, un PV scellait CONFORME sur un cas
+  // excentre non verifie (faux PASS scelle).
   const allOk = valid.every(
     (c) =>
       c.portanceOk === true &&
-      (c.glissementOk === undefined || c.glissementOk === true),
+      (c.glissementOk === undefined || c.glissementOk === true) &&
+      (c.excOk === undefined || c.excOk === true),
   );
   return allOk ? 'CONFORME' : 'NON_CONFORME';
 }

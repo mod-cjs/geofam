@@ -527,6 +527,47 @@ function buildTerzaghiRows(o: Record<string, unknown>): CalcOutputRow[] {
         unit: '%',
         status: pOk,
       });
+    // Portance complémentaire c–φ (annexe F) — MAJEUR-2 : n'apparaissait pas quand
+    // l'option était cochée. Bloc déjà assaini côté serveur (verdict + résistances,
+    // jamais les facteurs de portance). En méthode labo, c–φ est déjà la portance
+    // principale ci-dessus : le serveur n'émet le bloc `cphi` qu'en in situ.
+    const cphi = c.cphi;
+    if (cphi != null && typeof cphi === 'object') {
+      const cp = cphi as Record<string, unknown>;
+      if (typeof cp.err === 'string') {
+        // Message normatif borné (domaine c–φ) — tags HTML retirés pour l'affichage.
+        rows.push({
+          label: `${et} — portance c–φ (annexe F)`,
+          value: cp.err.replace(/<[^>]+>/g, ''),
+          unit: '',
+        });
+      } else {
+        const cOk: 'ok' | 'fail' = cp.ok === true ? 'ok' : 'fail';
+        pushRow(rows, `${et} — portance c–φ (annexe F) R_v;d;F`, cp.Rtot, 'kN', cOk);
+        pushRow(rows, `${et} — contrainte c–φ q_Rv;d;F`, cp.qRvd, 'kPa');
+        const tc = finiteOrNull(cp.taux);
+        if (tc !== null)
+          rows.push({
+            label: `${et} — taux mobilisation c–φ`,
+            value: tc * 100,
+            unit: '%',
+            status: cOk,
+          });
+      }
+    }
+    // Excentrement (tab. 5.5) — MAJEUR-1 : absent = non requis (ELU acc.), ligne omise.
+    // Présent : valeur = taux de surface comprimée (–), verdict ok/fail, limite en libellé.
+    if (typeof c.excOk === 'boolean') {
+      const eOk: 'ok' | 'fail' = c.excOk === true ? 'ok' : 'fail';
+      const lib = typeof c.excLimLib === 'string' ? c.excLimLib : null;
+      const excVal = finiteOrNull(c.exc);
+      rows.push({
+        label: `${et} — excentrement (surface comprimée${lib ? ` ≥ ${lib}` : ''})`,
+        value: excVal !== null ? excVal : '—',
+        unit: '',
+        status: eOk,
+      });
+    }
     if (c.Rhd != null) {
       const gOk: 'ok' | 'fail' = c.glissementOk === true ? 'ok' : 'fail';
       pushRow(rows, `${et} — résistance au glissement R_h;d`, c.Rhd, 'kN', gOk);
@@ -594,9 +635,14 @@ function terzaghiVerdict(o: Record<string, unknown>): 'PASS' | 'FAIL' {
       (c as Record<string, unknown>).invalide !== true,
   );
   if (valid.length === 0) return 'FAIL';
+  // MAJEUR-1 : l'excentrement compte dans le verdict. `excOk === undefined` = non requis
+  // (ELU accidentel, tab. 5.5) → n'échoue pas ; `excOk === false` (excentrement non
+  // vérifié) → FAIL (fin du faux PASS où un cas excentré affichait « Fondation vérifiée »).
   return valid.every(
     (c) =>
-      c.portanceOk === true && (c.glissementOk === undefined || c.glissementOk === true),
+      c.portanceOk === true &&
+      (c.glissementOk === undefined || c.glissementOk === true) &&
+      (c.excOk === undefined || c.excOk === true),
   )
     ? 'PASS'
     : 'FAIL';
