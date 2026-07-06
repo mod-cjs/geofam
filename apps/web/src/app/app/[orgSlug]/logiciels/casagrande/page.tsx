@@ -57,17 +57,52 @@ const numU = (s: string): number | undefined => { const t = String(s).trim(); if
 
 export interface CasaForm {
   projet?: string;
-  cat: number; section: Section; gB: string; gD: string; gz0: string;
+  cat: number; section: Section; gB: string; gb2: string; gAp: string; gP: string; gD: string; gz0: string;
   meth: Meth; da: Da; sens: Sens; essais: 'oui' | 'non';
   cG: string; cQ: string; nappe: string; nprofil: string; surf: string; redis: 'oui' | 'non';
   grpN: string; grpM: string; grpS: string;
   layers: LayerRow[];
   betonOn: boolean; fck: string; arm: 'arme' | 'nonarme'; k3: '1.0' | '1.2';
+  // Pénétrogramme CPT saisi manuellement (méthode pénétrométrique).
+  cptStep: string; cptPaste: string;
+  // Frottement négatif (downdrag) — onglet 02 de l'outil client ; opt-in explicite.
+  fnOn: boolean; fnMode: 'auto' | 'impose';
+  fnS0: string; fnHc: string; fnZt: string; fnZb: string; fnQ: string; fnKtd: string;
+}
+
+/**
+ * Parse un pénétrogramme collé « z qc » (une ligne par profondeur), FIDÈLE à
+ * `importPenetro()` du HTML client : séparateurs espace/virgule/point-virgule/tab,
+ * une ligne retenue si elle porte ≥ 2 nombres, tri ASCENDANT par z (déterministe).
+ * Aucune science ici — pure lecture de saisie.
+ */
+export function parseCptPaste(txt: string): { z: number; qc: number }[] {
+  const pts: { z: number; qc: number }[] = [];
+  // Fidèle à importPenetro : la virgule est un SÉPARATEUR de colonne (comme l'espace),
+  // pas un séparateur décimal — parseFloat direct, aucune conversion « , » -> « . ».
+  String(txt).split(/\n+/).forEach((line) => {
+    const m = line.trim().split(/[\s,;\t]+/).map((x) => parseFloat(x)).filter((x) => !Number.isNaN(x));
+    if (m.length >= 2) pts.push({ z: m[0], qc: m[1] });
+  });
+  pts.sort((a, b) => a.z - b.z);
+  return pts;
 }
 
 /** Payload API PUR (DoD §8 : entrées bornées + coefficients partiels EC7 publics ; nombres). */
 export function buildCasaPayload(f: CasaForm): Record<string, unknown> {
-  const geom: Record<string, unknown> = { section: f.section, g_B: num(f.gB, 0.6) };
+  // Géométrie fidèle à pileGeom() : circ/carré = côté unique g_B ; rect = g_B (côté)
+  // + g_b2 (largeur) ; quelconque = aire de pointe g_Ap + périmètre du fût g_P.
+  const geom: Record<string, unknown> = { section: f.section };
+  if (f.section === 'quel') {
+    geom.g_Ap = num(f.gAp, 0);
+    geom.g_P = num(f.gP, 0);
+  } else {
+    geom.g_B = num(f.gB, 0.6);
+    if (f.section === 'rect') geom.g_b2 = num(f.gb2, 0);
+  }
+  // Pénétrogramme : points saisis seulement en méthode CPT ; sinon vide (le moteur
+  // régénère depuis les qc de couches — comportement d'origine préservé).
+  const cptPts = f.meth === 'cpt' ? parseCptPaste(f.cptPaste) : [];
   return {
     pieu: f.projet,
     geom,
@@ -92,8 +127,21 @@ export function buildCasaPayload(f: CasaForm): Record<string, unknown> {
       add('pl', numU(l.pl)); add('em', numU(l.em)); add('qc', numU(l.qc)); add('c', numU(l.c)); add('phi', numU(l.phi)); add('gamma', numU(l.gamma));
       return row;
     }),
-    cpt: { step: 0.2, pts: [] },
+    cpt: { step: num(f.cptStep, 0.2), pts: cptPts },
     ...(f.betonOn ? { beton: { b_fck: num(f.fck, 25), arm: f.arm, k3: f.k3 } } : {}),
+    ...(f.fnOn
+      ? {
+          frottementNegatif: {
+            mode: f.fnMode,
+            fn_Q: num(f.fnQ, 0),
+            fn_ktd: num(f.fnKtd, 0),
+            fn_s0: num(f.fnS0, 0),
+            fn_hc: num(f.fnHc, 0),
+            fn_zt: num(f.fnZt, 0),
+            fn_zb: num(f.fnZb, 0),
+          },
+        }
+      : {}),
   };
 }
 
@@ -124,6 +172,9 @@ export default function CasagrandePage() {
   const [cat, setCat] = useState(1);
   const [section, setSection] = useState<Section>('circ');
   const [gB, setGB] = useState('0.6');
+  const [gb2, setGb2] = useState('');
+  const [gAp, setGAp] = useState('');
+  const [gP, setGP] = useState('');
   const [gD, setGD] = useState('12');
   const [gz0, setGz0] = useState('0');
   const [meth, setMeth] = useState<Meth>('pmt');
@@ -143,6 +194,16 @@ export default function CasagrandePage() {
   const [fck, setFck] = useState('25');
   const [arm, setArm] = useState<'arme' | 'nonarme'>('arme');
   const [k3, setK3] = useState<'1.0' | '1.2'>('1.0');
+  const [cptStep, setCptStep] = useState('0.2');
+  const [cptPaste, setCptPaste] = useState('');
+  const [fnOn, setFnOn] = useState(false);
+  const [fnMode, setFnMode] = useState<'auto' | 'impose'>('auto');
+  const [fnS0, setFnS0] = useState('');
+  const [fnHc, setFnHc] = useState('');
+  const [fnZt, setFnZt] = useState('');
+  const [fnZb, setFnZb] = useState('');
+  const [fnQ, setFnQ] = useState('');
+  const [fnKtd, setFnKtd] = useState('');
   const [layers, setLayers] = useState<LayerRow[]>([
     { soil: 'argile', th: '', pl: '', em: '', qc: '', c: '', phi: '', gamma: '' },
     { soil: 'sable', th: '', pl: '', em: '', qc: '', c: '', phi: '', gamma: '' },
@@ -153,7 +214,7 @@ export default function CasagrandePage() {
   const [calcError, setCalcError] = useState<string | null>(null);
   const [emittingPv, setEmittingPv] = useState(false);
   const [pvResult, setPvResult] = useState<OfficialPv | null>(null);
-  const [tab, setTab] = useState<'pieu' | 'sol' | 'options' | 'resultats'>('pieu');
+  const [tab, setTab] = useState<'pieu' | 'fn' | 'sol' | 'options' | 'resultats'>('pieu');
 
   useEffect(() => {
     if (!orgId) return;
@@ -164,8 +225,9 @@ export default function CasagrandePage() {
 
   const buildPayload = useCallback(() => buildCasaPayload({
     projet: projects.find((p) => p.id === projectId)?.name,
-    cat, section, gB, gD, gz0, meth, da, sens, essais, cG, cQ, nappe, nprofil, surf, redis, grpN, grpM, grpS, layers, betonOn, fck, arm, k3,
-  }), [projects, projectId, cat, section, gB, gD, gz0, meth, da, sens, essais, cG, cQ, nappe, nprofil, surf, redis, grpN, grpM, grpS, layers, betonOn, fck, arm, k3]);
+    cat, section, gB, gb2, gAp, gP, gD, gz0, meth, da, sens, essais, cG, cQ, nappe, nprofil, surf, redis, grpN, grpM, grpS, layers, betonOn, fck, arm, k3,
+    cptStep, cptPaste, fnOn, fnMode, fnS0, fnHc, fnZt, fnZb, fnQ, fnKtd,
+  }), [projects, projectId, cat, section, gB, gb2, gAp, gP, gD, gz0, meth, da, sens, essais, cG, cQ, nappe, nprofil, surf, redis, grpN, grpM, grpS, layers, betonOn, fck, arm, k3, cptStep, cptPaste, fnOn, fnMode, fnS0, fnHc, fnZt, fnZb, fnQ, fnKtd]);
 
   const handleCalculer = useCallback(async () => {
     if (!orgId || !projectId) return;
@@ -217,7 +279,7 @@ export default function CasagrandePage() {
       {calcError && <div style={{ ...card, background: '#fbeae7', borderColor: '#e0b3aa', color: '#8f2a1f' }} role="alert">{calcError}</div>}
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: `1px solid ${LINE}` }} role="tablist">
-        {([['pieu', 'Pieu & méthode'], ['sol', 'Profil de sol'], ['options', 'Options'], ['resultats', 'Résultats']] as const).map(([id, label]) => (
+        {([['pieu', 'Pieu & méthode'], ['fn', 'Frottement négatif'], ['sol', 'Profil de sol'], ['options', 'Options'], ['resultats', 'Résultats']] as const).map(([id, label]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
             style={{ border: 'none', background: 'none', padding: '9px 14px', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', color: tab === id ? ACCENT : MUTED, borderBottom: tab === id ? `2px solid ${ACCENT}` : '2px solid transparent' }}>
             {label}
@@ -237,7 +299,19 @@ export default function CasagrandePage() {
               <div><label style={lbl}>Section</label>
                 <select style={inp} value={section} onChange={(e) => setSection(e.target.value as Section)}><option value="circ">Circulaire</option><option value="carre">Carrée</option><option value="rect">Rectangulaire</option><option value="quel">Quelconque</option></select>
               </div>
-              <div><label style={lbl}>Diamètre/côté B (m)</label><input style={inp} value={gB} onChange={(e) => setGB(e.target.value)} /></div>
+              {section === 'quel' ? (
+                <>
+                  <div><label style={lbl}>Aire de pointe A<sub>p</sub> (m²)</label><input style={inp} value={gAp} onChange={(e) => setGAp(e.target.value)} placeholder="0.28" /></div>
+                  <div><label style={lbl}>Périmètre du fût P (m)</label><input style={inp} value={gP} onChange={(e) => setGP(e.target.value)} placeholder="1.88" /></div>
+                </>
+              ) : (
+                <>
+                  <div><label style={lbl}>{section === 'circ' ? 'Diamètre B (m)' : 'Côté / largeur B (m)'}</label><input style={inp} value={gB} onChange={(e) => setGB(e.target.value)} placeholder="0.60" /></div>
+                  {section === 'rect' && (
+                    <div><label style={lbl}>Largeur b (m)</label><input style={inp} value={gb2} onChange={(e) => setGb2(e.target.value)} placeholder="0.50" /></div>
+                  )}
+                </>
+              )}
               <div><label style={lbl}>Fiche D (m)</label><input style={inp} value={gD} onChange={(e) => setGD(e.target.value)} /></div>
               <div><label style={lbl}>Cote de départ z₀ (m)</label><input style={inp} value={gz0} onChange={(e) => setGz0(e.target.value)} /></div>
             </div>
@@ -264,7 +338,56 @@ export default function CasagrandePage() {
         </>
       )}
 
+      {tab === 'fn' && (
+        <>
+          <div style={card}>
+            <div style={secH}>Zone de frottement négatif — point neutre</div>
+            <label style={{ ...lbl, display: 'flex', gap: 7, alignItems: 'center' }}>
+              <input type="checkbox" checked={fnOn} onChange={(e) => setFnOn(e.target.checked)} /> Calculer le frottement négatif (downdrag)
+            </label>
+            <div style={{ fontSize: 10.5, color: MUTED, fontStyle: 'italic', marginTop: 4 }}>
+              Reporté à titre indicatif — non intégré au verdict de portance ; action permanente à ajouter à la charge en tête (NF P 94-262, Annexe H).
+            </div>
+            {fnOn && (
+              <>
+                <div style={{ marginTop: 12, marginBottom: 10 }}>
+                  <label style={lbl}>Mode de détermination</label>
+                  <select style={inp} value={fnMode} onChange={(e) => setFnMode(e.target.value as 'auto' | 'impose')}>
+                    <option value="auto">Automatique (tassement libre du sol)</option>
+                    <option value="impose">Hauteur imposée</option>
+                  </select>
+                </div>
+                {fnMode === 'auto' ? (
+                  <div style={grid3}>
+                    <div><label style={lbl}>Tassement en surface s₀ (mm)</label><input style={inp} value={fnS0} onChange={(e) => setFnS0(e.target.value)} placeholder="90" /></div>
+                    <div><label style={lbl}>Profondeur compressible H_c (m)</label><input style={inp} value={fnHc} onChange={(e) => setFnHc(e.target.value)} placeholder="9.0" /></div>
+                  </div>
+                ) : (
+                  <div style={grid3}>
+                    <div><label style={lbl}>Frottement négatif de (m)</label><input style={inp} value={fnZt} onChange={(e) => setFnZt(e.target.value)} placeholder="0.0" /></div>
+                    <div><label style={lbl}>… jusqu&apos;à (m)</label><input style={inp} value={fnZb} onChange={(e) => setFnZb(e.target.value)} placeholder="9.0" /></div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          {fnOn && (
+            <div style={card}>
+              <div style={secH}>Interaction sol-pieu — Annexe H</div>
+              <div style={grid3}>
+                <div><label style={lbl}>Charge structurelle en tête Q (kN)</label><input style={inp} value={fnQ} onChange={(e) => setFnQ(e.target.value)} placeholder="800" /></div>
+                <div><label style={lbl}>Terme K·tanδ (frottement négatif)</label><input style={inp} value={fnKtd} onChange={(e) => setFnKtd(e.target.value)} placeholder="0.30" /></div>
+              </div>
+              <div style={{ fontSize: 10.5, color: MUTED, fontStyle: 'italic', marginTop: 8 }}>
+                Frottement négatif plafonné à q_sn = K·tanδ·σ′_v (Combarieu) au-dessus du point neutre ; en dessous, le frottement positif reprend la charge.
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
       {tab === 'sol' && (
+        <>
         <div style={card}>
           <div style={secH}>Profil de sol</div>
           <div style={{ ...grid3, marginBottom: 12 }}>
@@ -286,6 +409,25 @@ export default function CasagrandePage() {
           </table>
           <button onClick={() => setLayers((p) => [...p, { soil: 'sable', th: '', pl: '', em: '', qc: '', c: '', phi: '', gamma: '' }])} style={{ marginTop: 8, border: `1px dashed ${ACCENT}`, background: '#e7efed', color: ACCENT, borderRadius: 7, padding: '7px 12px', cursor: 'pointer', fontWeight: 600, fontSize: 12.5 }}>+ Ajouter une couche</button>
         </div>
+        {meth === 'cpt' && (
+          <div style={card}>
+            <div style={secH}>Pénétrogramme q_c(z) — pénétromètre statique</div>
+            <div style={{ ...grid3, marginBottom: 10 }}>
+              <div><label style={lbl}>Pas de profondeur (m)</label><input style={inp} value={cptStep} onChange={(e) => setCptStep(e.target.value)} placeholder="0.20" /></div>
+            </div>
+            <label style={lbl}>Sondage collé — une ligne « z(m)  q_c(MPa) » par profondeur</label>
+            <textarea
+              value={cptPaste}
+              onChange={(e) => setCptPaste(e.target.value)}
+              placeholder={'Ex. :\n1.0 3.2\n2.0 5.4\n3.0 7.1'}
+              style={{ ...inp, height: 96, fontFamily: 'ui-monospace, monospace', resize: 'vertical' }}
+            />
+            <div style={{ fontSize: 10.5, color: MUTED, fontStyle: 'italic', marginTop: 6 }}>
+              q_ce et le frottement sont calculés sur ce pénétrogramme. Laissé vide, il est régénéré à partir des q_c des couches.
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {tab === 'options' && (
@@ -301,8 +443,12 @@ export default function CasagrandePage() {
           <div style={card}>
             <div style={secH}>Options de calcul</div>
             <div style={grid3}>
-              <div><label style={lbl}>N° de profil</label><input style={inp} value={nprofil} onChange={(e) => setNprofil(e.target.value)} /></div>
-              <div><label style={lbl}>Surcharge surface (kN)</label><input style={inp} value={surf} onChange={(e) => setSurf(e.target.value)} /></div>
+              <div><label style={lbl}>Nb. de profils de sondage (N)</label><input style={inp} value={nprofil} onChange={(e) => setNprofil(e.target.value)} /></div>
+              <div>
+                <label style={lbl}>Surface d&apos;investigation S (m²)</label>
+                <input style={inp} value={surf} onChange={(e) => setSurf(e.target.value)} placeholder="2500" />
+                <div style={{ fontSize: 10.5, color: MUTED, marginTop: 3 }}>Facteurs de corrélation ξ (E.2.1) — bornée 100–2500 m².</div>
+              </div>
               <div><label style={lbl}>Redistribution</label>
                 <select style={inp} value={redis} onChange={(e) => setRedis(e.target.value as 'oui' | 'non')}><option value="non">Non</option><option value="oui">Oui</option></select>
               </div>
