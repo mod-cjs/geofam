@@ -194,3 +194,72 @@ export async function clientListAudit(
     { method: 'GET' },
   );
 }
+
+// ---------------------------------------------------------------------------
+// Vague 2 — comptes globaux, rattacher abo, transfert OWNER, ajouter membre
+// ---------------------------------------------------------------------------
+
+/** Ajoute un membre EXISTANT (par userId) à une org. */
+export async function clientAddMember(
+  orgId: string,
+  data: { userId: string; role: 'ADMIN' | 'ENGINEER' | 'TECHNICIAN' | 'VIEWER' },
+  idempotencyKey: string,
+): Promise<AdminOrgDetail> {
+  return adminMutate<AdminOrgDetail>(
+    `/admin/orgs/${encodeURIComponent(orgId)}/members`,
+    { method: 'POST', body: JSON.stringify(data) },
+    idempotencyKey,
+  );
+}
+
+/** Transfère l'OWNER d'une org vers un membre actif existant. */
+export async function clientTransferOwner(
+  orgId: string,
+  data: { newOwnerUserId: string },
+  idempotencyKey: string,
+): Promise<AdminOrgDetail> {
+  return adminMutate<AdminOrgDetail>(
+    `/admin/orgs/${encodeURIComponent(orgId)}/owner`,
+    { method: 'PATCH', body: JSON.stringify(data) },
+    idempotencyKey,
+  );
+}
+
+/** Rattache un abonnement à une org existante SANS abo (409 si un abo actif existe). */
+export async function clientAttachSubscription(
+  orgId: string,
+  data: { pack: 'ROUTES' | 'FONDATIONS' | 'COMPLETE'; entitlements: string[]; quota: number; dateDebut: string; dateFin: string },
+  idempotencyKey: string,
+): Promise<AdminOrgDetail> {
+  return adminMutate<AdminOrgDetail>(
+    `/admin/orgs/${encodeURIComponent(orgId)}/subscription`,
+    { method: 'POST', body: JSON.stringify(data) },
+    idempotencyKey,
+  );
+}
+
+/** Désactive (active=false) ou réactive (active=true) un compte GLOBAL. */
+export async function clientSetUserActive(
+  userId: string,
+  active: boolean,
+  idempotencyKey: string,
+): Promise<{ userId: string; active: boolean }> {
+  return adminMutate<{ userId: string; active: boolean }>(
+    `/admin/users/${encodeURIComponent(userId)}/active`,
+    { method: 'PATCH', body: JSON.stringify({ active }) },
+    idempotencyKey,
+  );
+}
+
+/** Reset admin du mot de passe d'un compte (le nouveau mdp ne transite que dans cette requête). */
+export async function clientResetPassword(
+  userId: string,
+  data: { newPassword: string; motif?: string },
+  idempotencyKey: string,
+): Promise<{ userId: string }> {
+  return adminMutate<{ userId: string }>(
+    `/admin/users/${encodeURIComponent(userId)}/reset-password`,
+    { method: 'POST', body: JSON.stringify(data) },
+    idempotencyKey,
+  );
+}
