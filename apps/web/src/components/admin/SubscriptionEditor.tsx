@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { QuotaBar } from './QuotaBar';
 import {
+  clientAttachSubscription,
   clientSetEntitlements,
   clientRenew,
   clientTopUp,
@@ -49,7 +50,9 @@ export function SubscriptionEditor({
   subscription,
   onMutated,
 }: SubscriptionEditorProps) {
-  const [openModal, setOpenModal] = useState<'topup' | 'renew' | 'entitlements' | null>(null);
+  const [openModal, setOpenModal] = useState<
+    'topup' | 'renew' | 'entitlements' | 'attach' | null
+  >(null);
 
   function closeModal() {
     setOpenModal(null);
@@ -84,15 +87,23 @@ export function SubscriptionEditor({
           flexWrap: 'wrap',
         }}
       >
-        <Button variant="action" size="sm" onClick={() => setOpenModal('topup')}>
-          Ajuster le quota
-        </Button>
-        <Button variant="secondary" size="sm" onClick={() => setOpenModal('renew')}>
-          Renouveler
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => setOpenModal('entitlements')}>
-          Modules
-        </Button>
+        {subscription ? (
+          <>
+            <Button variant="action" size="sm" onClick={() => setOpenModal('topup')}>
+              Ajuster le quota
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setOpenModal('renew')}>
+              Renouveler
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setOpenModal('entitlements')}>
+              Modules
+            </Button>
+          </>
+        ) : (
+          <Button variant="action" size="sm" onClick={() => setOpenModal('attach')}>
+            Rattacher un abonnement
+          </Button>
+        )}
       </div>
 
       {/* Modales */}
@@ -113,6 +124,12 @@ export function SubscriptionEditor({
         open={openModal === 'entitlements'}
         orgId={orgId}
         subscription={subscription}
+        onClose={closeModal}
+        onMutated={onMutated}
+      />
+      <AttachModal
+        open={openModal === 'attach'}
+        orgId={orgId}
         onClose={closeModal}
         onMutated={onMutated}
       />
@@ -790,6 +807,133 @@ function extractMessage(err: unknown): string {
     return (err as { message: string }).message;
   }
   return 'Une erreur inattendue est survenue.';
+}
+
+// ---------------------------------------------------------------------------
+// Modal : RATTACHER un abonnement à une org existante SANS abo (Vague 2)
+// ---------------------------------------------------------------------------
+
+function AttachModal({
+  open,
+  orgId,
+  onClose,
+  onMutated,
+}: {
+  open: boolean;
+  orgId: string;
+  onClose: () => void;
+  onMutated: (detail: AdminOrgDetail) => void;
+}) {
+  const [pack, setPack] = useState<'ROUTES' | 'FONDATIONS' | 'COMPLETE'>('COMPLETE');
+  const [quota, setQuota] = useState('1000');
+  const [dateDebut, setDateDebut] = useState(today());
+  const [dateFin, setDateFin] = useState(oneYearFromToday());
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const quotaNum = Number.parseInt(quota, 10);
+  const canSubmit =
+    Number.isInteger(quotaNum) && quotaNum >= 0 && dateDebut <= dateFin && !loading;
+
+  async function handleSubmit() {
+    setError(undefined);
+    setLoading(true);
+    try {
+      const detail = await clientAttachSubscription(
+        orgId,
+        {
+          pack,
+          entitlements: PACK_ENTITLEMENTS[pack] ?? [],
+          quota: quotaNum,
+          dateDebut,
+          dateFin,
+        },
+        crypto.randomUUID(),
+      );
+      onMutated(detail);
+      onClose();
+    } catch (err) {
+      setError(extractMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Rattacher un abonnement"
+      description="Provisionne un abonnement pour une organisation qui n'en a pas. Refusé si un abonnement actif existe déjà."
+      size="sm"
+      loading={loading}
+      error={error}
+      footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>
+            Annuler
+          </Button>
+          <Button
+            variant="action"
+            size="sm"
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            loading={loading}
+          >
+            Rattacher
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div>
+          <label style={labelStyle}>Pack</label>
+          <select
+            value={pack}
+            onChange={(e) => setPack(e.target.value as 'ROUTES' | 'FONDATIONS' | 'COMPLETE')}
+            style={fieldStyle}
+          >
+            <option value="ROUTES">ROUTES</option>
+            <option value="FONDATIONS">FONDATIONS</option>
+            <option value="COMPLETE">COMPLETE</option>
+          </select>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+            Modules : {(PACK_ENTITLEMENTS[pack] ?? []).join(', ')}
+          </p>
+        </div>
+        <div>
+          <label style={labelStyle}>Quota (unités)</label>
+          <input
+            type="number"
+            min={0}
+            value={quota}
+            onChange={(e) => setQuota(e.target.value)}
+            style={fieldStyle}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Début</label>
+            <input
+              type="date"
+              value={dateDebut}
+              onChange={(e) => setDateDebut(e.target.value)}
+              style={fieldStyle}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Fin</label>
+            <input
+              type="date"
+              value={dateFin}
+              onChange={(e) => setDateFin(e.target.value)}
+              style={fieldStyle}
+            />
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 // React needed for JSX Fragment in SubscriptionReadView

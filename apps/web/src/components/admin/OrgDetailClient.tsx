@@ -17,12 +17,15 @@ import React, { useState } from 'react';
 
 import { Tabs } from '@/components/ui/Tabs';
 import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
 import { OrgStatusBadge } from './OrgStatusBadge';
 import { SubscriptionEditor } from './SubscriptionEditor';
 import { MemberActionsRow } from './MemberActionsRow';
 import { OrgSuspendModal } from './OrgSuspendModal';
 import { AuditTab } from './AuditTab';
-import type { AdminOrgDetail } from '@/lib/api/admin-server';
+import { clientSearchUsers } from '@/lib/api/admin-client';
+import { clientAddMember, clientTransferOwner } from '@/lib/api/admin-mutations-client';
+import type { AdminOrgDetail, AdminUserView } from '@/lib/api/admin-server';
 
 interface OrgDetailClientProps {
   detail: AdminOrgDetail;
@@ -213,23 +216,70 @@ function MembresTab({
   onMutated: (detail: AdminOrgDetail) => void;
   onActiveToggled: (userId: string, isActive: boolean) => void;
 }) {
-  if (members.length === 0) {
-    return (
-      <div
-        style={{
-          padding: '40px 24px',
-          textAlign: 'center',
-          color: 'var(--text-muted)',
-          fontSize: 'var(--text-sm)',
-        }}
-      >
-        Aucun membre.
-      </div>
-    );
+  const [showAdd, setShowAdd] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function transferOwner(m: AdminOrgDetail['members'][number]) {
+    if (!window.confirm(`Définir ${m.email} comme OWNER ? L'OWNER actuel sera rétrogradé.`)) return;
+    setError(null);
+    setBusyId(m.userId);
+    try {
+      const detail = await clientTransferOwner(orgId, { newOwnerUserId: m.userId }, crypto.randomUUID());
+      onMutated(detail);
+    } catch (e) {
+      setError((e as { message?: string }).message ?? 'Échec du transfert.');
+    } finally {
+      setBusyId(null);
+    }
   }
 
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
+    <div>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '12px 16px',
+          borderBottom: '1px solid var(--border-subtle)',
+        }}
+      >
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+          {members.length} membre{members.length > 1 ? 's' : ''}
+        </span>
+        <Button variant="action" size="sm" onClick={() => setShowAdd(true)}>
+          Ajouter un membre
+        </Button>
+      </div>
+      {error && (
+        <div
+          role="alert"
+          style={{
+            margin: '8px 16px',
+            padding: '6px 10px',
+            borderRadius: 'var(--radius-base)',
+            background: 'var(--status-fail-bg)',
+            color: 'var(--status-fail-tx)',
+            fontSize: 'var(--text-xs)',
+          }}
+        >
+          {error}
+        </div>
+      )}
+      {members.length === 0 ? (
+        <div
+          style={{
+            padding: '40px 24px',
+            textAlign: 'center',
+            color: 'var(--text-muted)',
+            fontSize: 'var(--text-sm)',
+          }}
+        >
+          Aucun membre.
+        </div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
           {['Utilisateur', 'Rôle / Actions', 'Statut', 'Calculs (mois)'].map((h) => (
@@ -272,6 +322,25 @@ function MembresTab({
                 onMutated={onMutated}
                 onActiveToggled={onActiveToggled}
               />
+              {m.role !== 'OWNER' && m.isActive && (
+                <button
+                  type="button"
+                  disabled={busyId === m.userId}
+                  onClick={() => transferOwner(m)}
+                  style={{
+                    marginTop: 6,
+                    fontSize: 'var(--text-xs)',
+                    padding: '3px 9px',
+                    borderRadius: 'var(--radius-base)',
+                    border: '1px solid var(--border-default)',
+                    background: 'var(--surface-base)',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Définir OWNER
+                </button>
+              )}
             </td>
 
             {/* Statut is_active */}
@@ -320,6 +389,171 @@ function MembresTab({
         ))}
       </tbody>
     </table>
+      )}
+      <AddMemberModal
+        open={showAdd}
+        orgId={orgId}
+        existingIds={members.map((m) => m.userId)}
+        onClose={() => setShowAdd(false)}
+        onMutated={onMutated}
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Onglet Ajouter un membre (recherche user existant + rôle) — Vague 2
+// ---------------------------------------------------------------------------
+
+function AddMemberModal({
+  open,
+  orgId,
+  existingIds,
+  onClose,
+  onMutated,
+}: {
+  open: boolean;
+  orgId: string;
+  existingIds: string[];
+  onClose: () => void;
+  onMutated: (detail: AdminOrgDetail) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<AdminUserView[]>([]);
+  const [picked, setPicked] = useState<AdminUserView | null>(null);
+  const [role, setRole] = useState<'ADMIN' | 'ENGINEER' | 'TECHNICIAN' | 'VIEWER'>('ENGINEER');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  async function search(value: string) {
+    setQ(value);
+    setPicked(null);
+    if (value.trim().length < 2) {
+      setResults([]);
+      return;
+    }
+    try {
+      const users = await clientSearchUsers(value.trim());
+      setResults(users.filter((u) => !existingIds.includes(u.userId)).slice(0, 8));
+    } catch {
+      setResults([]);
+    }
+  }
+
+  async function handleSubmit() {
+    if (!picked) return;
+    setError(undefined);
+    setLoading(true);
+    try {
+      const detail = await clientAddMember(orgId, { userId: picked.userId, role }, crypto.randomUUID());
+      onMutated(detail);
+      onClose();
+      setQ('');
+      setResults([]);
+      setPicked(null);
+    } catch (e) {
+      setError((e as { message?: string }).message ?? "Échec de l'ajout.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Ajouter un membre"
+      description="Recherche un compte existant (≥ 2 caractères) puis attribue-lui un rôle dans cette organisation."
+      size="sm"
+      loading={loading}
+      error={error}
+      footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>
+            Annuler
+          </Button>
+          <Button variant="action" size="sm" onClick={handleSubmit} disabled={!picked || loading} loading={loading}>
+            Ajouter
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <input
+          type="search"
+          value={q}
+          onChange={(e) => search(e.target.value)}
+          placeholder="Email ou nom…"
+          aria-label="Rechercher un utilisateur"
+          style={{
+            width: '100%',
+            padding: '8px 10px',
+            borderRadius: 'var(--radius-base)',
+            border: '1px solid var(--border-default)',
+            fontSize: 'var(--text-sm)',
+            background: 'var(--surface-canvas)',
+            color: 'var(--text-primary)',
+            boxSizing: 'border-box',
+          }}
+        />
+        {results.length > 0 && !picked && (
+          <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-base)', maxHeight: 180, overflowY: 'auto' }}>
+            {results.map((u) => (
+              <button
+                key={u.userId}
+                type="button"
+                onClick={() => setPicked(u)}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '8px 10px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: '1px solid var(--border-subtle)',
+                  cursor: 'pointer',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                <span style={{ fontWeight: 500 }}>{u.fullName}</span>{' '}
+                <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>{u.email}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {picked && (
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
+            Sélectionné : <strong>{picked.email}</strong>{' '}
+            <button type="button" onClick={() => setPicked(null)} style={{ marginLeft: 6, fontSize: 'var(--text-xs)', color: 'var(--text-link)', background: 'none', border: 'none', cursor: 'pointer' }}>
+              changer
+            </button>
+          </div>
+        )}
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 4 }}>Rôle</label>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as 'ADMIN' | 'ENGINEER' | 'TECHNICIAN' | 'VIEWER')}
+            style={{
+              width: '100%',
+              padding: '8px 10px',
+              borderRadius: 'var(--radius-base)',
+              border: '1px solid var(--border-default)',
+              fontSize: 'var(--text-sm)',
+              background: 'var(--surface-canvas)',
+              color: 'var(--text-primary)',
+              boxSizing: 'border-box',
+            }}
+          >
+            <option value="ADMIN">ADMIN</option>
+            <option value="ENGINEER">ENGINEER (ingénieur)</option>
+            <option value="TECHNICIAN">TECHNICIAN (labo)</option>
+            <option value="VIEWER">VIEWER</option>
+          </select>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
