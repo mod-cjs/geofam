@@ -33,7 +33,10 @@ async function bootstrap() {
     // -> sans lui dans allowedHeaders, le preflight CORS echoue et le navigateur bloque toute
     // mutation (« Failed to fetch »). PATCH/DELETE : idem, les mutations les utilisent (bug
     // detecte par l'e2e Playwright de mutation).
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Recette-Key', 'Idempotency-Key'],
+    // X-Org-Id : contexte tenant dérivé du JWT (ADR 0010), envoyé par TOUT appel de l'app
+    // (listProjects, getEntitlements, runCalc...). Sans lui, le preflight échoue -> l'app
+    // tenant ne charge plus rien (picker projets vide, calcul impossible). NE PAS retirer.
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Recette-Key', 'X-Org-Id', 'Idempotency-Key'],
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     maxAge: 86400,
   });
