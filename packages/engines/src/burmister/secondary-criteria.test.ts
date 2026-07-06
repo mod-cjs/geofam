@@ -27,7 +27,9 @@ import { runBurmister } from './index.js';
 function outputOf(fixtureId: string) {
   const f = BURMISTER_FIXTURES.find((x) => x.id === fixtureId);
   if (!f) throw new Error(`fixture inconnue: ${fixtureId}`);
-  return runBurmister(f.input).output;
+  const env = runBurmister(f.input);
+  if (!env.ok) throw new Error(`calcul en echec pour ${fixtureId}: ${env.error.code}`);
+  return env.output;
 }
 
 describe('critères secondaires AGEROUTE — exposés en sortie projetée', () => {
@@ -54,11 +56,11 @@ describe('critères secondaires AGEROUTE — exposés en sortie projetée', () =
     expect(ct.map((c) => c.couche)).toEqual([2, 3]);
     for (const c of ct) expect(c.mode).toBe('semi-collée');
     // σ_t sollicitant en MPa (même unité que le critère rigide principal).
-    expect(ct[0].valeur as number).toBeCloseTo(0.2697, 3);
-    expect(ct[0].admissible as number).toBeCloseTo(0.4225, 3);
-    expect(ct[0].ok).toBe(true);
-    expect(ct[1].valeur as number).toBeCloseTo(0.3345, 3);
-    expect(ct[1].ok).toBe(true);
+    expect(ct[0]!.valeur as number).toBeCloseTo(0.2697, 3);
+    expect(ct[0]!.admissible as number).toBeCloseTo(0.4225, 3);
+    expect(ct[0]!.ok).toBe(true);
+    expect(ct[1]!.valeur as number).toBeCloseTo(0.3345, 3);
+    expect(ct[1]!.ok).toBe(true);
   });
 
   it('BC5 multi-couches (Tab. 68) : mode « glissante » exposé, σ_t en MPa par couche', () => {
@@ -67,7 +69,7 @@ describe('critères secondaires AGEROUTE — exposés en sortie projetée', () =
     expect(ct).toHaveLength(2);
     expect(ct.map((c) => c.couche)).toEqual([1, 2]);
     for (const c of ct) expect(c.mode).toBe('glissante');
-    expect(ct[0].valeur as number).toBeCloseTo(1.3001, 3);
+    expect(ct[0]!.valeur as number).toBeCloseTo(1.3001, 3);
     // pas de phase 2 ni d'inverse ici (BC5 pur, pas de couche bitumineuse au-dessus).
     expect(o.fatiguePhase2).toBeNull();
     expect(o.fatigueInverse).toBeNull();
@@ -92,8 +94,8 @@ describe('critères secondaires AGEROUTE — exposés en sortie projetée', () =
     const cg = o.couchesGranulaires as Array<Record<string, unknown>>;
     expect(Array.isArray(cg)).toBe(true);
     expect(cg.map((c) => c.couche)).toEqual([2, 3]); // GNT1 (idx1), GNT2 (idx2)
-    expect(cg[0].valeur as number).toBeCloseTo(2107.23, 0);
-    expect(cg[0].valeur as number).toBeGreaterThan(0);
+    expect(cg[0]!.valeur as number).toBeCloseTo(2107.23, 0);
+    expect(cg[0]!.valeur as number).toBeGreaterThan(0);
   });
 
   it('STRUCTURE SOUPLE/BITUMINEUSE : aucun critère secondaire (null propre, pas de 0 trompeur)', () => {
