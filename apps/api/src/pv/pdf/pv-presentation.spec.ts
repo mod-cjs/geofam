@@ -297,6 +297,69 @@ describe('#71 — présentation métier chaussée', () => {
   });
 });
 
+describe('#71 — critères SECONDAIRES au PV (complétude d’affichage)', () => {
+  const prev = process.env.PV_SIGNING_SECRET;
+  beforeAll(() => {
+    process.env.PV_SIGNING_SECRET = SECRET;
+  });
+  afterAll(() => {
+    if (prev === undefined) delete process.env.PV_SIGNING_SECRET;
+    else process.env.PV_SIGNING_SECRET = prev;
+  });
+
+  /** Sortie semi-rigide : phase 2 mixte (et2) + σt par couche traitée (rigL). */
+  const SEMI_RIGIDE_OUTPUT = {
+    ...(CHAUSSEE_OUTPUT as Record<string, unknown>),
+    famille: 'semi-rigide',
+    fatiguePhase2: { valeur: 509.37, admissible: 201.54, ok: false, couche: 1 },
+    fatigueInverse: null,
+    couchesTraitees: [
+      { couche: 2, mode: 'semi-collée', valeur: 0.2697, admissible: 0.4225, ok: true },
+      { couche: 3, mode: 'semi-collée', valeur: 0.3345, admissible: 0.384, ok: true },
+    ],
+    couchesGranulaires: [],
+  } as SealableValue;
+
+  /** Sortie inverse : σt base MTLH profond (st2). */
+  const INVERSE_OUTPUT = {
+    ...(CHAUSSEE_OUTPUT as Record<string, unknown>),
+    famille: 'inverse',
+    fatiguePhase2: null,
+    fatigueInverse: { valeur: 0.4692, admissible: 0.384, ok: false, couche: 4 },
+    couchesTraitees: [],
+    couchesGranulaires: [{ couche: 3, valeur: 879.86, admissible: 511.5, ok: false }],
+  } as SealableValue;
+
+  it('MIXTE/SEMI-RIGIDE : le critère « Fatigue phase 2 » + la table σt par couche (mode Tab. 68) sont rendus', () => {
+    const text = collectPvPdfText(makeChausseePv({ output: SEMI_RIGIDE_OUTPUT }));
+    expect(text).toContain('Fatigue phase 2');
+    // table σt par couche traitée + mode d'interface (Tab. 68) :
+    expect(text).toContain('par couche traitée');
+    expect(text).toContain('semi-collée');
+    // le critère inverse (null) N'apparaît PAS.
+    expect(text.includes('Structure inverse')).toBe(false);
+  });
+
+  it('INVERSE : le critère « Structure inverse » (σt MPa) est rendu ; phase 2 (null) omise', () => {
+    const text = collectPvPdfText(makeChausseePv({ output: INVERSE_OUTPUT }));
+    expect(text).toContain('Structure inverse');
+    expect(text).toContain('MPa');
+    // phase 2 non concernée -> pas de ligne trompeuse.
+    expect(text.includes('Fatigue phase 2')).toBe(false);
+    // table εz par couche granulaire rendue.
+    expect(text).toContain('par couche granulaire');
+  });
+
+  it('SOUPLE/BITUMINEUSE (défaut) : AUCUN critère secondaire rendu (null/[] -> omis)', () => {
+    // CHAUSSEE_OUTPUT n'a pas les champs secondaires -> optional criteria omis,
+    // tables par couche omises (tableaux absents).
+    const text = collectPvPdfText(makeChausseePv());
+    expect(text.includes('Fatigue phase 2')).toBe(false);
+    expect(text.includes('Structure inverse')).toBe(false);
+    expect(text.includes('par couche traitée')).toBe(false);
+  });
+});
+
 describe('#71 — fallback (moteur sans modèle)', () => {
   const prev = process.env.PV_SIGNING_SECRET;
   beforeAll(() => {

@@ -105,6 +105,42 @@ export function sanitizeFamille(raw: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
+// Mode d'interface entre couches traitees (Tab. 68 AGEROUTE) : ALLOWLIST
+// ---------------------------------------------------------------------------
+
+/**
+ * Modes d'interface PUBLICS (Tableau 68 AGEROUTE 2015) : « collée »,
+ * « semi-collée » (demi-somme collé/glissant), « glissante ». Ce sont des
+ * hypotheses NORMATIVES publiques (pas un intermediaire de calage). On les
+ * WHITELISTE tout de meme (fail-closed) : le moteur emet une chaine libre
+ * (`modeI`) ; toute valeur non reconnue retombe sur un GENERIQUE, jamais la
+ * chaine brute.
+ */
+export const MODES_INTERFACE = ['collée', 'semi-collée', 'glissante'] as const;
+
+/** Libelle retenu pour tout mode brut NON reconnu (fail-closed). */
+export const MODE_INTERFACE_GENERIQUE = 'non spécifié';
+
+/** Ensemble FERME des modes autorises en SORTIE (allowlist + generique). */
+export const MODES_INTERFACE_AUTORISES: ReadonlySet<string> = new Set<string>([
+  ...MODES_INTERFACE,
+  MODE_INTERFACE_GENERIQUE,
+]);
+
+/**
+ * Nettoie le mode d'interface BRUT du moteur en un libelle d'ALLOWLIST.
+ * FAIL-CLOSED : entree non-chaine ou non reconnue → generique.
+ */
+export function sanitizeModeInterface(raw: unknown): string {
+  if (typeof raw !== 'string') return MODE_INTERFACE_GENERIQUE;
+  const s = raw.trim().toLowerCase();
+  for (const m of MODES_INTERFACE) {
+    if (s === m.toLowerCase()) return m;
+  }
+  return MODE_INTERFACE_GENERIQUE;
+}
+
+// ---------------------------------------------------------------------------
 // Entree : etat complet de la structure (nombres finis bornes)
 // ---------------------------------------------------------------------------
 
@@ -257,6 +293,68 @@ const OrnierageSchema = z
   .strict();
 
 /**
+ * Critere de fatigue SECONDAIRE rattache a UNE couche : valeur sollicitante vs
+ * admissible + verdict + n° de couche (1-based). Sert aux structures MIXTES
+ * (phase 2, §4.4.1 — ε_t µdef) et INVERSES (§4.5 — σ_t MPa). `null` quand la
+ * structure n'est PAS concernee (souple / bitumineuse / granulaire). §8 : ne
+ * porte QUE des grandeurs sollicitantes/admissibles + un n° de couche (jamais de
+ * coordonnee nodale/maillage ni de coefficient de calage).
+ */
+const CritereCoucheSchema = z
+  .object({
+    /** Valeur sollicitante (ε_t en µdef pour la phase 2 mixte ; σ_t en MPa pour l'inverse). */
+    valeur: z.number().finite(),
+    /** Valeur admissible (meme unite). */
+    admissible: z.number().finite(),
+    /** Critere verifie ? (valeur <= admissible). */
+    ok: z.boolean(),
+    /** N° de couche concernee (1-based, ordre de la structure haut->bas). */
+    couche: z.number().int().min(1),
+  })
+  .strict();
+
+/**
+ * σ_t a la base d'UNE couche traitee (MTLH/beton), avec le MODE d'interface
+ * (Tab. 68 AGEROUTE : collée / semi-collée / glissante). §8 : on n'expose que le
+ * σ_t sollicitant FINAL + l'admissible + le verdict + le mode + le n° de couche —
+ * jamais les composantes collée/glissante intermediaires (stC/stG restent serveur).
+ */
+const CoucheTraiteeSchema = z
+  .object({
+    /** N° de couche (1-based). */
+    couche: z.number().int().min(1),
+    /** Mode d'interface (allowlist Tab. 68 ; fail-closed). */
+    mode: z.string().max(40).refine((v) => MODES_INTERFACE_AUTORISES.has(v), {
+      message: 'mode d’interface hors allowlist (fail-closed)',
+    }),
+    /** σ_t sollicitant a la base de la couche (MPa). */
+    valeur: z.number().finite(),
+    /** σ_t admissible (MPa). */
+    admissible: z.number().finite(),
+    /** Critere verifie ? (valeur <= admissible). */
+    ok: z.boolean(),
+  })
+  .strict();
+
+/**
+ * ε_z au sommet d'UNE couche granulaire non liee (§4.1.2) : detail par couche du
+ * critere d'orniérage. §8 : ε_z sollicitant + admissible (= ε_z,adm global) +
+ * verdict + n° de couche ; aucune coordonnee de maillage.
+ */
+const CoucheGranulaireSchema = z
+  .object({
+    /** N° de couche (1-based). */
+    couche: z.number().int().min(1),
+    /** ε_z sollicitant au sommet de la couche granulaire (µdef). */
+    valeur: z.number().finite(),
+    /** ε_z admissible (µdef, catalogue AGEROUTE — meme seuil qu'orniérage). */
+    admissible: z.number().finite(),
+    /** ε_z <= ε_z,adm ? */
+    ok: z.boolean(),
+  })
+  .strict();
+
+/**
  * Sortie client-safe du moteur burmister. Le verdict de dimensionnement + les
  * grandeurs FINALES de chaque critere. Aucune contrainte brute, aucun coefficient
  * de fatigue, aucun intermediaire de propagateur.
@@ -323,6 +421,28 @@ export const BurmisterOutputSchema = z
     fatigue: FatigueSchema.optional(),
     /** Critere d'orniarage (sol support). */
     ornierage: OrnierageSchema,
+    /**
+     * Critere SECONDAIRE phase 2 des structures MIXTES (§4.4.1) : ε_t (µdef) a la
+     * base bitumineuse avec MTLH fissure (E/5) + interface glissante. `null` si la
+     * structure n'est pas concernee ; omis sur le chemin d'erreur.
+     */
+    fatiguePhase2: CritereCoucheSchema.nullable().optional(),
+    /**
+     * Critere SECONDAIRE des structures INVERSES (§4.5) : σ_t (MPa) a la base du
+     * segment MTLH profond. `null` si la structure n'est pas concernee ; omis sur
+     * le chemin d'erreur.
+     */
+    fatigueInverse: CritereCoucheSchema.nullable().optional(),
+    /**
+     * σ_t par couche traitee + mode d'interface (Tab. 68). Tableau VIDE si aucune
+     * couche traitee ; omis sur le chemin d'erreur.
+     */
+    couchesTraitees: z.array(CoucheTraiteeSchema).max(20).optional(),
+    /**
+     * Detail ε_z par couche granulaire non liee (§4.1.2). Tableau VIDE si aucune
+     * couche granulaire ; omis sur le chemin d'erreur.
+     */
+    couchesGranulaires: z.array(CoucheGranulaireSchema).max(20).optional(),
     /** Details de calcul — intermediaires de methode PUBLICS (cf. DetailsSchema). */
     details: DetailsSchema.optional(),
   })

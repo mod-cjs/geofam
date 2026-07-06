@@ -365,6 +365,29 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
     pushRow(rows, 'Déformation ε_z admissible', oa.admissible, 'μdef');
   }
 
+  // Critère SECONDAIRE — phase 2 des structures MIXTES (§4.4.1) : ε_t (μdef) à la
+  // base bitumineuse (MTLH fissuré E/5 + interface glissante). Affiché SEULEMENT
+  // quand applicable (objet non-null) — sinon la structure n'est pas concernée.
+  const p2 = o.fatiguePhase2;
+  if (p2 != null && typeof p2 === 'object') {
+    const pa = p2 as { valeur?: unknown; admissible?: unknown; ok?: unknown; couche?: unknown };
+    const suffix = typeof pa.couche === 'number' ? ` (couche ${pa.couche})` : '';
+    const pok: 'ok' | 'fail' = pa.ok === true ? 'ok' : 'fail';
+    pushRow(rows, `Fatigue phase 2 — base bitumineuse ε_t${suffix}`, pa.valeur, 'μdef', pok);
+    pushRow(rows, 'Fatigue phase 2 — ε_t admissible', pa.admissible, 'μdef');
+  }
+
+  // Critère SECONDAIRE — structures INVERSES (§4.5) : σ_t (MPa) à la base du
+  // segment MTLH profond. Affiché SEULEMENT quand applicable.
+  const inv = o.fatigueInverse;
+  if (inv != null && typeof inv === 'object') {
+    const ia = inv as { valeur?: unknown; admissible?: unknown; ok?: unknown; couche?: unknown };
+    const suffix = typeof ia.couche === 'number' ? ` (couche ${ia.couche})` : '';
+    const iok: 'ok' | 'fail' = ia.ok === true ? 'ok' : 'fail';
+    pushRow(rows, `Structure inverse — base MTLH profond σ_t${suffix}`, ia.valeur, 'MPa', iok);
+    pushRow(rows, 'Structure inverse — σ_t admissible', ia.admissible, 'MPa');
+  }
+
   return rows;
 }
 
@@ -375,27 +398,70 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
  * copie d'objet brut, JAMAIS de coefficient de calage (ε₆/b/kc/kr/ks/Sh/kθ).
  */
 function buildBurmisterDetails(o: Record<string, unknown>): CalcOutputRow[] {
-  const d = o.details;
-  if (d == null || typeof d !== 'object') return [];
-  const g = d as Record<string, unknown>;
   const rows: CalcOutputRow[] = [];
-  pushRow(rows, 'Module pondéré du paquet lié Ē₁', g.E1_pond, 'MPa');
-  pushRow(rows, 'Coefficient de Poisson pondéré ν̄₁', g.nu1_pond, '');
-  pushRow(rows, 'Module plateforme support (PSC)', g.E_psc, 'MPa');
-  pushRow(rows, 'ν plateforme support', g.nu_psc, '');
-  pushRow(rows, 'Risque effectif', g.risque_pct, '%');
-  pushRow(rows, 'σ_z interface critique (r=0)', g.sigmaZ_r0, 'kPa');
-  pushRow(rows, 'σ_r interface critique (r=0)', g.sigmaR_r0, 'kPa');
-  pushRow(rows, 'σ_z entre roues (r=d/2, ×2)', g.sigmaZ_d2, 'kPa');
-  pushRow(rows, 'σ_r entre roues (r=d/2, ×2)', g.sigmaR_d2, 'kPa');
-  pushRow(rows, 'ε_t sous roue (r=0)', g.epsilonT_r0, 'μdef');
-  pushRow(rows, 'ε_t entre roues (r=d/2)', g.epsilonT_d2, 'μdef');
-  pushRow(rows, 'ε_t retenue (max)', g.epsilonT, 'μdef');
-  pushRow(rows, 'ε_t admissible', g.epsilonT_adm, 'μdef');
-  pushRow(rows, 'ε_z axe de roue (sommet PSC)', g.epsilonZ_axe, 'μdef');
-  pushRow(rows, 'ε_z entre-jumelage', g.epsilonZ_mid, 'μdef');
-  pushRow(rows, 'ε_z retenue (max)', g.epsilonZ, 'μdef');
-  pushRow(rows, 'ε_z admissible', g.epsilonZ_adm, 'μdef');
+  // Intermédiaires de méthode (o.details) — présents en fonctionnement normal,
+  // absents sur le chemin d'erreur. Le détail PAR COUCHE (couchesTraitees /
+  // couchesGranulaires) est INDÉPENDANT de cet objet (champs de sortie racine).
+  const d = o.details;
+  if (d != null && typeof d === 'object') {
+    const g = d as Record<string, unknown>;
+    pushRow(rows, 'Module pondéré du paquet lié Ē₁', g.E1_pond, 'MPa');
+    pushRow(rows, 'Coefficient de Poisson pondéré ν̄₁', g.nu1_pond, '');
+    pushRow(rows, 'Module plateforme support (PSC)', g.E_psc, 'MPa');
+    pushRow(rows, 'ν plateforme support', g.nu_psc, '');
+    pushRow(rows, 'Risque effectif', g.risque_pct, '%');
+    pushRow(rows, 'σ_z interface critique (r=0)', g.sigmaZ_r0, 'kPa');
+    pushRow(rows, 'σ_r interface critique (r=0)', g.sigmaR_r0, 'kPa');
+    pushRow(rows, 'σ_z entre roues (r=d/2, ×2)', g.sigmaZ_d2, 'kPa');
+    pushRow(rows, 'σ_r entre roues (r=d/2, ×2)', g.sigmaR_d2, 'kPa');
+    pushRow(rows, 'ε_t sous roue (r=0)', g.epsilonT_r0, 'μdef');
+    pushRow(rows, 'ε_t entre roues (r=d/2)', g.epsilonT_d2, 'μdef');
+    pushRow(rows, 'ε_t retenue (max)', g.epsilonT, 'μdef');
+    pushRow(rows, 'ε_t admissible', g.epsilonT_adm, 'μdef');
+    pushRow(rows, 'ε_z axe de roue (sommet PSC)', g.epsilonZ_axe, 'μdef');
+    pushRow(rows, 'ε_z entre-jumelage', g.epsilonZ_mid, 'μdef');
+    pushRow(rows, 'ε_z retenue (max)', g.epsilonZ, 'μdef');
+    pushRow(rows, 'ε_z admissible', g.epsilonZ_adm, 'μdef');
+  }
+
+  // σ_t PAR COUCHE traitée + mode d'interface (Tab. 68) — lecture de champs NOMMÉS
+  // de o.couchesTraitees (déjà whitelistés/sanitizés côté serveur). Aucune copie
+  // d'objet brut. Le mode est un libellé normatif public (allowlist serveur).
+  const ct = o.couchesTraitees;
+  if (Array.isArray(ct)) {
+    for (const item of ct) {
+      if (item == null || typeof item !== 'object') continue;
+      const c = item as {
+        couche?: unknown;
+        mode?: unknown;
+        valeur?: unknown;
+        admissible?: unknown;
+        ok?: unknown;
+      };
+      const n = typeof c.couche === 'number' ? c.couche : '?';
+      const mode = typeof c.mode === 'string' ? c.mode : '';
+      const label = mode
+        ? `σ_t couche traitée ${n} (interface ${mode})`
+        : `σ_t couche traitée ${n}`;
+      const cok: 'ok' | 'fail' = c.ok === true ? 'ok' : 'fail';
+      pushRow(rows, label, c.valeur, 'MPa', cok);
+      pushRow(rows, `σ_t admissible couche ${n}`, c.admissible, 'MPa');
+    }
+  }
+
+  // Détail ε_z PAR COUCHE granulaire non liée (§4.1.2) — champs NOMMÉS de
+  // o.couchesGranulaires (whitelistés côté serveur).
+  const cg = o.couchesGranulaires;
+  if (Array.isArray(cg)) {
+    for (const item of cg) {
+      if (item == null || typeof item !== 'object') continue;
+      const c = item as { couche?: unknown; valeur?: unknown; ok?: unknown };
+      const n = typeof c.couche === 'number' ? c.couche : '?';
+      const gok: 'ok' | 'fail' = c.ok === true ? 'ok' : 'fail';
+      pushRow(rows, `ε_z sommet couche granulaire ${n}`, c.valeur, 'μdef', gok);
+    }
+  }
+
   return rows;
 }
 

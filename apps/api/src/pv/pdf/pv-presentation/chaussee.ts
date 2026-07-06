@@ -53,6 +53,49 @@ export const CHAUSSEE_PRESENTATION: PresentationModel = {
       admissiblePath: 'ornierage.admissible',
       format: { decimals: 0, unit: 'µdef' },
     },
+    // Critères SECONDAIRES (affichés SEULEMENT pour les familles concernées —
+    // `optional`) : phase 2 des structures mixtes (§4.4.1, εt µdef) et structures
+    // inverses (§4.5, σt MPa). Le n° de couche est masqué de la ligne (hiddenKeys)
+    // et documenté par le libellé ; le verdict est porté par le picto.
+    {
+      label: 'Fatigue phase 2 — base bitumineuse (εt)', // [STARFIRE] structures mixtes §4.4.1
+      valuePath: 'fatiguePhase2.valeur',
+      admissiblePath: 'fatiguePhase2.admissible',
+      format: { decimals: 0, unit: 'µdef' },
+      optional: true,
+    },
+    {
+      label: 'Structure inverse — base MTLH profond (σt)', // [STARFIRE] §4.5
+      valuePath: 'fatigueInverse.valeur',
+      admissiblePath: 'fatigueInverse.admissible',
+      format: { decimals: 3, unit: 'MPa' },
+      optional: true,
+    },
+  ],
+
+  // TABLES de vérification PAR COUCHE (rendues seulement si non vides) :
+  //  - σt par couche traitée + mode d'interface (Tab. 68 AGEROUTE) ;
+  //  - détail εz par couche granulaire non liée (§4.1.2).
+  layerTables: [
+    {
+      title: 'Contrainte σt par couche traitée (interface — Tab. 68)',
+      arrayPath: 'couchesTraitees',
+      coucheKey: 'couche',
+      modeKey: 'mode',
+      valueKey: 'valeur',
+      admissibleKey: 'admissible',
+      okKey: 'ok',
+      format: { decimals: 3, unit: 'MPa' },
+    },
+    {
+      title: 'Déformation εz par couche granulaire (§4.1.2)',
+      arrayPath: 'couchesGranulaires',
+      coucheKey: 'couche',
+      valueKey: 'valeur',
+      admissibleKey: 'admissible',
+      okKey: 'ok',
+      format: { decimals: 0, unit: 'µdef' },
+    },
   ],
 
   // STRUCTURE : couches haut->bas + sol support en dernière ligne (semi-infini).
@@ -168,6 +211,12 @@ export const CHAUSSEE_PRESENTATION: PresentationModel = {
     'fatigue.requis',
     'fatigue.rigide',
     'ornierage.ok',
+    // Critères secondaires : verdict porté par le picto (ok) et n° de couche baké
+    // dans le libellé / la colonne « Couche » -> non rendus en ligne clé-valeur.
+    'fatiguePhase2.ok',
+    'fatiguePhase2.couche',
+    'fatigueInverse.ok',
+    'fatigueInverse.couche',
     'load.ks',
     'load.sh',
     'load.r',

@@ -31,6 +31,7 @@ import {
   BurmisterOutputSchema,
   burmisterContract,
   sanitizeFamille,
+  sanitizeModeInterface,
   type BurmisterInput,
   type BurmisterOutput,
 } from './contract.js';
@@ -42,6 +43,7 @@ export {
   BurmisterOutputSchema,
   burmisterContract,
   sanitizeFamille,
+  sanitizeModeInterface,
   type BurmisterInput,
   type BurmisterOutput,
 };
@@ -240,6 +242,72 @@ function shapeOutput(D: Record<string, unknown>): unknown {
       requis: D.etReq === true,
     };
   }
+
+  // --- CRITERES SECONDAIRES (lacune de completude d'affichage, pattern maison) ---
+  // On expose des grandeurs sollicitantes/admissibles + verdict + n° de couche
+  // deja calculees par le moteur mais ecartees par l'ancienne projection. §8 : ni
+  // coordonnee de maillage, ni composante intermediaire (stC/stG restent serveur).
+  const idxToCouche = (i: unknown): number => (fin(i) ? (i as number) + 1 : 1);
+
+  // et2 -> phase 2 des structures MIXTES (§4.4.1) : ε_t (µdef) base bitumineuse.
+  out.fatiguePhase2 =
+    fin(D.et2) && fin(D.et2A)
+      ? {
+          valeur: D.et2,
+          admissible: D.et2A,
+          ok: (D.et2 as number) <= (D.et2A as number),
+          couche: idxToCouche(D.et2i),
+        }
+      : null;
+
+  // st2 -> structures INVERSES (§4.5) : σ_t (MPa) base MTLH profond.
+  out.fatigueInverse =
+    fin(D.st2) && fin(D.st2A)
+      ? {
+          valeur: D.st2,
+          admissible: D.st2A,
+          ok: (D.st2 as number) <= (D.st2A as number),
+          couche: idxToCouche(D.st2i),
+        }
+      : null;
+
+  // rigL -> σ_t (MPa) PAR COUCHE traitee + mode d'interface (Tab. 68). On ne reprend
+  // QUE le sollicitant final (st) + l'admissible (adm) + le mode (allowlist) ; les
+  // composantes collée/glissante (stC/stG) restent SERVEUR.
+  out.couchesTraitees = Array.isArray(D.rigL)
+    ? (D.rigL as Array<Record<string, unknown>>).flatMap((r) =>
+        fin(r.st) && fin(r.adm)
+          ? [
+              {
+                couche: idxToCouche(r.i),
+                mode: sanitizeModeInterface(r.mode),
+                valeur: r.st as number,
+                admissible: r.adm as number,
+                ok: (r.st as number) <= (r.adm as number),
+              },
+            ]
+          : [],
+      )
+    : [];
+
+  // ezL -> detail ε_z (µdef) par couche granulaire non liee (§4.1.2). L'admissible
+  // est le seuil global ε_z,adm (meme catalogue que l'orniérage).
+  const ezAdm = fin(D.ezA) ? (D.ezA as number) : null;
+  out.couchesGranulaires =
+    Array.isArray(D.ezL) && ezAdm !== null
+      ? (D.ezL as Array<Record<string, unknown>>).flatMap((r) =>
+          fin(r.val)
+            ? [
+                {
+                  couche: idxToCouche(r.i),
+                  valeur: r.val as number,
+                  admissible: ezAdm,
+                  ok: (r.val as number) <= ezAdm,
+                },
+              ]
+            : [],
+        )
+      : [];
 
   // --- DETAILS DE CALCUL — intermediaires de METHODE PUBLICS (rescope §8) ---
   // Grandeurs calculees de la methode Burmister/LCPC. On n'y met JAMAIS de

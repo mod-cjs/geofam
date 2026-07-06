@@ -89,6 +89,36 @@ export interface CriterionSpec {
   valuePath: FieldPath;
   admissiblePath: FieldPath;
   format?: NumberFormat;
+  /**
+   * Critère SECONDAIRE, présent SEULEMENT pour certaines familles (phase 2 mixte,
+   * inverse). Si `true` et que la valeur sollicitante résout vers null/absent, le
+   * critère est OMIS (banner + table vérifications) — pas de ligne « — » trompeuse.
+   */
+  optional?: boolean;
+}
+
+/**
+ * TABLE de vérification PAR COUCHE (σ_t par couche traitée, ε_z par couche
+ * granulaire). Rendue SEULEMENT si le tableau est non vide (sinon omise). Chaque
+ * ligne = un élément du tableau scellé ; on ne lit que des sous-clés NOMMÉES
+ * (fail-closed, DoD §8) — jamais de copie d'objet brut.
+ */
+export interface LayerTableSpec {
+  title: string;
+  /** Chemin du tableau dans la sortie (ex. "couchesTraitees"). */
+  arrayPath: FieldPath;
+  /** Sous-clé du n° de couche (1-based). */
+  coucheKey: string;
+  /** Sous-clé du mode d'interface (colonne optionnelle, ex. "mode"). */
+  modeKey?: string;
+  /** Sous-clé de la valeur sollicitante. */
+  valueKey: string;
+  /** Sous-clé de l'admissible (colonne optionnelle). */
+  admissibleKey?: string;
+  /** Sous-clé du booléen de verdict (picto ✓/✗). */
+  okKey: string;
+  /** Format d'affichage de valeur/admissible (unité). */
+  format?: NumberFormat;
 }
 
 /**
@@ -107,6 +137,12 @@ export interface PresentationModel {
   };
   /** Critères dimensionnants (fatigue/orniérage) du bandeau + table vérifications. */
   criteria: CriterionSpec[];
+  /**
+   * Tables de vérification PAR COUCHE (σ_t par couche traitée, ε_z par couche
+   * granulaire) — rendues après la table vérifications, omises si le tableau est
+   * vide. Optionnelles.
+   */
+  layerTables?: LayerTableSpec[];
   /** Table structure (couches + sol support). Optionnelle. */
   structure?: StructureTableSpec;
   /** Groupes d'entrées NON-structure (trafic, charge…). */

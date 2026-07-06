@@ -5,6 +5,8 @@ import { COLORS } from '../pv-pdf.theme';
 
 import { formatValue, resolvePath, workRate } from './format';
 import type {
+  CriterionSpec,
+  LayerTableSpec,
   NumberFormat,
   PresentationModel,
   PresentedField,
@@ -46,6 +48,12 @@ export function renderRichBody(
   // 3) RÉSULTATS — vérifications dimensionnantes puis synthèse.
   body.push(sectionTitleRich('Résultats'));
   body.push(buildVerificationsTable(output, model));
+  // Tables de vérification PAR COUCHE (σ_t par couche traitée, ε_z par couche
+  // granulaire) — omises si le tableau scellé est vide/absent.
+  for (const lt of model.layerTables ?? []) {
+    const table = buildLayerTable(output, lt);
+    if (table) body.push(table);
+  }
   for (const g of model.resultGroups) {
     body.push(buildGroupTable(output, g, model.numberFormat));
   }
@@ -72,6 +80,23 @@ export function renderRichBody(
 // Bandeau verdict + vérifications
 // ---------------------------------------------------------------------------
 
+/**
+ * Critères ACTIFS : on écarte les critères SECONDAIRES (`optional`) dont la valeur
+ * sollicitante résout vers null/absent — leur famille de structure n'est pas
+ * concernée (pas de ligne « — » trompeuse). Les critères principaux restent
+ * toujours affichés (parité comportement historique).
+ */
+function activeCriteria(
+  output: Record<string, unknown>,
+  model: PresentationModel,
+): CriterionSpec[] {
+  return model.criteria.filter((c) => {
+    if (!c.optional) return true;
+    const v = resolvePath(output, c.valuePath);
+    return typeof v === 'number' && Number.isFinite(v);
+  });
+}
+
 function buildVerdictBanner(
   output: Record<string, unknown>,
   model: PresentationModel,
@@ -82,7 +107,7 @@ function buildVerdictBanner(
   const fill = conforme ? COLORS.navy : COLORS.alert;
 
   // Colonnes internes : verdict 40 % + un encart par critère (taux de travail).
-  const criteriaCols: Content[] = model.criteria.map((c) => {
+  const criteriaCols: Content[] = activeCriteria(output, model).map((c) => {
     const value = resolvePath(output, c.valuePath);
     const adm = resolvePath(output, c.admissiblePath);
     const rate = workRate(value, adm);
@@ -151,7 +176,7 @@ function buildVerificationsTable(
     { text: '', style: 'tableHead', alignment: 'center' },
   ];
 
-  const rows = model.criteria.map((c) => {
+  const rows = activeCriteria(output, model).map((c) => {
     const value = resolvePath(output, c.valuePath);
     const adm = resolvePath(output, c.admissiblePath);
     const rate = workRate(value, adm);
@@ -203,6 +228,90 @@ function buildVerificationsTable(
       body: tbody,
     },
     layout: richTableLayout(),
+  };
+}
+
+/**
+ * TABLE de vérification PAR COUCHE (σ_t par couche traitée, ε_z par couche
+ * granulaire). Renvoie null si le tableau scellé est vide/absent (section omise).
+ * FAIL-CLOSED (DoD §8) : on ne lit QUE les sous-clés NOMMÉES par le spec ; jamais
+ * de copie d'objet brut. Le mode d'interface est un libellé normatif public
+ * (allowlist appliquée côté moteur).
+ */
+function buildLayerTable(
+  output: Record<string, unknown>,
+  spec: LayerTableSpec,
+): Content | null {
+  const arr = resolvePath(output, spec.arrayPath);
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+
+  const withMode = spec.modeKey != null;
+  const withAdm = spec.admissibleKey != null;
+
+  const head: TableCell[] = [{ text: 'Couche', style: 'tableHead' }];
+  if (withMode) head.push({ text: 'Interface', style: 'tableHead' });
+  head.push({ text: 'Calculé', style: 'tableHead', alignment: 'right' });
+  if (withAdm)
+    head.push({ text: 'Admissible', style: 'tableHead', alignment: 'right' });
+  head.push({ text: '', style: 'tableHead', alignment: 'center' });
+
+  const tbody: TableCell[][] = [head];
+  for (const el of arr) {
+    if (el == null || typeof el !== 'object') continue;
+    const row = el as Record<string, unknown>;
+    const coucheRaw = row[spec.coucheKey];
+    const couche =
+      typeof coucheRaw === 'number' ? `Couche ${coucheRaw}` : 'Couche —';
+    const v = formatValue(row[spec.valueKey], spec.format);
+    const ok = row[spec.okKey] === true;
+
+    const cells: TableCell[] = [{ text: couche, style: 'cell' }];
+    if (withMode) {
+      const m = row[spec.modeKey as string];
+      cells.push({
+        text: typeof m === 'string' ? m : '—',
+        style: 'cell',
+      });
+    }
+    cells.push({
+      text: `${v.value} ${v.unit}`.trim(),
+      style: 'cell',
+      alignment: 'right',
+    });
+    if (withAdm) {
+      const a = formatValue(row[spec.admissibleKey as string], spec.format);
+      cells.push({
+        text: `${a.value} ${a.unit}`.trim(),
+        style: 'cell',
+        alignment: 'right',
+      });
+    }
+    cells.push(verdictMarkCell(ok));
+    tbody.push(cells);
+  }
+
+  // Titre (sous-titre de section) + table.
+  const widths: (string | number)[] = ['*'];
+  if (withMode) widths.push('auto');
+  widths.push('auto');
+  if (withAdm) widths.push('auto');
+  widths.push(16);
+
+  return {
+    margin: [0, 2, 0, 6],
+    stack: [
+      {
+        text: spec.title,
+        color: COLORS.navy,
+        bold: true,
+        fontSize: 8.5,
+        margin: [0, 4, 0, 2],
+      },
+      {
+        table: { headerRows: 1, widths, body: tbody },
+        layout: richTableLayout(),
+      },
+    ],
   };
 }
 
@@ -416,6 +525,9 @@ export function enumerateMappedPaths(model: PresentationModel): Set<string> {
     mapped.add(c.valuePath);
     mapped.add(c.admissiblePath);
   });
+  // Les tables PAR COUCHE couvrent leur racine (ex. "couchesTraitees") : chaque
+  // sous-clé d'élément est rendue via le spec, la racine suffit à la complétude.
+  (model.layerTables ?? []).forEach((lt) => mapped.add(lt.arrayPath));
   mapped.add(model.verdict.key);
   if (model.structure) {
     mapped.add(model.structure.layersPath);

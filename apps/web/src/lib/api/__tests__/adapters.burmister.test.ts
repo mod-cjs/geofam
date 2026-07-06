@@ -179,6 +179,87 @@ describe('adaptCalcResult — rows client-safe non vides', () => {
   });
 });
 
+describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’affichage)', () => {
+  it('given structure mixte/semi-rigide (fatiguePhase2 + couchesTraitees), then lignes εt phase 2 (rows) et σt par couche (details)', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            famille: 'semi-rigide',
+            fatiguePhase2: { valeur: 509.37, admissible: 201.54, ok: false, couche: 1 },
+            fatigueInverse: null,
+            couchesTraitees: [
+              { couche: 2, mode: 'semi-collée', valeur: 0.2697, admissible: 0.4225, ok: true },
+              { couche: 3, mode: 'semi-collée', valeur: 0.3345, admissible: 0.384, ok: true },
+            ],
+            couchesGranulaires: [],
+          },
+        }),
+      ).output,
+    );
+    // phase 2 -> ligne de résultat (rows), µdef, verdict fail, n° de couche baké.
+    const p2 = out.rows.find((r) => r.label === 'Fatigue phase 2 — base bitumineuse ε_t (couche 1)');
+    expect(p2).toBeDefined();
+    expect(p2!.value).toBe(509.37);
+    expect(p2!.unit).toBe('μdef');
+    expect(p2!.status).toBe('fail');
+    // σt par couche traitée -> détails, MPa, mode d'interface dans le libellé.
+    const ct = (out.details ?? []).find(
+      (r) => r.label === 'σ_t couche traitée 2 (interface semi-collée)',
+    );
+    expect(ct).toBeDefined();
+    expect(ct!.value).toBe(0.2697);
+    expect(ct!.unit).toBe('MPa');
+    expect(ct!.status).toBe('ok');
+  });
+
+  it('given structure inverse (fatigueInverse σt MPa), then ligne « Structure inverse » ; phase 2 absente', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            famille: 'inverse',
+            fatiguePhase2: null,
+            fatigueInverse: { valeur: 0.4692, admissible: 0.384, ok: false, couche: 4 },
+            couchesTraitees: [],
+          },
+        }),
+      ).output,
+    );
+    const inv = out.rows.find(
+      (r) => r.label === 'Structure inverse — base MTLH profond σ_t (couche 4)',
+    );
+    expect(inv).toBeDefined();
+    expect(inv!.value).toBe(0.4692);
+    expect(inv!.unit).toBe('MPa');
+    expect(inv!.status).toBe('fail');
+    // phase 2 null -> pas de ligne.
+    expect(
+      out.rows.some((r) => r.label.startsWith('Fatigue phase 2')),
+    ).toBe(false);
+  });
+
+  it('given structure souple (pas de critère secondaire), then AUCUNE ligne phase 2/inverse/couche traitée', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            fatiguePhase2: null,
+            fatigueInverse: null,
+            couchesTraitees: [],
+          },
+        }),
+      ).output,
+    );
+    expect(out.rows.some((r) => r.label.startsWith('Fatigue phase 2'))).toBe(false);
+    expect(out.rows.some((r) => r.label.startsWith('Structure inverse'))).toBe(false);
+    expect((out.details ?? []).some((r) => r.label.startsWith('σ_t couche traitée'))).toBe(false);
+  });
+});
+
 describe('adaptCalcResult — fail-closed : aucune fuite de champ non whitelisté', () => {
   it('given une sortie avec champs confidentiels, then rows ne contient QUE des champs whitelistés', () => {
     const out = asNormalized(
