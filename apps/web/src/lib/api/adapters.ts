@@ -211,6 +211,9 @@ function deriveCalcStatus(raw: PrismaCalcResult): CalcStatus {
  *   radier       → registryId radier-plaque            → FD
  *   pressiometre → registryId pressiometre-menard      → LB
  *   labo         → registryId labo-classification-gtr  → LB
+ *   plane-strain → registryId plane-strain             → FD
+ *   axi          → registryId axi-plaque               → FD
+ *   tri-raft     → registryId radier-tri                → FD
  *
  * Anciens noms GeoSuite (casagrande, geoplaque, fastlab) supprimés :
  * ils ne correspondent à aucun registryId ni slug supporté par le backend.
@@ -223,6 +226,11 @@ const ENGINE_TO_DOMAIN: Record<string, ProjectDomain> = {
   'radier-plaque': 'FD',
   'pressiometre-menard': 'LB',
   'labo-classification-gtr': 'LB',
+  // Variantes GEOPLAQUE (registryIds, cf. engine-dispatch.ts) — mêmes moteurs
+  // d'analyse EF, domaine fondations (FD).
+  'plane-strain': 'FD',
+  'axi-plaque': 'FD',
+  'radier-tri': 'FD',
   // URL slugs (:engine dans les routes backend) — compatibilité fixtures de test
   burmister: 'CH',
   terzaghi: 'FD',
@@ -230,6 +238,8 @@ const ENGINE_TO_DOMAIN: Record<string, ProjectDomain> = {
   radier: 'FD',
   pressiometre: 'LB',
   labo: 'LB',
+  axi: 'FD',
+  'tri-raft': 'FD',
 };
 
 function deriveDomain(raw: PrismaCalcResult): ProjectDomain {

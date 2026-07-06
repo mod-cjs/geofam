@@ -26,6 +26,9 @@ const LOGICIELS: Logiciel[] = [
   { id: 'geoplaque', nom: 'GEOPLAQUE', tagline: 'Radier & plaque', domaine: 'Éléments finis · EC7 annexe H', accent: '#5a3e7c', status: 'live' },
   { id: 'pressiopro', nom: 'PressioPro', tagline: 'Essai pressiométrique', domaine: 'Pressiomètre Ménard', accent: '#963b28', status: 'live' },
   { id: 'fastlab', nom: 'FASTLAB', tagline: 'Classification laboratoire', domaine: 'GTR · NF P11-300', accent: '#6b7a2e', status: 'live' },
+  { id: 'plane-strain', nom: 'Déf. planes', tagline: 'Bande / poutre (coupe 2D)', domaine: 'Éléments finis · EC7', accent: '#3a6b8a', status: 'live' },
+  { id: 'axi', nom: 'Axisymétrique', tagline: 'Radier / dallage circulaire', domaine: 'Éléments finis · EC7', accent: '#8a5a1e', status: 'live' },
+  { id: 'tri-raft', nom: 'Radier tri.', tagline: 'Maillage triangulaire (DKT)', domaine: 'Éléments finis · EC7', accent: '#5a3e7c', status: 'live' },
 ];
 
 export default function LogicielsGallery() {

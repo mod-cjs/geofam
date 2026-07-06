@@ -28,6 +28,9 @@ import {
   Grid3x3,
   Gauge,
   FlaskConical,
+  SquareStack,
+  Circle,
+  Triangle,
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
@@ -111,6 +114,24 @@ function useLogicielsItems(orgSlug: string): NavItem[] {
       label: 'FASTLAB — Laboratoire',
       icon: <FlaskConical size={20} strokeWidth={1.5} aria-hidden="true" />,
       href: `/app/${orgSlug}/logiciels/fastlab`,
+    },
+    {
+      id: 'plane-strain',
+      label: 'Déf. planes — Bande/poutre',
+      icon: <SquareStack size={20} strokeWidth={1.5} aria-hidden="true" />,
+      href: `/app/${orgSlug}/logiciels/plane-strain`,
+    },
+    {
+      id: 'axi',
+      label: 'Axisymétrique — Dallage circ.',
+      icon: <Circle size={20} strokeWidth={1.5} aria-hidden="true" />,
+      href: `/app/${orgSlug}/logiciels/axi`,
+    },
+    {
+      id: 'tri-raft',
+      label: 'Radier tri. — Maillage DKT',
+      icon: <Triangle size={20} strokeWidth={1.5} aria-hidden="true" />,
+      href: `/app/${orgSlug}/logiciels/tri-raft`,
     },
   ];
 }
