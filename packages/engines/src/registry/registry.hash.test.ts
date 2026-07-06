@@ -44,13 +44,30 @@ const SOURCES_PRESENTES = ENGINE_REGISTRY.every((e) =>
 );
 
 describe('Registre des moteurs — structure (toujours testable, sans source)', () => {
-  it('contient exactement les 6 moteurs canoniques attendus', () => {
-    expect(ENGINE_REGISTRY).toHaveLength(6);
+  it('contient exactement les 9 modules attendus (6 fichiers HTML, GEOPLAQUE en porte 4)', () => {
+    // 6 fichiers HTML canoniques -> 9 MODULES : GEOPLAQUE_V10.html porte 4 solveurs
+    // (radier ACM, plane-strain, axi, tri) qui partagent le meme cheminSource + sha256.
+    expect(ENGINE_REGISTRY).toHaveLength(9);
   });
 
   it('chaque entree a un id unique', () => {
     const ids = ENGINE_REGISTRY.map((e) => e.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('les 4 modules GEOPLAQUE partagent le MEME fichier source (cheminSource + sha256)', () => {
+    const geoplaque = ENGINE_REGISTRY.filter(
+      (e) => e.fichierSource === 'GEOPLAQUE_V10.html',
+    );
+    expect(geoplaque.map((e) => e.id).sort()).toEqual([
+      'axi-plaque',
+      'plane-strain',
+      'radier-plaque',
+      'radier-tri',
+    ]);
+    // Meme source physique -> un SEUL sha256 et un SEUL chemin partages par les 4.
+    expect(new Set(geoplaque.map((e) => e.sha256)).size).toBe(1);
+    expect(new Set(geoplaque.map((e) => e.cheminSource)).size).toBe(1);
   });
 
   it('chaque sha256 est un digest SHA-256 hex minuscule (64 car.)', () => {

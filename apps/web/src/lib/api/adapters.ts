@@ -717,6 +717,70 @@ function buildRadierHeatmap(o: Record<string, unknown>): HeatmapData | undefined
 }
 
 /**
+ * plane-strain — déformations planes / poutre (coupe 2D) sur sol multicouche (EF).
+ * Moteur d'analyse (pas de verdict). Clés NOMMÉES (fail-closed §8) : on ne lit QUE les
+ * diagnostics globaux de `RadierOutputSchema`-frère, jamais de champ nodal/topologie.
+ *
+ * UNITÉS : même convention que le radier (piège E-MPa × charges-kN × géométrie-m) —
+ * tassements NUMÉRIQUEMENT en mm, rendus SANS ×1000. Moments/réactions/bilans en
+ * kN·m/m, kPa, kN (unités à figer avec STARFIRE pour un PV opposable, comme mm/‰).
+ */
+function buildPlaneStrainRows(o: Record<string, unknown>): CalcOutputRow[] {
+  const rows: CalcOutputRow[] = [];
+  pushRow(rows, 'Tassement maximal w_max', o.wMax, 'mm');
+  pushRow(rows, 'Tassement minimal w_min', o.wMin, 'mm');
+  pushRow(rows, 'Tassement différentiel', o.diff, 'mm');
+  pushRow(rows, 'Moment fléchissant maximal M_max', o.mMax, 'kN·m/m');
+  pushRow(rows, 'Moment fléchissant minimal M_min', o.mMin, 'kN·m/m');
+  pushRow(rows, 'Réaction de sol maximale p_max', o.pMax, 'kPa');
+  pushRow(rows, 'Charge verticale totale', o.totalLoad, 'kN');
+  pushRow(rows, 'Résultante de réaction', o.sumReact, 'kN');
+  pushRow(rows, "Profondeur d'assise retenue z_0", o.z0, 'm');
+  pushRow(rows, 'Nœuds décollés', o.decolN, '');
+  return rows;
+}
+
+/**
+ * axi — plaque annulaire / radier circulaire (axisymétrique) sur sol multicouche (EF).
+ * Moteur d'analyse (pas de verdict). Clés NOMMÉES (fail-closed §8) : diagnostics globaux
+ * scalaires seuls (aucun champ nodal radial r/w/p/Mr/Mt). mm pour les tassements.
+ */
+function buildAxiRows(o: Record<string, unknown>): CalcOutputRow[] {
+  const rows: CalcOutputRow[] = [];
+  pushRow(rows, 'Tassement au centre w_c', o.wc, 'mm');
+  pushRow(rows, 'Tassement au bord w_bord', o.wEdge, 'mm');
+  pushRow(rows, 'Tassement maximal w_max', o.wMax, 'mm');
+  pushRow(rows, 'Tassement minimal w_min', o.wMin, 'mm');
+  pushRow(rows, 'Moment radial maximal M_r', o.mrMax, 'kN·m/m');
+  pushRow(rows, 'Moment tangentiel maximal M_t', o.mtMax, 'kN·m/m');
+  pushRow(rows, 'Réaction de sol maximale p_max', o.pMax, 'kPa');
+  pushRow(rows, 'Charge totale appliquée', o.totalLoad, 'kN');
+  pushRow(rows, "Côte d'assise retenue z_0", o.z0, 'm');
+  return rows;
+}
+
+/**
+ * tri-raft — radier à maillage triangulaire (DKT) sur sol multicouche (EF).
+ * Moteur d'analyse (pas de verdict). Clés NOMMÉES (fail-closed §8) : aucun champ nodal
+ * (w/p) ni topologie de maillage (P/tris/N/nt). mm pour les tassements.
+ *
+ * NB UI : ce mode IGNORE les charges `on:'soil'` et les moments Mx/My (effort vertical
+ * seul) — l'UI doit le signaler (cf. divergence documentée dans le module engines).
+ */
+function buildTriRaftRows(o: Record<string, unknown>): CalcOutputRow[] {
+  const rows: CalcOutputRow[] = [];
+  pushRow(rows, 'Tassement maximal w_max', o.wMax, 'mm');
+  pushRow(rows, 'Tassement minimal w_min', o.wMin, 'mm');
+  pushRow(rows, 'Tassement différentiel', o.diff, 'mm');
+  pushRow(rows, 'Réaction de sol maximale', o.reactionMax, 'kPa');
+  pushRow(rows, 'Charge verticale totale ΣFz', o.totalLoad, 'kN');
+  pushRow(rows, 'Réaction de sol intégrée Σp·A', o.sumReact, 'kN');
+  pushRow(rows, "Côte d'assise retenue z_0", o.z0, 'm');
+  pushRow(rows, 'Nombre de radiers', o.nRaft, '');
+  return rows;
+}
+
+/**
  * labo — classification GTR (NF P 11-300) + paramètres d'identification.
  * La classe est un RÉSULTAT textuel. Clés nommées (fail-closed §8).
  */
@@ -943,6 +1007,18 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
   // pressiomètre Ménard (dépouillement) : pL/EM/catégorie — pas de verdict (NA)
   if ('categorie' in o && ('pL' in o || 'ratioEMpL' in o)) {
     return { verdict: 'NA', rows: buildPressiometreRows(o) };
+  }
+  // GEOPLAQUE — variantes (clés de diagnostic DISJOINTES du radier ACM et entre elles) :
+  // axisymétrique (wc/wEdge), déformations planes (decolN+mMax), triangulaire (reactionMax+
+  // nRaft — singulier, distinct de `nRafts` du radier ACM). Analyses → verdict NA.
+  if ('wc' in o && 'wEdge' in o) {
+    return { verdict: 'NA', rows: buildAxiRows(o) };
+  }
+  if ('decolN' in o && 'mMax' in o) {
+    return { verdict: 'NA', rows: buildPlaneStrainRows(o) };
+  }
+  if ('reactionMax' in o && 'nRaft' in o) {
+    return { verdict: 'NA', rows: buildTriRaftRows(o) };
   }
   // Moteur non reconnu : fail-closed, aucune sortie brute ne traverse vers le navigateur.
   return null;

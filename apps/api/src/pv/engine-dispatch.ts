@@ -1,16 +1,22 @@
 import {
+  AXI_CONTRACT,
   burmisterContract,
   laboContract,
   pieuxContract,
+  planeStrainContract,
   pressiometreContract,
   radierContract,
+  runAxi,
   runBurmister,
   runLabo,
   runPieux,
+  runPlaneStrain,
   runPressiometre,
   runRadier,
   runTerzaghi,
+  runTriRaft,
   terzaghiContract,
+  triRaftContract,
 } from '@roadsen/engines';
 import type { EngineContract, EngineResultEnvelope } from '@roadsen/shared';
 import type { z } from 'zod';
@@ -64,6 +70,22 @@ export const ENGINE_DISPATCH: Readonly<Record<string, EngineDispatchEntry>> = {
     run: runRadier,
     contract: radierContract,
     registryId: 'radier-plaque',
+  },
+  // Variantes GEOPLAQUE (meme HTML source, solveurs distincts) — recalcul SERVEUR only.
+  'plane-strain': {
+    run: runPlaneStrain,
+    contract: planeStrainContract,
+    registryId: 'plane-strain',
+  },
+  axi: {
+    run: runAxi,
+    contract: AXI_CONTRACT,
+    registryId: 'axi-plaque',
+  },
+  'tri-raft': {
+    run: runTriRaft,
+    contract: triRaftContract,
+    registryId: 'radier-tri',
   },
   labo: {
     run: runLabo,

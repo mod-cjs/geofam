@@ -111,3 +111,53 @@ export {
   type LaboOutput,
   type LaboFixture,
 } from './labo/index.js';
+
+// Moteur DEFORMATIONS PLANES / POUTRE (variante « bande » de GEOPLAQUE) — module pur,
+// recalcul serveur. Importe uniquement par apps/api (jamais le front, DoD §8).
+// Re-export EXPLICITE (comme les autres) : chaque moteur exporte `redactConfidentialWarning(s)`
+// -> un `export *` ferait un nom AMBIGU (TS2308). Le redacteur reste accessible par import
+// DIRECT du sous-module en test.
+export {
+  PLANE_STRAIN_ENGINE_ID,
+  PlaneStrainInputSchema,
+  PlaneStrainOutputSchema,
+  planeStrainContract,
+  PLANE_STRAIN_CONFIDENTIAL_MARKER,
+  PLANE_STRAIN_FIXTURES,
+  runPlaneStrain,
+  type PlaneStrainInput,
+  type PlaneStrainOutput,
+  type PlaneStrainFixture,
+} from './plane-strain/index.js';
+
+// Moteur AXISYMETRIQUE (radier circulaire / plaque annulaire de GEOPLAQUE) — module pur,
+// recalcul serveur. Importe uniquement par apps/api (jamais le front, DoD §8). Le contrat
+// axi n'a pas de canal texte (sortie = scalaires) -> pas de redacteur exporte.
+export {
+  AXI_ENGINE_ID,
+  AxiInputSchema,
+  AxiOutputSchema,
+  AXI_CONTRACT,
+  AXI_CONFIDENTIAL_MARKER,
+  AXI_FIXTURES,
+  runAxi,
+  type AxiInput,
+  type AxiOutput,
+  type AxiFixture,
+} from './axi/index.js';
+
+// Moteur RADIER TRIANGULAIRE (DKT, variante mailleur triangulaire de GEOPLAQUE) — module
+// pur, recalcul serveur. Importe uniquement par apps/api (jamais le front, DoD §8).
+// Re-export EXPLICITE (meme raison que les autres : `redactConfidentialWarning(s)` commun).
+export {
+  TRI_RAFT_ENGINE_ID,
+  TriRaftInputSchema,
+  TriRaftOutputSchema,
+  triRaftContract,
+  TRI_RAFT_CONFIDENTIAL_MARKER,
+  TRI_RAFT_FIXTURES,
+  runTriRaft,
+  type TriRaftInput,
+  type TriRaftOutput,
+  type TriRaftFixture,
+} from './tri-raft/index.js';

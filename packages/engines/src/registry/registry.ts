@@ -77,7 +77,10 @@ export const ENGINE_SOURCES_ROOT = '../03-Moteurs-client';
 export const ENGINE_SOURCES_CANONICAL_DIR = `${ENGINE_SOURCES_ROOT}/GeoSuite/source/tools`;
 
 /**
- * LE REGISTRE. 6 moteurs canoniques GeoSuite. Hashs calcules le 2026-06-23 sur
+ * LE REGISTRE. 6 fichiers HTML canoniques GeoSuite -> 9 MODULES extraits (le
+ * fichier GEOPLAQUE_V10.html porte QUATRE solveurs distincts : radier ACM, plane-
+ * strain, axisymetrique, triangulaire ; ces quatre entrees partagent donc le meme
+ * cheminSource + sha256). Hashs calcules le 2026-06-23 sur
  * `03-Moteurs-client/GeoSuite/source/tools/*.html`. Toute evolution d un moteur
  * met a jour `sha256` (+ bump `version`) ICI, et le test de coherence mord.
  */
@@ -114,6 +117,62 @@ export const ENGINE_REGISTRY: readonly EngineRegistryEntry[] = [
     // que le kit cas-tests STARFIRE manque (@science-unsigned, MJ-6 : pas de prod).
     version: '1.0.0',
     confirmePar: 'title="GEOPLAQUE — plaques sur sol multicouche élastique"',
+  },
+  {
+    id: 'plane-strain',
+    fonction:
+      'Déformations planes / poutre (coupe 2D, tranche unitaire) sur sol multicouche élastique',
+    normes: ['Modèle multicouche élastique'],
+    // MEME FICHIER SOURCE que radier-plaque : le solveur `solvePlaneStrain` est une
+    // VARIANTE « bande » du meme HTML mono-fichier GEOPLAQUE_V10.html. On REUTILISE donc
+    // le meme cheminSource + sha256 (le hash trace la SOURCE, pas le module extrait).
+    fichierSource: 'GEOPLAQUE_V10.html',
+    cheminSource: `${ENGINE_SOURCES_CANONICAL_DIR}/GEOPLAQUE_V10.html`,
+    sha256: '45e3e24c405c35c21c0ae8e1d92f214036390f36f7215b96d97ac61feed9bbab',
+    // 1.0.0 : 1ere extraction equivalente du solveur en deformations planes (module TS).
+    // Le HTML source est IDENTIQUE a radier-plaque (meme fichier, meme sha256) : trois
+    // modules distincts (radier ACM, plane-strain, axi, tri) proviennent du meme GEOPLAQUE.
+    // engineSourceHash = ce sha256 -> un PV reste re-verifiable contre la version source
+    // EXACTE. Equivalence-PORTAGE prouvee (computePlaneStrain == solvePlaneStrain, rel
+    // serree). SCIENCE-SIGNEE (STARFIRE a valide les moteurs) ; l'equivalence de portage
+    // reste la preuve de fidelite obligatoire.
+    version: '1.0.0',
+    confirmePar:
+      'solvePlaneStrain() de GEOPLAQUE_V10.html (variante bande/poutre du solveur de plaque)',
+  },
+  {
+    id: 'axi-plaque',
+    fonction:
+      'Plaque annulaire / radier circulaire (axisymétrique) sur sol multicouche élastique',
+    normes: ['Modèle multicouche élastique'],
+    // MEME FICHIER SOURCE que radier-plaque (variante axisymetrique du meme GEOPLAQUE).
+    fichierSource: 'GEOPLAQUE_V10.html',
+    cheminSource: `${ENGINE_SOURCES_CANONICAL_DIR}/GEOPLAQUE_V10.html`,
+    sha256: '45e3e24c405c35c21c0ae8e1d92f214036390f36f7215b96d97ac61feed9bbab',
+    // 1.0.0 : 1ere extraction equivalente du solveur axisymetrique (module TS). HTML source
+    // IDENTIQUE a radier-plaque. Equivalence-PORTAGE prouvee (computeAxi == solveAxi, rel
+    // serree). SCIENCE-SIGNEE.
+    version: '1.0.0',
+    confirmePar:
+      'solveAxi() de GEOPLAQUE_V10.html (§2.4.1 dallage circulaire, handler #ax-run)',
+  },
+  {
+    id: 'radier-tri',
+    fonction:
+      'Radier / plaque à maillage triangulaire (DKT) sur sol multicouche élastique',
+    normes: ['Modèle multicouche élastique'],
+    // MEME FICHIER SOURCE que radier-plaque (variante mailleur triangulaire du GEOPLAQUE).
+    fichierSource: 'GEOPLAQUE_V10.html',
+    cheminSource: `${ENGINE_SOURCES_CANONICAL_DIR}/GEOPLAQUE_V10.html`,
+    sha256: '45e3e24c405c35c21c0ae8e1d92f214036390f36f7215b96d97ac61feed9bbab',
+    // 1.0.0 : 1ere extraction equivalente du solveur triangulaire (module TS). HTML source
+    // IDENTIQUE a radier-plaque. NB : ce solveur IGNORE les charges `on:'soil'` et les
+    // moments Mx/My (effort vertical seul), contrairement au radier ACM (solveModel) — a
+    // documenter cote UI. Equivalence-PORTAGE prouvee (computeTriRaft == solveTriRaft, rel
+    // serree). SCIENCE-SIGNEE.
+    version: '1.0.0',
+    confirmePar:
+      'solveTriRaft() de GEOPLAQUE_V10.html (onglet maillage triangulaire, handler tri-run)',
   },
   {
     id: 'fondation-profonde-pieux',
