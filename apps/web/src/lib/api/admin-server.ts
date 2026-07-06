@@ -208,6 +208,35 @@ export async function adminListGlobalAudit(args?: {
   return data ?? [];
 }
 
+/** Supervision PV cross-tenant (métadonnées) — GET /admin/pvs. */
+export interface AdminPvListItem {
+  pvId: string;
+  pvNumber: string;
+  orgId: string;
+  orgName: string;
+  orgSlug: string;
+  projectName: string;
+  engineId: string;
+  engineVersion: string;
+  scienceStatus: string;
+  verdict: string;
+  sealedAt: string;
+}
+
+export async function adminListPvs(args?: {
+  q?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<AdminPvListItem[]> {
+  const params = new URLSearchParams();
+  if (args?.q) params.set('q', args.q);
+  if (args?.limit !== undefined) params.set('limit', String(args.limit));
+  if (args?.offset !== undefined) params.set('offset', String(args.offset));
+  const qs = params.size > 0 ? `?${params.toString()}` : '';
+  const data = await adminGet<AdminPvListItem[]>(`/admin/pvs${qs}`);
+  return data ?? [];
+}
+
 /**
  * Console d'abonnements (vue money-centrée) — GET /admin/subscriptions. Même
  * forme d'item que listOrgs (org + résumé d'abo), filtrée sur une famille money.

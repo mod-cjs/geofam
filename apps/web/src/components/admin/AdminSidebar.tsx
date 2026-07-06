@@ -6,7 +6,7 @@
  * Même palette que la Sidebar tenant (--surface-nav asphalte).
  */
 
-import { Building2, LayoutDashboard, ScrollText, Users, Wallet } from 'lucide-react';
+import { Building2, FileCheck, LayoutDashboard, ScrollText, Users, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -36,6 +36,12 @@ const NAV_ITEMS = [
     label: 'Audit',
     icon: <ScrollText size={20} strokeWidth={1.5} aria-hidden="true" />,
     href: '/admin/audit',
+  },
+  {
+    id: 'pvs',
+    label: 'PV',
+    icon: <FileCheck size={20} strokeWidth={1.5} aria-hidden="true" />,
+    href: '/admin/pvs',
   },
   {
     id: 'users',

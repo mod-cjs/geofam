@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -28,18 +29,21 @@ import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 import type {
   GlobalAuditQuery,
+  ListPvsQuery,
   ListOrgsQuery,
   ListSubscriptionsQuery,
   SearchUsersQuery,
 } from './admin.dto';
 import {
   globalAuditQuerySchema,
+  listPvsQuerySchema,
   listOrgsQuerySchema,
   listSubscriptionsQuerySchema,
   orgIdParam,
   searchUsersQuerySchema,
 } from './admin.dto';
 import type { PlatformStats } from './admin-stats.service';
+import { AdminPvService, type PvDetailView, type PvListItem } from './admin-pv.service';
 import { AdminStatsService } from './admin-stats.service';
 import type {
   AuditEntryView,
@@ -124,6 +128,7 @@ export class AdminController {
     private readonly users: AdminUsersService,
     private readonly mutations: AdminMutationsService,
     private readonly stats: AdminStatsService,
+    private readonly pvs: AdminPvService,
   ) {}
 
   /**
@@ -160,6 +165,32 @@ export class AdminController {
     query: ListSubscriptionsQuery,
   ): Promise<AdminOrgListItem[]> {
     return this.orgs.listSubscriptions(query);
+  }
+
+  /**
+   * GET /admin/pvs?q=&limit=&offset= — supervision PV cross-tenant (metadonnees
+   * seulement, recherche par numero). Source : admin_list_pvs (DEFINER, role-gate 0014).
+   */
+  @Get('pvs')
+  async listPvs(
+    @Query(new ZodValidationPipe(listPvsQuerySchema)) query: ListPvsQuery,
+  ): Promise<PvListItem[]> {
+    return this.pvs.listPvs({
+      limit: query.limit ?? 50,
+      offset: query.offset ?? 0,
+      q: query.q,
+    });
+  }
+
+  /**
+   * GET /admin/pvs/:pvId — detail d'un PV + verification du sceau (recalculee serveur).
+   * Ne renvoie que metadonnees + sealValid (le HMAC brut ne quitte pas le serveur).
+   */
+  @Get('pvs/:pvId')
+  async getPv(
+    @Param('pvId', ParseUUIDPipe) pvId: string,
+  ): Promise<PvDetailView> {
+    return this.pvs.getPv(pvId);
   }
 
   /**

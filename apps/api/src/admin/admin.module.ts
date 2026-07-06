@@ -6,6 +6,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { AdminController } from './admin.controller';
 import { AdminMutationsService } from './admin-mutations.service';
 import { AdminOrgsService } from './admin-orgs.service';
+import { AdminPvService } from './admin-pv.service';
 import { AdminStatsService } from './admin-stats.service';
 import { AdminUsersService } from './admin-users.service';
 import { MembersService } from './members.service';
@@ -30,6 +31,7 @@ import { MembersService } from './members.service';
     AdminUsersService,
     AdminMutationsService,
     AdminStatsService,
+    AdminPvService,
   ],
 })
 export class AdminModule {}

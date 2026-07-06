@@ -72,6 +72,14 @@ export const globalAuditQuerySchema = z.object({
 });
 export type GlobalAuditQuery = z.infer<typeof globalAuditQuerySchema>;
 
+/** GET /admin/pvs?q=&limit=&offset= — supervision PV cross-tenant (recherche par n°). */
+export const listPvsQuerySchema = z.object({
+  q: z.string().trim().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).max(1_000_000).optional(),
+});
+export type ListPvsQuery = z.infer<typeof listPvsQuerySchema>;
+
 /**
  * GET /admin/users?q=&limit= — recherche d'utilisateurs par email/nom.
  * `q` : filtre optionnel (ILIKE email/full_name). `limit` plafonne a 50 (defaut 20).
