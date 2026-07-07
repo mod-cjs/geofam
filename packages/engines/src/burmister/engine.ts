@@ -741,9 +741,120 @@ function doCalcPure(M, ly, pf, tr, cp) {
   // ── Burmister aux 3 positions + superposition jumelage ─────
   // r=0 : σ_total = σ(r=0) + σ(r=d)   [roue1 + roue2]
   // r=d/2 : σ_total = 2·σ(r=d/2)       [symetrie entre-roues]
-  const _r0 = burIntegrateMLWithPSC(0, layers, subgrade, a, p, 400);
-  const _rd2 = burIntegrateMLWithPSC(d / 2, layers, subgrade, a, p, 400);
-  const _rd = burIntegrateMLWithPSC(d, layers, subgrade, a, p, 400);
+  //
+  // ── Conditions d'interface (Tab. 68 AGEROUTE, #87 etape 2/2) — transcription
+  // FIDELE de la reference DEFINITIVE (`ifaceAuto`/`_ifEff`/`_solveSet`/`_avgR`,
+  // roadsens_burmister_definitive.html l.560-562, 1107-1123). GATE STRICTE sur
+  // `cp.ifaceAuto` (contract.ts) : absent/false -> `_r0/_rd2/_rd` restent le
+  // chemin COLLEE PUR historique (equivalence PRESERVEE contre l'ancienne
+  // reference et les fixtures GNT etape 1, qui n'ont pas ce module).
+  //
+  // Auto : deux couches RIGIDES (MTLH/beton) adjacentes -> 'glissante' si les
+  // deux sont du beton (prefixe "BC"), sinon 'semi-collee' ; toute autre paire
+  // -> 'collee'. Override par couche (`ly[i].iface`) si fourni et != 'auto'.
+  function _autoIface(i) {
+    const matA = M[ly[i].mat];
+    const matBel = i + 1 < ly.length ? M[ly[i + 1].mat] : null;
+    if (matA && matBel && matA.rig && matBel.rig) {
+      return String(ly[i].mat).indexOf('BC') === 0 &&
+        String(ly[i + 1].mat).indexOf('BC') === 0
+        ? 'glissante'
+        : 'semi-collée';
+    }
+    return 'collée';
+  }
+  function _ifEff(i) {
+    const o = ly[i] && ly[i].iface;
+    return o && o !== 'auto' ? o : _autoIface(i);
+  }
+  // Resout le calcul multi-couche en inserant une inter-couche mince quasi-
+  // incompressible (E=1 MPa, ν=0,499, h=5 mm) a chaque interface `i` de `slip`
+  // (emule la glissance/semi-collee), puis re-mappe les resultats sur les index
+  // ORIGINAUX (0..nL, PSC comprise).
+  function _solveSet(slip) {
+    const aug = [];
+    const mp = new Array(nL + 1);
+    let off = 0;
+    for (let i = 0; i < nL; i++) {
+      mp[i] = i + off;
+      aug.push({ E: layers[i].E, nu: layers[i].nu, h: layers[i].h });
+      if (slip.has(i)) {
+        aug.push({ E: 1, nu: 0.499, h: 0.005 });
+        off++;
+      }
+    }
+    mp[nL] = nL + off;
+    const R0 = burIntegrateMLWithPSC(0, aug, subgrade, a, p, 400);
+    const R2 = burIntegrateMLWithPSC(d / 2, aug, subgrade, a, p, 400);
+    const RD = burIntegrateMLWithPSC(d, aug, subgrade, a, p, 400);
+    const o0 = [],
+      o2 = [],
+      od = [];
+    for (let i = 0; i <= nL; i++) {
+      o0[i] = R0[mp[i]];
+      o2[i] = R2[mp[i]];
+      od[i] = RD[mp[i]];
+    }
+    return { r0: o0, r2: o2, rd: od };
+  }
+  function _avgR(A, B) {
+    const o = [];
+    for (let i = 0; i < A.length; i++) {
+      const x = A[i],
+        y = B[i];
+      o[i] = {
+        sz: (x.sz + y.sz) / 2,
+        sr: (x.sr + y.sr) / 2,
+        sth: (x.sth + y.sth) / 2,
+        srT: (x.srT + y.srT) / 2,
+        sthT: (x.sthT + y.sthT) / 2,
+      };
+    }
+    return o;
+  }
+  // Collee pure (reference pour la verification σ_t des MTLH, Tab. 68) — chemin
+  // d'origine, INCHANGE quel que soit le gate ci-dessous.
+  const _c0 = burIntegrateMLWithPSC(0, layers, subgrade, a, p, 400);
+  const _cd2 = burIntegrateMLWithPSC(d / 2, layers, subgrade, a, p, 400);
+  const _cd = burIntegrateMLWithPSC(d, layers, subgrade, a, p, 400);
+  // Resultat EFFECTIF (interfaces auto/imposees) -> alimente ε_t, ε_z, ε_z des
+  // couches non liees (calcul PRINCIPAL). GATE : `cp.ifaceAuto !== true` -> force
+  // le chemin collee (== _c0/_cd2/_cd), comportement historique inchange.
+  let _r0, _rd2, _rd;
+  if (cp && cp.ifaceAuto === true) {
+    const sB = new Set(),
+      sS = new Set();
+    for (let i = 0; i < nL; i++) {
+      const e = _ifEff(i);
+      if (e === 'glissante') {
+        sB.add(i);
+        sS.add(i);
+      } else if (e === 'semi-collée') {
+        sS.add(i);
+      }
+    }
+    if (sB.size === 0 && sS.size === 0) {
+      _r0 = _c0;
+      _rd2 = _cd2;
+      _rd = _cd;
+    } else {
+      const A = _solveSet(sB);
+      if (sS.size === sB.size) {
+        _r0 = A.r0;
+        _rd2 = A.r2;
+        _rd = A.rd;
+      } else {
+        const Bb = _solveSet(sS);
+        _r0 = _avgR(A.r0, Bb.r0);
+        _rd2 = _avgR(A.r2, Bb.r2);
+        _rd = _avgR(A.rd, Bb.rd);
+      }
+    }
+  } else {
+    _r0 = _c0;
+    _rd2 = _cd2;
+    _rd = _cd;
+  }
   function _sup(i) {
     return { sz: _r0[i].sz + _rd[i].sz, sr: _r0[i].sr + _rd[i].sr };
   }
@@ -848,7 +959,12 @@ function doCalcPure(M, ly, pf, tr, cp) {
           for (const i of rigs) {
             const mi = M[ly[i].mat];
             if (!mi) continue;
-            const stC = stOf(_r0, _rd2, _rd, i);
+            // Reference collee PURE (Tab. 68 : demi-somme collé/glissant pour
+            // les interfaces semi-collées) — TOUJOURS _c0/_cd2/_cd, jamais le
+            // resultat effectif _r0/_rd2/_rd (qui peut deja etre semi-collé/
+            // glissant si `cp.ifaceAuto` est actif). Transcription fidele de
+            // la reference definitive (l.1196 : `stOf(_c0,_cd2,_cd,i)`).
+            const stC = stOf(_c0, _cd2, _cd, i);
             const stG = stOf(_g0, _gd2, _gd, map[i]);
             const st = modeI === 'glissante' ? stG : (stC + stG) / 2;
             const ksI =

@@ -156,6 +156,14 @@ const Thickness = z.number().finite().min(0.001).max(2);
  * E/ν peuvent surcharger les valeurs du referentiel (le HTML autorise l'edition
  * de E/ν par couche apres choix du materiau).
  */
+/**
+ * Mode d'interface IMPOSE par couche (override manuel, Tab. 68 AGEROUTE) : 'auto'
+ * (defaut — condition automatique deduite des materiaux adjacents, cf.
+ * `ifaceAuto` cote calcul, #87 etape 2/2) ou une valeur imposee de l'allowlist
+ * `MODES_INTERFACE`. Meme allowlist qu'en SORTIE : aucune chaine libre.
+ */
+const LayerIfaceInput = z.enum(['auto', ...MODES_INTERFACE]);
+
 const LayerSchema = z
   .object({
     /** Cle materiau (ex. "BBSG1", "GB3", "GL1"...) — bornee. */
@@ -163,6 +171,14 @@ const LayerSchema = z
     E: Modulus,
     nu: Poisson,
     h: Thickness,
+    /**
+     * Mode d'interface impose entre cette couche et la suivante (ou la PSC pour
+     * la derniere couche) — 'auto' (defaut) ou impose (Tab. 68). Optionnel :
+     * absent = 'auto'. N'a d'effet QUE si `load.ifaceAuto === true` (#87 etape
+     * 2/2) — sinon le calcul principal reste au chemin collee historique, quel
+     * que soit cet override (gate au niveau du calcul, pas de la saisie).
+     */
+    iface: LayerIfaceInput.optional(),
   })
   .strict();
 
@@ -238,6 +254,23 @@ const LoadSchema = z
      * pas expose cette case a cocher.
      */
     gntAuto: z.boolean().optional(),
+    /**
+     * Conditions d'INTERFACE AUTOMATIQUES entre couches rigides adjacentes
+     * (Tab. 68 AGEROUTE, #87 etape 2/2 — reference DEFINITIVE, fonctions
+     * `ifaceAuto`/`_ifEff`/`_solveSet`/`_avgR`). Quand `true`, le calcul
+     * PRINCIPAL (`_r0/_rd2/_rd` — critere fatigue ε_t ET ε_z au sommet PSC/
+     * couches granulaires) integre la condition d'interface EFFECTIVE de
+     * chaque paire de couches (automatique via les materiaux, ou l'override
+     * `layers[i].iface` si fourni et != 'auto') au lieu de supposer TOUJOURS
+     * des interfaces collees. Le chemin « collee pure » (verification σ_t
+     * secondaire par couche traitee, Tab. 68) reste calcule separement dans
+     * tous les cas.
+     * GATE STRICTE (meme discipline que `gntAuto`) : absent/false -> AUCUN
+     * changement (comportement HISTORIQUE : interfaces collees dans le calcul
+     * principal ; equivalence PRESERVEE contre l'ancienne reference + les
+     * fixtures GNT etape 1). Defaut `false`.
+     */
+    ifaceAuto: z.boolean().optional(),
   })
   .strict();
 
