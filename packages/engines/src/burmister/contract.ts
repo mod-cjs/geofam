@@ -227,6 +227,17 @@ const LoadSchema = z
     sh: AutoOrSh.optional(),
     /** ks : 'auto' (couche sous-jacente) ou impose (borne 0,1-1 ; facteur de reduction <=1). */
     ks: AutoOrKs.optional(),
+    /**
+     * Module GNT automatique (#87, etape 1/2 — fiche catalogue AGEROUTE p.79) :
+     * quand `true`, le moteur RECALCULE le module E (et impose ν=0,35) de chaque
+     * couche GNT1/GNT2 AVANT le calcul Burmister (cf. `applyGntAuto` — engine.ts).
+     * GATE STRICTE : absent/false -> AUCUN changement (comportement historique,
+     * equivalence contre l'ancienne reference PRESERVEE). Defaut `false` (et non
+     * `true` comme le HTML) : le contrat existant doit rester equivalent sans
+     * modification explicite de l'appelant tant que l'interface (etape 2) n'a
+     * pas expose cette case a cocher.
+     */
+    gntAuto: z.boolean().optional(),
   })
   .strict();
 

@@ -572,6 +572,50 @@ function burIntegrateMLWithPSC(r, layers, subgrade, a, q, Np) {
 }
 
 // ===========================================================================
+// MODULE GNT AUTOMATIQUE — transcription FIDELE de applyGntAuto() (reference
+// DEFINITIVE, roadsens_burmister_definitive.html l.566-581 — fiche catalogue
+// p.79). PRE-TRAITEMENT des couches AVANT le calcul Burmister : couche de base
+// GNT (sommet du 1er GNT, structure GNT/GNT nue) = 600 MPa fixe ; sous-couches
+// suivantes = min(3x module de la couche sous-jacente i+1, ou pf.E si derniere
+// couche, plafond) ; plafond = 360 MPa si une couche liee (rig OU bit hors
+// surface) existe dans la structure (base GNT/GB, GNT/MTLH...), 600 MPa sinon
+// (structure GNT/GNT) ; nu impose a 0.35 sur CHAQUE couche GNT traitee.
+// ORDRE : bas -> haut (i decroissant), comme l'original — necessaire, chaque
+// couche lit le E DEJA recalcule de la couche sous-jacente. On NE reordonne
+// RIEN, on NE corrige RIEN : transcription bit-a-bit.
+//
+// GATE (#87, etape 1/2) : n'est applique QUE si `state.load.gntAuto === true`
+// (flag d'entree, cf. contract.ts). Absent/false -> AUCUN changement : les
+// fixtures d'equivalence EXISTANTES (contre l'ancienne reference, qui n'a pas
+// ce module) restent bit-a-bit inchangees.
+const GNT_SURFACE_MATERIALS = new Set(['BBSG1', 'BBSG2', 'BBM', 'BBTM']);
+
+function isGntLayer(l) {
+  return l.mat === 'GNT1' || l.mat === 'GNT2';
+}
+
+function applyGntAuto(M, ly, pf) {
+  const hasBound = ly.some((l) => {
+    const m = M[l.mat] || {};
+    return m.rig || (m.bit && !GNT_SURFACE_MATERIALS.has(l.mat));
+  });
+  const capF = hasBound ? 360 : 600;
+  let topG = -1;
+  for (let i = 0; i < ly.length; i++) {
+    if (isGntLayer(ly[i])) {
+      topG = i;
+      break;
+    }
+  }
+  for (let i = ly.length - 1; i >= 0; i--) {
+    if (!isGntLayer(ly[i])) continue;
+    const Eb = i + 1 < ly.length ? ly[i + 1].E : pf.E;
+    ly[i].E = !hasBound && i === topG ? 600 : Math.min(3 * Eb, capF);
+    ly[i].nu = 0.35;
+  }
+}
+
+// ===========================================================================
 // CALCUL PRINCIPAL — extraction PURE de doCalc (etat injecte, pas de DOM)
 // ===========================================================================
 //
@@ -1062,10 +1106,17 @@ function doCalcPure(M, ly, pf, tr, cp) {
  */
 export function computeBurmister(state) {
   const M = AGEROUTE_MATERIALS;
-  const ly = state && Array.isArray(state.layers) ? state.layers : [];
+  const lyIn = state && Array.isArray(state.layers) ? state.layers : [];
   const pf = state && state.subgrade ? state.subgrade : {};
   const tr = state && state.traffic ? state.traffic : {};
   const cp = state && state.load ? state.load : {};
+  // Module GNT automatique (#87, etape 1/2) : GATE stricte sur cp.gntAuto. Si
+  // absent/false, `ly` n'est ni clone ni mute : equivalence PRESERVEE contre les
+  // fixtures existantes (ancienne reference, qui n'a pas ce module). Si true, on
+  // clone les couches (jamais l'objet d'entree du client) puis on mute la copie —
+  // fidele a l'original, qui mute `ly` avant doCalc().
+  const ly = cp && cp.gntAuto ? lyIn.map((l) => ({ ...l })) : lyIn;
+  if (cp && cp.gntAuto) applyGntAuto(M, ly, pf);
   try {
     return doCalcPure(M, ly, pf, tr, cp);
   } catch (e) {

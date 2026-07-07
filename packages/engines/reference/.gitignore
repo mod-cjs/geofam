@@ -1,0 +1,3 @@
+# Reference moteur client (methode confidentielle) — hors git, comme 03-Moteurs-client/
+# Le harness d'equivalence lit ce fichier en local ; il ne doit jamais entrer dans le depot.
+*.html
