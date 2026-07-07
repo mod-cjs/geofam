@@ -34,7 +34,9 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 
 import { Avatar } from '@/components/ui/Avatar';
 import { Logotype, StrataBar } from '@/components/ui/Logotype';
-import { logout, getStoredUser, getStoredOrgs } from '@/lib/api/client';
+import { logout, getStoredUser, getStoredOrgs, getEntitlements } from '@/lib/api/client';
+import { engineIdForSoftware } from '@/lib/software-catalog';
+import { useOrgId } from '@/lib/org-context';
 import type { OrgClaim } from '@/lib/api/types';
 
 const SIDEBAR_STATE_KEY = 'sidebar-desktop-state';
@@ -74,45 +76,36 @@ function useNavItems(orgSlug: string): NavItem[] {
 }
 
 /** Items de navigation pour les logiciels (section dédiée). */
+const ALL_LOGICIELS: NavItem[] = [
+  { id: 'roadsens', label: 'ROADSENS — Chaussées', icon: <Route size={20} strokeWidth={1.5} aria-hidden="true" />, href: '/logiciels/roadsens' },
+  { id: 'terzaghi', label: 'Terzaghi — Fondations superficielles', icon: <Layers size={20} strokeWidth={1.5} aria-hidden="true" />, href: '/logiciels/terzaghi' },
+  { id: 'casagrande', label: 'CASAGRANDE — Pieux', icon: <Columns3 size={20} strokeWidth={1.5} aria-hidden="true" />, href: '/logiciels/casagrande' },
+  { id: 'geoplaque', label: 'GEOPLAQUE — Radier', icon: <Grid3x3 size={20} strokeWidth={1.5} aria-hidden="true" />, href: '/logiciels/geoplaque' },
+  { id: 'pressiopro', label: 'PressioPro — Pressiomètre', icon: <Gauge size={20} strokeWidth={1.5} aria-hidden="true" />, href: '/logiciels/pressiopro' },
+  { id: 'fastlab', label: 'FASTLAB — Laboratoire', icon: <FlaskConical size={20} strokeWidth={1.5} aria-hidden="true" />, href: '/logiciels/fastlab' },
+];
+
+// La sidebar ne liste QUE les logiciels INCLUS dans le pack de l'org (entitlements).
+// Un module hors pack n'apparait pas (fail-closed : tant que les entitlements ne sont pas
+// charges, on n'affiche rien plutot que de flasher un module non inclus). Le slug de gate
+// est derive de l'id logiciel via software-catalog (roadsens->burmister, casagrande->pieux...).
 function useLogicielsItems(orgSlug: string): NavItem[] {
-  return [
-    {
-      id: 'roadsens',
-      label: 'ROADSENS — Chaussées',
-      icon: <Route size={20} strokeWidth={1.5} aria-hidden="true" />,
-      href: `/app/${orgSlug}/logiciels/roadsens`,
-    },
-    {
-      id: 'terzaghi',
-      label: 'Terzaghi — Fondations superficielles',
-      icon: <Layers size={20} strokeWidth={1.5} aria-hidden="true" />,
-      href: `/app/${orgSlug}/logiciels/terzaghi`,
-    },
-    {
-      id: 'casagrande',
-      label: 'CASAGRANDE — Pieux',
-      icon: <Columns3 size={20} strokeWidth={1.5} aria-hidden="true" />,
-      href: `/app/${orgSlug}/logiciels/casagrande`,
-    },
-    {
-      id: 'geoplaque',
-      label: 'GEOPLAQUE — Radier',
-      icon: <Grid3x3 size={20} strokeWidth={1.5} aria-hidden="true" />,
-      href: `/app/${orgSlug}/logiciels/geoplaque`,
-    },
-    {
-      id: 'pressiopro',
-      label: 'PressioPro — Pressiomètre',
-      icon: <Gauge size={20} strokeWidth={1.5} aria-hidden="true" />,
-      href: `/app/${orgSlug}/logiciels/pressiopro`,
-    },
-    {
-      id: 'fastlab',
-      label: 'FASTLAB — Laboratoire',
-      icon: <FlaskConical size={20} strokeWidth={1.5} aria-hidden="true" />,
-      href: `/app/${orgSlug}/logiciels/fastlab`,
-    },
-  ];
+  const orgId = useOrgId(orgSlug);
+  const [modules, setModules] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!orgId) return;
+    let alive = true;
+    getEntitlements(orgId)
+      .then((e) => { if (alive) setModules(e.modules ?? []); })
+      .catch(() => { if (alive) setModules([]); });
+    return () => { alive = false; };
+  }, [orgId]);
+
+  if (modules === null) return [];
+  return ALL_LOGICIELS.filter((it) => {
+    const slug = engineIdForSoftware(it.id);
+    return slug != null && modules.includes(slug);
+  }).map((it) => ({ ...it, href: `/app/${orgSlug}${it.href}` }));
 }
 
 // ---------------------------------------------------------------------------
