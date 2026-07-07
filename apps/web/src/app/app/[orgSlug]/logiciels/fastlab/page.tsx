@@ -142,7 +142,14 @@ const IDENT: Array<{ k: string; l: string }> = [
 interface ExtraField { id: string; l: string }
 /** Condition d'affichage : la valeur effective du select `sel` doit valoir `eq`. */
 interface WhenCond { sel: string; eq: string | string[] }
-interface ExtraTable { title: string; cols: Array<{ prefix: string; l: string }>; rows: number; rowStart?: number; when?: WhenCond[] }
+/**
+ * Table d'essai générique. `rowStart` = index des IDS moteur (`${prefix}${idx}`) ; il
+ * ne doit JAMAIS changer sans le moteur. `labelStart` = 1er numéro AFFICHÉ dans la
+ * colonne « # » — découplé de l'id pour aligner l'affichage sur un libellé humain
+ * (ex. CAFEC : ids 0-3 mais rangs affichés 1-4) sans déplacer le mapping moteur.
+ * Absent, l'affichage suit `rowStart` (comportement historique).
+ */
+interface ExtraTable { title: string; cols: Array<{ prefix: string; l: string }>; rows: number; rowStart?: number; labelStart?: number; when?: WhenCond[] }
 interface ExtraSelect { id: string; l: string; opts: Array<[string, string]>; when?: WhenCond[] }
 interface ExtraGroup { title?: string; fields: ExtraField[]; when?: WhenCond[] }
 interface ExtraSection { tab: string; label: string; title: string; norm: string; note?: string; selects?: ExtraSelect[]; groups?: ExtraGroup[]; tables?: ExtraTable[] }
@@ -168,8 +175,12 @@ export const EXTRA_SECTIONS: ExtraSection[] = [
     ],
     tables: [
       { title: 'Déterminations (mode normalisé)', when: [{ sel: 'mdeMode', eq: 'norme' }], cols: [{ prefix: 'md_M', l: 'Masse initiale M (g)' }, { prefix: 'md_m', l: 'Retenu 1,6 mm m (g)' }], rows: 2 },
-      // Campagne CAFEC : 4 déterminations (0-1 = à sec MDS, 2-3 = en présence d’eau MDE).
-      { title: 'Campagne CAFEC — déterminations 1-2 à sec (MDS), 3-4 en présence d’eau (MDE)', when: [{ sel: 'mdeMode', eq: 'camp' }], rowStart: 0, rows: 4,
+      // Campagne CAFEC : 4 déterminations. IDS moteur 0-indexés (mc_*0..mc_*3) — le moteur
+      // calcMdeCamp lit mc_A0..mc_A3 et retient CMDE = moyenne(perte[2], perte[3]) = les 2
+      // essais EN PRÉSENCE D'EAU. AFFICHAGE 1-4 (labelStart:1) pour coller au libellé
+      // « 1-2 à sec / 3-4 en présence d'eau » : rangs 1,2 -> ids 0,1 (sec, MDS informatif) ;
+      // rangs 3,4 -> ids 2,3 (eau, MDE retenu GTR). Découplage # affiché / id = pas d'inversion.
+      { title: 'Campagne CAFEC — déterminations 1-2 à sec (MDS), 3-4 en présence d’eau (MDE)', when: [{ sel: 'mdeMode', eq: 'camp' }], rowStart: 0, labelStart: 1, rows: 4,
         cols: [{ prefix: 'mc_cls', l: 'Classe granulaire (mm)' }, { prefix: 'mc_ch', l: 'Charge billes (g)' }, { prefix: 'mc_rot', l: 'Nombre de rotations' }, { prefix: 'mc_A', l: 'Poids initial A (g)' }, { prefix: 'mc_B', l: 'Refus 1,6 mm B (g)' }] },
     ] },
   { tab: 'sz', label: 'Fragmentation', title: 'Fragmentation par impact (SZ)', norm: 'NF EN 1097-2 §6',
@@ -255,12 +266,17 @@ export function ExtraView({ s, extra, setExtra }: { s: ExtraSection; extra: Reco
           <div style={{ ...lbl, fontSize: 11, color: ACCENT, marginBottom: 8 }}>{t.title}</div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead><tr><th style={th}>#</th>{t.cols.map((c) => <th key={c.prefix} style={th}>{c.l}</th>)}</tr></thead>
-            <tbody>{Array.from({ length: t.rows }, (_, i) => i + (t.rowStart ?? 1)).map((n) => (
-              <tr key={n}>
-                <td style={{ padding: 2, color: MUTED, fontSize: 11 }}>{n}</td>
-                {t.cols.map((c) => { const id = `${c.prefix}${n}`; return <td key={c.prefix} style={{ padding: 2 }}><input style={inp} value={extra[id] ?? ''} onChange={(e) => set(id, e.target.value)} /></td>; })}
-              </tr>
-            ))}</tbody>
+            <tbody>{Array.from({ length: t.rows }, (_, i) => i).map((i) => {
+              // idx = suffixe d'ID moteur (jamais découplé du moteur) ; disp = numéro AFFICHÉ.
+              const idx = i + (t.rowStart ?? 1);
+              const disp = i + (t.labelStart ?? t.rowStart ?? 1);
+              return (
+                <tr key={idx}>
+                  <td style={{ padding: 2, color: MUTED, fontSize: 11 }}>{disp}</td>
+                  {t.cols.map((c) => { const id = `${c.prefix}${idx}`; return <td key={c.prefix} style={{ padding: 2 }}><input name={id} style={inp} value={extra[id] ?? ''} onChange={(e) => set(id, e.target.value)} /></td>; })}
+                </tr>
+              );
+            })}</tbody>
           </table>
         </div>
       ))}

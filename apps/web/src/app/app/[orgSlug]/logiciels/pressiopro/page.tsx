@@ -40,7 +40,12 @@ export function buildPressioProPayload(f: PressioProForm): Record<string, unknow
   const out: Record<string, unknown> = {
     projet: f.projet,
     label: (f.label || 'Essai').slice(0, 40),
-    params: { a: num(f.a), Ph: num(f.Ph), Pe: num(f.Pe), V0: num(f.V0, 535), k0: num(f.k0, 0.5) },
+    // a : le champ est en cm³/MPa (unité normative NF EN ISO 22476-4, cf. label UI et
+    // applyCalibrage qui y stocke a_calib×10). Le moteur travaille en bar et attend a en
+    // cm³/bar (contract.ts : « déjà /10 par l'appelant »). On porte FIDÈLEMENT le /10 de
+    // getParams() du HTML (l.678 : `a: num('p_a',0) / 10`). Sans lui, l'inertie a est ×10
+    // trop grande et les corrections Vc = Vr − a·P (donc tout le dépouillement) sont faux.
+    params: { a: num(f.a) / 10, Ph: num(f.Ph), Pe: num(f.Pe), V0: num(f.V0, 535), k0: num(f.k0, 0.5) },
     gamma: num(f.gamma),
     nappe: num(f.nappe),
     rows: f.rows.map((r) => ({ p: num(r.p), v15: num(r.v15), v30: num(r.v30), v60: num(r.v60) })),

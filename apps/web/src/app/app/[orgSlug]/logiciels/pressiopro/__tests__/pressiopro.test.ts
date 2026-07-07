@@ -38,7 +38,10 @@ function form(over: Partial<PressioProForm> = {}): PressioProForm {
 describe('buildPressioProPayload — structure', () => {
   it('mappe params (appareillage) et paliers en nombres', () => {
     const p = buildPressioProPayload(form());
-    expect(p.params).toEqual({ a: 0.5, Ph: 0, Pe: 0, V0: 535, k0: 0.5 });
+    // a : le champ est en cm³/MPa (unité normative NF EN ISO 22476-4, cf. label UI) ;
+    // le moteur consomme a en cm³/bar (contract.ts : « déjà /10 par l'appelant »).
+    // 0,5 cm³/MPa -> 0,05 cm³/bar. C'est le /10 de getParams() (HTML l.678).
+    expect(p.params).toEqual({ a: 0.05, Ph: 0, Pe: 0, V0: 535, k0: 0.5 });
     expect(p.gamma).toBe(19);
     expect(p.rows).toEqual([
       { p: 2, v15: 90, v30: 95, v60: 100 },
@@ -54,6 +57,27 @@ describe('buildPressioProPayload — structure', () => {
     expect(params.V0).toBe(535);
     expect(params.k0).toBe(0.5);
     expect((p.label as string).length).toBe(40);
+  });
+});
+
+describe('buildPressioProPayload — conversion du coefficient a (cm³/MPa champ → cm³/bar moteur)', () => {
+  // MAJEUR-1 : le HTML getParams() (l.678) fait `a: num('p_a',0) / 10` — la saisie/le
+  // calibrage appliqué sont en cm³/MPa (unité normative affichée), le moteur travaille en
+  // bar donc attend cm³/bar. Sans ce /10, l'inertie a est ×10 trop grande et le
+  // dépouillement (corrections Vc = Vr − a·P) est FAUX.
+  it('divise a par 10 (cm³/MPa → cm³/bar) — fidélité getParams() du HTML', () => {
+    const params = buildPressioProPayload(form({ a: '3.0' })).params as Record<string, number>;
+    expect(params.a).toBeCloseTo(0.3, 10); // 3,0 cm³/MPa -> 0,30 cm³/bar
+  });
+
+  it('a = 0 (calibrage non renseigné) reste 0 — aucune correction de volume', () => {
+    const params = buildPressioProPayload(form({ a: '0' })).params as Record<string, number>;
+    expect(params.a).toBe(0);
+  });
+
+  it('a vide -> 0 (défaut), pas de NaN', () => {
+    const params = buildPressioProPayload(form({ a: '' })).params as Record<string, number>;
+    expect(params.a).toBe(0);
   });
 });
 

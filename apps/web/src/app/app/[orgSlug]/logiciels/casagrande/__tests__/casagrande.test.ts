@@ -10,8 +10,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
 
-import { buildCasaPayload, parseCptPaste, type CasaForm } from '../page';
+import { buildCasaPayload, parseCptPaste, CptPreview, type CasaForm } from '../page';
 
 function form(over: Partial<CasaForm> = {}): CasaForm {
   return {
@@ -93,6 +95,44 @@ describe('parseCptPaste — pénétrogramme collé (fidèle à importPenetro du 
     expect(parseCptPaste('')).toEqual([]);
     expect(parseCptPaste('  \nbonjour\n5')).toEqual([]);
     expect(parseCptPaste('1 2\n#commentaire\n4 6')).toEqual([{ z: 1, qc: 2 }, { z: 4, qc: 6 }]);
+  });
+});
+
+describe('CptPreview — aperçu live des points parsés (filet anti-corruption virgule)', () => {
+  // MAJEUR-3 : parseCptPaste est FIDÈLE au HTML (virgule = séparateur de colonne).
+  // Mais le reste du formulaire accepte la virgule comme décimale : un CPT « 1,0 3,2 »
+  // se scinde en [1,0,3,2] -> qc≈0, résultat aberrant SANS erreur. L'aperçu restaure le
+  // contrôle visuel (nb de points + z/qc) que le HTML d'origine affichait. Il DOIT
+  // refléter exactement parseCptPaste (même source de vérité que le payload envoyé).
+  const render = (txt: string) => renderToStaticMarkup(createElement(CptPreview, { txt }));
+
+  it('reflète le nombre de points et les valeurs z/qc de parseCptPaste (saisie propre)', () => {
+    const txt = '1.0 3.2\n2.0 5.4\n3.0 7.1';
+    const pts = parseCptPaste(txt);
+    const html = render(txt);
+    expect(pts.length).toBe(3);
+    expect(html).toContain('3'); // compteur de points
+    // chaque couple z/qc parsé apparaît dans l'aperçu
+    for (const p of pts) {
+      expect(html).toContain(String(p.z));
+      expect(html).toContain(String(p.qc));
+    }
+  });
+
+  it('EXPOSE la corruption virgule-décimale : « 1,0 3,2 » -> qc=0 visible dans l’aperçu', () => {
+    const txt = '1,0 3,2';
+    // parseCptPaste (fidèle HTML) : tokens [1,0,3,2] -> z=1, qc=0.
+    expect(parseCptPaste(txt)).toEqual([{ z: 1, qc: 0 }]);
+    const html = render(txt);
+    // L'aperçu montre le point corrompu (qc=0) — l'utilisateur voit l'anomalie AVANT calcul.
+    expect(html).toContain('0');
+    expect(html).toMatch(/1 point/i); // 1 point parsé (pas 2 profondeurs attendues)
+  });
+
+  it('saisie vide : aperçu neutre, aucun point (pas de fausse table)', () => {
+    expect(parseCptPaste('')).toEqual([]);
+    const html = render('');
+    expect(html).toMatch(/0 point/i);
   });
 });
 

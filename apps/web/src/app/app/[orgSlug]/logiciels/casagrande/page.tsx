@@ -158,6 +158,41 @@ const inp: React.CSSProperties = { width: '100%', border: '1px solid #c3ccc6', b
 const grid3: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 };
 const th: React.CSSProperties = { textAlign: 'left', fontSize: 9.5, textTransform: 'uppercase', color: MUTED, padding: '0 4px 5px', fontWeight: 700 };
 
+/**
+ * Aperçu LIVE du pénétrogramme collé — filet de contrôle visuel (MAJEUR-3).
+ * `parseCptPaste` est fidèle au HTML (virgule = séparateur de COLONNE, pas décimale) ;
+ * un CPT collé avec décimales à virgule (« 1,0 3,2 ») se scinde donc en [1,0,3,2] ->
+ * qc=0 SANS erreur. Le HTML d'origine affichait la table des points parsés ; on la
+ * restaure ici pour que l'utilisateur voie la corruption AVANT de calculer. L'aperçu
+ * consomme EXACTEMENT `parseCptPaste` (même source de vérité que le payload envoyé).
+ */
+export function CptPreview({ txt }: { txt: string }) {
+  const pts = parseCptPaste(txt);
+  const suspect = pts.some((p) => p.qc === 0); // qc=0 typique d'une virgule décimale scindée
+  return (
+    <div data-testid="cpt-preview" style={{ marginTop: 8, border: `1px solid ${LINE}`, borderRadius: 8, padding: '8px 10px', background: '#fff' }}>
+      <div style={{ fontSize: 11, color: MUTED, fontWeight: 600, marginBottom: pts.length ? 6 : 0 }}>
+        {pts.length} point{pts.length > 1 ? 's' : ''} interprété{pts.length > 1 ? 's' : ''}
+        {suspect && <span style={{ color: '#8f2a1f', marginLeft: 8 }}>— q_c = 0 détecté : vérifiez que le point est bien la décimale (virgule = séparateur de colonne)</span>}
+      </div>
+      {pts.length > 0 && (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead><tr>{['#', 'z (m)', 'q_c (MPa)'].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+          <tbody>
+            {pts.map((p, i) => (
+              <tr key={i}>
+                <td style={{ padding: '2px 4px', color: MUTED, fontSize: 11 }}>{i + 1}</td>
+                <td style={{ padding: '2px 4px' }}>{p.z}</td>
+                <td style={{ padding: '2px 4px', color: p.qc === 0 ? '#8f2a1f' : INK, fontWeight: p.qc === 0 ? 700 : 400 }}>{p.qc}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 export default function CasagrandePage() {
   const params = useParams<{ orgSlug: string }>();
   const orgSlug = params?.orgSlug ?? '';
@@ -415,15 +450,18 @@ export default function CasagrandePage() {
             <div style={{ ...grid3, marginBottom: 10 }}>
               <div><label style={lbl}>Pas de profondeur (m)</label><input style={inp} value={cptStep} onChange={(e) => setCptStep(e.target.value)} placeholder="0.20" /></div>
             </div>
-            <label style={lbl}>Sondage collé — une ligne « z(m)  q_c(MPa) » par profondeur</label>
+            <label style={lbl}>Sondage collé — une ligne « z(m)  q_c(MPa) » par profondeur · point = décimale, espace/virgule/point-virgule = séparateur de colonne</label>
             <textarea
               value={cptPaste}
               onChange={(e) => setCptPaste(e.target.value)}
               placeholder={'Ex. :\n1.0 3.2\n2.0 5.4\n3.0 7.1'}
               style={{ ...inp, height: 96, fontFamily: 'ui-monospace, monospace', resize: 'vertical' }}
             />
+            {/* Aperçu live : contrôle visuel des points réellement interprétés (anti-corruption virgule). */}
+            <CptPreview txt={cptPaste} />
             <div style={{ fontSize: 10.5, color: MUTED, fontStyle: 'italic', marginTop: 6 }}>
               q_ce et le frottement sont calculés sur ce pénétrogramme. Laissé vide, il est régénéré à partir des q_c des couches.
+              Utilisez le <strong>point</strong> comme séparateur décimal ; la virgule est traitée comme un séparateur de colonne.
             </div>
           </div>
         )}

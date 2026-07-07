@@ -268,6 +268,37 @@ describe('MAJEUR 3 — Micro-Deval campagne CAFEC (mc_*) + mdeWet', () => {
     expect(norme).toContain('En présence d’eau (MDE)'); // sélecteur mdeWet visible
     expect(norme).not.toContain('Poids initial A (g)');
   });
+
+  // MAJEUR-2 : la numérotation affichée doit valoir 1-4 (accord avec le libellé
+  // « 1-2 à sec / 3-4 en présence d'eau ») SANS déplacer les ids moteur. Le moteur
+  // calcMdeCamp lit mc_A0..mc_A3 (0-indexés) et retient CMDE = moyenne(perte[2], perte[3])
+  // = déterminations en présence d'eau. L'affichage 0-3 + libellé « 1-2/3-4 » induisait
+  // une inversion sec/eau silencieuse. On pinne : affichage 1-4 ⇒ id 0-3 (eau = # 3,4).
+  it('campagne CAFEC : # affiché 1-4, ids moteur mc_A0..mc_A3 préservés (pas d’inversion sec/eau)', () => {
+    const camp = renderExtra('mde', { mdeMode: 'camp' });
+    // Les ids moteur restent 0-indexés (le moteur ne bouge pas) — présents en attribut name.
+    for (const id of ['mc_A0', 'mc_A1', 'mc_A2', 'mc_A3', 'mc_B0', 'mc_B3']) {
+      expect(camp, `id moteur manquant : ${id}`).toContain(`name="${id}"`);
+    }
+    // La colonne # affiche 1,2,3,4 (aligné au libellé), plus jamais un « 0 » de rang.
+    const rowNums = [...camp.matchAll(/<td[^>]*>(\d)<\/td>/g)].map((m) => m[1]);
+    expect(rowNums).toEqual(['1', '2', '3', '4']);
+
+    // Mapping display -> id : chaque <tr> porte son numéro de rang puis ses inputs mc_*<idx>.
+    // On vérifie que le rang AFFICHÉ 3 (resp. 4) porte l'id mc_A2 (resp. mc_A3) = les
+    // déterminations « en présence d'eau » que le moteur moyenne pour CMDE.
+    const rowOf = (name: string): string => {
+      const rows = camp.split('<tr>');
+      const r = rows.find((seg) => seg.includes(`name="${name}"`));
+      const num = r?.match(/<td[^>]*>(\d)<\/td>/)?.[1];
+      if (!num) throw new Error(`rang introuvable pour ${name}`);
+      return num;
+    };
+    expect(rowOf('mc_A0')).toBe('1'); // à sec (MDS) — informatif
+    expect(rowOf('mc_A1')).toBe('2'); // à sec (MDS)
+    expect(rowOf('mc_A2')).toBe('3'); // en présence d'eau (MDE) — retenu GTR
+    expect(rowOf('mc_A3')).toBe('4'); // en présence d'eau (MDE) — retenu GTR
+  });
 });
 
 describe('MAJEUR 4 — perméabilité charge constante (pe_V/pe_L/pe_A/pe_dh/pe_t)', () => {
