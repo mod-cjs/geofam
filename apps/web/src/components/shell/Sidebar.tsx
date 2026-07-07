@@ -28,6 +28,7 @@ import {
   Gauge,
   FlaskConical,
 } from 'lucide-react';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 
@@ -454,7 +455,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
             const active = isActive(item.href, true);
             return (
               <li key={item.id} style={{ position: 'relative' }}>
-                <a
+                <Link
                   href={item.href}
                   aria-current={active ? 'page' : undefined}
                   onMouseEnter={() => showTooltip(item.id)}
@@ -495,7 +496,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
                   ) : (
                     <span>{item.label}</span>
                   )}
-                </a>
+                </Link>
                 <NavTooltip
                   label={item.label}
                   visible={collapsed && tooltipId === item.id}
@@ -529,7 +530,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
             const active = isActive(item.href);
             return (
               <li key={item.id} style={{ position: 'relative' }}>
-                <a
+                <Link
                   href={item.href}
                   aria-current={active ? 'page' : undefined}
                   onMouseEnter={() => showTooltip(item.id)}
@@ -570,7 +571,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
                   ) : (
                     <span>{item.label}</span>
                   )}
-                </a>
+                </Link>
                 <NavTooltip
                   label={item.label}
                   visible={collapsed && tooltipId === item.id}
@@ -604,7 +605,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
             const active = isActive(item.href);
             return (
               <li key={item.id} style={{ position: 'relative' }}>
-                <a
+                <Link
                   href={item.href}
                   aria-current={active ? 'page' : undefined}
                   onMouseEnter={() => showTooltip(item.id)}
@@ -645,7 +646,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
                   ) : (
                     <span>{item.label}</span>
                   )}
-                </a>
+                </Link>
                 <NavTooltip
                   label={item.label}
                   visible={collapsed && tooltipId === item.id}
@@ -676,7 +677,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
           },
         ].map((item) => (
           <div key={item.id} style={{ position: 'relative' }}>
-            <a
+            <Link
               href={item.href}
               onMouseEnter={() => showTooltip(item.id)}
               onMouseLeave={() => hideTooltip(item.id)}
@@ -708,7 +709,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
               ) : (
                 <span>{item.label}</span>
               )}
-            </a>
+            </Link>
             <NavTooltip label={item.label} visible={collapsed && tooltipId === item.id} />
           </div>
         ))}

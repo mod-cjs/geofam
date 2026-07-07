@@ -5,6 +5,7 @@
  * Persiste l'onglet actif via l'URL.
  */
 
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 
@@ -158,7 +159,7 @@ export default function ProjetLayoutClient({
               const active = isTabActive(tab);
               return (
                 <li key={tab.id} role="presentation">
-                  <a
+                  <Link
                     href={tab.href}
                     role="tab"
                     aria-selected={active}
@@ -193,7 +194,7 @@ export default function ProjetLayoutClient({
                     }}
                   >
                     {tab.label}
-                  </a>
+                  </Link>
                 </li>
               );
             })}

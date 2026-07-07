@@ -5,6 +5,7 @@
  * 48px · breadcrumb · Cmd+K · CTA contextuel · avatar (sans cloche — F-06)
  */
 
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
@@ -99,13 +100,13 @@ export function Topbar({ orgSlug, ctaSlot, breadcrumbItems }: TopbarProps) {
       )}
 
       {/* Avatar (sans cloche — décision F-06) */}
-      <a
+      <Link
         href={`/app/${orgSlug}/compte`}
         aria-label={`Mon compte — ${user.name}`}
         style={{ flexShrink: 0, display: 'flex', textDecoration: 'none' }}
       >
         <Avatar name={user.name} size="sm" />
-      </a>
+      </Link>
 
       <style>{`
         @media (max-width: 1023px) {

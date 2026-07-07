@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 /**
  * A-22 — Breadcrumb (fil d'Ariane)
  *
@@ -97,7 +99,7 @@ export function Breadcrumb({ segments, onDark = true, className }: BreadcrumbPro
                   {segment.label}
                 </span>
               ) : (
-                <a
+                <Link
                   href={segment.href}
                   style={{
                     color: textDefault,
@@ -112,7 +114,7 @@ export function Breadcrumb({ segments, onDark = true, className }: BreadcrumbPro
                   }}
                 >
                   {segment.label}
-                </a>
+                </Link>
               )}
             </li>
           );
