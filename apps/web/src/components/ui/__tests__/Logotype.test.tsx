@@ -15,9 +15,9 @@ function render(node: React.ReactElement): string {
 
 describe("Logotype — A-18", () => {
   describe("Variante complète (≥ 32px)", () => {
-    it("renders wordmark 'ROADSEN'", () => {
+    it("renders wordmark 'GEOFAM'", () => {
       const html = render(<Logotype size={48} />);
-      expect(html).toContain("ROADSEN");
+      expect(html).toContain("GEOFAM");
     });
 
     it("renders 3 strata bars (3px latérite + 2px pétrole + 1px asphalte)", () => {
@@ -28,9 +28,9 @@ describe("Logotype — A-18", () => {
       expect(html).toContain("1px");
     });
 
-    it("has aria-label='ROADSEN'", () => {
+    it("has aria-label='GEOFAM'", () => {
       const html = render(<Logotype size={48} />);
-      expect(html).toContain('aria-label="ROADSEN"');
+      expect(html).toContain('aria-label="GEOFAM"');
     });
 
     it("strata use brand colors (#b86a2e latérite, #1f4e4a pétrole, #22262b asphalte)", () => {
@@ -42,10 +42,10 @@ describe("Logotype — A-18", () => {
   });
 
   describe("Variante glyphe (< 32px)", () => {
-    it("renders 'R' initial (not full wordmark)", () => {
+    it("renders 'G' initial (not full wordmark)", () => {
       const html = render(<Logotype size={24} />);
-      // La variante glyphe montre "R" mais pas "ROADSEN" complet dans le wordmark
-      expect(html).toContain(">R<");
+      // La variante glyphe montre "G" mais pas "GEOFAM" complet dans le wordmark
+      expect(html).toContain(">G<");
     });
 
     it("motif 3-strates NOT rendered (only single filet)", () => {
@@ -67,12 +67,12 @@ describe("Logotype — A-18", () => {
   describe("Variante forcée via prop", () => {
     it("variant=glyph forces glyph even at size=64", () => {
       const html = render(<Logotype size={64} variant="glyph" />);
-      expect(html).toContain(">R<");
+      expect(html).toContain(">G<");
     });
 
     it("variant=full forces full at size=16", () => {
       const html = render(<Logotype size={16} variant="full" />);
-      expect(html).toContain("ROADSEN");
+      expect(html).toContain("GEOFAM");
     });
   });
 

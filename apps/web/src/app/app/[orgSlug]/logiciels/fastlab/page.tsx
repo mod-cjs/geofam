@@ -30,6 +30,17 @@ const emptyW = (): WaterS => ({ t: '', h: '', s: '' });
 const emptyLL = (): LLPoint => ({ x: '', t: '', h: '', s: '' });
 const emptyPL = (): PLPoint => ({ t: '', h: '', s: '' });
 const emptyPr = (): PrPoint => ({ mh: '', t: '', h: '', s: '' });
+/**
+ * Nombre max de points de compactage Proctor. Le moteur `labo` (contrat .strict(),
+ * `fam(['pr_mh','pr_t','pr_h','pr_s'], 1, 7)` + boucle 1..7 de engine.ts) REJETTE toute
+ * clé pr_*8+ → 400 opaque qui invalide TOUT le calcul. On borne donc la saisie à 7.
+ */
+export const MAX_PR_POINTS = 7;
+/** Ajoute un point de compactage en restant borné à MAX_PR_POINTS (le +Point ne dépasse jamais 7). */
+export function addPrPoint(points: PrPoint[]): PrPoint[] {
+  if (points.length >= MAX_PR_POINTS) return points;
+  return [...points, emptyPr()];
+}
 const emptyCi = (): CiSpec => ({ N: '', P: '', R: '', rho: '', w: '', nat: '' });
 const emptyCisail = (): CisailForm => ({ method: 'box', shape: 'sq', dim: '', Ra: '', Ri: '', rs: '', specs: [emptyCi(), emptyCi(), emptyCi(), emptyCi()] });
 // Toggles de METHODE/equipement uniquement (pas de mesure) — conserves par defaut.
@@ -523,7 +534,14 @@ export default function FastlabPage() {
               </tr>
             ))}</tbody>
           </table>
-          <button onClick={() => setPrPoints((a) => [...a, { mh: '', t: '', h: '', s: '' }])} style={{ marginTop: 8, border: `1px dashed ${ACCENT}`, background: '#eef1df', color: ACCENT, borderRadius: 7, padding: '6px 11px', cursor: 'pointer', fontWeight: 600, fontSize: 12 }}>+ Point</button>
+          <button
+            data-testid="pr-add-point"
+            onClick={() => setPrPoints(addPrPoint)}
+            disabled={prPoints.length >= MAX_PR_POINTS}
+            style={{ marginTop: 8, border: `1px dashed ${prPoints.length >= MAX_PR_POINTS ? LINE : ACCENT}`, background: prPoints.length >= MAX_PR_POINTS ? '#f2f2ec' : '#eef1df', color: prPoints.length >= MAX_PR_POINTS ? MUTED : ACCENT, borderRadius: 7, padding: '6px 11px', cursor: prPoints.length >= MAX_PR_POINTS ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: 12 }}>+ Point</button>
+          {prPoints.length >= MAX_PR_POINTS && (
+            <div style={{ marginTop: 6, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Maximum {MAX_PR_POINTS} points de compactage (limite du moteur Proctor).</div>
+          )}
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${LINE}` }}>
             <div style={secH}>État hydrique — forçage</div>
             <div style={{ fontSize: 10.5, color: MUTED, marginBottom: 8 }}>Sinon déduit du rapport w_n / w_OPN. « Auto » = déduction automatique.</div>

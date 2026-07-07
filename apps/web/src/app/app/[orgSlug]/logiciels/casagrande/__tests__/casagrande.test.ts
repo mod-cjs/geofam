@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
 
-import { buildCasaPayload, parseCptPaste, CptPreview, type CasaForm } from '../page';
+import { buildCasaPayload, parseCptPaste, CptPreview, casaBlockingError, downdragMissing, type CasaForm } from '../page';
 
 function form(over: Partial<CasaForm> = {}): CasaForm {
   return {
@@ -174,6 +174,55 @@ describe('buildCasaPayload — frottement négatif (onglet 02, downdrag)', () =>
 describe('buildCasaPayload — surface d’investigation (champ corrigé)', () => {
   it('la surface d’investigation alimente o_surf (m²), pas une surcharge', () => {
     expect(buildCasaPayload(form({ surf: '2500' })).o_surf).toBe(2500);
+  });
+});
+
+describe('casaBlockingError — garde « section quelconque » (Ap>0 et P>0)', () => {
+  // Sans garde, une section quelconque Ap/P vides (défaut 0) part au serveur et sort
+  // un PV à portance NULLE sans erreur. La garde bloque le calcul avec un message clair.
+  it('bloque quand Ap et P sont vides en mode quelconque', () => {
+    expect(casaBlockingError(form({ section: 'quel', gAp: '', gP: '' }))).toMatch(/A_p > 0.*P > 0/);
+  });
+
+  it('bloque quand seul Ap est renseigné (P manquant)', () => {
+    expect(casaBlockingError(form({ section: 'quel', gAp: '0.3', gP: '' }))).not.toBeNull();
+  });
+
+  it('bloque quand Ap ou P valent 0', () => {
+    expect(casaBlockingError(form({ section: 'quel', gAp: '0', gP: '2' }))).not.toBeNull();
+    expect(casaBlockingError(form({ section: 'quel', gAp: '0.3', gP: '0' }))).not.toBeNull();
+  });
+
+  it('laisse passer quand Ap>0 et P>0 (mode quelconque valide)', () => {
+    expect(casaBlockingError(form({ section: 'quel', gAp: '0.28', gP: '1.88' }))).toBeNull();
+  });
+
+  it('ne s’applique PAS aux autres sections (circ/carre/rect)', () => {
+    expect(casaBlockingError(form({ section: 'circ', gAp: '', gP: '' }))).toBeNull();
+    expect(casaBlockingError(form({ section: 'rect', gAp: '', gP: '', gB: '0.8', gb2: '0.5' }))).toBeNull();
+  });
+});
+
+describe('downdragMissing — échec silencieux du frottement négatif surfacé', () => {
+  const out = (rows: Array<{ label: string }>, details: Array<{ label: string }> = []) =>
+    ({ verdict: 'PASS', rows, details, warnings: [] } as unknown as Parameters<typeof downdragMissing>[1]);
+
+  it('faux si le FN n’a pas été demandé (fnOn=false)', () => {
+    expect(downdragMissing(false, out([{ label: 'R_c;d' }]))).toBe(false);
+  });
+
+  it('faux si aucun output (pas encore calculé)', () => {
+    expect(downdragMissing(true, null)).toBe(false);
+  });
+
+  it('VRAI : FN demandé mais aucune ligne « frottement négatif » (bloc revenu nul)', () => {
+    expect(downdragMissing(true, out([{ label: 'Résistance de pointe R_b;k' }, { label: 'R_c;d' }]))).toBe(true);
+  });
+
+  it('faux : FN demandé ET une ligne frottement négatif présente (bloc calculé)', () => {
+    expect(downdragMissing(true, out([{ label: 'Charge de frottement négatif G_sn' }]))).toBe(false);
+    // La note de découplage seule suffit à prouver que le bloc a été calculé.
+    expect(downdragMissing(true, out([{ label: 'R_c;d' }], [{ label: 'Note frottement négatif' }]))).toBe(false);
   });
 });
 

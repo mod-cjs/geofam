@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
 
-import { buildFastlabPayload, ExtraView, EXTRA_SECTIONS, SIEVES, type FastlabForm } from '../page';
+import { buildFastlabPayload, ExtraView, EXTRA_SECTIONS, SIEVES, addPrPoint, MAX_PR_POINTS, type FastlabForm } from '../page';
 
 /** Rend une section additionnelle (ExtraView) avec un jeu de toggles `extra` donné. */
 function renderExtra(tab: string, extra: Record<string, string>): string {
@@ -387,6 +387,34 @@ describe('MAJEUR 7 — forçage de l’état hydrique (forcedState)', () => {
   it('« Auto » (forcedState vide) n’émet aucune clé forcedState', () => {
     const p = buildFastlabPayload(form({ extra: { forcedState: '' } }));
     expect('forcedState' in p).toBe(false);
+  });
+});
+
+describe('MINEUR — Proctor : le +Point est borné à 7 (contrat moteur pr_* 1..7)', () => {
+  // Le moteur labo rejette pr_*8+ (contrat .strict()) → 400 opaque invalidant TOUT le
+  // calcul. La saisie NE DOIT PAS pouvoir produire un 8e point de compactage.
+  it('la borne vaut 7 (alignée sur fam(pr_*,1,7) du contrat)', () => {
+    expect(MAX_PR_POINTS).toBe(7);
+  });
+
+  it('ajoute des points jusqu’à 7 puis n’en ajoute plus (au-delà = impossible)', () => {
+    let pts = [{ mh: '', t: '', h: '', s: '' }];
+    for (let i = 0; i < 20; i++) pts = addPrPoint(pts);
+    expect(pts.length).toBe(7);
+  });
+
+  it('à 7 points, addPrPoint renvoie le MÊME tableau (no-op référentiel)', () => {
+    const at7 = Array.from({ length: 7 }, () => ({ mh: '', t: '', h: '', s: '' }));
+    expect(addPrPoint(at7)).toBe(at7);
+    expect(addPrPoint(at7).length).toBe(7);
+  });
+
+  it('sous la borne, addPrPoint ajoute bien une ligne vide (nouvelle référence)', () => {
+    const two = [{ mh: '1', t: '', h: '', s: '' }, { mh: '2', t: '', h: '', s: '' }];
+    const three = addPrPoint(two);
+    expect(three).not.toBe(two);
+    expect(three.length).toBe(3);
+    expect(three[2]).toEqual({ mh: '', t: '', h: '', s: '' });
   });
 });
 

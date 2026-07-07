@@ -196,12 +196,26 @@ export function buildProfilRow(label: string, output: NormalizedCalcOutput | nul
 interface LogLayer { de: string; a: string; nature: string; etat: string; prel: string; qual: string; rqd: string; desc: string }
 const emptyLayer = (): LogLayer => ({ de: '', a: '', nature: '', etat: '', prel: '', qual: '', rqd: '', desc: '' });
 
-interface Depth { id: string; label: string; rows: Row[]; pf_idx: number; plm_idx: number }
+/** `label` = repère d'affichage (onglet) ; `z` = profondeur numérique saisie (m) qui
+ * alimente le libellé moteur (le moteur dérive z = parseFloat(label), parité HTML). */
+interface Depth { id: string; label: string; z: string; rows: Row[]; pf_idx: number; plm_idx: number }
 let _did = 0;
-const newDepth = (label: string): Depth => ({ id: `d${++_did}`, label, rows: [
+const newDepth = (label: string, z = ''): Depth => ({ id: `d${++_did}`, label, z, rows: [
   { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' },
   { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' }, { p: '', v15: '', v30: '', v60: '' },
 ], pf_idx: -1, plm_idx: -1 });
+
+/**
+ * Libellé transmis au moteur pour UNE profondeur. Le moteur `pressiometre` dérive
+ * z = parseFloat(label) (contrat, parité HTML). Un repère textuel « Profondeur N » donne
+ * donc parseFloat = NaN -> z=0 (colonne z, σ_h0 et tri du profil neutralisés). On préfixe
+ * la valeur NUMÉRIQUE saisie (`z`) pour que la profondeur soit toujours correctement lue ;
+ * à défaut de z saisi, on retombe sur le repère (comportement historique).
+ */
+export function depthEngineLabel(dp: { z?: string; label: string }): string {
+  const zz = String(dp.z ?? '').trim().replace(',', '.');
+  return zz !== '' && Number.isFinite(parseFloat(zz)) ? `${zz} m`.slice(0, 40) : dp.label;
+}
 
 const ACCENT = '#963b28', INK = '#2b1c18', MUTED = '#7a655e', LINE = '#e2d4cf', PANEL = '#fffdfc';
 const card: React.CSSProperties = { background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: '15px 17px', marginBottom: 14 };
@@ -309,7 +323,7 @@ export default function PressioProPage() {
 
   const depthForm = useCallback((dp: Depth): PressioProForm => ({
     projet: projects.find((p) => p.id === projectId)?.name,
-    label: dp.label, a, Ph, Pe, V0, k0, gamma, nappe, rows: dp.rows, pf_idx: dp.pf_idx, plm_idx: dp.plm_idx,
+    label: depthEngineLabel(dp), a, Ph, Pe, V0, k0, gamma, nappe, rows: dp.rows, pf_idx: dp.pf_idx, plm_idx: dp.plm_idx,
   }), [projects, projectId, a, Ph, Pe, V0, k0, gamma, nappe]);
 
   const handleCalculer = useCallback(async () => {
@@ -334,7 +348,7 @@ export default function PressioProPage() {
         const valid = dp.rows.filter((r) => num(r.p) > 0 && num(r.v60) > 0).length;
         if (valid < 4) continue; // parité moteur : ≥ 4 paliers valides
         const res = await runCalc(orgId, projectId, { engineId: 'pressiometre', label: `PressioPro — ${dp.label}`.slice(0, 60), params: buildPressioProPayload(depthForm(dp)) as Record<string, unknown> });
-        const row = buildProfilRow(dp.label, res.output as NormalizedCalcOutput | null);
+        const row = buildProfilRow(depthEngineLabel(dp), res.output as NormalizedCalcOutput | null);
         if (row) out.push(row);
       }
       out.sort((x, y) => x.z - y.z);
@@ -409,11 +423,11 @@ export default function PressioProPage() {
 
   const applyCalibrage = useCallback(() => {
     // Le champ appareillage `a` est en cm³/MPa (cf. onglet Projet) ; le moteur renvoie a en
-    // cm³/bar -> on transfère la valeur cm³/MPa (a×10) pour cohérence avec la saisie.
-    const aMPa = pickRow(calibOut?.rows, /cm³\/MPa/);
+    // cm³/bar -> on transfère a×10 (cm³/MPa) pour cohérence avec la saisie. (L'ancienne
+    // branche aMPa testait le LIBELLE et non l'unite -> morte ; le calibrage n'expose que
+    // « Coefficient de calibrage a » en cm³/bar : on le convertit directement.)
     const aBar = pickRow(calibOut?.rows, /^Coefficient de calibrage a$/);
-    const val = aMPa ?? (aBar !== null ? aBar * 10 : null);
-    if (val !== null) setA(val.toFixed(3));
+    if (aBar !== null) setA((aBar * 10).toFixed(3));
     setTab('essai');
   }, [calibOut]);
 
@@ -476,8 +490,18 @@ export default function PressioProPage() {
         <>
           <div style={card}>
             <div style={secH}>Identification — profondeur courante</div>
-            <label style={lbl}>Repère (sondage / profondeur) — le préfixe numérique donne z (m)</label>
-            <input style={{ ...inp, maxWidth: 320 }} value={d.label} onChange={(e) => patchDepth({ label: e.target.value })} />
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 200px' }}>
+                <label style={lbl}>Repère (sondage) — libellé d’affichage</label>
+                <input style={inp} value={d.label} onChange={(e) => patchDepth({ label: e.target.value })} />
+              </div>
+              <div style={{ flex: '0 0 140px' }}>
+                <label style={lbl}>Profondeur z (m)</label>
+                <input style={inp} inputMode="decimal" value={d.z} placeholder="ex. 3.0" data-testid="depth-z"
+                  onChange={(e) => patchDepth({ z: e.target.value })} />
+              </div>
+            </div>
+            <div style={{ fontSize: 10.5, color: MUTED, marginTop: 6, fontStyle: 'italic' }}>La profondeur z (m) fixe la cote de dépouillement (σ_h0, colonne z et tri du profil). Sans z, la profondeur ne peut être positionnée.</div>
           </div>
           <div style={card}>
             <div style={secH}>Appareillage (partagé entre profondeurs)</div>

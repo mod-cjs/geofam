@@ -60,6 +60,10 @@ const BOOLEAN_VERDICT_FIELD: Readonly<Record<string, string>> = {
  */
 const CASES_VERDICT_ENGINES: ReadonlySet<string> = new Set([
   'fondation-superficielle',
+  // Defense en profondeur (revue closeout) : le slug d'URL 'terzaghi' en plus du registryId
+  // canonique. En prod le backend scelle le registryId (engine-dispatch), mais si un chemin
+  // scellait le slug, on eviterait une divergence web (duck-type sur cas[]) <-> PV (NON_APPLICABLE).
+  'terzaghi',
 ]);
 
 export function resolveVerdict(engineId: string, output: unknown): PvVerdict {

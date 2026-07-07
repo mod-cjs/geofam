@@ -145,6 +145,33 @@ export function buildCasaPayload(f: CasaForm): Record<string, unknown> {
   };
 }
 
+/**
+ * Garde front « section quelconque » : le moteur attend une aire de pointe A_p > 0 et un
+ * périmètre P > 0. Vides (défaut 0), la portance de pointe/fût est nulle et le PV sort à
+ * portance nulle SANS erreur — piège silencieux. Retourne un message si la garde bloque, sinon null.
+ */
+export function casaBlockingError(f: CasaForm): string | null {
+  if (f.section === 'quel') {
+    if (!(num(f.gAp, 0) > 0) || !(num(f.gP, 0) > 0)) {
+      return 'Section « quelconque » : renseignez une aire de pointe A_p > 0 et un périmètre P > 0 avant de calculer.';
+    }
+  }
+  return null;
+}
+
+/**
+ * Détecte l'échec SILENCIEUX du frottement négatif : l'utilisateur l'a demandé (fnOn) mais
+ * la garde du moteur (downdrag err -> Gsn/Nmax/pointNeutre null, pieux/index.ts:279-286) a
+ * renvoyé un bloc vide. Aucune ligne « frottement négatif » n'est alors poussée (adapters.ts:
+ * 733-747) : sans ce signal, l'échec est invisible. Vrai => on affiche un message explicite.
+ */
+export function downdragMissing(fnOn: boolean, output: NormalizedCalcOutput | null | undefined): boolean {
+  if (!fnOn || !output) return false;
+  const rows = [...(output.rows ?? []), ...(output.details ?? [])];
+  const hasFnRow = rows.some((r) => /frottement n[ée]gatif/i.test(String((r as { label?: unknown }).label ?? '')));
+  return !hasFnRow;
+}
+
 // ── Styles (accent pétrole CASAGRANDE) ──
 const ACCENT = '#1f4e4a';
 const INK = '#1c2422';
@@ -258,14 +285,18 @@ export default function CasagrandePage() {
       .catch(() => {});
   }, [orgId]);
 
-  const buildPayload = useCallback(() => buildCasaPayload({
+  const buildFormState = useCallback((): CasaForm => ({
     projet: projects.find((p) => p.id === projectId)?.name,
     cat, section, gB, gb2, gAp, gP, gD, gz0, meth, da, sens, essais, cG, cQ, nappe, nprofil, surf, redis, grpN, grpM, grpS, layers, betonOn, fck, arm, k3,
     cptStep, cptPaste, fnOn, fnMode, fnS0, fnHc, fnZt, fnZb, fnQ, fnKtd,
   }), [projects, projectId, cat, section, gB, gb2, gAp, gP, gD, gz0, meth, da, sens, essais, cG, cQ, nappe, nprofil, surf, redis, grpN, grpM, grpS, layers, betonOn, fck, arm, k3, cptStep, cptPaste, fnOn, fnMode, fnS0, fnHc, fnZt, fnZb, fnQ, fnKtd]);
 
+  const buildPayload = useCallback(() => buildCasaPayload(buildFormState()), [buildFormState]);
+
   const handleCalculer = useCallback(async () => {
     if (!orgId || !projectId) return;
+    const blocking = casaBlockingError(buildFormState());
+    if (blocking) { setCalcError(blocking); setTab('pieu'); return; }
     setCalculating(true); setCalcError(null); setPvResult(null);
     const label = `CASAGRANDE — ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })}`;
     try {
@@ -275,7 +306,7 @@ export default function CasagrandePage() {
       const e = err as { reason?: string; message?: string };
       setCalcError(e?.reason === 'EXPIRED' ? 'Abonnement expiré — calcul impossible.' : e?.reason === 'QUOTA' ? 'Quota de calculs épuisé.' : e?.reason === 'MODULE_NOT_IN_PACK' ? "Le module CASAGRANDE n'est pas inclus dans votre abonnement." : (e?.message ?? 'Erreur lors du calcul. Réessayez.'));
     } finally { setCalculating(false); }
-  }, [orgId, projectId, buildPayload]);
+  }, [orgId, projectId, buildPayload, buildFormState]);
 
   const handleEmitPv = useCallback(async () => {
     if (!calcResult || !orgId || !projectId) return;
@@ -522,6 +553,11 @@ export default function CasagrandePage() {
                   {output.verdict === 'PASS' ? 'Pieu vérifié — critères EC7 satisfaits' : output.verdict === 'FAIL' ? 'Pieu non vérifié — reprise nécessaire' : 'Résultats de vérification'}
                 </b>
               </div>
+              {downdragMissing(fnOn, output) && (
+                <div data-testid="fn-missing" role="alert" style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 14, background: '#f4edd8', border: '1px solid #e6cf9c', color: '#96701a', fontSize: 12.5 }}>
+                  Frottement négatif demandé mais non calculé : vérifiez les paramètres de l&apos;onglet « Frottement négatif » (charge Q, K·tanδ, zone d&apos;action). Aucun résultat de downdrag n&apos;est disponible pour ce calcul.
+                </div>
+              )}
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead><tr>{['Grandeur', 'Valeur', 'Unité', 'Statut'].map((h) => <th key={h} style={{ ...th, padding: '6px 8px', borderBottom: `1px solid ${LINE}` }}>{h}</th>)}</tr></thead>
                 <tbody>
