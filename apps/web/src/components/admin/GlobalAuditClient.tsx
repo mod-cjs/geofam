@@ -12,6 +12,7 @@
 import { useCallback, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 
+import { NetworkErrorEmptyState } from '@/components/ui/EmptyState';
 import type { AuditEntryView } from '@/lib/api/admin-server';
 
 interface GlobalAuditClientProps {
@@ -22,6 +23,8 @@ interface GlobalAuditClientProps {
   to: string;
   limit: number;
   offset: number;
+  /** true = le fetch serveur a échoué (backend KO / réseau) — distinct du vide réel. */
+  fetchError?: boolean;
 }
 
 export function GlobalAuditClient({
@@ -32,6 +35,7 @@ export function GlobalAuditClient({
   to,
   limit,
   offset,
+  fetchError,
 }: GlobalAuditClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -158,7 +162,9 @@ export function GlobalAuditClient({
           overflow: 'hidden',
         }}
       >
-        {entries.length === 0 ? (
+        {fetchError ? (
+          <NetworkErrorEmptyState onRetry={() => router.refresh()} />
+        ) : entries.length === 0 ? (
           <div
             style={{
               padding: '48px 24px',

@@ -7,6 +7,8 @@
  * GlobalAuditClient (Client Component) qui met à jour l'URL.
  */
 
+import { redirect } from 'next/navigation';
+
 import { adminListGlobalAudit } from '@/lib/api/admin-server';
 import { GlobalAuditClient } from '@/components/admin/GlobalAuditClient';
 
@@ -37,7 +39,10 @@ export default async function GlobalAuditPage({ searchParams }: AuditPageProps) 
   const limit = Math.min(100, Math.max(1, Number.parseInt(sp.limit ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT));
   const offset = Number.parseInt(sp.offset ?? '0', 10) || 0;
 
-  const entries = await adminListGlobalAudit({
+  // Résultat discriminé : distingue panne backend (5xx/réseau) de journal vide
+  // (audit Lot 5bis, famine d'erreurs). unauthorized -> redirect (session
+  // expirée entre la garde layout et cette page).
+  const result = await adminListGlobalAudit({
     action: action || undefined,
     actor: actor || undefined,
     from: from || undefined,
@@ -45,6 +50,12 @@ export default async function GlobalAuditPage({ searchParams }: AuditPageProps) 
     limit,
     offset,
   });
+
+  if (!result.ok && result.reason === 'unauthorized') {
+    redirect('/login');
+  }
+  const entries = result.ok ? result.data : [];
+  const fetchError = !result.ok;
 
   return (
     <>
@@ -66,9 +77,11 @@ export default async function GlobalAuditPage({ searchParams }: AuditPageProps) 
         >
           Journal d&apos;audit
         </h1>
-        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-          {entries.length} entrée{entries.length !== 1 ? 's' : ''} (page)
-        </span>
+        {!fetchError && (
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            {entries.length} entrée{entries.length !== 1 ? 's' : ''} (page)
+          </span>
+        )}
       </div>
 
       <GlobalAuditClient
@@ -79,6 +92,7 @@ export default async function GlobalAuditPage({ searchParams }: AuditPageProps) 
         to={to}
         limit={limit}
         offset={offset}
+        fetchError={fetchError}
       />
     </>
   );

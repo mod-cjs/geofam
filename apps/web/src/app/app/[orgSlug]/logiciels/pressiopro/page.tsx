@@ -12,7 +12,7 @@
  */
 
 import { useParams } from 'next/navigation';
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
@@ -381,6 +381,23 @@ export default function PressioProPage() {
     setTab('essai');
   }, []);
 
+  // Invalidation § Lot 5bis (audit UI erreurs) : la saisie devenue périmée
+  // invalide le résultat déjà affiché — pas seulement au changement de projet.
+  // Le calcul principal dépend de l'appareillage partagé + de la profondeur
+  // courante (`d = depths[cur]`) ; `depths`/`cur` ne sont pas dans les deps de
+  // `depthForm` (qui prend dp en paramètre) — on les ajoute explicitement.
+  const firstFormRender = useRef(true);
+  useEffect(() => {
+    if (firstFormRender.current) {
+      firstFormRender.current = false;
+      return;
+    }
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+    setTab('essai');
+  }, [depthForm, depths, cur]);
+
   // Appareillage : mappe l'erreur d'entitlement/quota vers un message lisible.
   const appErrMsg = (err: unknown, fallback: string): string => {
     const x = err as { reason?: string; message?: string };
@@ -446,6 +463,7 @@ export default function PressioProPage() {
   }, [calibOut]);
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
+  const isCalcError = calcResult?.status === 'ERROR';
   const pLBar = useMemo(() => {
     const r = output?.rows?.find((x) => /p_L\b/.test(x.label) && !/nette/i.test(x.label));
     return r && typeof r.value === 'number' ? r.value : null;
@@ -727,7 +745,11 @@ export default function PressioProPage() {
 
       {tab === 'resultats' && (
         <div style={card} data-testid="resultats">
-          {!output ? (
+          {isCalcError ? (
+            <div role="alert" style={{ padding: '12px 15px', borderRadius: 11, background: '#fbeae7', border: '1px solid #e0b3aa', color: '#8f2a1f', fontWeight: 700, fontSize: 15 }}>
+              Erreur moteur — calcul non abouti.
+            </div>
+          ) : !output ? (
             <div style={{ padding: '2rem', textAlign: 'center', color: MUTED }}>Sélectionnez un sondage et cliquez sur <strong>Dépouiller</strong> pour obtenir p_L, E_M, α, E_y et la classification.</div>
           ) : (
             <>

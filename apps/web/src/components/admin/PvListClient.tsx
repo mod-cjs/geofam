@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useCallback, useTransition } from 'react';
 
+import { NetworkErrorEmptyState } from '@/components/ui/EmptyState';
 import type { AdminPvListItem } from '@/lib/api/admin-server';
 
 interface PvListClientProps {
@@ -17,6 +18,8 @@ interface PvListClientProps {
   q: string;
   limit: number;
   offset: number;
+  /** true = le fetch serveur a échoué (backend KO / réseau) — distinct du vide réel. */
+  fetchError?: boolean;
 }
 
 function formatDate(iso: string): string {
@@ -27,7 +30,7 @@ function formatDate(iso: string): string {
   }
 }
 
-export function PvListClient({ pvs, q, limit, offset }: PvListClientProps) {
+export function PvListClient({ pvs, q, limit, offset, fetchError }: PvListClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -87,7 +90,9 @@ export function PvListClient({ pvs, q, limit, offset }: PvListClientProps) {
           transition: 'opacity var(--dur-fast)',
         }}
       >
-        {pvs.length === 0 ? (
+        {fetchError ? (
+          <NetworkErrorEmptyState onRetry={() => router.refresh()} />
+        ) : pvs.length === 0 ? (
           <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--text-sm)' }}>
             {q ? 'Aucun PV ne correspond à cette recherche.' : 'Aucun procès-verbal émis.'}
           </div>

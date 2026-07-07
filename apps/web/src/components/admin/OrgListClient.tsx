@@ -19,6 +19,7 @@ import { useCallback, useTransition } from 'react';
 
 import { OrgStatusBadge } from './OrgStatusBadge';
 import { QuotaBar } from './QuotaBar';
+import { NetworkErrorEmptyState } from '@/components/ui/EmptyState';
 import type { AdminOrgListItem, OrgStatus } from '@/lib/api/admin-server';
 
 const STATUS_OPTIONS: { value: OrgStatus | ''; label: string }[] = [
@@ -43,9 +44,11 @@ interface OrgListClientProps {
   sort: string;
   limit: number;
   offset: number;
+  /** true = le fetch serveur a échoué (backend KO / réseau) — distinct du vide réel. */
+  fetchError?: boolean;
 }
 
-export function OrgListClient({ orgs, q, status, sort, limit, offset }: OrgListClientProps) {
+export function OrgListClient({ orgs, q, status, sort, limit, offset, fetchError }: OrgListClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -229,7 +232,9 @@ export function OrgListClient({ orgs, q, status, sort, limit, offset }: OrgListC
           transition: 'opacity var(--dur-fast)',
         }}
       >
-        {orgs.length === 0 ? (
+        {fetchError ? (
+          <NetworkErrorEmptyState onRetry={() => router.refresh()} />
+        ) : orgs.length === 0 ? (
           <div
             style={{
               padding: '48px 24px',

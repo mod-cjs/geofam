@@ -10,6 +10,8 @@
  * re-déclenche.
  */
 
+import { redirect } from 'next/navigation';
+
 import type { AdminOrgSort, OrgStatus } from '@/lib/api/admin-server';
 import { adminListOrgs } from '@/lib/api/admin-server';
 import { OrgListClient } from '@/components/admin/OrgListClient';
@@ -45,15 +47,23 @@ export default async function OrgsPage({ searchParams }: OrgsPageProps) {
   const limit = Math.min(100, Math.max(1, Number.parseInt(sp.limit ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT));
   const offset = Number.parseInt(sp.offset ?? '0', 10) || 0;
 
-  // Fetch serveur — filtre/tri/pagination en SQL. Erreurs gérées dans
-  // adminListOrgs (renvoie []).
-  const orgs = await adminListOrgs({
+  // Fetch serveur — filtre/tri/pagination en SQL. Résultat discriminé : la
+  // panne backend (5xx/réseau) ne doit plus être confondue avec une liste vide
+  // (audit Lot 5bis, famine d'erreurs). unauthorized -> redirect (session expirée
+  // entre la garde layout et cette page) ; error -> état d'erreur explicite.
+  const result = await adminListOrgs({
     q: q || undefined,
     status: statusFilter,
     sort,
     limit,
     offset,
   });
+
+  if (!result.ok && result.reason === 'unauthorized') {
+    redirect('/login');
+  }
+  const orgs = result.ok ? result.data : [];
+  const fetchError = !result.ok;
 
   return (
     <>
@@ -76,14 +86,16 @@ export default async function OrgsPage({ searchParams }: OrgsPageProps) {
         >
           Organisations
         </h1>
-        <span
-          style={{
-            fontSize: 'var(--text-sm)',
-            color: 'var(--text-muted)',
-          }}
-        >
-          {orgs.length} résultat{orgs.length !== 1 ? 's' : ''} (page)
-        </span>
+        {!fetchError && (
+          <span
+            style={{
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-muted)',
+            }}
+          >
+            {orgs.length} résultat{orgs.length !== 1 ? 's' : ''} (page)
+          </span>
+        )}
       </div>
 
       {/* Tableau interactif (Client Component) */}
@@ -94,6 +106,7 @@ export default async function OrgsPage({ searchParams }: OrgsPageProps) {
         sort={sort ?? ''}
         limit={limit}
         offset={offset}
+        fetchError={fetchError}
       />
     </>
   );

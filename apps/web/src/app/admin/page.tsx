@@ -19,10 +19,14 @@ import {
 export const metadata = { title: 'Tableau de bord — Back-office' };
 
 export default async function AdminDashboardPage() {
-  const [stats, recentAudit] = await Promise.all([
+  const [stats, auditResult] = await Promise.all([
     adminGetStats(),
     adminListGlobalAudit({ limit: 8 }),
   ]);
+  // Résultat discriminé : un flux vide (ok, data:[]) reste "Aucune activité
+  // récente" ; une panne backend affiche l'état d'erreur dédié (RecentActivity).
+  const recentAudit = auditResult.ok ? auditResult.data : [];
+  const auditFetchError = !auditResult.ok;
 
   return (
     <div style={{ padding: 'var(--sp-6)' }}>
@@ -46,7 +50,7 @@ export default async function AdminDashboardPage() {
         </>
       )}
 
-      <RecentActivity entries={recentAudit} />
+      <RecentActivity entries={recentAudit} fetchError={auditFetchError} />
     </div>
   );
 }
@@ -247,7 +251,13 @@ function Alerts({ stats }: { stats: PlatformStats }) {
 // Flux d'activité récent
 // ---------------------------------------------------------------------------
 
-function RecentActivity({ entries }: { entries: AuditEntryView[] }) {
+function RecentActivity({
+  entries,
+  fetchError,
+}: {
+  entries: AuditEntryView[];
+  fetchError?: boolean;
+}) {
   return (
     <div
       style={{
@@ -285,7 +295,19 @@ function RecentActivity({ entries }: { entries: AuditEntryView[] }) {
         </Link>
       </div>
 
-      {entries.length === 0 ? (
+      {fetchError ? (
+        <div
+          role="alert"
+          style={{
+            padding: '32px 18px',
+            textAlign: 'center',
+            color: 'var(--status-fail-tx)',
+            fontSize: 'var(--text-sm)',
+          }}
+        >
+          Impossible de charger le flux d&apos;activité (backend indisponible ou erreur réseau).
+        </div>
+      ) : entries.length === 0 ? (
         <div
           style={{
             padding: '32px 18px',

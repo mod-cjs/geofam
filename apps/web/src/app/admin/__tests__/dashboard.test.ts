@@ -42,7 +42,7 @@ const HEALTHY_STATS = {
 describe('AdminDashboardPage — landing back-office (§1 vague B)', () => {
   it('GIVEN adminGetStats renvoie null (backend KO) — WHEN page rendue — THEN panneau erreur affiché', async () => {
     mockGetStats.mockResolvedValue(null);
-    mockListGlobalAudit.mockResolvedValue([]);
+    mockListGlobalAudit.mockResolvedValue({ ok: true, data: [] });
 
     const el = await AdminDashboardPage();
     const html = renderToStaticMarkup(el);
@@ -52,7 +52,7 @@ describe('AdminDashboardPage — landing back-office (§1 vague B)', () => {
 
   it('GIVEN stats saines (aucune alerte) — WHEN page rendue — THEN message "aucune alerte" affiché', async () => {
     mockGetStats.mockResolvedValue(HEALTHY_STATS);
-    mockListGlobalAudit.mockResolvedValue([]);
+    mockListGlobalAudit.mockResolvedValue({ ok: true, data: [] });
 
     const el = await AdminDashboardPage();
     const html = renderToStaticMarkup(el);
@@ -66,7 +66,7 @@ describe('AdminDashboardPage — landing back-office (§1 vague B)', () => {
       ...HEALTHY_STATS,
       abonnements: { expirant30j: 2, expires: 1, orgsSansAbo: 3, orgsQuota90pct: 5 },
     });
-    mockListGlobalAudit.mockResolvedValue([]);
+    mockListGlobalAudit.mockResolvedValue({ ok: true, data: [] });
 
     const el = await AdminDashboardPage();
     const html = renderToStaticMarkup(el);
@@ -79,7 +79,7 @@ describe('AdminDashboardPage — landing back-office (§1 vague B)', () => {
 
   it('GIVEN aucune activité récente — WHEN page rendue — THEN message "Aucune activité récente"', async () => {
     mockGetStats.mockResolvedValue(HEALTHY_STATS);
-    mockListGlobalAudit.mockResolvedValue([]);
+    mockListGlobalAudit.mockResolvedValue({ ok: true, data: [] });
 
     const el = await AdminDashboardPage();
     const html = renderToStaticMarkup(el);
@@ -89,22 +89,36 @@ describe('AdminDashboardPage — landing back-office (§1 vague B)', () => {
 
   it('GIVEN des entrées d\'audit récentes — WHEN page rendue — THEN les actions apparaissent dans le flux', async () => {
     mockGetStats.mockResolvedValue(HEALTHY_STATS);
-    mockListGlobalAudit.mockResolvedValue([
-      {
-        id: 'a1',
-        actorUserId: 'u1',
-        action: 'QUOTA_TOPUP',
-        targetOrgId: 'o1',
-        targetUserId: null,
-        payload: { motif: 'ajustement' },
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+    mockListGlobalAudit.mockResolvedValue({
+      ok: true,
+      data: [
+        {
+          id: 'a1',
+          actorUserId: 'u1',
+          action: 'QUOTA_TOPUP',
+          targetOrgId: 'o1',
+          targetUserId: null,
+          payload: { motif: 'ajustement' },
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
 
     const el = await AdminDashboardPage();
     const html = renderToStaticMarkup(el);
 
     expect(html).toContain('QUOTA_TOPUP');
+    expect(html).not.toContain('Aucune activité récente');
+  });
+
+  it('GIVEN adminListGlobalAudit échoue (backend KO, reason error) — WHEN page rendue — THEN état erreur du flux affiché, PAS "Aucune activité récente" (famine d\'erreurs, audit Lot 5bis)', async () => {
+    mockGetStats.mockResolvedValue(HEALTHY_STATS);
+    mockListGlobalAudit.mockResolvedValue({ ok: false, reason: 'error' });
+
+    const el = await AdminDashboardPage();
+    const html = renderToStaticMarkup(el);
+
+    expect(html).toContain('Impossible de charger le flux d');
     expect(html).not.toContain('Aucune activité récente');
   });
 });

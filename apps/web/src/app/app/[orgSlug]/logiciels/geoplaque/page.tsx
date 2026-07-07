@@ -430,7 +430,22 @@ function PlaneStrainBlock({ orgId, orgSlug, projectId, projects, gate }: TwoDBlo
     setCalcError(null);
   }, []);
 
+  // Invalidation § Lot 5bis : la saisie devenue périmée invalide le résultat déjà
+  // affiché (pas seulement au changement de projet). `buildPayload` change
+  // d'identité dès qu'un champ (ou le projet) change.
+  const firstFormRender = useRef(true);
+  useEffect(() => {
+    if (firstFormRender.current) {
+      firstFormRender.current = false;
+      return;
+    }
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+  }, [buildPayload]);
+
   const output = calcResult?.output as NormalizedCalcOutput | null;
+  const isCalcError = calcResult?.status === 'ERROR';
   const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
 
   return (
@@ -489,7 +504,11 @@ function PlaneStrainBlock({ orgId, orgSlug, projectId, projects, gate }: TwoDBlo
       </button>
 
       <div style={{ marginTop: 14 }} data-testid="resultats-plane-strain">
-        {!output ? (
+        {isCalcError ? (
+          <div role="alert" style={{ padding: '9px 12px', borderRadius: 8, background: '#f8e6ee', border: '1px solid #e0b3c8', color: '#8a2d55', fontSize: 12.5, fontWeight: 600 }}>
+            Erreur moteur — calcul non abouti.
+          </div>
+        ) : !output ? (
           <div style={{ padding: '1rem 0', color: MUTED, fontSize: 12.5 }}>Renseigne la bande et lance le calcul.</div>
         ) : (
           <>
@@ -548,7 +567,21 @@ function AxiBlock({ orgId, orgSlug, projectId, projects, gate }: TwoDBlockProps)
     setCalcError(null);
   }, []);
 
+  // Invalidation § Lot 5bis : la saisie devenue périmée invalide le résultat déjà
+  // affiché (pas seulement au changement de projet).
+  const firstFormRender = useRef(true);
+  useEffect(() => {
+    if (firstFormRender.current) {
+      firstFormRender.current = false;
+      return;
+    }
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+  }, [buildPayload]);
+
   const output = calcResult?.output as NormalizedCalcOutput | null;
+  const isCalcError = calcResult?.status === 'ERROR';
   const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
 
   return (
@@ -594,7 +627,11 @@ function AxiBlock({ orgId, orgSlug, projectId, projects, gate }: TwoDBlockProps)
       </button>
 
       <div style={{ marginTop: 14 }} data-testid="resultats-axi">
-        {!output ? (
+        {isCalcError ? (
+          <div role="alert" style={{ padding: '9px 12px', borderRadius: 8, background: '#f8e6ee', border: '1px solid #e0b3c8', color: '#8a2d55', fontSize: 12.5, fontWeight: 600 }}>
+            Erreur moteur — calcul non abouti.
+          </div>
+        ) : !output ? (
           <div style={{ padding: '1rem 0', color: MUTED, fontSize: 12.5 }}>Renseigne le radier circulaire et lance le calcul.</div>
         ) : (
           <>
@@ -665,7 +702,21 @@ function TriRaftBlock({ orgId, orgSlug, projectId, projects, gate }: TwoDBlockPr
     setCalcError(null);
   }, []);
 
+  // Invalidation § Lot 5bis : la saisie devenue périmée invalide le résultat déjà
+  // affiché (pas seulement au changement de projet).
+  const firstFormRender = useRef(true);
+  useEffect(() => {
+    if (firstFormRender.current) {
+      firstFormRender.current = false;
+      return;
+    }
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+  }, [buildPayload]);
+
   const output = calcResult?.output as NormalizedCalcOutput | null;
+  const isCalcError = calcResult?.status === 'ERROR';
   const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
 
   return (
@@ -760,7 +811,11 @@ function TriRaftBlock({ orgId, orgSlug, projectId, projects, gate }: TwoDBlockPr
       </button>
 
       <div style={{ marginTop: 14 }} data-testid="resultats-tri-raft">
-        {!output ? (
+        {isCalcError ? (
+          <div role="alert" style={{ padding: '9px 12px', borderRadius: 8, background: '#f8e6ee', border: '1px solid #e0b3c8', color: '#8a2d55', fontSize: 12.5, fontWeight: 600 }}>
+            Erreur moteur — calcul non abouti.
+          </div>
+        ) : !output ? (
           <div style={{ padding: '1rem 0', color: MUTED, fontSize: 12.5 }}>Dessine une plaque (onglet Modèle), puis lance le maillage.</div>
         ) : (
           <>
@@ -865,9 +920,24 @@ export default function GeoplaquePage() {
     setTab('modele');
   }, []);
 
+  // Invalidation § Lot 5bis (audit UI erreurs) : la saisie devenue périmée
+  // invalide le résultat déjà affiché — pas seulement au changement de projet.
+  const firstFormRender = useRef(true);
+  useEffect(() => {
+    if (firstFormRender.current) {
+      firstFormRender.current = false;
+      return;
+    }
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+    setTab('modele');
+  }, [buildPayload]);
+
   if (!mounted) return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement de GEOPLAQUE" />;
 
   const output = calcResult?.output as (NormalizedCalcOutput & { heatmap?: HeatmapData }) | null;
+  const isCalcError = calcResult?.status === 'ERROR';
   const heatmap = output?.heatmap;
   const gate = evaluateGate(ent, ENGINE_ID);
   const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
@@ -1031,7 +1101,11 @@ export default function GeoplaquePage() {
 
       {tab === 'resultats' && (
         <div style={card} data-testid="resultats">
-          {!output ? (
+          {isCalcError ? (
+            <div role="alert" style={{ padding: '12px 15px', borderRadius: 11, background: '#fdecea', border: '1px solid #f3b8ac', color: '#8a2d1f', fontWeight: 700, fontSize: 15 }}>
+              Erreur moteur — calcul non abouti.
+            </div>
+          ) : !output ? (
             <div style={{ padding: '2rem', textAlign: 'center', color: MUTED }}>Sélectionnez un projet et cliquez sur <strong>Calculer</strong> pour lancer l&apos;analyse du radier.</div>
           ) : (
             <>

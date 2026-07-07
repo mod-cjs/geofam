@@ -9,7 +9,7 @@
  */
 
 import { useParams } from 'next/navigation';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
@@ -374,9 +374,26 @@ export default function FastlabPage() {
     setTab('ident');
   }, []);
 
+  // Invalidation § Lot 5bis (audit UI erreurs) : la saisie devenue périmée
+  // invalide le résultat déjà affiché — pas seulement au changement de projet.
+  // `buildPayload` ne dépend pas de projectId (payload indépendant du projet) ->
+  // on l'ajoute explicitement.
+  const firstFormRender = useRef(true);
+  useEffect(() => {
+    if (firstFormRender.current) {
+      firstFormRender.current = false;
+      return;
+    }
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+    setTab('ident');
+  }, [buildPayload, projectId]);
+
   if (!mounted) return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement de FASTLAB" />;
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
+  const isCalcError = calcResult?.status === 'ERROR';
   const rows = output?.rows ?? [];
   // La classe GTR + le cheminement sont DÉJÀ dans `rows` (allowlist §8 appliquée
   // serveur) — on les en dérive plutôt que d'exposer des clés brutes (desc/path/…).
@@ -650,7 +667,11 @@ export default function FastlabPage() {
 
       {tab === 'resultat' && (
         <div style={card} data-testid="resultat">
-          {!output ? (
+          {isCalcError ? (
+            <div role="alert" style={{ padding: '12px 15px', borderRadius: 11, background: '#f6e5e1', border: '1px solid #e0b3aa', color: '#8f2a1f', fontWeight: 700, fontSize: 15 }}>
+              Erreur moteur — calcul non abouti.
+            </div>
+          ) : !output ? (
             <div style={{ padding: '2rem', textAlign: 'center', color: MUTED }}>Sélectionnez un projet et cliquez sur <strong>Classer</strong> pour obtenir la classe GTR.</div>
           ) : (
             <>

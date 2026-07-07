@@ -6,6 +6,8 @@
  * SubscriptionsClient (Client Component, met à jour l'URL).
  */
 
+import { redirect } from 'next/navigation';
+
 import type { AdminOrgSort, SubscriptionFilter } from '@/lib/api/admin-server';
 import { adminListSubscriptions } from '@/lib/api/admin-server';
 import { SubscriptionsClient } from '@/components/admin/SubscriptionsClient';
@@ -45,7 +47,16 @@ export default async function SubscriptionsPage({ searchParams }: SubscriptionsP
   const limit = Math.min(100, Math.max(1, Number.parseInt(sp.limit ?? String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT));
   const offset = Number.parseInt(sp.offset ?? '0', 10) || 0;
 
-  const orgs = await adminListSubscriptions({ filter, sort, limit, offset });
+  // Résultat discriminé : distingue panne backend (5xx/réseau) de console vide
+  // (audit Lot 5bis, famine d'erreurs). unauthorized -> redirect (session
+  // expirée entre la garde layout et cette page).
+  const result = await adminListSubscriptions({ filter, sort, limit, offset });
+
+  if (!result.ok && result.reason === 'unauthorized') {
+    redirect('/login');
+  }
+  const orgs = result.ok ? result.data : [];
+  const fetchError = !result.ok;
 
   return (
     <>
@@ -67,9 +78,11 @@ export default async function SubscriptionsPage({ searchParams }: SubscriptionsP
         >
           Abonnements
         </h1>
-        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-          {orgs.length} résultat{orgs.length !== 1 ? 's' : ''} (page)
-        </span>
+        {!fetchError && (
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            {orgs.length} résultat{orgs.length !== 1 ? 's' : ''} (page)
+          </span>
+        )}
       </div>
 
       <SubscriptionsClient
@@ -78,6 +91,7 @@ export default async function SubscriptionsPage({ searchParams }: SubscriptionsP
         sort={sort ?? ''}
         limit={limit}
         offset={offset}
+        fetchError={fetchError}
       />
     </>
   );

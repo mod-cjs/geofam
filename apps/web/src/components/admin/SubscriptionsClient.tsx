@@ -16,6 +16,7 @@ import { useCallback, useTransition } from 'react';
 
 import { OrgStatusBadge } from './OrgStatusBadge';
 import { QuotaBar } from './QuotaBar';
+import { NetworkErrorEmptyState } from '@/components/ui/EmptyState';
 import type { AdminOrgListItem } from '@/lib/api/admin-server';
 
 const FILTER_OPTIONS: { value: string; label: string }[] = [
@@ -41,6 +42,8 @@ interface SubscriptionsClientProps {
   sort: string;
   limit: number;
   offset: number;
+  /** true = le fetch serveur a échoué (backend KO / réseau) — distinct du vide réel. */
+  fetchError?: boolean;
 }
 
 export function SubscriptionsClient({
@@ -49,6 +52,7 @@ export function SubscriptionsClient({
   sort,
   limit,
   offset,
+  fetchError,
 }: SubscriptionsClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -130,7 +134,9 @@ export function SubscriptionsClient({
           transition: 'opacity var(--dur-fast)',
         }}
       >
-        {orgs.length === 0 ? (
+        {fetchError ? (
+          <NetworkErrorEmptyState onRetry={() => router.refresh()} />
+        ) : orgs.length === 0 ? (
           <div
             style={{
               padding: '48px 24px',

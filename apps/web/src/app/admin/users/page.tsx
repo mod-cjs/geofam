@@ -3,6 +3,8 @@
  * Server Component : fetch avec le token cookie.
  */
 
+import { redirect } from 'next/navigation';
+
 import { adminSearchUsers } from '@/lib/api/admin-server';
 import { UserListClient } from '@/components/admin/UserListClient';
 
@@ -22,7 +24,16 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
   const q = sp.q?.trim() ?? '';
   const limit = parseInt(sp.limit ?? '50', 10);
 
-  const users = await adminSearchUsers({ q: q || undefined, limit });
+  // Résultat discriminé : distingue panne backend (5xx/réseau) de liste vide
+  // (audit Lot 5bis, famine d'erreurs). unauthorized -> redirect (session
+  // expirée entre la garde layout et cette page).
+  const result = await adminSearchUsers({ q: q || undefined, limit });
+
+  if (!result.ok && result.reason === 'unauthorized') {
+    redirect('/login');
+  }
+  const users = result.ok ? result.data : [];
+  const fetchError = !result.ok;
 
   return (
     <>
@@ -45,12 +56,14 @@ export default async function UsersPage({ searchParams }: UsersPageProps) {
         >
           Utilisateurs
         </h1>
-        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
-          {users.length} résultat{users.length !== 1 ? 's' : ''}
-        </span>
+        {!fetchError && (
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+            {users.length} résultat{users.length !== 1 ? 's' : ''}
+          </span>
+        )}
       </div>
 
-      <UserListClient users={users} q={q} />
+      <UserListClient users={users} q={q} fetchError={fetchError} />
     </>
   );
 }

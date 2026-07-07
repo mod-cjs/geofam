@@ -129,20 +129,29 @@ const API_BASE =
   (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_BASE_URL : undefined) ?? '';
 
 /**
- * Fetch admin authentifié côté serveur. Renvoie null si pas de token, si
- * le backend renvoie une erreur, ou si le réseau est indisponible.
- * Erreurs 401/403 signifient que la garde layout.tsx doit rediriger — ici
- * on laisse remonter null et le layout redirige.
+ * Résultat discriminé d'un fetch admin — distingue explicitement :
+ * - `unauthorized` : pas de token, ou 401/403 (la garde layout.tsx redirige déjà
+ *   sur `/admin/me` ; une page peut retrouver ce cas si la session expire entre
+ *   temps — même traitement : redirect /login, anti-énumération).
+ * - `error` : backend en panne (5xx, autre 4xx inattendu) ou réseau indisponible.
+ *
+ * Distinguer ces deux cas de la donnée absente/vide permet aux pages de ne plus
+ * afficher un état "Aucun résultat" trompeur quand le backend est simplement KO
+ * (audit Lot 5bis, famine d'erreurs).
  */
-async function adminGet<T>(path: string): Promise<T | null> {
+export type AdminFetchResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; reason: 'unauthorized' | 'error' };
+
+async function adminGetResult<T>(path: string): Promise<AdminFetchResult<T>> {
   let token: string | null = null;
   try {
     const cookieStore = await cookies();
     token = cookieStore.get(TOKEN_COOKIE)?.value ?? null;
   } catch {
-    return null;
+    return { ok: false, reason: 'error' };
   }
-  if (!token) return null;
+  if (!token) return { ok: false, reason: 'unauthorized' };
 
   try {
     const res = await fetch(`${API_BASE}${path}`, {
@@ -153,11 +162,32 @@ async function adminGet<T>(path: string): Promise<T | null> {
       // Pas de cache statique : données live back-office.
       cache: 'no-store',
     });
-    if (!res.ok) return null;
-    return res.json() as Promise<T>;
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, reason: 'unauthorized' };
+    }
+    if (!res.ok) {
+      return { ok: false, reason: 'error' };
+    }
+    return { ok: true, data: (await res.json()) as T };
   } catch {
-    return null;
+    return { ok: false, reason: 'error' };
   }
+}
+
+/**
+ * Fetch admin authentifié côté serveur. Renvoie null si pas de token, si
+ * le backend renvoie une erreur, ou si le réseau est indisponible.
+ * Erreurs 401/403 signifient que la garde layout.tsx doit rediriger — ici
+ * on laisse remonter null et le layout redirige.
+ *
+ * Conservé pour les getteurs UNITAIRES (détail org/user/pv, stats, membres…)
+ * dont le null-sur-erreur reste le comportement voulu (page 404/erreur dédiée
+ * ou garde de layout). Les LISTES utilisent `adminGetResult` pour distinguer
+ * l'erreur backend du vide (cf. audit Lot 5bis).
+ */
+async function adminGet<T>(path: string): Promise<T | null> {
+  const result = await adminGetResult<T>(path);
+  return result.ok ? result.data : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +210,7 @@ export async function adminListOrgs(args?: {
   offset?: number;
   status?: OrgStatus;
   sort?: AdminOrgSort;
-}): Promise<AdminOrgListItem[]> {
+}): Promise<AdminFetchResult<AdminOrgListItem[]>> {
   const params = new URLSearchParams();
   if (args?.q) params.set('q', args.q);
   if (args?.limit !== undefined) params.set('limit', String(args.limit));
@@ -188,8 +218,7 @@ export async function adminListOrgs(args?: {
   if (args?.status) params.set('status', args.status);
   if (args?.sort) params.set('sort', args.sort);
   const qs = params.size > 0 ? `?${params.toString()}` : '';
-  const data = await adminGet<AdminOrgListItem[]>(`/admin/orgs${qs}`);
-  return data ?? [];
+  return adminGetResult<AdminOrgListItem[]>(`/admin/orgs${qs}`);
 }
 
 /** Tableau de bord plateforme (agrégats cross-tenant). Null si erreur/réseau KO. */
@@ -208,7 +237,7 @@ export async function adminListGlobalAudit(args?: {
   to?: string;
   limit?: number;
   offset?: number;
-}): Promise<AuditEntryView[]> {
+}): Promise<AdminFetchResult<AuditEntryView[]>> {
   const params = new URLSearchParams();
   if (args?.action) params.set('action', args.action);
   if (args?.actor) params.set('actor', args.actor);
@@ -217,8 +246,7 @@ export async function adminListGlobalAudit(args?: {
   if (args?.limit !== undefined) params.set('limit', String(args.limit));
   if (args?.offset !== undefined) params.set('offset', String(args.offset));
   const qs = params.size > 0 ? `?${params.toString()}` : '';
-  const data = await adminGet<AuditEntryView[]>(`/admin/audit${qs}`);
-  return data ?? [];
+  return adminGetResult<AuditEntryView[]>(`/admin/audit${qs}`);
 }
 
 /** Supervision PV cross-tenant (métadonnées) — GET /admin/pvs. */
@@ -240,14 +268,13 @@ export async function adminListPvs(args?: {
   q?: string;
   limit?: number;
   offset?: number;
-}): Promise<AdminPvListItem[]> {
+}): Promise<AdminFetchResult<AdminPvListItem[]>> {
   const params = new URLSearchParams();
   if (args?.q) params.set('q', args.q);
   if (args?.limit !== undefined) params.set('limit', String(args.limit));
   if (args?.offset !== undefined) params.set('offset', String(args.offset));
   const qs = params.size > 0 ? `?${params.toString()}` : '';
-  const data = await adminGet<AdminPvListItem[]>(`/admin/pvs${qs}`);
-  return data ?? [];
+  return adminGetResult<AdminPvListItem[]>(`/admin/pvs${qs}`);
 }
 
 /**
@@ -284,15 +311,14 @@ export async function adminListSubscriptions(args?: {
   sort?: AdminOrgSort;
   limit?: number;
   offset?: number;
-}): Promise<AdminOrgListItem[]> {
+}): Promise<AdminFetchResult<AdminOrgListItem[]>> {
   const params = new URLSearchParams();
   if (args?.filter) params.set('filter', args.filter);
   if (args?.sort) params.set('sort', args.sort);
   if (args?.limit !== undefined) params.set('limit', String(args.limit));
   if (args?.offset !== undefined) params.set('offset', String(args.offset));
   const qs = params.size > 0 ? `?${params.toString()}` : '';
-  const data = await adminGet<AdminOrgListItem[]>(`/admin/subscriptions${qs}`);
-  return data ?? [];
+  return adminGetResult<AdminOrgListItem[]>(`/admin/subscriptions${qs}`);
 }
 
 /** Détail composite d'une organisation. Null si introuvable ou erreur. */
@@ -317,13 +343,12 @@ export async function adminListOrgMembers(orgId: string): Promise<OrgMemberView[
 export async function adminSearchUsers(args?: {
   q?: string;
   limit?: number;
-}): Promise<AdminUserView[]> {
+}): Promise<AdminFetchResult<AdminUserView[]>> {
   const params = new URLSearchParams();
   if (args?.q) params.set('q', args.q);
   if (args?.limit !== undefined) params.set('limit', String(args.limit));
   const qs = params.size > 0 ? `?${params.toString()}` : '';
-  const data = await adminGet<AdminUserView[]>(`/admin/users${qs}`);
-  return data ?? [];
+  return adminGetResult<AdminUserView[]>(`/admin/users${qs}`);
 }
 
 /** Fiche détaillée d'un utilisateur — GET /admin/users/:id. */

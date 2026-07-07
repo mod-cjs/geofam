@@ -19,11 +19,14 @@ import {
   clientSetUserActive,
   type MutationError,
 } from '@/lib/api/admin-mutations-client';
+import { NetworkErrorEmptyState } from '@/components/ui/EmptyState';
 import type { AdminUserView } from '@/lib/api/admin-server';
 
 interface UserListClientProps {
   users: AdminUserView[];
   q: string;
+  /** true = le fetch serveur a échoué (backend KO / réseau) — distinct du vide réel. */
+  fetchError?: boolean;
 }
 
 const btnStyle: React.CSSProperties = {
@@ -37,7 +40,7 @@ const btnStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-export function UserListClient({ users, q }: UserListClientProps) {
+export function UserListClient({ users, q, fetchError }: UserListClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -180,7 +183,9 @@ export function UserListClient({ users, q }: UserListClientProps) {
           transition: 'opacity var(--dur-fast)',
         }}
       >
-        {users.length === 0 ? (
+        {fetchError ? (
+          <NetworkErrorEmptyState onRetry={() => router.refresh()} />
+        ) : users.length === 0 ? (
           <div
             style={{
               padding: '48px 24px',

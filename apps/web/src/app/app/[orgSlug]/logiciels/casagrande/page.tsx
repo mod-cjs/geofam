@@ -9,7 +9,7 @@
  */
 
 import { useParams } from 'next/navigation';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
@@ -329,9 +329,25 @@ export default function CasagrandePage() {
     setTab('pieu');
   }, []);
 
+  // Invalidation § Lot 5bis (audit UI erreurs) : la saisie devenue périmée
+  // invalide le résultat déjà affiché — pas seulement au changement de projet.
+  // `buildFormState` change d'identité dès qu'un champ (ou le projet) change.
+  const firstFormRender = useRef(true);
+  useEffect(() => {
+    if (firstFormRender.current) {
+      firstFormRender.current = false;
+      return;
+    }
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+    setTab('pieu');
+  }, [buildFormState]);
+
   if (!mounted) return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement de CASAGRANDE" />;
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
+  const isCalcError = calcResult?.status === 'ERROR';
   const gate = evaluateGate(entitlements, ENGINE_ID);
   const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
   const upLayer = (i: number, k: keyof LayerRow, v: string) => setLayers((p) => p.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
@@ -564,7 +580,11 @@ export default function CasagrandePage() {
 
       {tab === 'resultats' && (
         <div style={card} data-testid="resultats">
-          {!output ? (
+          {isCalcError ? (
+            <div role="alert" style={{ padding: '12px 15px', borderRadius: 11, background: '#fbeae7', border: '1px solid #e0b3aa', color: '#8f2a1f', fontWeight: 700, fontSize: 15 }}>
+              Erreur moteur — calcul non abouti.
+            </div>
+          ) : !output ? (
             <div style={{ padding: '2rem', textAlign: 'center', color: MUTED }}>Sélectionnez un projet et cliquez sur <strong>Calculer</strong> pour lancer la vérification NF P 94-262.</div>
           ) : (
             <>

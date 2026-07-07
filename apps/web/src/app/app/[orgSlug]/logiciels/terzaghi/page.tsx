@@ -10,7 +10,7 @@
  */
 
 import { useParams } from 'next/navigation';
-import { useState, useCallback, useEffect, Fragment } from 'react';
+import { useState, useCallback, useEffect, useRef, Fragment } from 'react';
 
 import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
@@ -211,9 +211,26 @@ export default function TerzaghiPage() {
     setRtab('coupe');
   }, []);
 
+  // Invalidation § Lot 5bis (audit UI erreurs) : la saisie devenue périmée
+  // invalide le résultat déjà affiché — pas seulement au changement de projet.
+  // `buildPayload` change d'identité dès qu'un champ d'entrée (ou le projet)
+  // change ; on n'invalide pas au tout premier rendu (résultat déjà null).
+  const firstFormRender = useRef(true);
+  useEffect(() => {
+    if (firstFormRender.current) {
+      firstFormRender.current = false;
+      return;
+    }
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+    setRtab('coupe');
+  }, [buildPayload]);
+
   if (!mounted) return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement de Terzaghi" />;
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
+  const isCalcError = calcResult?.status === 'ERROR';
   // Gating tenant AMONT (avant le 403 serveur) : module non inclus / quota épuisé /
   // abo expiré -> bandeau + bouton désactivé. Fail-closed tant que ent est null
   // (evaluateGate(null, …) renvoie NOT_INCLUDED).
@@ -378,7 +395,11 @@ export default function TerzaghiPage() {
             )}
             {rtab === 'verifs' && (
               <div data-testid="verdict-banner">
-                {!output ? <div style={{ padding: '2rem', textAlign: 'center', color: MUTED }}>Sélectionnez un projet et cliquez sur <strong>Calculer</strong>.</div> : (
+                {isCalcError ? (
+                  <div role="alert" style={{ padding: '12px 15px', borderRadius: 11, background: '#f6e5e1', border: '1px solid #e0b3aa', color: '#8f2a1f', fontWeight: 700, fontSize: 15 }}>
+                    Erreur moteur — calcul non abouti.
+                  </div>
+                ) : !output ? <div style={{ padding: '2rem', textAlign: 'center', color: MUTED }}>Sélectionnez un projet et cliquez sur <strong>Calculer</strong>.</div> : (
                   <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 15px', borderRadius: 11, marginBottom: 14, background: output.verdict === 'PASS' ? '#e4efe6' : output.verdict === 'FAIL' ? '#f6e5e1' : '#f4edd8', border: `1px solid ${output.verdict === 'PASS' ? '#a9d0b3' : output.verdict === 'FAIL' ? '#e0b3aa' : '#e6cf9c'}` }}>
                       <b style={{ fontSize: 15, color: output.verdict === 'PASS' ? '#2e7d4f' : output.verdict === 'FAIL' ? '#b23a2e' : '#96701a' }}>{output.verdict === 'PASS' ? 'Fondation vérifiée — critères EC7 satisfaits' : output.verdict === 'FAIL' ? 'Fondation non vérifiée — reprise nécessaire' : 'Résultats de vérification'}</b>
@@ -396,7 +417,11 @@ export default function TerzaghiPage() {
               </div>
             )}
             {rtab === 'note' && (
-              output ? (
+              isCalcError ? (
+                <div role="alert" style={{ padding: '2rem', textAlign: 'center', color: '#8f2a1f' }}>
+                  Erreur moteur — calcul non abouti. Aucune note de calcul disponible.
+                </div>
+              ) : output ? (
                 <>
                   <NoteDeCalcul output={output} projet={projects.find((p) => p.id === projectId)?.name} pv={pvResult} />
                   {pvResult && (
