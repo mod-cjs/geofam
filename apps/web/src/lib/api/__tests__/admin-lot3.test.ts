@@ -10,7 +10,7 @@
  * correspondante dans la fonction exportée réelle (pas une réimpl locale).
  *
  * Couverture :
- *  - canSubmitCreateUser (CreateUserModal) : email, mot de passe ≥ 8, nom requis
+ *  - canSubmitCreateUser (CreateUserModal) : email, mot de passe ≥ 12, nom requis
  *  - canSubmitIdentityEdit (UserDetailClient) : validité + garde anti no-op (dirty-check)
  *  - canSubmitPlatformRole (UserDetailClient) : garde anti no-op (dirty-check)
  */
@@ -27,37 +27,37 @@ import { canSubmitIdentityEdit, canSubmitPlatformRole } from '@/components/admin
 describe('canSubmitCreateUser — validation du formulaire de création', () => {
   it('GIVEN email/mdp/nom valides — WHEN vérification — THEN autorise la soumission', () => {
     expect(
-      canSubmitCreateUser({ email: 'a@b.com', password: 'motdepasse', fullName: 'Awa Diop' }),
+      canSubmitCreateUser({ email: 'a@b.com', password: 'motdepasse12', fullName: 'Awa Diop' }),
     ).toBe(true);
   });
 
   it('GIVEN email invalide (sans @) — WHEN vérification — THEN refuse', () => {
     expect(
-      canSubmitCreateUser({ email: 'pas-un-email', password: 'motdepasse', fullName: 'Awa Diop' }),
+      canSubmitCreateUser({ email: 'pas-un-email', password: 'motdepasse12', fullName: 'Awa Diop' }),
     ).toBe(false);
   });
 
   it('GIVEN email sans domaine — WHEN vérification — THEN refuse', () => {
     expect(
-      canSubmitCreateUser({ email: 'a@b', password: 'motdepasse', fullName: 'Awa Diop' }),
+      canSubmitCreateUser({ email: 'a@b', password: 'motdepasse12', fullName: 'Awa Diop' }),
     ).toBe(false);
   });
 
-  it('GIVEN mot de passe de 7 caractères — WHEN vérification — THEN refuse (< 8)', () => {
+  it('GIVEN mot de passe de 11 caractères — WHEN vérification — THEN refuse (< 12)', () => {
     expect(
-      canSubmitCreateUser({ email: 'a@b.com', password: '1234567', fullName: 'Awa Diop' }),
+      canSubmitCreateUser({ email: 'a@b.com', password: '12345678901', fullName: 'Awa Diop' }),
     ).toBe(false);
   });
 
-  it('GIVEN mot de passe de 8 caractères pile — WHEN vérification — THEN autorise (borne incluse)', () => {
+  it('GIVEN mot de passe de 12 caractères pile — WHEN vérification — THEN autorise (borne incluse)', () => {
     expect(
-      canSubmitCreateUser({ email: 'a@b.com', password: '12345678', fullName: 'Awa Diop' }),
+      canSubmitCreateUser({ email: 'a@b.com', password: '123456789012', fullName: 'Awa Diop' }),
     ).toBe(true);
   });
 
   it('GIVEN nom vide (espaces seuls) — WHEN vérification — THEN refuse', () => {
     expect(
-      canSubmitCreateUser({ email: 'a@b.com', password: 'motdepasse', fullName: '   ' }),
+      canSubmitCreateUser({ email: 'a@b.com', password: 'motdepasse12', fullName: '   ' }),
     ).toBe(false);
   });
 });

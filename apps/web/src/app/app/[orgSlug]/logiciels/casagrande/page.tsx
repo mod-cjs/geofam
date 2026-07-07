@@ -14,6 +14,9 @@ import { useState, useCallback, useEffect } from 'react';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, OfficialPv } from '@/lib/api/types';
+import { evaluateGate } from '@/lib/subscription-gate';
+
+const ENGINE_ID = 'pieux';
 import { useOrgId } from '@/lib/org-context';
 
 type Section = 'circ' | 'carre' | 'rect' | 'quel';
@@ -229,7 +232,7 @@ export default function CasagrandePage() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<string>('');
-  const [, setEntitlements] = useState<EntitlementsResponse | null>(null);
+  const [entitlements, setEntitlements] = useState<EntitlementsResponse | null>(null);
 
   const [cat, setCat] = useState(1);
   const [section, setSection] = useState<Section>('circ');
@@ -319,7 +322,8 @@ export default function CasagrandePage() {
   if (!mounted) return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement de CASAGRANDE" />;
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
-  const calcDisabled = calculating || !projectId || !orgId;
+  const gate = evaluateGate(entitlements, ENGINE_ID);
+  const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
   const upLayer = (i: number, k: keyof LayerRow, v: string) => setLayers((p) => p.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
 
   return (
@@ -341,6 +345,12 @@ export default function CasagrandePage() {
           </button>
         </div>
       </div>
+
+      {!gate.allowed && (
+        <div style={{ ...card, background: '#f4edd8', borderColor: '#e6cf9c', color: '#96701a' }} role="alert">
+          {gate.message}
+        </div>
+      )}
 
       {calcError && <div style={{ ...card, background: '#fbeae7', borderColor: '#e0b3aa', color: '#8f2a1f' }} role="alert">{calcError}</div>}
 

@@ -22,6 +22,11 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, OfficialPv, HeatmapData } from '@/lib/api/types';
+import { evaluateGate, type GateStatus } from '@/lib/subscription-gate';
+
+// Les 3 modes 2D (bande/axi/tri-raft) partagent le MÊME gate que le mode principal :
+// tous dispatchent vers l'engineId de gate 'radier' côté backend (§8 : pas de moteur ici).
+const ENGINE_ID = 'radier';
 import { useOrgId } from '@/lib/org-context';
 
 interface Pt { x: string; y: string }
@@ -349,10 +354,10 @@ function PvBar({ emitting, onEmit, pv, testidSuffix }: { emitting: boolean; onEm
   );
 }
 
-interface TwoDBlockProps { orgId: string | null; projectId: string; projects: Project[] }
+interface TwoDBlockProps { orgId: string | null; projectId: string; projects: Project[]; gate: GateStatus }
 
 /** Bloc « Déformations planes — bande/poutre » (§2.4.2, moteur `plane-strain`). */
-function PlaneStrainBlock({ orgId, projectId, projects }: TwoDBlockProps) {
+function PlaneStrainBlock({ orgId, projectId, projects, gate }: TwoDBlockProps) {
   const [layers, setLayers] = useState<Layer[]>([{ zBase: '-10', E: '15', nu: '0.33' }]);
   const [Bw, setBw] = useState('10'); const [e, setE] = useState('0.5');
   const [E, setEBeton] = useState('30000'); const [nu, setNu] = useState('0.2');
@@ -392,7 +397,7 @@ function PlaneStrainBlock({ orgId, projectId, projects }: TwoDBlockProps) {
   }, [calcResult, orgId, projectId]);
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
-  const calcDisabled = calculating || !projectId || !orgId;
+  const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
 
   return (
     <div style={card}>
@@ -441,6 +446,7 @@ function PlaneStrainBlock({ orgId, projectId, projects }: TwoDBlockProps) {
       </table>
       <button onClick={() => setLayers((a) => [...a, { zBase: '', E: '', nu: '0.33' }])} style={addBtn}>+ Ajouter une couche</button>
 
+      {!gate.allowed && <div role="alert" style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: '#f4edd8', border: '1px solid #e6cf9c', color: '#96701a', fontSize: 12.5 }}>{gate.message}</div>}
       {calcError && <div role="alert" style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: '#f8e6ee', border: '1px solid #e0b3c8', color: '#8a2d55', fontSize: 12.5 }}>{calcError}</div>}
 
       <button data-testid="btn-calculer-plane-strain" onClick={handleCalculer} disabled={calcDisabled} aria-busy={calculating} title={!projectId ? 'Sélectionnez un projet avant de calculer' : undefined}
@@ -464,7 +470,7 @@ function PlaneStrainBlock({ orgId, projectId, projects }: TwoDBlockProps) {
 }
 
 /** Bloc « Axisymétrie — radier/dallage circulaire » (§2.4.1, moteur `axi`). */
-function AxiBlock({ orgId, projectId, projects }: TwoDBlockProps) {
+function AxiBlock({ orgId, projectId, projects, gate }: TwoDBlockProps) {
   const [layers, setLayers] = useState<Layer[]>([{ zBase: '-10', E: '15', nu: '0.33' }]);
   const [R, setR] = useState('6'); const [e, setE] = useState('0.4');
   const [E, setEBeton] = useState('30000'); const [nu, setNu] = useState('0.2');
@@ -503,7 +509,7 @@ function AxiBlock({ orgId, projectId, projects }: TwoDBlockProps) {
   }, [calcResult, orgId, projectId]);
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
-  const calcDisabled = calculating || !projectId || !orgId;
+  const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
 
   return (
     <div style={{ ...card, borderTop: `2px solid ${LINE}`, marginTop: 4 }}>
@@ -539,6 +545,7 @@ function AxiBlock({ orgId, projectId, projects }: TwoDBlockProps) {
       </table>
       <button onClick={() => setLayers((a) => [...a, { zBase: '', E: '', nu: '0.33' }])} style={addBtn}>+ Ajouter une couche</button>
 
+      {!gate.allowed && <div role="alert" style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: '#f4edd8', border: '1px solid #e6cf9c', color: '#96701a', fontSize: 12.5 }}>{gate.message}</div>}
       {calcError && <div role="alert" style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: '#f8e6ee', border: '1px solid #e0b3c8', color: '#8a2d55', fontSize: 12.5 }}>{calcError}</div>}
 
       <button data-testid="btn-calculer-axi" onClick={handleCalculer} disabled={calcDisabled} aria-busy={calculating} title={!projectId ? 'Sélectionnez un projet avant de calculer' : undefined}
@@ -571,7 +578,7 @@ function TriRaftDivergenceBanner() {
 }
 
 /** Bloc « Radier triangulaire — maillage DKT » (§2.2.2, moteur `tri-raft`). */
-function TriRaftBlock({ orgId, projectId, projects }: TwoDBlockProps) {
+function TriRaftBlock({ orgId, projectId, projects, gate }: TwoDBlockProps) {
   const [pts, setPts] = useState<Pt[]>([{ x: '0', y: '0' }, { x: '6', y: '0' }, { x: '6', y: '6' }, { x: '0', y: '6' }]);
   const [layers, setLayers] = useState<Layer[]>([{ zBase: '-10', E: '15', nu: '0.33' }]);
   const [target, setTarget] = useState('1.0'); const [e, setE] = useState('0.5');
@@ -613,7 +620,7 @@ function TriRaftBlock({ orgId, projectId, projects }: TwoDBlockProps) {
   }, [calcResult, orgId, projectId]);
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
-  const calcDisabled = calculating || !projectId || !orgId;
+  const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
 
   return (
     <div style={{ ...card, borderTop: `2px solid ${LINE}`, marginTop: 4 }}>
@@ -698,6 +705,7 @@ function TriRaftBlock({ orgId, projectId, projects }: TwoDBlockProps) {
       </table>
       <button onClick={() => setLayers((a) => [...a, { zBase: '', E: '', nu: '0.33' }])} style={addBtn}>+ Ajouter une couche</button>
 
+      {!gate.allowed && <div role="alert" style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: '#f4edd8', border: '1px solid #e6cf9c', color: '#96701a', fontSize: 12.5 }}>{gate.message}</div>}
       {calcError && <div role="alert" style={{ marginTop: 12, padding: '9px 12px', borderRadius: 8, background: '#f8e6ee', border: '1px solid #e0b3c8', color: '#8a2d55', fontSize: 12.5 }}>{calcError}</div>}
 
       <button data-testid="btn-calculer-tri-raft" onClick={handleCalculer} disabled={calcDisabled} aria-busy={calculating} title={!projectId ? 'Sélectionnez un projet avant de calculer' : undefined}
@@ -729,7 +737,7 @@ export default function GeoplaquePage() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState('');
-  const [, setEnt] = useState<EntitlementsResponse | null>(null);
+  const [ent, setEnt] = useState<EntitlementsResponse | null>(null);
 
   const [pts, setPts] = useState<Pt[]>([{ x: '0', y: '0' }, { x: '6', y: '0' }, { x: '6', y: '6' }, { x: '0', y: '6' }]);
   const [E, setE] = useState('30000'); const [nu, setNu] = useState('0.2'); const [e, setEp] = useState('0.4');
@@ -808,7 +816,8 @@ export default function GeoplaquePage() {
 
   const output = calcResult?.output as (NormalizedCalcOutput & { heatmap?: HeatmapData }) | null;
   const heatmap = output?.heatmap;
-  const calcDisabled = calculating || !projectId || !orgId;
+  const gate = evaluateGate(ent, ENGINE_ID);
+  const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
 
   return (
     <div style={{ maxWidth: 1120, margin: '0 auto', padding: '24px 20px 56px', fontFamily: 'inherit', color: INK }}>
@@ -829,6 +838,8 @@ export default function GeoplaquePage() {
           )}
         </div>
       </div>
+
+      {!gate.allowed && <div style={{ ...card, background: '#f4edd8', borderColor: '#e6cf9c', color: '#96701a' }} role="alert">{gate.message}</div>}
 
       {tab !== '2d' && calcError && <div style={{ ...card, background: '#f8e6ee', borderColor: '#e0b3c8', color: '#8a2d55' }} role="alert">{calcError}</div>}
 
@@ -1028,9 +1039,9 @@ export default function GeoplaquePage() {
           <p style={{ fontSize: 12, color: MUTED, margin: '0 0 4px' }}>
             Les 3 solveurs plans de GEOPLAQUE — même projet que l&apos;onglet <b>Modèle &amp; sol</b>, sol propre à chaque solveur ci-dessous.
           </p>
-          <PlaneStrainBlock orgId={orgId} projectId={projectId} projects={projects} />
-          <AxiBlock orgId={orgId} projectId={projectId} projects={projects} />
-          <TriRaftBlock orgId={orgId} projectId={projectId} projects={projects} />
+          <PlaneStrainBlock orgId={orgId} projectId={projectId} projects={projects} gate={gate} />
+          <AxiBlock orgId={orgId} projectId={projectId} projects={projects} gate={gate} />
+          <TriRaftBlock orgId={orgId} projectId={projectId} projects={projects} gate={gate} />
         </>
       )}
     </div>

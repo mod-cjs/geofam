@@ -17,7 +17,13 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, CalcOutputRow, OfficialPv } from '@/lib/api/types';
+import { evaluateGate } from '@/lib/subscription-gate';
 import { useOrgId } from '@/lib/org-context';
+
+// Gate unique pour les 3 moteurs de la page : pressiometre / pressio-etalonnage /
+// pressio-calibrage sont TOUS mappés sur le slug de gate 'pressiometre' côté backend
+// (subscription.guard.ts ENGINE_GATE_SLUG).
+const ENGINE_ID = 'pressiometre';
 
 interface Row { p: string; v15: string; v30: string; v60: string }
 
@@ -270,7 +276,7 @@ export default function PressioProPage() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState('');
-  const [, setEnt] = useState<EntitlementsResponse | null>(null);
+  const [ent, setEnt] = useState<EntitlementsResponse | null>(null);
 
   // Appareillage PARTAGÉ entre profondeurs (parité outil : getParams() global).
   const [sonde, setSonde] = useState('Ø 60 — Standard');
@@ -438,7 +444,8 @@ export default function PressioProPage() {
   }, [output]);
 
   if (!mounted) return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement de PressioPro" />;
-  const calcDisabled = calculating || !projectId || !orgId;
+  const gate = evaluateGate(ent, ENGINE_ID);
+  const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
   // Options de seuils : un item par palier renseigné + « Auto ».
   const seuilOptions = d.rows.map((r, i) => ({ i, p: num(r.p) })).filter((o) => o.p > 0);
 
@@ -459,6 +466,8 @@ export default function PressioProPage() {
           </button>
         </div>
       </div>
+
+      {!gate.allowed && <div style={{ ...card, background: '#f4edd8', borderColor: '#e6cf9c', color: '#96701a' }} role="alert">{gate.message}</div>}
 
       {calcError && <div style={{ ...card, background: '#f8e7e2', borderColor: '#e0bdb3', color: '#8a2d20' }} role="alert">{calcError}</div>}
 
@@ -562,7 +571,7 @@ export default function PressioProPage() {
             </table>
             <div style={{ display: 'flex', gap: 10, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <button onClick={() => setEtalRows((rs) => [...rs, emptyAppRow()])} style={addBtn}>+ Ajouter un palier</button>
-              <button data-testid="btn-etalonner" onClick={handleEtalonnage} disabled={appBusy || !projectId || !orgId}
+              <button data-testid="btn-etalonner" onClick={handleEtalonnage} disabled={appBusy || !projectId || !orgId || !gate.allowed}
                 style={{ marginLeft: 'auto', background: appBusy ? '#cbb8b2' : ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontWeight: 600, cursor: appBusy ? 'wait' : 'pointer', fontSize: 13 }}>
                 {appBusy ? 'Calcul…' : 'Calculer l’étalonnage →'}
               </button>
@@ -608,7 +617,7 @@ export default function PressioProPage() {
             </table>
             <div style={{ display: 'flex', gap: 10, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <button onClick={() => setCalibRows((rs) => [...rs, emptyAppRow()])} style={addBtn}>+ Ajouter un palier</button>
-              <button data-testid="btn-calibrer" onClick={handleCalibrage} disabled={appBusy || !projectId || !orgId}
+              <button data-testid="btn-calibrer" onClick={handleCalibrage} disabled={appBusy || !projectId || !orgId || !gate.allowed}
                 style={{ marginLeft: 'auto', background: appBusy ? '#cbb8b2' : ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontWeight: 600, cursor: appBusy ? 'wait' : 'pointer', fontSize: 13 }}>
                 {appBusy ? 'Calcul…' : 'Calculer le calibrage →'}
               </button>
@@ -741,7 +750,7 @@ export default function PressioProPage() {
         <div style={card} data-testid="profil">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
             <div style={secH}>Profil en profondeur — dépouillement de toutes les profondeurs</div>
-            <button onClick={handleProfil} disabled={profiling || !projectId || !orgId} data-testid="btn-profil"
+            <button onClick={handleProfil} disabled={profiling || !projectId || !orgId || !gate.allowed} data-testid="btn-profil"
               style={{ marginLeft: 'auto', background: profiling ? '#cbb8b2' : ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '8px 15px', fontWeight: 600, cursor: profiling ? 'wait' : 'pointer', fontSize: 13 }}>
               {profiling ? 'Calcul du profil…' : 'Calculer le profil →'}
             </button>

@@ -29,6 +29,18 @@ export interface OrgSubscriptionSummary {
   expired: boolean;
 }
 
+/**
+ * Détail d'abonnement (GET /admin/orgs/:id) : résumé + LISTE RÉELLE des
+ * entitlements (colonne subscriptions.entitlements). Miroir de
+ * OrgSubscriptionDetail côté backend (admin-orgs.service.ts). Le modal
+ * Modules DOIT s'initialiser depuis `entitlements`, jamais depuis le pack
+ * (bug corrigé : re-approximer depuis PACK_ENTITLEMENTS écrasait les vrais
+ * entitlements à l'enregistrement).
+ */
+export interface OrgSubscriptionDetail extends OrgSubscriptionSummary {
+  entitlements: string[];
+}
+
 export interface AdminOrgIdentity {
   id: string;
   name: string;
@@ -63,7 +75,8 @@ export interface OrgUsage {
 export interface AdminOrgDetail {
   org: AdminOrgIdentity;
   members: OrgMemberView[];
-  subscription: OrgSubscriptionSummary | null;
+  // DÉTAIL (avec entitlements RÉELS), pas le résumé : le modal Modules en a besoin.
+  subscription: OrgSubscriptionDetail | null;
   usage: OrgUsage;
 }
 

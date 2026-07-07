@@ -14,7 +14,10 @@ import { useState, useCallback, useEffect } from 'react';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, OfficialPv } from '@/lib/api/types';
+import { evaluateGate } from '@/lib/subscription-gate';
 import { useOrgId } from '@/lib/org-context';
+
+const ENGINE_ID = 'labo';
 
 interface WaterS { t: string; h: string; s: string }
 interface LLPoint { x: string; t: string; h: string; s: string }
@@ -305,7 +308,7 @@ export default function FastlabPage() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState('');
-  const [, setEnt] = useState<EntitlementsResponse | null>(null);
+  const [ent, setEnt] = useState<EntitlementsResponse | null>(null);
 
   // FORMULAIRES VIDES par defaut (revue adverse) : aucune mesure d'exemple pre-remplie
   // -> pas de PV scelle sur des donnees fictives. On conserve uniquement l'equipement et
@@ -374,7 +377,8 @@ export default function FastlabPage() {
   const cheminement = rows.filter((r) => /Justification du classement/i.test(r.label)).map((r) => String(r.value));
   // Paramètres = tout SAUF classe/description/justification (déjà dans la carte + cheminement).
   const paramRows = rows.filter((r) => !/^(Classe GTR|Description|Justification du classement)/.test(r.label));
-  const calcDisabled = calculating || !projectId || !orgId;
+  const gate = evaluateGate(ent, ENGINE_ID);
+  const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
 
   return (
     <div style={{ maxWidth: 1080, margin: '0 auto', padding: '24px 20px 56px', fontFamily: 'inherit', color: INK }}>
@@ -393,6 +397,8 @@ export default function FastlabPage() {
           </button>
         </div>
       </div>
+
+      {!gate.allowed && <div style={{ ...card, background: '#f4edd8', borderColor: '#e6cf9c', color: '#96701a' }} role="alert">{gate.message}</div>}
 
       {calcError && <div style={{ ...card, background: '#f5efe0', borderColor: '#ddd0a8', color: '#7a5a1e' }} role="alert">{calcError}</div>}
 

@@ -15,7 +15,10 @@ import { useState, useCallback, useEffect, Fragment } from 'react';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, OfficialPv, CalcOutputRow } from '@/lib/api/types';
+import { evaluateGate } from '@/lib/subscription-gate';
 import { useOrgId } from '@/lib/org-context';
+
+const ENGINE_ID = 'terzaghi';
 
 // ── Types (miroir borné de TerzaghiInputSchema) ──
 type Forme = 'filante' | 'carree' | 'rect' | 'circ';
@@ -140,7 +143,7 @@ export default function TerzaghiPage() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState('');
-  const [, setEnt] = useState<EntitlementsResponse | null>(null);
+  const [ent, setEnt] = useState<EntitlementsResponse | null>(null);
 
   const [essai, setEssai] = useState<Essai>('pressio');
   const [profilMode, setProfilMode] = useState<ProfilMode>('couches');
@@ -203,7 +206,11 @@ export default function TerzaghiPage() {
   if (!mounted) return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement de Terzaghi" />;
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
-  const calcDisabled = calculating || !projectId || !orgId;
+  // Gating tenant AMONT (avant le 403 serveur) : module non inclus / quota épuisé /
+  // abo expiré -> bandeau + bouton désactivé. Fail-closed tant que ent est null
+  // (evaluateGate(null, …) renvoie NOT_INCLUDED).
+  const gate = evaluateGate(ent, ENGINE_ID);
+  const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
   const upS = (i: number, k: keyof SondageRow, v: string) => setSondage((p) => p.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
   const upC = (i: number, k: keyof ChargeRow, v: string) => setCharges((p) => p.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
   const applyAlpha = (fr: string) => { const v = FRAC[fr] ?? fr; setSondage((p) => p.map((r) => ({ ...r, al: v }))); setGuide(null); };
@@ -227,6 +234,12 @@ export default function TerzaghiPage() {
           </button>
         </div>
       </div>
+
+      {!gate.allowed && (
+        <div style={{ ...card, background: '#f4edd8', borderColor: '#e6cf9c', color: '#96701a', padding: '11px 15px' }} role="alert">
+          {gate.message}
+        </div>
+      )}
 
       {calcError && <div style={{ ...card, background: '#f6e5e1', borderColor: '#e0b3aa', color: '#8f2a1f', padding: '11px 15px' }} role="alert">{calcError}</div>}
 

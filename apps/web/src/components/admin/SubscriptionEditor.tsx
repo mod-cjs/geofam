@@ -25,7 +25,7 @@ import {
   clientRenew,
   clientTopUp,
 } from '@/lib/api/admin-mutations-client';
-import type { AdminOrgDetail, OrgSubscriptionSummary } from '@/lib/api/admin-server';
+import type { AdminOrgDetail, OrgSubscriptionDetail } from '@/lib/api/admin-server';
 
 // Modules connus. Le `slug` STOCKÉ dans les entitlements DOIT être le slug de GATE du
 // calcul (celui que SubscriptionGuard/assertAccess vérifie), PAS le nom du logiciel.
@@ -45,7 +45,7 @@ const PACKS = ['ROUTES', 'FONDATIONS', 'COMPLETE'] as const;
 
 interface SubscriptionEditorProps {
   orgId: string;
-  subscription: OrgSubscriptionSummary | null;
+  subscription: OrgSubscriptionDetail | null;
   onMutated: (detail: AdminOrgDetail) => void;
 }
 
@@ -145,7 +145,7 @@ export function SubscriptionEditor({
 // Lecture (réutilise l'affichage Lot 1 en dl)
 // ---------------------------------------------------------------------------
 
-function SubscriptionReadView({ subscription }: { subscription: OrgSubscriptionSummary }) {
+function SubscriptionReadView({ subscription }: { subscription: OrgSubscriptionDetail }) {
   const rows: { label: string; value: React.ReactNode }[] = [
     { label: 'Pack', value: subscription.pack },
     {
@@ -230,7 +230,7 @@ function TopUpModal({
 }: {
   open: boolean;
   orgId: string;
-  subscription: OrgSubscriptionSummary | null;
+  subscription: OrgSubscriptionDetail | null;
   onClose: () => void;
   onMutated: (detail: AdminOrgDetail) => void;
 }) {
@@ -573,14 +573,18 @@ function EntitlementsModal({
 }: {
   open: boolean;
   orgId: string;
-  subscription: OrgSubscriptionSummary | null;
+  subscription: OrgSubscriptionDetail | null;
   onClose: () => void;
   onMutated: (detail: AdminOrgDetail) => void;
 }) {
   const intentionKeyRef = useRef<string | null>(null);
 
-  // L'abonnement n'expose pas `entitlements` directement dans OrgSubscriptionSummary.
-  // On initialise depuis le pack courant (même logique que le wizard).
+  // Vérité serveur : `subscription.entitlements` (colonne subscriptions.entitlements),
+  // JAMAIS re-approximée depuis PACK_ENTITLEMENTS[pack] — l'ancienne logique écrasait
+  // les vrais entitlements à l'enregistrement (BLOQUANT corrigé ici, cf. commentaire
+  // au-dessus de OrgSubscriptionDetail).
+  const entitlementsAvailable = Array.isArray(subscription?.entitlements);
+
   const [pack, setPack] = useState(subscription?.pack ?? 'COMPLETE');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -593,11 +597,12 @@ function EntitlementsModal({
       if (!intentionKeyRef.current) {
         intentionKeyRef.current = crypto.randomUUID();
       }
-      const currentPack = subscription?.pack ?? 'COMPLETE';
-      setPack(currentPack);
-      // Initialiser depuis le pack courant (approximation — l'API ne renvoie pas la
-      // liste fine des entitlements dans le résumé abonnement).
-      setSelected(new Set(PACK_ENTITLEMENTS[currentPack] ?? []));
+      setPack(subscription?.pack ?? 'COMPLETE');
+      // Initialiser DEPUIS la vérité serveur. Si elle n'est pas disponible
+      // (subscription null / champ absent d'une réponse mise en cache), on part
+      // d'un ensemble vide et le bouton Enregistrer reste désactivé plus bas —
+      // jamais d'écrasement silencieux par une approximation pack.
+      setSelected(new Set(subscription?.entitlements ?? []));
       setError(undefined);
     } else {
       intentionKeyRef.current = null;
@@ -614,8 +619,14 @@ function EntitlementsModal({
     });
   }
 
+  // Action EXPLICITE : propose les modules du pack sélectionné (n'écrase jamais
+  // silencieusement — l'utilisateur clique délibérément pour appliquer).
+  function applyPackDefaults() {
+    setSelected(new Set(PACK_ENTITLEMENTS[pack] ?? []));
+  }
+
   async function handleSubmit() {
-    if (loading || !intentionKeyRef.current) return;
+    if (loading || !intentionKeyRef.current || !entitlementsAvailable) return;
     setLoading(true);
     setError(undefined);
     try {
@@ -650,7 +661,7 @@ function EntitlementsModal({
             variant="action"
             size="sm"
             onClick={handleSubmit}
-            disabled={loading}
+            disabled={loading || !entitlementsAvailable}
             loading={loading}
           >
             Enregistrer
@@ -659,27 +670,56 @@ function EntitlementsModal({
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {!entitlementsAvailable && (
+          <div
+            role="alert"
+            style={{
+              background: 'var(--status-warn-bg, rgba(255,193,7,0.1))',
+              border: '1px solid var(--status-warn-bd, rgba(255,193,7,0.4))',
+              borderRadius: 'var(--radius-base)',
+              padding: '10px 12px',
+              fontSize: 13,
+              color: 'var(--text-primary)',
+            }}
+          >
+            Liste des modules indisponible pour cette organisation — enregistrement
+            désactivé (pour ne pas écraser les modules réels avec une approximation).
+          </div>
+        )}
+
         {/* Pack */}
         <div>
           <label htmlFor={packId} style={labelStyle}>
             Pack
           </label>
-          <select
-            id={packId}
-            value={pack}
-            onChange={(e) => setPack(e.target.value)}
-            style={fieldStyle}
-          >
-            {PACKS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select
+              id={packId}
+              value={pack}
+              onChange={(e) => setPack(e.target.value)}
+              style={{ ...fieldStyle, flex: 1 }}
+            >
+              {PACKS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+            <Button variant="ghost" size="sm" onClick={applyPackDefaults}>
+              Appliquer les modules du pack
+            </Button>
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+            Changer le pack ne modifie pas la sélection ci-dessous — cliquez sur
+            « Appliquer les modules du pack » pour la remplacer.
+          </p>
         </div>
 
         {/* Modules */}
-        <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
+        <fieldset
+          disabled={!entitlementsAvailable}
+          style={{ border: 'none', padding: 0, margin: 0 }}
+        >
           <legend
             style={{
               fontSize: 12,

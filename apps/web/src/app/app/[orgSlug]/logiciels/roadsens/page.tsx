@@ -26,7 +26,10 @@ import type {
   EntitlementsResponse,
 } from '@/lib/api/types';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
+import { evaluateGate } from '@/lib/subscription-gate';
 import { useOrgId } from '@/lib/org-context';
+
+const ENGINE_ID = 'burmister';
 
 // ---------------------------------------------------------------------------
 // Constantes de matériaux — DISPLAY ONLY (pas de coefficients de calcul)
@@ -949,6 +952,11 @@ export default function RoadsensPage() {
   // Rendu
   // --------------------------------------------------------------------------
 
+  // Gating tenant AMONT (avant le 403 serveur) : module non inclus / quota épuisé /
+  // abo expiré -> bandeau + bouton désactivé. Fail-closed tant que entitlements est
+  // null (evaluateGate(null, …) renvoie NOT_INCLUDED).
+  const gate = evaluateGate(entitlements, ENGINE_ID);
+
   return (
     <div
       style={{
@@ -1087,16 +1095,16 @@ export default function RoadsensPage() {
         {/* Bouton Calculer */}
         <button
           onClick={() => void handleCalculer()}
-          disabled={calculating || !projectId || !orgId}
+          disabled={calculating || !projectId || !orgId || !gate.allowed}
           aria-busy={calculating}
-          aria-disabled={!projectId || !orgId}
+          aria-disabled={!projectId || !orgId || !gate.allowed}
           title={!projectId ? 'Sélectionnez un projet avant de calculer' : undefined}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: 7,
             background:
-              calculating || !projectId || !orgId
+              calculating || !projectId || !orgId || !gate.allowed
                 ? '#143a61'
                 : 'linear-gradient(135deg, #1a4a7a, #143a61)',
             color: '#fff',
@@ -1106,12 +1114,12 @@ export default function RoadsensPage() {
             fontWeight: 600,
             letterSpacing: '0.01em',
             borderRadius: 12,
-            cursor: calculating || !projectId || !orgId ? 'not-allowed' : 'pointer',
+            cursor: calculating || !projectId || !orgId || !gate.allowed ? 'not-allowed' : 'pointer',
             boxShadow:
-              calculating || !projectId || !orgId
+              calculating || !projectId || !orgId || !gate.allowed
                 ? 'none'
                 : '0 7px 17px -7px rgba(26,74,122,.7)',
-            opacity: calculating || !projectId || !orgId ? 0.55 : 1,
+            opacity: calculating || !projectId || !orgId || !gate.allowed ? 0.55 : 1,
             transition: 'opacity .15s, box-shadow .15s',
             flexShrink: 0,
           }}
@@ -1156,6 +1164,25 @@ export default function RoadsensPage() {
           )}
         </button>
       </div>
+
+      {/* Bandeau module non inclus / quota / abo (gating tenant amont) */}
+      {!gate.allowed && (
+        <div
+          role="alert"
+          style={{
+            margin: '0 0 14px',
+            padding: '10px 15px',
+            background: '#fdf6e3',
+            border: '1px solid #e6cf9c',
+            borderLeft: '3px solid #96701a',
+            borderRadius: 10,
+            fontSize: 12.5,
+            color: '#7a5a10',
+          }}
+        >
+          {gate.message}
+        </div>
+      )}
 
       {/* Bandeau erreur calcul */}
       {calcError && (
