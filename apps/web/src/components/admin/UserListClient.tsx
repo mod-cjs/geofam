@@ -12,6 +12,8 @@ import Link from 'next/link';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useCallback, useState, useTransition } from 'react';
 
+import { Button } from '@/components/ui/Button';
+import { CreateUserModal } from './CreateUserModal';
 import {
   clientResetPassword,
   clientSetUserActive,
@@ -46,6 +48,11 @@ export function UserListClient({ users, q }: UserListClientProps) {
   const [resetFor, setResetFor] = useState<AdminUserView | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [resetDone, setResetDone] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+
+  function handleCreated() {
+    router.refresh();
+  }
 
   const updateSearch = useCallback(
     (value: string) => {
@@ -96,9 +103,18 @@ export function UserListClient({ users, q }: UserListClientProps) {
 
   return (
     <div style={{ padding: 'var(--sp-6)' }}>
-      {/* Barre de recherche */}
-      <div style={{ marginBottom: 'var(--sp-4)', maxWidth: 360 }}>
-        <div style={{ position: 'relative' }}>
+      {/* Barre de recherche + création */}
+      <div
+        style={{
+          marginBottom: 'var(--sp-4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ position: 'relative', maxWidth: 360, flex: '1 1 260px' }}>
           <Search
             size={14}
             strokeWidth={1.5}
@@ -132,6 +148,9 @@ export function UserListClient({ users, q }: UserListClientProps) {
             }}
           />
         </div>
+        <Button variant="action" size="sm" onClick={() => setCreateOpen(true)}>
+          Nouvel utilisateur
+        </Button>
       </div>
 
       {error && (
@@ -373,6 +392,9 @@ export function UserListClient({ users, q }: UserListClientProps) {
           </div>
         </div>
       )}
+
+      {/* Modal création d'utilisateur */}
+      <CreateUserModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={handleCreated} />
     </div>
   );
 }

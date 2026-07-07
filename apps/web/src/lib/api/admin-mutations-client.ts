@@ -263,3 +263,38 @@ export async function clientResetPassword(
     idempotencyKey,
   );
 }
+
+/**
+ * Édite l'IDENTITÉ d'un compte GLOBAL (email + nom) — PATCH /admin/users/:id.
+ * 409 (R0012) si l'email est déjà porté par un AUTRE compte.
+ */
+export async function clientUpdateUserIdentity(
+  userId: string,
+  data: { email: string; fullName: string },
+  idempotencyKey: string,
+): Promise<{ userId: string }> {
+  return adminMutate<{ userId: string }>(
+    `/admin/users/${encodeURIComponent(userId)}`,
+    { method: 'PATCH', body: JSON.stringify(data) },
+    idempotencyKey,
+  );
+}
+
+export type PlatformRoleValue = 'SUPERADMIN' | 'SUPPORT' | null;
+
+/**
+ * Attribue / retire le rôle PLATEFORME (SUPERADMIN | SUPPORT | null) — PATCH
+ * /admin/users/:id/platform-role. 409 (R0013) si retrait du dernier SUPERADMIN
+ * actif ; 400 (R0014) si auto-rétrogradation.
+ */
+export async function clientSetPlatformRole(
+  userId: string,
+  data: { role: PlatformRoleValue },
+  idempotencyKey: string,
+): Promise<{ userId: string; platformRole: PlatformRoleValue }> {
+  return adminMutate<{ userId: string; platformRole: PlatformRoleValue }>(
+    `/admin/users/${encodeURIComponent(userId)}/platform-role`,
+    { method: 'PATCH', body: JSON.stringify(data) },
+    idempotencyKey,
+  );
+}

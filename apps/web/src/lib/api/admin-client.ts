@@ -7,7 +7,7 @@
  * Confidentialité DoD §8 : aucun import @roadsen/engines.
  */
 
-import type { AdminUserView } from './admin-server';
+import type { AdminOrgListItem, AdminUserView } from './admin-server';
 
 const API_BASE =
   (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_BASE_URL : undefined) ?? '';
@@ -63,6 +63,12 @@ async function adminFetch<T>(
 export async function clientSearchUsers(q: string): Promise<AdminUserView[]> {
   const params = new URLSearchParams({ q, limit: '10' });
   return adminFetch<AdminUserView[]>(`/admin/users?${params.toString()}`);
+}
+
+/** Recherche d'organisations (fiche utilisateur — « Ajouter à une org »). */
+export async function clientSearchOrgs(q: string): Promise<AdminOrgListItem[]> {
+  const params = new URLSearchParams({ q, limit: '10' });
+  return adminFetch<AdminOrgListItem[]>(`/admin/orgs?${params.toString()}`);
 }
 
 /** Crée un utilisateur (étape 1 du wizard — création inline). */
