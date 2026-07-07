@@ -15,6 +15,16 @@
 
 import { useParams } from 'next/navigation';
 import { useState, useCallback, useEffect, useId } from 'react';
+import {
+  Route,
+  Calculator,
+  Layers,
+  Truck,
+  SlidersHorizontal,
+  BookOpen,
+  BarChart3,
+  Microscope,
+} from 'lucide-react';
 
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type {
@@ -56,48 +66,54 @@ interface MaterialUI {
  */
 const MATERIALS: Record<string, MaterialUI> = {
   BBSG1: {
-    label: 'BBSG classe 1',
+    label: 'BBSG classe 1 (E = 1 512 MPa — T.54)',
     E: 1512,
     nu: 0.45,
     color: '#1e1e1e',
     nature: 'bitumineux',
   },
   BBSG2: {
-    label: 'BBSG classe 2/3',
+    label: 'BBSG classe 2/3 (E = 1 896 MPa — T.54)',
     E: 1896,
     nu: 0.45,
     color: '#0a0a0a',
     nature: 'bitumineux',
   },
   BBTM: {
-    label: 'BB Très Mince (BBTM)',
+    label: 'BB Très Mince (BBTM) (E = 2 500 MPa — T.54)',
     E: 2500,
     nu: 0.45,
     color: '#2a2a2a',
     nature: 'bitumineux',
   },
   BBM: {
-    label: 'BB Mince (BBM)',
+    label: 'BB Mince (BBM) (E = 2 500 MPa — T.54)',
     E: 2500,
     nu: 0.45,
     color: '#2f2f2f',
     nature: 'bitumineux',
   },
   GB2: {
-    label: 'Grave Bitume GB2',
+    label: 'Grave Bitume GB2 (E = 2 588 MPa — T.44)',
     E: 2588,
     nu: 0.45,
     color: '#383838',
     nature: 'bitumineux',
   },
   GB3: {
-    label: 'Grave Bitume GB3',
+    label: 'Grave Bitume GB3 (E = 2 588 MPa — T.44)',
     E: 2588,
     nu: 0.45,
     color: '#303030',
     nature: 'bitumineux',
   },
-  EME2: { label: 'EME2', E: 6151, nu: 0.45, color: '#1c1c1c', nature: 'bitumineux' },
+  EME2: {
+    label: 'EME2 (E = 6 151 MPa — T.50)',
+    E: 6151,
+    nu: 0.45,
+    color: '#1c1c1c',
+    nature: 'bitumineux',
+  },
   GL1: {
     label: 'Latérite GL1',
     E: 200,
@@ -171,6 +187,47 @@ const MATERIALS: Record<string, MaterialUI> = {
     color: '#d0d0c8',
     nature: 'mtlh',
   },
+};
+
+/**
+ * Lois de fatigue — matériaux bitumineux (LCPC 1994, valeurs PUBLIQUES du catalogue
+ * AGEROUTE 2015). Affichage LECTURE SEULE (décision titulaire) : aucun branchement au
+ * calcul, qui reste exclusivement serveur (DoD §8). ε₆/b/Kc ne sont PAS des coefficients
+ * de calage confidentiels ici — ce sont les valeurs normatives publiées du catalogue.
+ */
+interface FatigueBitEntry {
+  label: string;
+  e6: number; // ε₆ (μdef)
+  b: number;
+  kc: number;
+  source: string;
+}
+const FATIGUE_BIT: Record<string, FatigueBitEntry> = {
+  BBSG1: { label: 'BBSG classe 1', e6: 100, b: 5, kc: 1.1, source: 'T.54' },
+  BBSG2: { label: 'BBSG classe 2/3', e6: 100, b: 5, kc: 1.1, source: 'T.54' },
+  BBTM: { label: 'BB Très Mince (BBTM)', e6: 100, b: 5, kc: 1.1, source: 'T.54' },
+  BBM: { label: 'BB Mince (BBM)', e6: 100, b: 5, kc: 1.1, source: 'T.54' },
+  GB2: { label: 'Grave Bitume GB2', e6: 80, b: 5, kc: 1.3, source: 'T.44' },
+  GB3: { label: 'Grave Bitume GB3', e6: 90, b: 5, kc: 1.3, source: 'T.44' },
+  EME2: { label: 'EME2', e6: 130, b: 5, kc: 1.0, source: 'T.50' },
+};
+
+/** Lois de fatigue — matériaux MTLH (LCPC 1994, valeurs publiques du catalogue). */
+interface FatigueMtlhEntry {
+  label: string;
+  s6: number; // σ₆ (MPa)
+  b: number; // affiché 1/b
+  kc: number;
+  source: string;
+}
+const FATIGUE_MTLH: Record<string, FatigueMtlhEntry> = {
+  GLc1: { label: 'Latérite ciment GLc1', s6: 0.19, b: 11, kc: 1.4, source: 'T.19' },
+  GLc2: { label: 'Latérite ciment GLc2', s6: 0.37, b: 11, kc: 1.4, source: 'T.19' },
+  GC3: { label: 'Grave Ciment GC-T3', s6: 0.75, b: 15, kc: 1.4, source: 'T.33' },
+  SC2: { label: 'Sable Ciment SC-T2', s6: 0.5, b: 12, kc: 1.5, source: 'T.33' },
+  BQc: { label: 'Banco-coquillage (BQc)', s6: 0.3, b: 11, kc: 1.4, source: 'T.35' },
+  BC5: { label: 'Béton BC5', s6: 2.15, b: 16, kc: 1.5, source: 'T.37' },
+  BC2: { label: 'Béton Maigre BC2', s6: 1.37, b: 14, kc: 1.5, source: 'T.37' },
 };
 
 /** Preset de modules des classes de plateforme support (AGEROUTE 2015). */
@@ -774,20 +831,20 @@ const DEFAULT_LOAD: Load = {
   ks: 'auto',
 };
 
-const TABS: Array<{ id: TabId; label: string }> = [
-  { id: 'structure', label: 'Structure' },
-  { id: 'trafic', label: 'Trafic' },
-  { id: 'parametres', label: 'Paramètres' },
-  { id: 'catalogue', label: 'Catalogue' },
-  { id: 'resultats', label: 'Résultats' },
-  { id: 'details', label: 'Détails calcul' },
+const TABS: Array<{ id: TabId; label: string; Icon: typeof Layers }> = [
+  { id: 'structure', label: 'Structure', Icon: Layers },
+  { id: 'trafic', label: 'Trafic', Icon: Truck },
+  { id: 'parametres', label: 'Paramètres', Icon: SlidersHorizontal },
+  { id: 'catalogue', label: 'Catalogue', Icon: BookOpen },
+  { id: 'resultats', label: 'Résultats', Icon: BarChart3 },
+  { id: 'details', label: 'Détails calcul', Icon: Microscope },
 ];
 
 /** Styles de badge matériau (nature). */
 const NATURE_STYLE: Record<LayerNature, { bg: string; color: string; label: string }> = {
   bitumineux: { bg: '#e6eaef', color: '#33414f', label: 'Bitumineux' },
-  granulaire: { bg: '#fbf1e8', color: '#8a4a18', label: 'Granulaire' },
-  mtlh: { bg: '#f7edd9', color: '#7a5200', label: 'MTLH' },
+  granulaire: { bg: '#fbf1e8', color: '#bd6a30', label: 'Granulaire' },
+  mtlh: { bg: '#f7edd9', color: '#92600a', label: 'MTLH' },
 };
 
 export default function RoadsensPage() {
@@ -1023,21 +1080,14 @@ export default function RoadsensPage() {
               pointerEvents: 'none',
             }}
           />
-          <svg
+          <Route
             width={21}
             height={21}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#fff"
+            color="#fff"
             strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
             style={{ position: 'relative', zIndex: 1 }}
-          >
-            {/* Road / layers icon */}
-            <path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
-            <polyline points="11 1 11 7 17 7" />
-          </svg>
+            aria-hidden="true"
+          />
         </div>
 
         {/* Nom + badges + sous-titre */}
@@ -1074,8 +1124,8 @@ export default function RoadsensPage() {
             </span>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3 }}>
-            Solution exacte multi-couche · AGEROUTE Sénégal 2015 · T_éq = 34 °C · Dual
-            wheels · Aucun Odemark
+            Solution exacte multi-couche (éq. 6a–6e · J. Appl. Phys. 1945) · AGEROUTE
+            Sénégal 2015 · T_éq = 34 °C · Dual wheels · Aucun Odemark
           </div>
         </div>
 
@@ -1150,26 +1200,11 @@ export default function RoadsensPage() {
                   verticalAlign: -2,
                 }}
               />
-              Calcul…
+              Calcul Burmister…
             </>
           ) : (
             <>
-              <svg
-                width={16}
-                height={16}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#fff"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <rect x="4" y="2" width="16" height="20" rx="2" />
-                <line x1="8" y1="6" x2="16" y2="6" />
-                <line x1="8" y1="10" x2="16" y2="10" />
-                <line x1="8" y1="14" x2="12" y2="14" />
-              </svg>
+              <Calculator width={16} height={16} color="#fff" aria-hidden="true" />
               Calculer
             </>
           )}
@@ -1289,6 +1324,7 @@ export default function RoadsensPage() {
                   (e.currentTarget as HTMLElement).style.background = 'transparent';
               }}
             >
+              <tab.Icon width={14} height={14} aria-hidden="true" />
               {tab.label}
             </button>
           );
@@ -1357,6 +1393,9 @@ export default function RoadsensPage() {
         <TabResultats
           result={calcResult}
           ne={computeNE(traffic)}
+          traffic={traffic}
+          pf={pf}
+          load={load}
           onEmitPv={() => void handleEmitPv()}
           emittingPv={emittingPv}
           pvResult={pvResult}
@@ -1584,7 +1623,7 @@ function TabStructure({
   return (
     <div>
       {/* ── Table couches ── */}
-      <SectionTitle>Couches — surface vers fond</SectionTitle>
+      <SectionTitle>Couches — surface → fond</SectionTitle>
 
       <div style={{ overflowX: 'auto' }}>
         <table
@@ -2039,8 +2078,11 @@ function TabTrafic({
 
       <Note>
         Valeurs-guides issues du catalogue AGEROUTE Sénégal 2015 (Annexe F, par type de
-        structure). Si une campagne de pesage est disponible, calculez le CAM réel et
-        saisissez-le directement.
+        structure ; plages basses/hautes citées au chapitre « classe de trafic NE »). Le
+        catalogue ne fixe pas de CAM par défaut : sa valeur résulte du pesage des poids
+        lourds et est fortement sensible aux surcharges. Si une campagne de pesage est
+        disponible, calculez le CAM réel et saisissez-le directement — la case reste
+        librement modifiable.
       </Note>
 
       {/* Résumé trafic — ESTIMATION à la saisie (aperçu). La valeur qui fait foi est le
@@ -2117,6 +2159,144 @@ function TabTrafic({
       <Note>
         NE = 365 × TMJA × C × CAM × f_dir × f_tv &nbsp;·&nbsp; C = [(1+τ)ⁿ − 1] / τ
       </Note>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tables de lois de fatigue — LECTURE SEULE (valeurs publiques du catalogue)
+// ---------------------------------------------------------------------------
+
+const fatigueThStyle: React.CSSProperties = {
+  textAlign: 'left',
+  padding: '9px 11px',
+  background: 'var(--surface-canvas)',
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: '0.05em',
+  textTransform: 'uppercase',
+  color: 'var(--text-secondary)',
+  borderBottom: '1px solid var(--border-subtle)',
+};
+
+const fatigueTdStyle: React.CSSProperties = {
+  padding: '8px 11px',
+  borderBottom: '1px solid var(--border-subtle)',
+};
+
+const fatigueDisabledInputStyle: React.CSSProperties = {
+  ...inputStyle,
+  width: 65,
+  textAlign: 'right',
+  background: 'var(--surface-canvas)',
+  color: 'var(--text-secondary)',
+  cursor: 'not-allowed',
+};
+
+/** Table « Lois de fatigue — bitumineux » — lecture seule, non branchée au calcul. */
+function FatigueBitTable() {
+  const entries = Object.entries(FATIGUE_BIT);
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table
+        style={{
+          width: '100%',
+          borderCollapse: 'separate',
+          borderSpacing: 0,
+          fontSize: 12.5,
+          background: 'var(--surface-base)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 12,
+          overflow: 'hidden',
+        }}
+        aria-label="Lois de fatigue — matériaux bitumineux (lecture seule)"
+      >
+        <thead>
+          <tr>
+            {['Matériau', 'ε₆ (µdef)', 'b', 'Kc', 'Source'].map((th) => (
+              <th key={th} style={fatigueThStyle}>
+                {th}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map(([key, v], i) => (
+            <tr key={key} style={i === entries.length - 1 ? undefined : undefined}>
+              <td style={fatigueTdStyle}>{v.label}</td>
+              <td style={fatigueTdStyle}>
+                <input
+                  type="number"
+                  value={v.e6}
+                  disabled
+                  aria-label={`ε₆ ${v.label} (µdef, lecture seule)`}
+                  style={fatigueDisabledInputStyle}
+                  readOnly
+                />
+              </td>
+              <td style={fatigueTdStyle}>{v.b}</td>
+              <td style={fatigueTdStyle}>{v.kc}</td>
+              <td style={{ ...fatigueTdStyle, fontSize: 10.5, color: 'var(--text-secondary)' }}>
+                {v.source}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Table « Lois de fatigue — MTLH » — lecture seule, non branchée au calcul. */
+function FatigueMtlhTable() {
+  const entries = Object.entries(FATIGUE_MTLH);
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table
+        style={{
+          width: '100%',
+          borderCollapse: 'separate',
+          borderSpacing: 0,
+          fontSize: 12.5,
+          background: 'var(--surface-base)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 12,
+          overflow: 'hidden',
+        }}
+        aria-label="Lois de fatigue — matériaux MTLH (lecture seule)"
+      >
+        <thead>
+          <tr>
+            {['Matériau', 'σ₆ (MPa)', 'b', 'Kc', 'Source'].map((th) => (
+              <th key={th} style={fatigueThStyle}>
+                {th}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map(([key, v]) => (
+            <tr key={key}>
+              <td style={fatigueTdStyle}>{v.label}</td>
+              <td style={fatigueTdStyle}>
+                <input
+                  type="number"
+                  value={v.s6}
+                  disabled
+                  aria-label={`σ₆ ${v.label} (MPa, lecture seule)`}
+                  style={fatigueDisabledInputStyle}
+                  readOnly
+                />
+              </td>
+              <td style={fatigueTdStyle}>{`1/${v.b}`}</td>
+              <td style={fatigueTdStyle}>{v.kc}</td>
+              <td style={{ ...fatigueTdStyle, fontSize: 10.5, color: 'var(--text-secondary)' }}>
+                {v.source}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -2250,10 +2430,25 @@ function TabParametres({ load, onUpdate }: { load: Load; onUpdate: (l: Load) => 
         ε_t_adm = ε₆ · kθ · (NE/10⁶)<sup>b</sup> · kr · kc · ks — LCPC 1994 (VI.4.2)
         &nbsp;·&nbsp; kθ = √(E(10°C)/E(θ_éq=34°C))
       </div>
+      <FatigueBitTable />
+
+      <SectionTitle>Lois de fatigue — MTLH</SectionTitle>
+      <div
+        style={{
+          fontSize: 11,
+          color: 'var(--text-secondary)',
+          marginBottom: '0.4rem',
+        }}
+      >
+        σ_t_adm = σ₆ · (NE/10⁶)<sup>b</sup> · kr · kc · ks [MPa] — LCPC 1994
+      </div>
+      <FatigueMtlhTable />
       <Note>
-        Les coefficients de fatigue (ε₆, b, kc, Sh) sont appliqués côté serveur uniquement
-        et ne sont pas exposés ici. Le résultat de vérification (ε_t/ε_t,adm) sera affiché
-        dans l&apos;onglet Résultats après calcul.
+        Tableaux affichés en lecture seule (valeurs publiques du catalogue AGEROUTE 2015).
+        L&apos;édition en direct de ces lois arrivera dans une prochaine itération, une
+        fois branchée côté moteur ; kr, ks et Sh (dépendants du risque et du support)
+        restent calculés côté serveur (DoD §8). Le résultat de vérification (ε_t/ε_t,adm)
+        est affiché dans l&apos;onglet Résultats après calcul.
       </Note>
 
       <SectionTitle>Moteur ROADSENS — Burmister multi-couche exact</SectionTitle>
@@ -2555,6 +2750,9 @@ const catThStyle: React.CSSProperties = {
 interface TabResultatsProps {
   result: CalcResult | null;
   ne: number; // NE courant depuis les paramètres de trafic (pour la classe de trafic)
+  traffic: Traffic;
+  pf: PF;
+  load: Load;
   onEmitPv: () => void;
   emittingPv: boolean;
   pvResult: OfficialPv | null;
@@ -2568,6 +2766,9 @@ interface TabResultatsProps {
 function TabResultats({
   result,
   ne,
+  traffic,
+  pf,
+  load,
   onEmitPv,
   emittingPv,
   pvResult,
@@ -2676,7 +2877,7 @@ function TabResultats({
           </div>
           {!isError && (
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
-              Critères AGEROUTE Sénégal 2015 · Transfer Matrix (Burmister exact)
+              {`NE = ${classeNE} · Ti = ${tmjaClass(traffic.T)} · PSC ${pf.cls} (${pf.E} MPa) · Dual wheels d=${load.d} m`}
             </div>
           )}
         </div>
@@ -2786,6 +2987,11 @@ function TabResultats({
           label={
             kpis?.fatigueRigide ? 'Fatigue (rigide) — σ_t' : 'Fatigue bitumineuse — ε_t'
           }
+          formule={
+            kpis?.fatigueRigide
+              ? 'σ_t_adm = σ₆ · (NE/10⁶)^b · kr · kc · ks · kd (LCPC 1994)'
+              : 'ε_t_adm = ε₆ · kθ · (NE/10⁶)^b · kr · kc · ks (LCPC 1994)'
+          }
           unite={kpis?.fatigueRigide ? 'MPa' : 'µdef'}
           valeur={kpis?.fatigueValeur}
           admissible={kpis?.fatigueAdmissible}
@@ -2796,6 +3002,7 @@ function TabResultats({
         {/* Orniérage PSC */}
         <CritereCard
           label="Orniérage PSC — ε_z"
+          formule="ε_z_adm = 0,016 (ou 0,012) × NE^(−1/4,5)"
           unite="µdef"
           valeur={kpis?.ornieValeur}
           admissible={kpis?.ornieAdmissible}
@@ -2804,6 +3011,22 @@ function TabResultats({
           testId="critere-ornierage"
         />
       </div>
+
+      <Note variant="green">
+        <strong>
+          Moteur ROADSENS — Burmister exact multi-couche (1945), méthode de la matrice de
+          transfert (Transfer Matrix / Propagateur) généralisée à n couches :
+        </strong>
+        <br />· <strong>Éq. 6a (σ_z)</strong>, <strong>Éq. 6b (τ_rz)</strong>,{' '}
+        <strong>Éq. 6c (σ_r)</strong>, <strong>Éq. 6d (w)</strong>,{' '}
+        <strong>Éq. 6e (u)</strong> : fonctions de base de chaque couche
+        <br />· <strong>Propagateur 4×4</strong> : M_top × M_bot⁻¹ par couche —
+        propagation bottom-up PSC → surface
+        <br />· <strong>CL surface</strong> : σ_z = −m·J₀(mr), τ_rz = 0 — résolution 2×2
+        pour [B_s, D_s]
+        <br />· <strong>Aucun Odemark</strong> · Intégration Hankel 400 pts · Dual wheels
+        · σ_z et σ_r exactes à chaque interface
+      </Note>
 
       {/* ── Diagnostic & recommandations ──────────────────────────────── */}
       {diagnostics.length > 0 && (
@@ -2957,6 +3180,7 @@ function TabResultats({
 
 interface CritereCardProps {
   label: string;
+  formule: string;
   unite: string;
   valeur: number | null | undefined;
   admissible: number | null | undefined;
@@ -2967,6 +3191,7 @@ interface CritereCardProps {
 
 function CritereCard({
   label,
+  formule,
   unite,
   valeur,
   admissible,
@@ -2978,15 +3203,15 @@ function CritereCard({
   const isFail = ok === 'fail';
   const ratio =
     valeur != null && admissible != null && admissible > 0 ? valeur / admissible : null;
+  const pct = ratio != null ? Math.round(ratio * 100) : null;
 
   return (
     <div
       data-testid={testId}
       style={{
         display: 'flex',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: 10,
+        flexDirection: 'column',
+        gap: 8,
         padding: '12px 16px',
         background: 'var(--surface-base)',
         border: `1px solid ${isFail ? '#fca5a5' : isOk ? '#86efac' : 'var(--border-subtle)'}`,
@@ -2994,6 +3219,7 @@ function CritereCard({
         borderRadius: 10,
       }}
     >
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
       {/* Badge SATISFAIT / NON */}
       <span
         data-testid={`${testId}-badge`}
@@ -3013,10 +3239,20 @@ function CritereCard({
         {isFail ? 'NON SATISFAIT' : isOk ? 'SATISFAIT' : '—'}
       </span>
 
-      {/* Libellé + famille */}
+      {/* Libellé + formule + famille */}
       <div style={{ flex: 1, minWidth: 120 }}>
         <div style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text-primary)' }}>
           {label}
+        </div>
+        <div
+          style={{
+            fontSize: 10.5,
+            color: 'var(--text-secondary)',
+            marginTop: 2,
+            fontFamily: 'var(--font-mono, monospace)',
+          }}
+        >
+          {formule}
         </div>
         {famille && (
           <div
@@ -3096,13 +3332,42 @@ function CritereCard({
           {Math.round(ratio * 100)} %
         </div>
       )}
+      </div>
+
+      {/* Barre de progression — % de l'admissible */}
+      {pct != null && (
+        <div>
+          <div
+            style={{
+              height: 7,
+              borderRadius: 4,
+              background: 'var(--surface-canvas)',
+              overflow: 'hidden',
+              border: '1px solid var(--border-subtle)',
+            }}
+            role="progressbar"
+            aria-valuenow={pct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <div
+              style={{
+                height: '100%',
+                borderRadius: 4,
+                width: `${Math.min(pct, 100)}%`,
+                background: isFail ? '#dc2626' : '#16a34a',
+                transition: 'width .5s ease',
+              }}
+            />
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 4 }}>
+            {`${pct} % de la valeur admissible`}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Onglet Détails calcul
-// ---------------------------------------------------------------------------
 
 function TabDetails({ result }: { result: CalcResult | null }) {
   if (!result) {
@@ -3110,7 +3375,7 @@ function TabDetails({ result }: { result: CalcResult | null }) {
       <PlaceholderPane
         icon="microscope"
         title="Détails de calcul"
-        description="Lancez un calcul pour accéder au récapitulatif des critères et épaisseurs."
+        description="Cliquez sur Calculer pour afficher les détails."
       />
     );
   }
