@@ -11,6 +11,7 @@
 import { useParams } from 'next/navigation';
 import { useState, useCallback, useEffect } from 'react';
 
+import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, OfficialPv } from '@/lib/api/types';
@@ -319,6 +320,15 @@ export default function CasagrandePage() {
     finally { setEmittingPv(false); }
   }, [calcResult, orgId, projectId]);
 
+  // Nouveau calcul — sort de l'impasse post-émission : revient à la saisie sans
+  // conserver un ancien résultat/PV qui ne correspondrait plus aux paramètres modifiés.
+  const handleNouveauCalcul = useCallback(() => {
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+    setTab('pieu');
+  }, []);
+
   if (!mounted) return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement de CASAGRANDE" />;
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
@@ -598,9 +608,24 @@ export default function CasagrandePage() {
                 </div>
               )}
               <div style={{ marginTop: 12, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Intermédiaires et contexte exposés ci-dessus ; seuls les facteurs de portance et coefficients de calage restent côté serveur (DoD §8).</div>
-              <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
-                <button data-testid="btn-imprimer" onClick={handleEmitPv} disabled={emittingPv} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontWeight: 600, cursor: emittingPv ? 'wait' : 'pointer', fontSize: 13 }}>{emittingPv ? 'Émission…' : 'Émettre le PV scellé'}</button>
-                {pvResult && <span data-testid="pv-success" style={{ fontSize: 12.5, color: '#2e7d4f', fontWeight: 600 }}>PV scellé émis (n° {pvResult.number ?? pvResult.id}).</span>}
+              <div style={{ marginTop: 16 }}>
+                {pvResult ? (
+                  <>
+                    <div data-testid="pv-success" style={{ fontSize: 12.5, color: '#2e7d4f', fontWeight: 600, marginBottom: 10 }}>
+                      PV scellé émis (n° {pvResult.number ?? pvResult.id}).
+                    </div>
+                    <PvEmittedActions
+                      pv={pvResult}
+                      orgId={orgId}
+                      orgSlug={orgSlug}
+                      projetId={projectId}
+                      accent={ACCENT}
+                      onNewCalcul={handleNouveauCalcul}
+                    />
+                  </>
+                ) : (
+                  <button data-testid="btn-imprimer" onClick={handleEmitPv} disabled={emittingPv} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontWeight: 600, cursor: emittingPv ? 'wait' : 'pointer', fontSize: 13 }}>{emittingPv ? 'Émission…' : 'Émettre le PV scellé'}</button>
+                )}
               </div>
             </>
           )}

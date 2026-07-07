@@ -343,6 +343,7 @@ export const MOCK_PVS: OfficialPv[] = [
     sealedBy: 'Amadou Diallo',
     params: MOCK_CALC_01.params,
     output: MOCK_CALC_01.output,
+    sealValid: true,
   },
   {
     id: 'pv_02',
@@ -356,5 +357,6 @@ export const MOCK_PVS: OfficialPv[] = [
     sealedBy: 'Amadou Diallo',
     params: MOCK_CALC_04.params,
     output: MOCK_CALC_04.output,
+    sealValid: true,
   },
 ];

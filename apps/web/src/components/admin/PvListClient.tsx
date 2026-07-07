@@ -6,6 +6,7 @@
  */
 
 import { Search } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useCallback, useTransition } from 'react';
 
@@ -94,7 +95,7 @@ export function PvListClient({ pvs, q, limit, offset }: PvListClientProps) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
             <thead>
               <tr style={{ background: 'rgba(31,78,74,0.04)', borderBottom: '1px solid var(--border-subtle)' }}>
-                {['N° PV', 'Organisation', 'Projet', 'Moteur', 'Verdict', 'Scellé le'].map((h) => (
+                {['N° PV', 'Organisation', 'Projet', 'Moteur', 'Verdict', 'Scellé le', ''].map((h) => (
                   <th
                     key={h}
                     scope="col"
@@ -116,9 +117,28 @@ export function PvListClient({ pvs, q, limit, offset }: PvListClientProps) {
             </thead>
             <tbody>
               {pvs.map((p) => (
-                <tr key={p.pvId} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '10px 14px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
-                    {p.pvNumber}
+                <tr
+                  key={p.pvId}
+                  style={{ borderBottom: '1px solid var(--border-subtle)' }}
+                  onMouseOver={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = 'var(--row-hover-bg)';
+                  }}
+                  onMouseOut={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = 'transparent';
+                  }}
+                >
+                  <td style={{ padding: '10px 14px' }}>
+                    <Link
+                      href={`/admin/pvs/${p.pvId}`}
+                      style={{
+                        display: 'block',
+                        textDecoration: 'none',
+                        color: 'inherit',
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    >
+                      {p.pvNumber}
+                    </Link>
                   </td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ color: 'var(--text-primary)' }}>{p.orgName}</div>
@@ -145,6 +165,19 @@ export function PvListClient({ pvs, q, limit, offset }: PvListClientProps) {
                   </td>
                   <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                     {formatDate(p.sealedAt)}
+                  </td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <Link
+                      href={`/admin/pvs/${p.pvId}`}
+                      style={{
+                        fontSize: 'var(--text-xs)',
+                        color: 'var(--struct-petrole)',
+                        textDecoration: 'none',
+                        fontWeight: 500,
+                      }}
+                    >
+                      Voir le détail →
+                    </Link>
                   </td>
                 </tr>
               ))}

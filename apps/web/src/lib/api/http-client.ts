@@ -594,10 +594,19 @@ export async function httpDownloadPvPdf(
     headers,
   });
   if (!res.ok) {
+    // 409 = sceau cassé (ConflictException backend, cf. pv.service.ts pdfForView) —
+    // le corps JSON porte un message clair ; on le propage plutôt qu'un générique.
+    let message = `Erreur téléchargement PDF (${res.status})`;
+    try {
+      const body = (await res.json()) as { message?: string };
+      if (body?.message) message = body.message;
+    } catch {
+      /* corps non JSON */
+    }
     throw {
       statusCode: res.status,
       reason: 'SERVER_ERROR',
-      message: `Erreur téléchargement PDF (${res.status})`,
+      message,
     } satisfies ApiError;
   }
   return res.blob();

@@ -122,8 +122,8 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
       const blob = await downloadPvPdf(pv.id, orgId ?? undefined, projetId);
       triggerBlobDownload(blob, `${pv.number}.pdf`);
       addToast({ type: 'success', message: `${pv.number} téléchargé.` });
-    } catch {
-      addToast({ type: 'error', message: 'Erreur lors du téléchargement. Réessayez.' });
+    } catch (err: unknown) {
+      addToast({ type: 'error', message: pdfErrorMessage(err) });
     } finally {
       setDownloadingId(null);
     }
@@ -137,8 +137,8 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
       const url = URL.createObjectURL(blob);
       previewUrlRef.current = url;
       setPreviewModal({ blobUrl: url, number: pv.number, pvId: pv.id });
-    } catch {
-      addToast({ type: 'error', message: 'Impossible de charger l\'aperçu PDF. Réessayez.' });
+    } catch (err: unknown) {
+      addToast({ type: 'error', message: pdfErrorMessage(err) });
     } finally {
       setPreviewingId(null);
     }
@@ -408,6 +408,17 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// 409 = sceau cassé côté serveur (GET .../pdf refuse le rendu, cf. pv.service.ts
+// pdfForView) : le backend renvoie un message clair, on le propage tel quel plutôt
+// qu'un générique "réessayez" (un nouvel essai ne changera rien, le PV est altéré).
+function pdfErrorMessage(err: unknown): string {
+  const apiErr = err as { statusCode?: number; message?: string };
+  if (apiErr?.statusCode === 409) {
+    return apiErr.message ?? "Sceau invalide — ce PV ne peut pas être rendu en PDF.";
+  }
+  return 'Erreur lors du chargement du PDF. Réessayez.';
+}
 
 function triggerBlobDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);

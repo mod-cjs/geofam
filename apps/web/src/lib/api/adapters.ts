@@ -1327,6 +1327,9 @@ export function adaptOfficialPv(
   const p: PrismaOfficialPvCore = isNested
     ? (raw as PrismaOfficialPv).pv
     : (raw as PrismaOfficialPvFlat);
+  // sealValid n'existe qu'à la racine de la forme imbriquée (GET /pvs, GET /pvs/:id) ;
+  // absent en forme plate (POST emit) -> undefined, traité comme "non vérifié" par l'UI.
+  const sealValid = isNested ? (raw as PrismaOfficialPv).sealValid : undefined;
 
   // Extraire params et, si possible, identity.userDisplayName depuis inputCanonical.
   // `params` = l'ENTRÉE UTILISATEUR (sa propre donnée tenant, saisie dans le formulaire,
@@ -1368,6 +1371,7 @@ export function adaptOfficialPv(
     // même si la whitelist serveur avait laissé passer un champ inattendu.
     // Sortie non reconnue → null (fail-closed).
     output: normalizeOutput(p.output),
+    sealValid,
   };
 }
 

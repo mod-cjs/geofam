@@ -19,6 +19,7 @@
 import { useParams } from 'next/navigation';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 
+import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, OfficialPv, HeatmapData } from '@/lib/api/types';
@@ -343,21 +344,48 @@ function DiagTable({ output }: { output: NormalizedCalcOutput }) {
 }
 
 /** Barre d'émission du PV scellé — commune aux 3 solveurs. */
-function PvBar({ emitting, onEmit, pv, testidSuffix }: { emitting: boolean; onEmit: () => void; pv: OfficialPv | null; testidSuffix?: string }) {
+function PvBar({
+  emitting,
+  onEmit,
+  pv,
+  testidSuffix,
+  orgId,
+  orgSlug,
+  projectId,
+  onNewCalcul,
+}: {
+  emitting: boolean;
+  onEmit: () => void;
+  pv: OfficialPv | null;
+  testidSuffix?: string;
+  orgId: string | null;
+  orgSlug: string;
+  projectId: string;
+  onNewCalcul: () => void;
+}) {
   const btnId = testidSuffix ? `btn-imprimer-${testidSuffix}` : 'btn-imprimer';
   const successId = testidSuffix ? `pv-success-${testidSuffix}` : 'pv-success';
+  if (pv) {
+    return (
+      <div style={{ marginTop: 16 }}>
+        <div data-testid={successId} style={{ fontSize: 12.5, color: '#2e7d4f', fontWeight: 600, marginBottom: 10 }}>
+          PV scellé émis (n° {pv.number ?? pv.id}).
+        </div>
+        <PvEmittedActions pv={pv} orgId={orgId} orgSlug={orgSlug} projetId={projectId} accent={ACCENT} onNewCalcul={onNewCalcul} />
+      </div>
+    );
+  }
   return (
     <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
       <button data-testid={btnId} onClick={onEmit} disabled={emitting} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontWeight: 600, cursor: emitting ? 'wait' : 'pointer', fontSize: 13 }}>{emitting ? 'Émission…' : 'Émettre le PV scellé'}</button>
-      {pv && <span data-testid={successId} style={{ fontSize: 12.5, color: '#2e7d4f', fontWeight: 600 }}>PV scellé émis (n° {pv.number ?? pv.id}).</span>}
     </div>
   );
 }
 
-interface TwoDBlockProps { orgId: string | null; projectId: string; projects: Project[]; gate: GateStatus }
+interface TwoDBlockProps { orgId: string | null; orgSlug: string; projectId: string; projects: Project[]; gate: GateStatus }
 
 /** Bloc « Déformations planes — bande/poutre » (§2.4.2, moteur `plane-strain`). */
-function PlaneStrainBlock({ orgId, projectId, projects, gate }: TwoDBlockProps) {
+function PlaneStrainBlock({ orgId, orgSlug, projectId, projects, gate }: TwoDBlockProps) {
   const [layers, setLayers] = useState<Layer[]>([{ zBase: '-10', E: '15', nu: '0.33' }]);
   const [Bw, setBw] = useState('10'); const [e, setE] = useState('0.5');
   const [E, setEBeton] = useState('30000'); const [nu, setNu] = useState('0.2');
@@ -395,6 +423,12 @@ function PlaneStrainBlock({ orgId, projectId, projects, gate }: TwoDBlockProps) 
     catch (err: unknown) { setCalcError((err as { message?: string })?.message ?? "Erreur lors de l'émission du PV."); }
     finally { setEmittingPv(false); }
   }, [calcResult, orgId, projectId]);
+
+  const handleNouveauCalcul = useCallback(() => {
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+  }, []);
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
   const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
@@ -461,7 +495,7 @@ function PlaneStrainBlock({ orgId, projectId, projects, gate }: TwoDBlockProps) 
           <>
             <DiagTable output={output} />
             <div style={{ marginTop: 12, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Calcul éléments finis côté serveur ; le maillage et les valeurs nodales restent serveur (§8).</div>
-            <PvBar emitting={emittingPv} onEmit={handleEmitPv} pv={pvResult} testidSuffix="plane-strain" />
+            <PvBar emitting={emittingPv} onEmit={handleEmitPv} pv={pvResult} testidSuffix="plane-strain" orgId={orgId} orgSlug={orgSlug} projectId={projectId} onNewCalcul={handleNouveauCalcul} />
           </>
         )}
       </div>
@@ -470,7 +504,7 @@ function PlaneStrainBlock({ orgId, projectId, projects, gate }: TwoDBlockProps) 
 }
 
 /** Bloc « Axisymétrie — radier/dallage circulaire » (§2.4.1, moteur `axi`). */
-function AxiBlock({ orgId, projectId, projects, gate }: TwoDBlockProps) {
+function AxiBlock({ orgId, orgSlug, projectId, projects, gate }: TwoDBlockProps) {
   const [layers, setLayers] = useState<Layer[]>([{ zBase: '-10', E: '15', nu: '0.33' }]);
   const [R, setR] = useState('6'); const [e, setE] = useState('0.4');
   const [E, setEBeton] = useState('30000'); const [nu, setNu] = useState('0.2');
@@ -507,6 +541,12 @@ function AxiBlock({ orgId, projectId, projects, gate }: TwoDBlockProps) {
     catch (err: unknown) { setCalcError((err as { message?: string })?.message ?? "Erreur lors de l'émission du PV."); }
     finally { setEmittingPv(false); }
   }, [calcResult, orgId, projectId]);
+
+  const handleNouveauCalcul = useCallback(() => {
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+  }, []);
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
   const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
@@ -560,7 +600,7 @@ function AxiBlock({ orgId, projectId, projects, gate }: TwoDBlockProps) {
           <>
             <DiagTable output={output} />
             <div style={{ marginTop: 12, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Calcul éléments finis côté serveur ; la discrétisation radiale reste serveur (§8).</div>
-            <PvBar emitting={emittingPv} onEmit={handleEmitPv} pv={pvResult} testidSuffix="axi" />
+            <PvBar emitting={emittingPv} onEmit={handleEmitPv} pv={pvResult} testidSuffix="axi" orgId={orgId} orgSlug={orgSlug} projectId={projectId} onNewCalcul={handleNouveauCalcul} />
           </>
         )}
       </div>
@@ -578,7 +618,7 @@ function TriRaftDivergenceBanner() {
 }
 
 /** Bloc « Radier triangulaire — maillage DKT » (§2.2.2, moteur `tri-raft`). */
-function TriRaftBlock({ orgId, projectId, projects, gate }: TwoDBlockProps) {
+function TriRaftBlock({ orgId, orgSlug, projectId, projects, gate }: TwoDBlockProps) {
   const [pts, setPts] = useState<Pt[]>([{ x: '0', y: '0' }, { x: '6', y: '0' }, { x: '6', y: '6' }, { x: '0', y: '6' }]);
   const [layers, setLayers] = useState<Layer[]>([{ zBase: '-10', E: '15', nu: '0.33' }]);
   const [target, setTarget] = useState('1.0'); const [e, setE] = useState('0.5');
@@ -618,6 +658,12 @@ function TriRaftBlock({ orgId, projectId, projects, gate }: TwoDBlockProps) {
     catch (err: unknown) { setCalcError((err as { message?: string })?.message ?? "Erreur lors de l'émission du PV."); }
     finally { setEmittingPv(false); }
   }, [calcResult, orgId, projectId]);
+
+  const handleNouveauCalcul = useCallback(() => {
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+  }, []);
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
   const calcDisabled = calculating || !projectId || !orgId || !gate.allowed;
@@ -720,7 +766,7 @@ function TriRaftBlock({ orgId, projectId, projects, gate }: TwoDBlockProps) {
           <>
             <DiagTable output={output} />
             <div style={{ marginTop: 12, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Calcul éléments finis côté serveur ; le maillage triangulaire et les valeurs nodales restent serveur (§8).</div>
-            <PvBar emitting={emittingPv} onEmit={handleEmitPv} pv={pvResult} testidSuffix="tri-raft" />
+            <PvBar emitting={emittingPv} onEmit={handleEmitPv} pv={pvResult} testidSuffix="tri-raft" orgId={orgId} orgSlug={orgSlug} projectId={projectId} onNewCalcul={handleNouveauCalcul} />
           </>
         )}
       </div>
@@ -811,6 +857,13 @@ export default function GeoplaquePage() {
     catch (err: unknown) { setCalcError((err as { message?: string })?.message ?? "Erreur lors de l'émission du PV."); }
     finally { setEmittingPv(false); }
   }, [calcResult, orgId, projectId]);
+
+  const handleNouveauCalcul = useCallback(() => {
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+    setTab('modele');
+  }, []);
 
   if (!mounted) return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement de GEOPLAQUE" />;
 
@@ -1025,9 +1078,24 @@ export default function GeoplaquePage() {
                 )}
               <div style={{ marginTop: 12, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Calcul éléments finis côté serveur. La cartographie est un champ d&apos;affichage ré-échantillonné ; le maillage et les valeurs nodales restent serveur (§8).</div>
 
-              <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
-                <button data-testid="btn-imprimer" onClick={handleEmitPv} disabled={emittingPv} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontWeight: 600, cursor: emittingPv ? 'wait' : 'pointer', fontSize: 13 }}>{emittingPv ? 'Émission…' : 'Émettre le PV scellé'}</button>
-                {pvResult && <span data-testid="pv-success" style={{ fontSize: 12.5, color: '#2e7d4f', fontWeight: 600 }}>PV scellé émis (n° {pvResult.number ?? pvResult.id}).</span>}
+              <div style={{ marginTop: 16 }}>
+                {pvResult ? (
+                  <>
+                    <div data-testid="pv-success" style={{ fontSize: 12.5, color: '#2e7d4f', fontWeight: 600, marginBottom: 10 }}>
+                      PV scellé émis (n° {pvResult.number ?? pvResult.id}).
+                    </div>
+                    <PvEmittedActions
+                      pv={pvResult}
+                      orgId={orgId}
+                      orgSlug={orgSlug}
+                      projetId={projectId}
+                      accent={ACCENT}
+                      onNewCalcul={handleNouveauCalcul}
+                    />
+                  </>
+                ) : (
+                  <button data-testid="btn-imprimer" onClick={handleEmitPv} disabled={emittingPv} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontWeight: 600, cursor: emittingPv ? 'wait' : 'pointer', fontSize: 13 }}>{emittingPv ? 'Émission…' : 'Émettre le PV scellé'}</button>
+                )}
               </div>
             </>
           )}
@@ -1039,9 +1107,9 @@ export default function GeoplaquePage() {
           <p style={{ fontSize: 12, color: MUTED, margin: '0 0 4px' }}>
             Les 3 solveurs plans de GEOPLAQUE — même projet que l&apos;onglet <b>Modèle &amp; sol</b>, sol propre à chaque solveur ci-dessous.
           </p>
-          <PlaneStrainBlock orgId={orgId} projectId={projectId} projects={projects} gate={gate} />
-          <AxiBlock orgId={orgId} projectId={projectId} projects={projects} gate={gate} />
-          <TriRaftBlock orgId={orgId} projectId={projectId} projects={projects} gate={gate} />
+          <PlaneStrainBlock orgId={orgId} orgSlug={orgSlug} projectId={projectId} projects={projects} gate={gate} />
+          <AxiBlock orgId={orgId} orgSlug={orgSlug} projectId={projectId} projects={projects} gate={gate} />
+          <TriRaftBlock orgId={orgId} orgSlug={orgSlug} projectId={projectId} projects={projects} gate={gate} />
         </>
       )}
     </div>

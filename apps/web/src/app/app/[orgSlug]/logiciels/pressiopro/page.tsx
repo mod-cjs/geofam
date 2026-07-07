@@ -14,6 +14,7 @@
 import { useParams } from 'next/navigation';
 import { useState, useCallback, useEffect, useMemo } from 'react';
 
+import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, CalcOutputRow, OfficialPv } from '@/lib/api/types';
@@ -372,6 +373,13 @@ export default function PressioProPage() {
     catch (err: unknown) { setCalcError((err as { message?: string })?.message ?? "Erreur lors de l'émission du PV."); }
     finally { setEmittingPv(false); }
   }, [calcResult, orgId, projectId]);
+
+  const handleNouveauCalcul = useCallback(() => {
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+    setTab('essai');
+  }, []);
 
   // Appareillage : mappe l'erreur d'entitlement/quota vers un message lisible.
   const appErrMsg = (err: unknown, fallback: string): string => {
@@ -737,9 +745,24 @@ export default function PressioProPage() {
                 ))}</tbody>
               </table>
               <div style={{ marginTop: 12, fontSize: 10.5, color: MUTED, fontStyle: 'italic' }}>Dépouillement Ménard côté serveur. La courbe trace les lectures saisies ; les corrections (inertie, résistance propre) et le calage restent serveur (§8).</div>
-              <div style={{ marginTop: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
-                <button data-testid="btn-imprimer" onClick={handleEmitPv} disabled={emittingPv} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontWeight: 600, cursor: emittingPv ? 'wait' : 'pointer', fontSize: 13 }}>{emittingPv ? 'Émission…' : 'Émettre le PV scellé'}</button>
-                {pvResult && <span data-testid="pv-success" style={{ fontSize: 12.5, color: '#2e7d4f', fontWeight: 600 }}>PV scellé émis (n° {pvResult.number ?? pvResult.id}).</span>}
+              <div style={{ marginTop: 16 }}>
+                {pvResult ? (
+                  <>
+                    <div data-testid="pv-success" style={{ fontSize: 12.5, color: '#2e7d4f', fontWeight: 600, marginBottom: 10 }}>
+                      PV scellé émis (n° {pvResult.number ?? pvResult.id}).
+                    </div>
+                    <PvEmittedActions
+                      pv={pvResult}
+                      orgId={orgId}
+                      orgSlug={orgSlug}
+                      projetId={projectId}
+                      accent={ACCENT}
+                      onNewCalcul={handleNouveauCalcul}
+                    />
+                  </>
+                ) : (
+                  <button data-testid="btn-imprimer" onClick={handleEmitPv} disabled={emittingPv} style={{ background: ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontWeight: 600, cursor: emittingPv ? 'wait' : 'pointer', fontSize: 13 }}>{emittingPv ? 'Émission…' : 'Émettre le PV scellé'}</button>
+                )}
               </div>
             </>
           )}

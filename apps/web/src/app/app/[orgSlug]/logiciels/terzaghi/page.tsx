@@ -12,6 +12,7 @@
 import { useParams } from 'next/navigation';
 import { useState, useCallback, useEffect, Fragment } from 'react';
 
+import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type { Project, EntitlementsResponse, CalcResult, NormalizedCalcOutput, OfficialPv, CalcOutputRow } from '@/lib/api/types';
@@ -203,6 +204,13 @@ export default function TerzaghiPage() {
     finally { setEmittingPv(false); }
   }, [calcResult, orgId, projectId]);
 
+  const handleNouveauCalcul = useCallback(() => {
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+    setRtab('coupe');
+  }, []);
+
   if (!mounted) return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement de Terzaghi" />;
 
   const output = calcResult?.output as NormalizedCalcOutput | null;
@@ -360,7 +368,7 @@ export default function TerzaghiPage() {
             {([['coupe', 'Coupe'], ['verifs', 'Vérifications'], ['note', 'Note de calcul']] as const).map(([id, label]) => (
               <button key={id} role="tab" aria-selected={rtab === id} onClick={() => setRtab(id)} style={{ border: 'none', background: rtab === id ? ACCENT : 'transparent', color: rtab === id ? '#fff' : MUTED, borderRadius: 7, padding: '7px 13px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{label}</button>
             ))}
-            {output && (
+            {output && !pvResult && (
               <button data-testid="btn-imprimer" onClick={handleEmitPv} disabled={emittingPv} style={{ marginLeft: 'auto', background: '#fff', color: ACCENT, border: `1px solid ${ACCENT}`, borderRadius: 7, padding: '7px 12px', fontWeight: 600, cursor: emittingPv ? 'wait' : 'pointer', fontSize: 12.5 }}>{emittingPv ? 'Émission…' : 'Émettre le PV scellé'}</button>
             )}
           </div>
@@ -388,7 +396,23 @@ export default function TerzaghiPage() {
               </div>
             )}
             {rtab === 'note' && (
-              output ? <NoteDeCalcul output={output} projet={projects.find((p) => p.id === projectId)?.name} pv={pvResult} /> : <div style={{ padding: '2rem', textAlign: 'center', color: MUTED }}>Lancez le calcul pour générer la note.</div>
+              output ? (
+                <>
+                  <NoteDeCalcul output={output} projet={projects.find((p) => p.id === projectId)?.name} pv={pvResult} />
+                  {pvResult && (
+                    <div style={{ marginTop: 16 }}>
+                      <PvEmittedActions
+                        pv={pvResult}
+                        orgId={orgId}
+                        orgSlug={orgSlug}
+                        projetId={projectId}
+                        accent={ACCENT}
+                        onNewCalcul={handleNouveauCalcul}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : <div style={{ padding: '2rem', textAlign: 'center', color: MUTED }}>Lancez le calcul pour générer la note.</div>
             )}
           </div>
         </section>

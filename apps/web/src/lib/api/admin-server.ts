@@ -251,6 +251,31 @@ export async function adminListPvs(args?: {
 }
 
 /**
+ * Détail d'un PV (cross-tenant) — GET /admin/pvs/:pvId. Contrairement à la liste
+ * (métadonnées seules, pas de sceau), le détail inclut `sealValid` : le sceau est
+ * RE-VÉRIFIÉ côté serveur (secret PV_SIGNING_SECRET) à chaque appel, jamais
+ * recalculé/affiché depuis le navigateur (cf. apps/api AdminPvService.getPv).
+ * Pas d'orgSlug ici (absent du DTO backend PvDetailView) — seulement orgName.
+ */
+export interface AdminPvDetailItem {
+  pvId: string;
+  pvNumber: string;
+  orgId: string;
+  orgName: string;
+  projectName: string;
+  engineId: string;
+  engineVersion: string;
+  scienceStatus: string;
+  verdict: string;
+  sealedAt: string;
+  sealValid: boolean;
+}
+
+export async function adminGetPv(pvId: string): Promise<AdminPvDetailItem | null> {
+  return adminGet<AdminPvDetailItem>(`/admin/pvs/${encodeURIComponent(pvId)}`);
+}
+
+/**
  * Console d'abonnements (vue money-centrée) — GET /admin/subscriptions. Même
  * forme d'item que listOrgs (org + résumé d'abo), filtrée sur une famille money.
  */

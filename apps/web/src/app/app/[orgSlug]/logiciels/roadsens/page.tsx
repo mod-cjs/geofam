@@ -25,6 +25,7 @@ import type {
   OfficialPv,
   EntitlementsResponse,
 } from '@/lib/api/types';
+import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { evaluateGate } from '@/lib/subscription-gate';
 import { useOrgId } from '@/lib/org-context';
@@ -924,7 +925,7 @@ export default function RoadsensPage() {
   }, [orgId, projectId, layers, pf, traffic, load]);
 
   // --------------------------------------------------------------------------
-  // Bouton Imprimer / Émettre PV
+  // Bouton Émettre PV
   // --------------------------------------------------------------------------
 
   const handleEmitPv = useCallback(async () => {
@@ -941,6 +942,16 @@ export default function RoadsensPage() {
       setEmittingPv(false);
     }
   }, [calcResult, orgId, projectId]);
+
+  // Nouveau calcul — sort de l'impasse post-émission (audit Lot 4) : ramène
+  // l'utilisateur à la saisie plutôt que de laisser affiché un PV déjà scellé
+  // sans action possible.
+  const handleNouveauCalcul = useCallback(() => {
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+    setActiveTab('structure');
+  }, []);
 
   if (!mounted) {
     return (
@@ -1350,6 +1361,10 @@ export default function RoadsensPage() {
           emittingPv={emittingPv}
           pvResult={pvResult}
           entitlements={entitlements}
+          orgId={orgId}
+          orgSlug={orgSlug}
+          projetId={projectId}
+          onNewCalcul={handleNouveauCalcul}
         />
       </div>
 
@@ -2544,6 +2559,10 @@ interface TabResultatsProps {
   emittingPv: boolean;
   pvResult: OfficialPv | null;
   entitlements: EntitlementsResponse | null;
+  orgId: string | null;
+  orgSlug: string;
+  projetId: string;
+  onNewCalcul: () => void;
 }
 
 function TabResultats({
@@ -2553,6 +2572,10 @@ function TabResultats({
   emittingPv,
   pvResult,
   entitlements,
+  orgId,
+  orgSlug,
+  projetId,
+  onNewCalcul,
 }: TabResultatsProps) {
   if (!result) {
     return (
@@ -2818,6 +2841,16 @@ function TabResultats({
           <span style={{ color: 'var(--text-secondary)', marginLeft: 8, fontSize: 11 }}>
             {new Date(pvResult.sealedAt).toLocaleString('fr-FR')}
           </span>
+          <div style={{ marginTop: 12 }}>
+            <PvEmittedActions
+              pv={pvResult}
+              orgId={orgId}
+              orgSlug={orgSlug}
+              projetId={projetId}
+              accent="#1a4a7a"
+              onNewCalcul={onNewCalcul}
+            />
+          </div>
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -2892,7 +2925,7 @@ function TabResultats({
                   <line x1="16" y1="17" x2="8" y2="17" />
                   <polyline points="10 9 9 9 8 9" />
                 </svg>
-                Imprimer le rapport / Émettre PV
+                Émettre le PV scellé
               </>
             )}
           </button>

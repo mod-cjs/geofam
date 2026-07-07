@@ -182,6 +182,13 @@ export interface OfficialPv {
   pdfUrl?: string;
   params: Record<string, unknown>;
   output: unknown;
+  /**
+   * Vérification du sceau recalculée serveur (GET /pvs, GET /pvs/:id). `undefined`
+   * pour la forme plate d'émission (POST .../pv) : un PV qui vient d'être scellé
+   * n'a pas encore été relu/vérifié — ne PAS l'afficher comme "invalide" à tort ;
+   * le composant appelant doit traiter `undefined` comme "non vérifié" et non "invalide".
+   */
+  sealValid?: boolean;
 }
 
 export interface EmitPvRequest {
