@@ -38,7 +38,6 @@ import {
   Calculator,
   FileText,
   FolderOpen,
-  Library,
   Plus,
   Stamp,
 } from "lucide-react";
@@ -440,13 +439,6 @@ export const DEMO_COMMAND_ITEMS: CommandItem[] = [
     label: "Aller aux Projets",
     group: "navigation",
     icon: <FolderOpen size={16} strokeWidth={1.5} />,
-    onSelect: () => {},
-  },
-  {
-    id: "nav-bibliotheque",
-    label: "Bibliothèque de moteurs",
-    group: "navigation",
-    icon: <Library size={16} strokeWidth={1.5} />,
     onSelect: () => {},
   },
   {
