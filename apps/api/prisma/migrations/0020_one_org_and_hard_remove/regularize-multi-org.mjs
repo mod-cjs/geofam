@@ -10,11 +10,18 @@
 //    APPLICATION REELLE (ecrit) :
 //        DATABASE_URL="postgres://..." APPLY=1 node regularize-multi-org.mjs
 //
+//  PORTEE (0021) : « un user = une org » vaut pour TOUTE appartenance — ACTIVE **ou
+//  INACTIVE**. Un user suspendu (is_active=false) dans une autre org compte comme un
+//  rattachement (il pourrait etre reactive : cf. garde one-org de la reactivation,
+//  0021). On regularise donc les doublons INACTIFS aussi, pas seulement les actifs.
+//
 //  REGLE DE CONSERVATION (par user en surnombre) : on GARDE UNE SEULE appartenance et
 //  on RETIRE les autres. Choix de celle a conserver, dans l'ordre :
-//    1) une appartenance OWNER (priorite absolue : ne jamais laisser une org sans owner) ;
-//    2) a defaut, la PLUS ANCIENNE (created_at min) — l'org « historique » du user.
-//  Les autres appartenances ACTIVES du user sont retirees (HARD DELETE, comme remove_member).
+//    1) une appartenance OWNER ACTIVE (priorite absolue : ne jamais orphaniser une org) ;
+//    2) a defaut, la PLUS ANCIENNE des ACTIVES — l'org « vivante » du user ;
+//    3) a defaut (aucune active), une OWNER (meme inactive : preserve l'org) ;
+//    4) a defaut, la PLUS ANCIENNE tout court.
+//  Les autres appartenances (ACTIVES OU INACTIVES) sont retirees (HARD DELETE).
 //
 //  GARDE-FOU CRITIQUE : on ne retire JAMAIS une appartenance si cela laisserait SON org
 //  SANS OWNER ACTIF. Concretement : on ne retire une ligne OWNER que si l'org a un AUTRE
@@ -37,53 +44,68 @@ const APPLY = process.env.APPLY === '1';
 
 const client = new pg.Client({ connectionString: url });
 
-/** Choisit l'appartenance a CONSERVER : OWNER d'abord, sinon la plus ancienne. */
+/**
+ * Choisit l'appartenance a CONSERVER (cf. en-tete, ordre 1->4) : OWNER active
+ * d'abord, sinon la plus ancienne ACTIVE, sinon une OWNER (meme inactive), sinon
+ * la plus ancienne tout court. `rows` contient TOUTES les appartenances (actives
+ * ET inactives), deja triees created_at ASC par l'appelant.
+ */
 function pickKeep(rows) {
-  const owner = rows.find((r) => r.role === 'OWNER');
-  if (owner) return owner;
-  return [...rows].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-  )[0];
+  const byAge = (a, b) =>
+    new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+  const actives = rows.filter((r) => r.is_active);
+  const activeOwner = actives.find((r) => r.role === 'OWNER');
+  if (activeOwner) return activeOwner; // 1
+  if (actives.length > 0) return [...actives].sort(byAge)[0]; // 2
+  const anyOwner = rows.find((r) => r.role === 'OWNER');
+  if (anyOwner) return anyOwner; // 3
+  return [...rows].sort(byAge)[0]; // 4
 }
 
 try {
   await client.connect();
 
-  // 1) Users avec > 1 appartenance ACTIVE.
+  // 1) Users avec > 1 appartenance TOTALE (ACTIVE OU INACTIVE) : un doublon inactif
+  //    dans une autre org viole aussi « un user = une org » (il pourrait etre reactive).
   const { rows: dupUsers } = await client.query(
     `SELECT user_id, count(*)::int AS n
      FROM memberships
-     WHERE is_active = true
      GROUP BY user_id
      HAVING count(*) > 1
      ORDER BY user_id`,
   );
 
   if (dupUsers.length === 0) {
-    console.log('Aucun user multi-org actif : rien a regulariser.');
+    console.log('Aucun user multi-org (actif ou inactif) : rien a regulariser.');
     process.exit(0);
   }
 
-  console.log(`${dupUsers.length} user(s) multi-org actif(s) detecte(s).\n`);
+  console.log(`${dupUsers.length} user(s) multi-org detecte(s) (actifs ou inactifs).\n`);
 
   const toRemove = []; // { org_id, user_id, role }
   const skipped = []; // cas a arbitrer a la main
 
   for (const { user_id } of dupUsers) {
     const { rows } = await client.query(
-      `SELECT org_id, user_id, role, created_at
+      `SELECT org_id, user_id, role, is_active, created_at
        FROM memberships
-       WHERE user_id = $1 AND is_active = true
+       WHERE user_id = $1
        ORDER BY created_at ASC`,
       [user_id],
     );
     const keep = pickKeep(rows);
-    console.log(`user ${user_id} : conserve org ${keep.org_id} (${keep.role})`);
+    console.log(
+      `user ${user_id} : conserve org ${keep.org_id} (${keep.role}` +
+        `${keep.is_active ? '' : ', inactive'})`,
+    );
 
     for (const m of rows) {
       if (m.org_id === keep.org_id) continue;
 
-      // Garde-fou : ne pas laisser l'org de m SANS owner actif.
+      // Garde-fou : ne pas laisser l'org de m SANS owner actif. On ne retire une ligne
+      // OWNER que si l'org a un AUTRE owner actif (une ligne OWNER inactive ne fournit
+      // deja aucun owner actif, mais on applique la meme prudence : jamais de retrait
+      // qui laisse l'org sans owner actif).
       if (m.role === 'OWNER') {
         const { rows: others } = await client.query(
           `SELECT count(*)::int AS n
@@ -100,7 +122,9 @@ try {
           continue;
         }
       }
-      console.log(`  - retire org ${m.org_id} (${m.role})`);
+      console.log(
+        `  - retire org ${m.org_id} (${m.role}${m.is_active ? '' : ', inactive'})`,
+      );
       toRemove.push({ org_id: m.org_id, user_id, role: m.role });
     }
   }

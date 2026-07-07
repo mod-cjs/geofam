@@ -129,6 +129,17 @@ export class MembersService {
           'Impossible de suspendre le dernier propriétaire actif',
         );
       }
+      // Réactivation refusée : le membre appartient déjà (actif) à une AUTRE org
+      // (règle « un user = une org », garde one-org de la réactivation, migration
+      // 0021). set_member_active lève R0015 sur le SEUL chemin p_active=true. On
+      // détecte le SQLSTATE applicatif ET, en repli, le marqueur stable du message
+      // (l'appel se fait via $executeRaw : selon la version Prisma, meta.code peut
+      // ne pas porter le SQLSTATE d'origine — on ne se fie donc pas qu'à lui).
+      if (isOneOrgViolation(err) || rawMessageIncludes(err, 'appartient deja')) {
+        throw new ConflictException(
+          'Ce compte appartient déjà à une autre organisation',
+        );
+      }
       if (rawMessageIncludes(err, 'introuvable')) {
         throw new NotFoundException(
           'Membre introuvable dans cette organisation',
