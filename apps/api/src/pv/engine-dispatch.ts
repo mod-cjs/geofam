@@ -4,6 +4,8 @@ import {
   laboContract,
   pieuxContract,
   planeStrainContract,
+  pressioCalibrageContract,
+  pressioEtalonnageContract,
   pressiometreContract,
   radierContract,
   runAxi,
@@ -11,6 +13,8 @@ import {
   runLabo,
   runPieux,
   runPlaneStrain,
+  runPressioCalibrage,
+  runPressioEtalonnage,
   runPressiometre,
   runRadier,
   runTerzaghi,
@@ -60,6 +64,19 @@ export const ENGINE_DISPATCH: Readonly<Record<string, EngineDispatchEntry>> = {
     run: runPressiometre,
     contract: pressiometreContract,
     registryId: 'pressiometre-menard',
+  },
+  // PressioPro — appareillage (meme HTML source que pressiometre, calculs distincts) :
+  // etalonnage (sonde dans l'air -> Vs/Pe/a) et calibrage (forage libre -> a). Recalcul
+  // SERVEUR only ; groupes sous l'entitlement 'pressiometre' (cf. subscription.guard).
+  'pressio-etalonnage': {
+    run: runPressioEtalonnage,
+    contract: pressioEtalonnageContract,
+    registryId: 'pressio-etalonnage',
+  },
+  'pressio-calibrage': {
+    run: runPressioCalibrage,
+    contract: pressioCalibrageContract,
+    registryId: 'pressio-calibrage',
   },
   pieux: {
     run: runPieux,

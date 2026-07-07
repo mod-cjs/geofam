@@ -225,6 +225,8 @@ const ENGINE_TO_DOMAIN: Record<string, ProjectDomain> = {
   'fondation-profonde-pieux': 'FD',
   'radier-plaque': 'FD',
   'pressiometre-menard': 'LB',
+  'pressio-etalonnage': 'LB',
+  'pressio-calibrage': 'LB',
   'labo-classification-gtr': 'LB',
   // Variantes GEOPLAQUE (registryIds, cf. engine-dispatch.ts) — mêmes moteurs
   // d'analyse EF, domaine fondations (FD).
@@ -240,6 +242,8 @@ const ENGINE_TO_DOMAIN: Record<string, ProjectDomain> = {
   labo: 'LB',
   axi: 'FD',
   'tri-raft': 'FD',
+  // NB : les slugs 'pressio-etalonnage'/'pressio-calibrage' sont IDENTIQUES à leurs
+  // registryIds (déjà déclarés ci-dessus) — pas de doublon à ajouter ici.
 };
 
 function deriveDomain(raw: PrismaCalcResult): ProjectDomain {
@@ -1086,6 +1090,42 @@ function buildPressiometreRows(o: Record<string, unknown>): CalcOutputRow[] {
 }
 
 /**
+ * PressioPro — ÉTALONNAGE (sonde dans l'air) : coefficients d'appareillage Vs / Pe et
+ * pente d'air a, réutilisables dans le dépouillement. Clés NOMMÉES (fail-closed §8) :
+ * on ne lit QUE les champs whitelistés par PressioEtalonnageOutputSchema (Vs/Pe/a/R²/RMS),
+ * jamais les intermédiaires de régression (pts/residuals/V_pe/Vs_reel, strippés serveur).
+ * a est en cm³/bar (valeur interne) ; a×10 en cm³/MPa est affiché à titre indicatif.
+ */
+function buildEtalonnageRows(o: Record<string, unknown>): CalcOutputRow[] {
+  const rows: CalcOutputRow[] = [];
+  pushRow(rows, 'Vs — volume à l’origine (droite ajustée)', o.Vs, 'cm³');
+  pushRow(rows, 'Pe — pression à V=1,2·Vs', o.Pe, 'bar');
+  pushRow(rows, 'Pente d’air a (≠ coefficient de correction)', o.a, 'cm³/bar');
+  const aNum = finiteOrNull(o.a);
+  if (aNum !== null) pushRow(rows, 'Pente d’air a (indicatif)', aNum * 10, 'cm³/MPa');
+  pushRow(rows, 'Coefficient de détermination R²', o.R2, '');
+  pushRow(rows, 'RMS des résidus', o.rms, 'cm³');
+  return rows;
+}
+
+/**
+ * PressioPro — CALIBRAGE (forage indéformable) : coefficient de correction de volume a,
+ * réutilisable dans le dépouillement (Vc = Vr − a·Pr). Clés NOMMÉES (fail-closed §8) : on
+ * ne lit QUE a / R² / RMS (whitelist PressioCalibrageOutputSchema) ; les coefficients de la
+ * courbe polynomiale c0/c1/c2 (méthode) et les intermédiaires sont strippés serveur.
+ * a est en cm³/bar (valeur interne) ; a×10 en cm³/MPa est affiché à titre indicatif.
+ */
+function buildCalibrageRows(o: Record<string, unknown>): CalcOutputRow[] {
+  const rows: CalcOutputRow[] = [];
+  pushRow(rows, 'Coefficient de calibrage a', o.a, 'cm³/bar');
+  const aNum = finiteOrNull(o.a);
+  if (aNum !== null) pushRow(rows, 'Coefficient de calibrage a (indicatif)', aNum * 10, 'cm³/MPa');
+  pushRow(rows, 'Coefficient de détermination R²', o.R2, '');
+  pushRow(rows, 'RMS des résidus', o.rms, 'bar');
+  return rows;
+}
+
+/**
  * Re-whiteliste un tableau de lignes : ne garde QUE `{label, value, unit, status?}`
  * par ligne, jamais de spread du brut. Toute ligne incomplète/non finie est écartée.
  */
@@ -1160,6 +1200,16 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
   // pressiomètre Ménard (dépouillement) : pL/EM/catégorie — pas de verdict (NA)
   if ('categorie' in o && ('pL' in o || 'ratioEMpL' in o)) {
     return { verdict: 'NA', rows: buildPressiometreRows(o) };
+  }
+  // PressioPro — ÉTALONNAGE : Vs + Pe (combinaison propre à l'étalonnage) — coefficients
+  // d'appareillage, pas de verdict (NA).
+  if ('Vs' in o && 'Pe' in o) {
+    return { verdict: 'NA', rows: buildEtalonnageRows(o) };
+  }
+  // PressioPro — CALIBRAGE : a + R² + rms sans Vs (rms est propre aux modules PressioPro
+  // d'appareillage) — coefficient de correction de volume, pas de verdict (NA).
+  if ('a' in o && 'R2' in o && 'rms' in o && !('Vs' in o)) {
+    return { verdict: 'NA', rows: buildCalibrageRows(o) };
   }
   // GEOPLAQUE — variantes (clés de diagnostic DISJOINTES du radier ACM et entre elles) :
   // axisymétrique (wc/wEdge), déformations planes (decolN+mMax), triangulaire (reactionMax+

@@ -53,6 +53,44 @@ export function buildPressioProPayload(f: PressioProForm): Record<string, unknow
 }
 
 // ---------------------------------------------------------------------------
+// APPAREILLAGE — étalonnage (sonde dans l'air) & calibrage (forage indéformable).
+// Deux calculs SERVEUR distincts (moteurs pressio-etalonnage / pressio-calibrage) qui
+// produisent les coefficients (Vs/Pe/a) réutilisables dans l'appareillage ci-dessus.
+// §8 : les payloads sont PURS (points de mesure bornés) ; les coefficients viennent du
+// serveur, aucun calcul de régression côté navigateur.
+// ---------------------------------------------------------------------------
+
+/** Une ligne de mesure d'appareillage (P en bar, V60 en cm³). */
+export interface AppRow { p: string; v60: string }
+
+/** Ligne d'appareillage vide (saisie). */
+export const emptyAppRow = (): AppRow => ({ p: '', v60: '' });
+
+/**
+ * Payload API PUR pour l'étalonnage / le calibrage (DoD §8) : on ne transmet QUE les
+ * points (P, V60) réellement saisis (P et V60 non vides), en nombres. Aucune grandeur de
+ * résultat (Vs/Pe/a viennent du serveur). Les rangées vides sont ÉCARTÉES (parité HTML :
+ * `filter(r => r.p !== '' && r.v60 !== '')`). Le moteur exige ≥ 3 points.
+ */
+export function buildAppareillagePayload(
+  rows: AppRow[],
+  meta: { projet?: string; label: string },
+): Record<string, unknown> {
+  return {
+    projet: meta.projet,
+    label: (meta.label || 'Appareillage').slice(0, 40),
+    rows: rows
+      .filter((r) => String(r.p).trim() !== '' && String(r.v60).trim() !== '')
+      .map((r) => ({ p: num(r.p), v60: num(r.v60) })),
+  };
+}
+
+/** Nombre de points valides (P et V60 renseignés) dans une saisie d'appareillage. */
+export function countAppPoints(rows: AppRow[]): number {
+  return rows.filter((r) => String(r.p).trim() !== '' && String(r.v60).trim() !== '').length;
+}
+
+// ---------------------------------------------------------------------------
 // Catalogue de sondes (Vs auto) et de gaines (coefficient a indicatif) — repris
 // FIDÈLEMENT de l'outil d'origine (onglet Projet/Appareillage). Données de
 // référence pures (aucune science), utilisées pour pré-remplir les champs.
@@ -195,7 +233,14 @@ function PressioCurve({ rows, pL }: { rows: Row[]; pL: number | null }) {
   );
 }
 
-type Tab = 'essai' | 'log' | 'mesures' | 'resultats' | 'profil';
+type Tab = 'essai' | 'etalonnage' | 'calibrage' | 'log' | 'mesures' | 'resultats' | 'profil';
+
+/** Extrait la valeur numérique d'une ligne de résultat serveur par motif de libellé. */
+function pickRow(rows: CalcOutputRow[] | undefined, re: RegExp): number | null {
+  if (!rows) return null;
+  const r = rows.find((x) => re.test(x.label));
+  return r && typeof r.value === 'number' ? r.value : null;
+}
 
 export default function PressioProPage() {
   const params = useParams<{ orgSlug: string }>();
@@ -233,6 +278,14 @@ export default function PressioProPage() {
   // PROFIL : résultats de dépouillement par profondeur.
   const [profil, setProfil] = useState<ProfilRow[]>([]);
   const [profiling, setProfiling] = useState(false);
+
+  // APPAREILLAGE — étalonnage (sonde dans l'air) & calibrage (forage indéformable).
+  const [etalRows, setEtalRows] = useState<AppRow[]>([emptyAppRow(), emptyAppRow(), emptyAppRow()]);
+  const [calibRows, setCalibRows] = useState<AppRow[]>([emptyAppRow(), emptyAppRow(), emptyAppRow()]);
+  const [etalOut, setEtalOut] = useState<NormalizedCalcOutput | null>(null);
+  const [calibOut, setCalibOut] = useState<NormalizedCalcOutput | null>(null);
+  const [appBusy, setAppBusy] = useState(false);
+  const [appError, setAppError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!orgId) return;
@@ -295,6 +348,70 @@ export default function PressioProPage() {
     finally { setEmittingPv(false); }
   }, [calcResult, orgId, projectId]);
 
+  // Appareillage : mappe l'erreur d'entitlement/quota vers un message lisible.
+  const appErrMsg = (err: unknown, fallback: string): string => {
+    const x = err as { reason?: string; message?: string };
+    if (x?.reason === 'EXPIRED') return 'Abonnement expiré — calcul impossible.';
+    if (x?.reason === 'QUOTA') return 'Quota de calculs épuisé.';
+    if (x?.reason === 'MODULE_NOT_IN_PACK') return "PressioPro n'est pas inclus dans votre abonnement.";
+    return x?.message ?? fallback;
+  };
+
+  const projName = useCallback(
+    () => projects.find((p) => p.id === projectId)?.name,
+    [projects, projectId],
+  );
+
+  const handleEtalonnage = useCallback(async () => {
+    if (!orgId || !projectId) return;
+    if (countAppPoints(etalRows) < 3) { setAppError('Saisissez au moins 3 points (P, V60).'); return; }
+    setAppBusy(true); setAppError(null);
+    try {
+      const res = await runCalc(orgId, projectId, {
+        engineId: 'pressio-etalonnage', label: 'PressioPro — étalonnage',
+        params: buildAppareillagePayload(etalRows, { projet: projName(), label: 'Étalonnage' }),
+      });
+      setEtalOut(res.output as NormalizedCalcOutput | null);
+    } catch (err: unknown) {
+      setEtalOut(null); setAppError(appErrMsg(err, "Erreur lors de l'étalonnage. Vérifiez au moins 3 points cohérents."));
+    } finally { setAppBusy(false); }
+  }, [orgId, projectId, etalRows, projName]);
+
+  const handleCalibrage = useCallback(async () => {
+    if (!orgId || !projectId) return;
+    if (countAppPoints(calibRows) < 3) { setAppError('Saisissez au moins 3 points (P, V60).'); return; }
+    setAppBusy(true); setAppError(null);
+    try {
+      const res = await runCalc(orgId, projectId, {
+        engineId: 'pressio-calibrage', label: 'PressioPro — calibrage',
+        params: buildAppareillagePayload(calibRows, { projet: projName(), label: 'Calibrage' }),
+      });
+      setCalibOut(res.output as NormalizedCalcOutput | null);
+    } catch (err: unknown) {
+      setCalibOut(null); setAppError(appErrMsg(err, 'Erreur lors du calibrage. Vérifiez au moins 3 points cohérents.'));
+    } finally { setAppBusy(false); }
+  }, [orgId, projectId, calibRows, projName]);
+
+  // Transfert des coefficients serveur vers l'appareillage partagé (parité applyEtalonnage/
+  // applyCalibrage de l'outil : l'étalonnage fournit Vs et Pe ; le calibrage fournit a).
+  const applyEtalonnage = useCallback(() => {
+    const vs = pickRow(etalOut?.rows, /^Vs\b/);
+    const pe = pickRow(etalOut?.rows, /^Pe\b/);
+    if (vs !== null) setV0(vs.toFixed(1));
+    if (pe !== null) setPe(pe.toFixed(3));
+    setTab('essai');
+  }, [etalOut]);
+
+  const applyCalibrage = useCallback(() => {
+    // Le champ appareillage `a` est en cm³/MPa (cf. onglet Projet) ; le moteur renvoie a en
+    // cm³/bar -> on transfère la valeur cm³/MPa (a×10) pour cohérence avec la saisie.
+    const aMPa = pickRow(calibOut?.rows, /cm³\/MPa/);
+    const aBar = pickRow(calibOut?.rows, /^Coefficient de calibrage a$/);
+    const val = aMPa ?? (aBar !== null ? aBar * 10 : null);
+    if (val !== null) setA(val.toFixed(3));
+    setTab('essai');
+  }, [calibOut]);
+
   const output = calcResult?.output as NormalizedCalcOutput | null;
   const pLBar = useMemo(() => {
     const r = output?.rows?.find((x) => /p_L\b/.test(x.label) && !/nette/i.test(x.label));
@@ -342,7 +459,7 @@ export default function PressioProPage() {
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: `1px solid ${LINE}`, flexWrap: 'wrap' }} role="tablist">
-        {([['essai', 'Projet & appareillage'], ['log', 'Log de sondage'], ['mesures', 'Mesures & seuils'], ['resultats', 'Courbe & résultats'], ['profil', 'Profil']] as const).map(([id, t]) => (
+        {([['essai', 'Projet & appareillage'], ['etalonnage', 'Étalonnage'], ['calibrage', 'Calibrage'], ['log', 'Log de sondage'], ['mesures', 'Mesures & seuils'], ['resultats', 'Courbe & résultats'], ['profil', 'Profil']] as const).map(([id, t]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
             style={{ border: 'none', background: 'none', padding: '9px 14px', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', color: tab === id ? ACCENT : MUTED, borderBottom: tab === id ? `2px solid ${ACCENT}` : '2px solid transparent' }}>
             {t}
@@ -394,6 +511,103 @@ export default function PressioProPage() {
             </div>
           </div>
         </>
+      )}
+
+      {tab === 'etalonnage' && (
+        <>
+          <div style={card}>
+            <div style={secH}>Étalonnage — sonde dans l’air (V = Vs + a·P)</div>
+            <p style={{ fontSize: 11, color: MUTED, marginBottom: 10, lineHeight: 1.6 }}>
+              Saisissez les paliers (P, V₆₀) mesurés sonde dans l’air. Le calcul serveur ajuste la droite
+              V = Vs + a·P et détermine <strong>Vs</strong> (volume à l’origine) et <strong>Pe</strong> (pression à V = 1,2·Vs).
+              La pente d’air a <strong>n’est pas</strong> le coefficient de correction (celui-ci vient du calibrage). ≥ 3 points.
+            </p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead><tr>{['P (bar)', 'V₆₀ (cm³)', ''].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+              <tbody>{etalRows.map((r, i) => (
+                <tr key={i}>
+                  {(['p', 'v60'] as const).map((k) => <td key={k} style={{ padding: 2 }}><input data-testid={`etal-${k}-${i}`} style={inp} value={r[k]} onChange={(e) => setEtalRows((rs) => rs.map((q, j) => j === i ? { ...q, [k]: e.target.value } : q))} /></td>)}
+                  <td style={{ padding: 2 }}><button aria-label={`Supprimer palier ${i + 1}`} onClick={() => setEtalRows((rs) => rs.length <= 1 ? rs : rs.filter((_, j) => j !== i))} style={delBtn}>✕</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+            <div style={{ display: 'flex', gap: 10, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={() => setEtalRows((rs) => [...rs, emptyAppRow()])} style={addBtn}>+ Ajouter un palier</button>
+              <button data-testid="btn-etalonner" onClick={handleEtalonnage} disabled={appBusy || !projectId || !orgId}
+                style={{ marginLeft: 'auto', background: appBusy ? '#cbb8b2' : ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontWeight: 600, cursor: appBusy ? 'wait' : 'pointer', fontSize: 13 }}>
+                {appBusy ? 'Calcul…' : 'Calculer l’étalonnage →'}
+              </button>
+            </div>
+          </div>
+          {etalOut && Array.isArray(etalOut.rows) && etalOut.rows.length > 0 && (
+            <div style={card} data-testid="etal-result">
+              <div style={secH}>Coefficients d’étalonnage</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead><tr>{['Grandeur', 'Valeur', 'Unité'].map((h) => <th key={h} style={{ ...th, padding: '6px 8px', borderBottom: `1px solid ${LINE}` }}>{h}</th>)}</tr></thead>
+                <tbody>{etalOut.rows.map((row, i) => (
+                  <tr key={i}>
+                    <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}` }}>{row.label}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, fontWeight: 600, textAlign: 'right' }}>{typeof row.value === 'number' ? row.value.toLocaleString('fr-FR', { maximumFractionDigits: 4 }) : row.value}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, color: MUTED }}>{row.unit}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+              <button data-testid="btn-appliquer-etal" onClick={applyEtalonnage} style={{ marginTop: 12, background: '#2e7d4f', color: '#fff', border: 'none', borderRadius: 9, padding: '8px 15px', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+                Appliquer Vs et Pe dans l’appareillage
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === 'calibrage' && (
+        <>
+          <div style={card}>
+            <div style={secH}>Calibrage — forage indéformable (correction de volume)</div>
+            <p style={{ fontSize: 11, color: MUTED, marginBottom: 10, lineHeight: 1.6 }}>
+              Saisissez les paliers (P, V₆₀) mesurés en tube indéformable. Le calcul serveur détermine le
+              <strong> coefficient de calibrage a</strong> (pente dV/dP) — correction <strong>Vc = Vr − a·Pr</strong> — ainsi que la qualité d’ajustement. ≥ 3 points.
+            </p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead><tr>{['P (bar)', 'V₆₀ (cm³)', ''].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+              <tbody>{calibRows.map((r, i) => (
+                <tr key={i}>
+                  {(['p', 'v60'] as const).map((k) => <td key={k} style={{ padding: 2 }}><input data-testid={`calib-${k}-${i}`} style={inp} value={r[k]} onChange={(e) => setCalibRows((rs) => rs.map((q, j) => j === i ? { ...q, [k]: e.target.value } : q))} /></td>)}
+                  <td style={{ padding: 2 }}><button aria-label={`Supprimer palier ${i + 1}`} onClick={() => setCalibRows((rs) => rs.length <= 1 ? rs : rs.filter((_, j) => j !== i))} style={delBtn}>✕</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+            <div style={{ display: 'flex', gap: 10, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button onClick={() => setCalibRows((rs) => [...rs, emptyAppRow()])} style={addBtn}>+ Ajouter un palier</button>
+              <button data-testid="btn-calibrer" onClick={handleCalibrage} disabled={appBusy || !projectId || !orgId}
+                style={{ marginLeft: 'auto', background: appBusy ? '#cbb8b2' : ACCENT, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontWeight: 600, cursor: appBusy ? 'wait' : 'pointer', fontSize: 13 }}>
+                {appBusy ? 'Calcul…' : 'Calculer le calibrage →'}
+              </button>
+            </div>
+          </div>
+          {calibOut && Array.isArray(calibOut.rows) && calibOut.rows.length > 0 && (
+            <div style={card} data-testid="calib-result">
+              <div style={secH}>Coefficient de calibrage</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead><tr>{['Grandeur', 'Valeur', 'Unité'].map((h) => <th key={h} style={{ ...th, padding: '6px 8px', borderBottom: `1px solid ${LINE}` }}>{h}</th>)}</tr></thead>
+                <tbody>{calibOut.rows.map((row, i) => (
+                  <tr key={i}>
+                    <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}` }}>{row.label}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, fontWeight: 600, textAlign: 'right' }}>{typeof row.value === 'number' ? row.value.toLocaleString('fr-FR', { maximumFractionDigits: 4 }) : row.value}</td>
+                    <td style={{ padding: '6px 8px', borderBottom: `1px solid ${LINE}`, color: MUTED }}>{row.unit}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+              <button data-testid="btn-appliquer-calib" onClick={applyCalibrage} style={{ marginTop: 12, background: '#2e7d4f', color: '#fff', border: 'none', borderRadius: 9, padding: '8px 15px', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+                Appliquer a dans l’appareillage
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {appError && (tab === 'etalonnage' || tab === 'calibrage') && (
+        <div style={{ ...card, background: '#f8e7e2', borderColor: '#e0bdb3', color: '#8a2d20' }} role="alert">{appError}</div>
       )}
 
       {tab === 'log' && (

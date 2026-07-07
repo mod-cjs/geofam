@@ -728,3 +728,48 @@ describe('adaptCalcResult — pieux : libellé Rc;d vs Rt;d selon sens (MINEUR-2
     expectNoLeak(norm, ['"trac"', '"sens"', '"comp"']);
   });
 });
+
+describe('adaptCalcResult — PressioPro étalonnage (Vs/Pe/a)', () => {
+  // Sortie SERVEUR whitelistée (PressioEtalonnageOutputSchema) : Vs/Pe/a/R2/rms.
+  const REAL_ETAL = { Vs: 520.4, Pe: 0.83, a: 30.1, R2: 0.9997, rms: 0.42 };
+
+  it('given une sortie {Vs, Pe, a}, when adapté, then verdict NA + rows Vs/Pe/a', () => {
+    const norm = normalizedOf('pressio-etalonnage', REAL_ETAL);
+    expect(norm.verdict).toBe('NA');
+    expect(labels(norm)).toMatch(/Vs/);
+    expect(labels(norm)).toMatch(/Pe/);
+    expect(labels(norm)).toMatch(/Pente d’air a/);
+    // a exposé en cm³/bar ET en cm³/MPa (×10 indicatif)
+    const aBar = (norm.rows as CalcOutputRow[]).find((r) => /cm³\/bar/.test(r.unit));
+    expect(aBar?.value).toBe(30.1);
+    const aMPa = (norm.rows as CalcOutputRow[]).find((r) => /cm³\/MPa/.test(r.unit));
+    expect(aMPa?.value).toBeCloseTo(301, 6);
+  });
+
+  it('ne fuite aucun intermédiaire de régression même s’il survivait au strip serveur', () => {
+    const leaky = { ...REAL_ETAL, pts: [{ p: 0, v: 520 }], residuals: [{ p: 0, res: 0 }], V_pe: 624, Vs_reel: 520 };
+    const norm = normalizedOf('pressio-etalonnage', leaky);
+    expectNoLeak(norm, ['"pts"', '"residuals"', '"V_pe"', '"Vs_reel"']);
+  });
+});
+
+describe('adaptCalcResult — PressioPro calibrage (a)', () => {
+  // Sortie SERVEUR whitelistée (PressioCalibrageOutputSchema) : a/R2/rms.
+  const REAL_CALIB = { a: 0.48, R2: 0.9991, rms: 0.06 };
+
+  it('given une sortie {a, R2, rms} sans Vs, when adapté, then verdict NA + coefficient a', () => {
+    const norm = normalizedOf('pressio-calibrage', REAL_CALIB);
+    expect(norm.verdict).toBe('NA');
+    expect(labels(norm)).toMatch(/Coefficient de calibrage a/);
+    const aBar = (norm.rows as CalcOutputRow[]).find((r) => /cm³\/bar/.test(r.unit));
+    expect(aBar?.value).toBe(0.48);
+    const aMPa = (norm.rows as CalcOutputRow[]).find((r) => /cm³\/MPa/.test(r.unit));
+    expect(aMPa?.value).toBeCloseTo(4.8, 6);
+  });
+
+  it('ne fuite jamais les coefficients polynomiaux c0/c1/c2 (méthode)', () => {
+    const leaky = { ...REAL_CALIB, c0: 0.1, c1: 0.4, c2: -0.002, pts: [{ p: 1, v: 1 }], residuals: [] };
+    const norm = normalizedOf('pressio-calibrage', leaky);
+    expectNoLeak(norm, ['"c0"', '"c1"', '"c2"', '"pts"', '"residuals"']);
+  });
+});

@@ -97,6 +97,12 @@ const ENTITLEMENT_GROUP: Record<string, string> = {
   'plane-strain': 'radier',
   axi: 'radier',
   'tri-raft': 'radier',
+  // PressioPro : l'etalonnage et le calibrage sont des calculs d'APPAREILLAGE du meme
+  // logiciel que le depouillement pressiometrique -> ils partagent l'entitlement
+  // 'pressiometre' (PressioPro = 1 module, pas de re-vente de l'appareillage). Le dispatch
+  // et le ledger d'usage conservent le slug reel (pressio-etalonnage/pressio-calibrage).
+  'pressio-etalonnage': 'pressiometre',
+  'pressio-calibrage': 'pressiometre',
 };
 
 /**

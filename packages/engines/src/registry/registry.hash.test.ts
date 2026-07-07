@@ -44,10 +44,12 @@ const SOURCES_PRESENTES = ENGINE_REGISTRY.every((e) =>
 );
 
 describe('Registre des moteurs — structure (toujours testable, sans source)', () => {
-  it('contient exactement les 9 modules attendus (6 fichiers HTML, GEOPLAQUE en porte 4)', () => {
-    // 6 fichiers HTML canoniques -> 9 MODULES : GEOPLAQUE_V10.html porte 4 solveurs
-    // (radier ACM, plane-strain, axi, tri) qui partagent le meme cheminSource + sha256.
-    expect(ENGINE_REGISTRY).toHaveLength(9);
+  it('contient exactement les 11 modules attendus (6 fichiers HTML, GEOPLAQUE en porte 4, PressioPro 3)', () => {
+    // 6 fichiers HTML canoniques -> 11 MODULES : GEOPLAQUE_V10.html porte 4 solveurs
+    // (radier ACM, plane-strain, axi, tri) et pressiometre__1_.html porte 3 calculs
+    // (depouillement Menard, etalonnage, calibrage) — chaque groupe partage le meme
+    // cheminSource + sha256.
+    expect(ENGINE_REGISTRY).toHaveLength(11);
   });
 
   it('chaque entree a un id unique', () => {
@@ -68,6 +70,20 @@ describe('Registre des moteurs — structure (toujours testable, sans source)', 
     // Meme source physique -> un SEUL sha256 et un SEUL chemin partages par les 4.
     expect(new Set(geoplaque.map((e) => e.sha256)).size).toBe(1);
     expect(new Set(geoplaque.map((e) => e.cheminSource)).size).toBe(1);
+  });
+
+  it('les 3 modules PressioPro partagent le MEME fichier source (cheminSource + sha256)', () => {
+    const pressio = ENGINE_REGISTRY.filter(
+      (e) => e.fichierSource === 'pressiometre__1_.html',
+    );
+    expect(pressio.map((e) => e.id).sort()).toEqual([
+      'pressio-calibrage',
+      'pressio-etalonnage',
+      'pressiometre-menard',
+    ]);
+    // Meme source physique -> un SEUL sha256 et un SEUL chemin partages par les 3.
+    expect(new Set(pressio.map((e) => e.sha256)).size).toBe(1);
+    expect(new Set(pressio.map((e) => e.cheminSource)).size).toBe(1);
   });
 
   it('chaque sha256 est un digest SHA-256 hex minuscule (64 car.)', () => {

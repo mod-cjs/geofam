@@ -53,6 +53,38 @@ export {
   type PressiometreFixture,
 } from './pressiometre/index.js';
 
+// Moteur ETALONNAGE pressiometrique (sonde dans l'air, calcEtalonnage) — module pur,
+// recalcul serveur. Importe uniquement par apps/api (jamais le front, DoD §8). Sortie =
+// scalaires (coefficients Vs/Pe/a + verdicts) -> pas de canal texte, pas de redacteur.
+export {
+  PRESSIO_ETALONNAGE_ENGINE_ID,
+  PressioEtalonnageInputSchema,
+  PressioEtalonnageOutputSchema,
+  pressioEtalonnageContract,
+  PRESSIO_ETALONNAGE_CONFIDENTIAL_MARKER,
+  PRESSIO_ETALONNAGE_FIXTURES,
+  runPressioEtalonnage,
+  type PressioEtalonnageInput,
+  type PressioEtalonnageOutput,
+  type PressioEtalonnageFixture,
+} from './pressio-etalonnage/index.js';
+
+// Moteur CALIBRAGE pressiometrique (forage indeformable, calcCalibrage) — module pur,
+// recalcul serveur. Importe uniquement par apps/api (jamais le front, DoD §8). Sortie =
+// scalaires (coefficient a + verdicts) -> pas de canal texte, pas de redacteur.
+export {
+  PRESSIO_CALIBRAGE_ENGINE_ID,
+  PressioCalibrageInputSchema,
+  PressioCalibrageOutputSchema,
+  pressioCalibrageContract,
+  PRESSIO_CALIBRAGE_CONFIDENTIAL_MARKER,
+  PRESSIO_CALIBRAGE_FIXTURES,
+  runPressioCalibrage,
+  type PressioCalibrageInput,
+  type PressioCalibrageOutput,
+  type PressioCalibrageFixture,
+} from './pressio-calibrage/index.js';
+
 // Moteur PIEUX — fondations profondes (casagrande, NF P 94-262) — module pur,
 // recalcul serveur. Importe uniquement par apps/api (jamais le front, DoD §8).
 //

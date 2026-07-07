@@ -8,12 +8,15 @@ import { describe, it, expect } from 'vitest';
 
 import {
   buildPressioProPayload,
+  buildAppareillagePayload,
+  countAppPoints,
   SONDE_CATALOGUE,
   GAINE_CATALOGUE,
   vsForSonde,
   aForGaine,
   buildProfilRow,
   type PressioProForm,
+  type AppRow,
 } from '../page';
 import type { NormalizedCalcOutput, CalcOutputRow } from '@/lib/api/types';
 
@@ -119,6 +122,55 @@ describe('buildProfilRow — agrégation multi-profondeurs (résultats serveur)'
   it('renvoie null si la sortie n’a pas de résultat exploitable (fail-safe)', () => {
     expect(buildProfilRow('2.0 m', null)).toBeNull();
     expect(buildProfilRow('2.0 m', outputWith([]))).toBeNull();
+  });
+});
+
+describe('buildAppareillagePayload — étalonnage / calibrage (appareillage serveur)', () => {
+  const rows = (arr: Array<[string, string]>): AppRow[] => arr.map(([p, v60]) => ({ p, v60 }));
+
+  it('mappe UNIQUEMENT les points (P, V60) en nombres + label borné à 40 car.', () => {
+    const p = buildAppareillagePayload(rows([['0.2', '525'], ['0.4', '548'], ['0.6', '574']]), {
+      projet: 'Sondage BH-01', label: 'x'.repeat(60),
+    });
+    expect(p.projet).toBe('Sondage BH-01');
+    expect((p.label as string).length).toBe(40);
+    expect(p.rows).toEqual([
+      { p: 0.2, v60: 525 },
+      { p: 0.4, v60: 548 },
+      { p: 0.6, v60: 574 },
+    ]);
+  });
+
+  it('ÉCARTE les lignes vides (P ou V60 non renseigné) — parité filtre HTML', () => {
+    const p = buildAppareillagePayload(rows([['1', '10'], ['', ''], ['2', '20'], ['3', ''], ['', '30']]), {
+      label: 'Calibrage',
+    });
+    expect(p.rows).toEqual([
+      { p: 1, v60: 10 },
+      { p: 2, v60: 20 },
+    ]);
+  });
+
+  it('label par défaut si vide', () => {
+    const p = buildAppareillagePayload(rows([['1', '1']]), { label: '' });
+    expect(p.label).toBe('Appareillage');
+  });
+
+  it('ne contient AUCUNE grandeur de résultat (Vs/Pe/a côté serveur) — DoD §8', () => {
+    const p = buildAppareillagePayload(rows([['1', '1'], ['2', '2'], ['3', '3']]), { label: 'Étalonnage' });
+    for (const forbidden of ['Vs', 'Pe', 'a', 'R2', 'rms', 'c0', 'c1', 'c2', 'residuals', 'pts']) {
+      expect(Object.prototype.hasOwnProperty.call(p, forbidden)).toBe(false);
+    }
+  });
+});
+
+describe('countAppPoints — garde « ≥ 3 points » côté UI', () => {
+  const rows = (arr: Array<[string, string]>): AppRow[] => arr.map(([p, v60]) => ({ p, v60 }));
+
+  it('compte les seuls points complets (P et V60 renseignés)', () => {
+    expect(countAppPoints(rows([['1', '1'], ['', ''], ['2', '2']]))).toBe(2);
+    expect(countAppPoints(rows([['1', '1'], ['2', '2'], ['3', '3']]))).toBe(3);
+    expect(countAppPoints(rows([['1', ''], ['', '2']]))).toBe(0);
   });
 });
 

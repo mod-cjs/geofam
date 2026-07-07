@@ -237,6 +237,45 @@ export const ENGINE_REGISTRY: readonly EngineRegistryEntry[] = [
     confirmePar: 'title="PressioPro — Ménard NF EN ISO 22476-4"',
   },
   {
+    id: 'pressio-etalonnage',
+    fonction:
+      'Étalonnage pressiométrique (sonde dans l’air) — coefficients d’appareillage Vs / Pe (régression linéaire V=Vs+a·P)',
+    normes: ['NF EN ISO 22476-4', 'Ménard'],
+    // MEME FICHIER SOURCE que pressiometre-menard : `calcEtalonnage` vit dans le meme HTML
+    // mono-fichier pressiometre__1_.html (aux cotes de calcDepth et calcCalibrage). On
+    // REUTILISE donc le meme cheminSource + sha256 (le hash trace la SOURCE, pas le module).
+    fichierSource: 'pressiometre__1_.html',
+    cheminSource: `${ENGINE_SOURCES_CANONICAL_DIR}/pressiometre__1_.html`,
+    sha256: 'b5a06e1c34e1928b06a3e9dcd5628d516ba7d0d2818a67c62bdb43e93c65e4dc',
+    // 1.0.0 : 1ere extraction equivalente du calcul d'etalonnage (module TS). Le HTML
+    // source est IDENTIQUE a pressiometre-menard (meme fichier, meme sha256) : trois
+    // modules (depouillement, etalonnage, calibrage) proviennent du meme HTML.
+    // engineSourceHash = ce sha256 -> un PV reste re-verifiable contre la version source
+    // EXACTE. Equivalence-PORTAGE prouvee (computeEtalonnage == calcEtalonnage, rel 1e-9).
+    // SCIENCE-SIGNEE (STARFIRE a valide les moteurs) ; l'equivalence reste la preuve de
+    // fidelite obligatoire (@science-unsigned tant que le kit cas-tests STARFIRE manque).
+    version: '1.0.0',
+    confirmePar:
+      'calcEtalonnage() de pressiometre__1_.html (régression V=Vs+a·P, Pe à V=1,2·Vs)',
+  },
+  {
+    id: 'pressio-calibrage',
+    fonction:
+      'Calibrage pressiométrique (forage indéformable) — coefficient de correction de volume a (moindres carrés, solve3)',
+    normes: ['NF EN ISO 22476-4', 'Ménard'],
+    // MEME FICHIER SOURCE que pressiometre-menard (calcCalibrage + solve3 du meme HTML).
+    fichierSource: 'pressiometre__1_.html',
+    cheminSource: `${ENGINE_SOURCES_CANONICAL_DIR}/pressiometre__1_.html`,
+    sha256: 'b5a06e1c34e1928b06a3e9dcd5628d516ba7d0d2818a67c62bdb43e93c65e4dc',
+    // 1.0.0 : 1ere extraction equivalente du calcul de calibrage (module TS). HTML source
+    // IDENTIQUE a pressiometre-menard. Equivalence-PORTAGE prouvee (computeCalibrage ==
+    // calcCalibrage, rel 1e-9). SCIENCE-SIGNEE ; equivalence = preuve de fidelite
+    // obligatoire (@science-unsigned tant que le kit cas-tests STARFIRE manque).
+    version: '1.0.0',
+    confirmePar:
+      'calcCalibrage() + solve3() de pressiometre__1_.html (ajustement degré 2, a=pente dV/dP)',
+  },
+  {
     id: 'labo-classification-gtr',
     fonction:
       'Traitement des essais de laboratoire & classification GTR (Proctor, Atterberg, granulométrie, indices de compression Cc/Cs)',
