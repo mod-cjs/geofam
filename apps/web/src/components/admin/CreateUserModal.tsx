@@ -110,7 +110,7 @@ export function CreateUserModal({ open, onClose, onCreated }: CreateUserModalPro
         </div>
         <div>
           <label htmlFor="cu-password" style={labelStyle}>
-            Mot de passe initial (≥ 8 caractères)
+            Mot de passe initial (≥ 12 caractères)
           </label>
           <input
             id="cu-password"
@@ -144,7 +144,7 @@ export function canSubmitCreateUser({
   password: string;
   fullName: string;
 }): boolean {
-  return EMAIL_RE.test(email.trim()) && password.length >= 8 && fullName.trim().length > 0;
+  return EMAIL_RE.test(email.trim()) && password.length >= 12 && fullName.trim().length > 0;
 }
 
 // ---------------------------------------------------------------------------

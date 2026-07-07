@@ -5,20 +5,33 @@
  * Fond --struct-petrole · libellé "BACK-OFFICE" · avatar utilisateur.
  */
 
-import { Shield } from 'lucide-react';
+import { LogOut, Shield } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { Avatar } from '@/components/ui/Avatar';
-import { getStoredUser } from '@/lib/api/client';
+import { getStoredUser, logout } from '@/lib/api/client';
 
 export function AdminTopbar() {
   // Valeur hydratée après montage (sessionStorage inaccessible côté serveur).
   const [user, setUser] = useState<{ name: string }>({ name: 'A' });
+  const [signingOut, setSigningOut] = useState(false);
   useEffect(() => {
     const u = getStoredUser();
     if (u) setUser(u);
   }, []);
+
+  // Déconnexion : révoque le refresh + purge les cookies/session (logout), puis
+  // renvoie vers /login (rechargement dur pour vider tout état client).
+  async function handleLogout() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await logout();
+    } finally {
+      window.location.href = '/login';
+    }
+  }
 
   return (
     <header
@@ -96,6 +109,32 @@ export function AdminTopbar() {
       <div style={{ flexShrink: 0 }}>
         <Avatar name={user.name} size="sm" />
       </div>
+
+      {/* Déconnexion */}
+      <button
+        type="button"
+        onClick={() => void handleLogout()}
+        disabled={signingOut}
+        aria-label="Se déconnecter"
+        title="Se déconnecter"
+        data-testid="admin-logout"
+        style={{
+          flexShrink: 0,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 30,
+          height: 30,
+          borderRadius: 'var(--radius-base)',
+          border: '1px solid rgba(255,255,255,0.22)',
+          background: 'transparent',
+          color: 'rgba(255,255,255,0.8)',
+          cursor: signingOut ? 'wait' : 'pointer',
+          opacity: signingOut ? 0.6 : 1,
+        }}
+      >
+        <LogOut size={16} strokeWidth={1.5} aria-hidden="true" />
+      </button>
 
       <style>{`
         @media (min-width: 1024px) {
