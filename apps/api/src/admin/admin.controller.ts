@@ -58,10 +58,12 @@ import type {
   RenewDto,
   ResetPasswordDto,
   SetOrgStatusDto,
+  SetPlatformRoleDto,
   SetRoleDto,
   SetUserActiveDto,
   TopUpDto,
   TransferOwnerDto,
+  UpdateUserIdentityDto,
 } from './admin-mutations.dto';
 import {
   attachSubscriptionSchema,
@@ -73,10 +75,12 @@ import {
   renewSchema,
   resetPasswordSchema,
   setOrgStatusSchema,
+  setPlatformRoleSchema,
   setRoleSchema,
   setUserActiveSchema,
   topUpSchema,
   transferOwnerSchema,
+  updateUserIdentitySchema,
 } from './admin-mutations.dto';
 import type {
   AdminOrgDetail,
@@ -577,6 +581,54 @@ export class AdminController {
       idempotencyKey: resolveIdempotencyKey(idempotencyKey),
     });
     return { userId };
+  }
+
+  /**
+   * PATCH /admin/users/:userId — edite l'IDENTITE d'un compte (email + nom). L'email est
+   * normalise (lower/trim) ; un email deja porte par un AUTRE compte -> 409 ; user introuvable
+   * -> 404. L'audit ne trace QUE email/nom avant/apres (aucun secret). Idempotency-Key optionnel.
+   */
+  @Patch('users/:userId')
+  async updateUserIdentity(
+    @Param('userId', new ZodValidationPipe(mutUserGlobalIdParam))
+    userId: string,
+    @Body(new ZodValidationPipe(updateUserIdentitySchema))
+    body: UpdateUserIdentityDto,
+    @Req() req: AuthedRequest,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<{ userId: string }> {
+    await this.mutations.updateUserIdentity({
+      userId,
+      email: body.email,
+      fullName: body.fullName,
+      actorUserId: this.actor(req),
+      idempotencyKey: resolveIdempotencyKey(idempotencyKey),
+    });
+    return { userId };
+  }
+
+  /**
+   * PATCH /admin/users/:userId/platform-role — attribue / retire le role PLATEFORME
+   * (SUPERADMIN | SUPPORT | null). SENSIBLE (RBAC du back-office) : retirer le DERNIER
+   * SUPERADMIN actif -> 409 ; se retrograder soi-meme -> 400. L'effet est immediat au
+   * prochain appel (le RolesGuard relit le role en base). User introuvable -> 404.
+   */
+  @Patch('users/:userId/platform-role')
+  async setPlatformRole(
+    @Param('userId', new ZodValidationPipe(mutUserGlobalIdParam))
+    userId: string,
+    @Body(new ZodValidationPipe(setPlatformRoleSchema))
+    body: SetPlatformRoleDto,
+    @Req() req: AuthedRequest,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ): Promise<{ userId: string; platformRole: PlatformRole | null }> {
+    await this.mutations.setPlatformRole({
+      userId,
+      role: body.role,
+      actorUserId: this.actor(req),
+      idempotencyKey: resolveIdempotencyKey(idempotencyKey),
+    });
+    return { userId, platformRole: body.role };
   }
 
   /**

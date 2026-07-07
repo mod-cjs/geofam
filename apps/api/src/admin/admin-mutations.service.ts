@@ -249,6 +249,50 @@ export class AdminMutationsService {
   }
 
   /**
+   * IDENTITE : edite l'email + le nom d'un compte (0018). L'email est normalise + son unicite
+   * TRANCHEE cote base (un email deja porte par un AUTRE user -> 409). User introuvable -> 404.
+   * Le payload d'audit ne porte QUE email/nom avant/apres (aucun secret). Idempotent.
+   */
+  async updateUserIdentity(args: {
+    userId: string;
+    email: string;
+    fullName: string;
+    actorUserId: string;
+    idempotencyKey: string;
+  }): Promise<void> {
+    await this.callVoid(
+      (tx) => tx.$executeRaw`
+        SELECT admin_update_user_identity(
+          ${args.userId}::uuid, ${args.email}::text, ${args.fullName}::text,
+          ${args.actorUserId}::uuid, ${args.idempotencyKey}::text
+        )
+      `,
+    );
+  }
+
+  /**
+   * ROLE PLATEFORME : attribue / retire le role transverse (SUPERADMIN | SUPPORT | null) qui
+   * ouvre le back-office (0018). SENSIBLE (RBAC). Invariants anti-lockout cote base : retirer le
+   * DERNIER SUPERADMIN actif -> 409 ; se retrograder soi-meme -> 400. Effet immediat au prochain
+   * appel (le RolesGuard relit le role en base). User introuvable -> 404. Idempotent.
+   */
+  async setPlatformRole(args: {
+    userId: string;
+    role: 'SUPERADMIN' | 'SUPPORT' | null;
+    actorUserId: string;
+    idempotencyKey: string;
+  }): Promise<void> {
+    await this.callVoid(
+      (tx) => tx.$executeRaw`
+        SELECT admin_set_platform_role(
+          ${args.userId}::uuid, ${args.role}::text,
+          ${args.actorUserId}::uuid, ${args.idempotencyKey}::text
+        )
+      `,
+    );
+  }
+
+  /**
    * RATTACHE un abonnement a une org EXISTANTE sans abo. Un abo ACTIF deja present -> 409 ;
    * org introuvable -> 404 ; fenetre invalide -> 400. Un abo EXPIRE est remplace. Idempotent.
    */
@@ -385,6 +429,29 @@ export class AdminMutationsService {
     try {
       await this.prisma.asAppRole(fn);
     } catch (err) {
+      // 409 email deja utilise par un AUTRE compte (edition d'identite, R0012).
+      if (rawMessageIncludes(err, 'email deja utilise')) {
+        throw new ConflictException(
+          'Cet email est déjà utilisé par un autre compte',
+        );
+      }
+      // 409 anti-lockout plateforme : retirer/retrograder le dernier SUPERADMIN actif (R0013).
+      // AVANT le needle 'anti-lockout' generique (message OWNER-specifique) : plus precis d'abord.
+      if (rawMessageIncludes(err, 'dernier SUPERADMIN')) {
+        throw new ConflictException(
+          'Impossible : au moins un SUPERADMIN actif doit subsister',
+        );
+      }
+      // 400 anti auto-retrogradation du role plateforme (on ne se retire pas son acces, R0014).
+      if (rawMessageIncludes(err, 'auto-retrogradation')) {
+        throw new BadRequestException(
+          'Impossible de retirer votre propre accès plateforme',
+        );
+      }
+      // 400 role plateforme invalide (defense de profondeur ; Zod barre deja).
+      if (rawMessageIncludes(err, 'role plateforme invalide')) {
+        throw new BadRequestException('Rôle plateforme invalide');
+      }
       // 409 anti-lockout (retrograder/retirer le dernier OWNER actif).
       if (rawMessageIncludes(err, 'anti-lockout')) {
         throw new ConflictException(

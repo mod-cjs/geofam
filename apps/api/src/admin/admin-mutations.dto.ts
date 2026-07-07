@@ -152,3 +152,30 @@ export const transferOwnerSchema = z.object({
   newOwnerUserId: z.string().uuid(),
 });
 export type TransferOwnerDto = z.infer<typeof transferOwnerSchema>;
+
+/* ===================================================================
+ *  0018 — GESTION UTILISATEURS : edition d'identite + role plateforme
+ * =================================================================== */
+
+/**
+ * PATCH /admin/users/:userId — edite l'IDENTITE (email + nom). `email` valide (borne haute
+ * anti-DoS) ; normalise cote base (lower/trim). `fullName` borne (1..200). La base RE-verifie
+ * l'unicite de l'email (UNIQUE + R0012 -> 409) : Zod ne fait que borner la forme.
+ */
+export const updateUserIdentitySchema = z.object({
+  email: z.string().trim().email().max(320),
+  fullName: z.string().trim().min(1).max(200),
+});
+export type UpdateUserIdentityDto = z.infer<typeof updateUserIdentitySchema>;
+
+/**
+ * PATCH /admin/users/:userId/platform-role — attribue / retire le role PLATEFORME. `role` ∈
+ * {SUPERADMIN, SUPPORT} ou `null` (revocation). SENSIBLE (RBAC du back-office) : les invariants
+ * anti-lockout (dernier SUPERADMIN actif preserve -> 409 ; auto-retrogradation refusee -> 400)
+ * sont graves cote base (R0013/R0014). `.nullable()` accepte explicitement null ; l'absence de
+ * cle est refusee (il faut choisir null pour revoquer).
+ */
+export const setPlatformRoleSchema = z.object({
+  role: z.enum(['SUPERADMIN', 'SUPPORT']).nullable(),
+});
+export type SetPlatformRoleDto = z.infer<typeof setPlatformRoleSchema>;
