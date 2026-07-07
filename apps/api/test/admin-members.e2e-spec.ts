@@ -334,9 +334,13 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
     // (a) provisionnement du membre (ENGINEER) dans orgA par le SUPERADMIN.
     const add = await addMember(orgA, memberEng, 'ENGINEER');
     expect(add.status).toBe(201);
-    expect(String((add.body as AddMemberBody).membershipId)).toMatch(
-      /^[0-9a-f-]{36}$/i,
-    );
+    // POST /members renvoie desormais le DETAIL frais (fix W4), pas { membershipId } :
+    // on verifie que le membre ajoute figure bien dans detail.members.
+    expect(
+      (add.body as { members?: Array<{ userId: string }> }).members?.some(
+        (m) => m.userId === memberEng,
+      ),
+    ).toBe(true);
 
     // (b) le membre accède à une route tenant de orgA -> 200.
     const token = await login(emailEng());

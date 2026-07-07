@@ -66,6 +66,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
 
   const superId = randomUUID(); // SUPERADMIN acteur
   const super2 = randomUUID(); // 2e SUPERADMIN (pivot anti-lockout / auto-retro)
+  const supportUser = randomUUID(); // role plateforme SUPPORT (doit rester hors mutations)
   const normalUser = randomUUID(); // cible promote/revoke + update identite
   const otherUser = randomUUID(); // detient un email (cible du conflit d'unicite)
 
@@ -78,14 +79,23 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
 
   jest.setTimeout(60_000);
 
-  const email = (id: string, p: string) => `${p}-${id.slice(0, 8)}@roadsen.test`;
+  const email = (id: string, p: string) =>
+    `${p}-${id.slice(0, 8)}@roadsen.test`;
   const emailSuper = () => email(superId, 'umsuper');
   const emailSuper2 = () => email(super2, 'umsuper2');
+  const emailSupport = () => email(supportUser, 'umsupport');
   const emailNormal = () => email(normalUser, 'umnormal');
   const emailOther = () => email(otherUser, 'umother');
   const emailOwnerA = () => email(ownerA, 'umownera');
 
-  const allUserIds = [superId, super2, normalUser, otherUser, ownerA];
+  const allUserIds = [
+    superId,
+    super2,
+    supportUser,
+    normalUser,
+    otherUser,
+    ownerA,
+  ];
 
   beforeAll(async () => {
     try {
@@ -102,15 +112,18 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
 
     await admin.query(
       `INSERT INTO users (id, email, password_hash, full_name, platform_role, updated_at) VALUES
-        ($1,$2,$9,'UM Super','SUPERADMIN',now()),
-        ($3,$4,$9,'UM Super2','SUPERADMIN',now()),
-        ($5,$6,$9,'UM Normal',NULL,now()),
-        ($7,$8,$9,'UM Other',NULL,now())`,
+        ($1,$2,$11,'UM Super','SUPERADMIN',now()),
+        ($3,$4,$11,'UM Super2','SUPERADMIN',now()),
+        ($5,$6,$11,'UM Support','SUPPORT',now()),
+        ($7,$8,$11,'UM Normal',NULL,now()),
+        ($9,$10,$11,'UM Other',NULL,now())`,
       [
         superId,
         emailSuper(),
         super2,
         emailSuper2(),
+        supportUser,
+        emailSupport(),
         normalUser,
         emailNormal(),
         otherUser,
@@ -212,14 +225,55 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
       .patch(`/admin/users/${userId}/platform-role`)
       .set('authorization', `Bearer ${superToken}`)
       .send({ role, ...extra });
+  const setActive = (userId: string, active: boolean, tk = superToken) =>
+    request(server())
+      .patch(`/admin/users/${userId}/active`)
+      .set('authorization', `Bearer ${tk}`)
+      .send({ active });
 
   const dbUser = async (userId: string) => {
     const { rows } = await admin!.query<{
       email: string;
       full_name: string;
       platform_role: string | null;
-    }>(`SELECT email, full_name, platform_role FROM users WHERE id=$1`, [userId]);
+    }>(`SELECT email, full_name, platform_role FROM users WHERE id=$1`, [
+      userId,
+    ]);
     return rows[0];
+  };
+  const dbActive = async (userId: string) => {
+    const { rows } = await admin!.query<{ is_active: boolean }>(
+      `SELECT is_active FROM users WHERE id=$1`,
+      [userId],
+    );
+    return rows[0]?.is_active;
+  };
+  // Neutralise les SUPERADMIN actifs EXTERNES a la suite (pollution inter-suites sur base
+  // partagee) pour rendre l'invariant GLOBAL "dernier SUPERADMIN actif" deterministe. Rend
+  // la liste des ids neutralises a restaurer en finally.
+  const neutralizeExternalSupers = async (): Promise<string[]> => {
+    const { rows } = await admin!.query<{ id: string }>(
+      `SELECT id FROM users
+       WHERE platform_role='SUPERADMIN' AND is_active=true
+         AND NOT (id = ANY($1::uuid[]))`,
+      [allUserIds],
+    );
+    const ids = rows.map((r) => r.id);
+    if (ids.length) {
+      await admin!.query(
+        `UPDATE users SET is_active=false WHERE id = ANY($1::uuid[])`,
+        [ids],
+      );
+    }
+    return ids;
+  };
+  const restoreExternalSupers = async (ids: string[]) => {
+    if (ids.length) {
+      await admin!.query(
+        `UPDATE users SET is_active=true WHERE id = ANY($1::uuid[])`,
+        [ids],
+      );
+    }
   };
   const auditRow = async (action: string, targetUser: string) => {
     const { rows } = await admin!.query<{
@@ -295,8 +349,12 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
         .status,
     ).toBe(404);
     expect(
-      (await updateIdentity(normalUser, { email: 'pas-un-email', fullName: 'X' }))
-        .status,
+      (
+        await updateIdentity(normalUser, {
+          email: 'pas-un-email',
+          fullName: 'X',
+        })
+      ).status,
     ).toBe(400);
   });
 
@@ -425,14 +483,185 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
     const auth = (r: request.Test) =>
       r.set('authorization', `Bearer ${ownerToken}`);
 
-    const r1 = await auth(request(server()).patch(`/admin/users/${normalUser}`)).send(
-      { email: 'x@y.io', fullName: 'X' },
-    );
+    const r1 = await auth(
+      request(server()).patch(`/admin/users/${normalUser}`),
+    ).send({ email: 'x@y.io', fullName: 'X' });
     expect(r1.status).toBe(403);
 
     const r2 = await auth(
       request(server()).patch(`/admin/users/${normalUser}/platform-role`),
     ).send({ role: 'SUPERADMIN' });
     expect(r2.status).toBe(403);
+  });
+
+  // --- 11) RBAC : SUPPORT n'accede PAS aux mutations (SUPERADMIN-only) ---------
+
+  it('11) RBAC : un SUPPORT sur PATCH /users/:id ET /users/:id/platform-role -> 403', async () => {
+    if (!ready()) return;
+    // Un role plateforme SUPPORT est authentifie mais n'a PAS les droits de mutation du
+    // back-office (routes @Roles(SUPERADMIN)). Deny-by-default : SUPPORT != SUPERADMIN.
+    const supportToken = await token(emailSupport());
+    const auth = (r: request.Test) =>
+      r.set('authorization', `Bearer ${supportToken}`);
+
+    const r1 = await auth(
+      request(server()).patch(`/admin/users/${normalUser}`),
+    ).send({ email: 'sp@y.io', fullName: 'X' });
+    expect(r1.status).toBe(403);
+
+    const r2 = await auth(
+      request(server()).patch(`/admin/users/${normalUser}/platform-role`),
+    ).send({ role: 'SUPERADMIN' });
+    expect(r2.status).toBe(403);
+  });
+
+  // --- 12) MAJEUR-2 : un SUPERADMIN DESACTIVE perd l'acces plateforme ----------
+
+  it('12) SUPERADMIN desactive -> auth_get_platform_role NULL -> 403 (token encore valide)', async () => {
+    if (!ready()) return;
+    // super2 est SUPERADMIN actif : on capture un token AVANT desactivation (il reste
+    // cryptographiquement valide). superId le desactive (autorise : superId reste actif).
+    // Avant 0019 : auth_get_platform_role ignore is_active -> super2 garde SUPERADMIN ->
+    // la route admin passe (200/4xx metier). Apres 0019 : is_active=false -> role NULL ->
+    // RolesGuard refuse -> 403. Le RolesGuard relit le role a CHAQUE requete (JWT ne porte
+    // pas le platform_role) : l'effet est immediat, sans re-emission de token.
+    superToken = await token(emailSuper());
+    // Etat deterministe : super2 SUPERADMIN + actif (des tests precedents ont pu le
+    // retrograder ; l'ordre d'execution ne doit pas rendre ce test fragile).
+    await admin!.query(
+      `UPDATE users SET platform_role='SUPERADMIN', is_active=true WHERE id=$1`,
+      [super2],
+    );
+    const super2Token = await token(emailSuper2());
+
+    // super2 SUPERADMIN peut agir au depart (preuve d'acces ; le RolesGuard relit le role).
+    expect(
+      (
+        await request(server())
+          .patch(`/admin/users/${normalUser}/platform-role`)
+          .set('authorization', `Bearer ${super2Token}`)
+          .send({ role: null })
+      ).status,
+    ).toBe(200);
+
+    // superId desactive super2 (superId reste un SUPERADMIN actif -> autorise).
+    expect((await setActive(super2, false)).status).toBe(200);
+    try {
+      // super2, desactive, tente une action admin avec son token encore valide -> 403.
+      const denied = await request(server())
+        .patch(`/admin/users/${normalUser}/platform-role`)
+        .set('authorization', `Bearer ${super2Token}`)
+        .send({ role: null });
+      expect(denied.status).toBe(403);
+    } finally {
+      await admin!.query(`UPDATE users SET is_active=true WHERE id=$1`, [
+        super2,
+      ]);
+    }
+  });
+
+  // --- 13) MAJEUR-1 : lockout inter-chemins ferme (R0013 dans set_user_active) -
+
+  it('13) inter-chemins : desactiver le DERNIER SUPERADMIN actif -> R0013 (409), etat intact', async () => {
+    if (!ready()) return;
+    // L'invariant "au moins un SUPERADMIN actif" est GLOBAL et couvre DEUX chemins :
+    // set_platform_role (retrait de role) ET set_user_active (desactivation de compte).
+    // AVANT 0019, set_user_active n'a AUCUNE garde -> la sequence "A desactive B, B
+    // desactive A" mene a 0 SUPERADMIN actif (back-office verrouille). Ce test isole la
+    // garde de set_user_active en appelant la fonction DEFINER avec un ACTEUR DISTINCT de
+    // la cible (p_actor != p_user_id -> R0009 auto-desactivation ne s'applique PAS) : c'est
+    // exactement la 2e etape de la course inter-chemins. La voie HTTP ne peut PAS l'atteindre
+    // seule (route SUPERADMIN-only + MAJEUR-2 : un acteur valide est TOUJOURS un SUPERADMIN
+    // actif, donc compte comme "autre" -> jamais le dernier ; le self -> R0009). On teste
+    // donc la fonction, locus reel de la garde.
+    const externals = await neutralizeExternalSupers();
+    // super2 devient un SUPERADMIN INACTIF (role conserve, is_active=false) : il n'est plus
+    // compte comme "autre SUPERADMIN actif". superId reste le SEUL SUPERADMIN actif.
+    await admin!.query(
+      `UPDATE users SET platform_role='SUPERADMIN', is_active=false WHERE id=$1`,
+      [super2],
+    );
+    await admin!.query(`UPDATE users SET is_active=true WHERE id=$1`, [
+      superId,
+    ]);
+    try {
+      // super2 (acteur, distinct de la cible) tente de desactiver superId, dernier
+      // SUPERADMIN actif. Avant 0019 : succes -> superId inactif -> 0 actif (RED). Apres :
+      // R0013.
+      let code = '';
+      let message = '';
+      try {
+        await admin!.query(
+          `SELECT admin_set_user_active($1::uuid, false, $2::uuid, $3::text)`,
+          [superId, super2, `um-lockout-${randomUUID()}`],
+        );
+      } catch (e) {
+        code = (e as { code?: string }).code ?? '';
+        message = (e as { message?: string }).message ?? '';
+      }
+      expect(code).toBe('R0013');
+      expect(message).toContain('SUPERADMIN actif');
+      // superId n'a PAS ete desactive : l'invariant global tient.
+      expect(await dbActive(superId)).toBe(true);
+      // aucune trace orpheline (garde AVANT l'audit).
+      const audit = await auditRow('USER_ACTIVE_SET', superId);
+      expect(audit).toBeUndefined();
+    } finally {
+      // restauration : etat de seed (super2 SUPERADMIN actif) + superId actif + externes.
+      await admin!.query(
+        `UPDATE users SET platform_role='SUPERADMIN', is_active=true WHERE id=$1`,
+        [super2],
+      );
+      await admin!.query(`UPDATE users SET is_active=true WHERE id=$1`, [
+        superId,
+      ]);
+      await restoreExternalSupers(externals);
+    }
+  });
+
+  // --- 14) MAJEUR-1 : la course set_platform_role<->set_user_active se serialise -
+
+  it('14) course retrogradation<->desactivation : jamais 0 SUPERADMIN actif', async () => {
+    if (!ready()) return;
+    // superId + super2 sont les DEUX seuls SUPERADMIN actifs. On lance EN PARALLELE :
+    //  - set_platform_role(super2 -> null)  [retire le role de super2]
+    //  - set_user_active(superId -> false)  [desactive superId]  (acteur = super2, distinct)
+    // Sans serialisation, chacun voit l'autre encore "actif+SUPERADMIN" et passe -> 0 actif.
+    // Les deux fonctions verrouillent la ligne cible (FOR UPDATE) PUIS la sous-requete count
+    // (FOR UPDATE) dans le MEME ordre -> elles se serialisent (l'une attend/annule) : au
+    // moins un SUPERADMIN actif SUBSISTE. On tolere un abort concurrent (deadlock/40001) ou
+    // un refus metier (R0013/R0014) : le seul invariant dur = post-etat >= 1 SUPERADMIN actif.
+    const externals = await neutralizeExternalSupers();
+    await admin!.query(
+      `UPDATE users SET platform_role='SUPERADMIN', is_active=true WHERE id = ANY($1::uuid[])`,
+      [[superId, super2]],
+    );
+    try {
+      const runRetro = admin!
+        .query(
+          `SELECT admin_set_platform_role($1::uuid, NULL, $2::uuid, $3::text)`,
+          [super2, superId, `um-race-role-${randomUUID()}`],
+        )
+        .catch((e: { code?: string }) => ({ err: e.code ?? 'ERR' }));
+      const runDeact = admin!
+        .query(
+          `SELECT admin_set_user_active($1::uuid, false, $2::uuid, $3::text)`,
+          [superId, super2, `um-race-active-${randomUUID()}`],
+        )
+        .catch((e: { code?: string }) => ({ err: e.code ?? 'ERR' }));
+      await Promise.all([runRetro, runDeact]);
+
+      const { rows } = await admin!.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM users
+         WHERE platform_role='SUPERADMIN' AND is_active=true`,
+      );
+      expect(Number(rows[0].n)).toBeGreaterThanOrEqual(1);
+    } finally {
+      await admin!.query(
+        `UPDATE users SET platform_role='SUPERADMIN', is_active=true WHERE id = ANY($1::uuid[])`,
+        [[superId, super2]],
+      );
+      await restoreExternalSupers(externals);
+    }
   });
 });
