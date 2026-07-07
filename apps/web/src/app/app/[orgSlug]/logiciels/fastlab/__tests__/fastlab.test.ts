@@ -12,8 +12,17 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
 
-import { buildFastlabPayload, type FastlabForm } from '../page';
+import { buildFastlabPayload, ExtraView, EXTRA_SECTIONS, SIEVES, type FastlabForm } from '../page';
+
+/** Rend une section additionnelle (ExtraView) avec un jeu de toggles `extra` donné. */
+function renderExtra(tab: string, extra: Record<string, string>): string {
+  const s = EXTRA_SECTIONS.find((x) => x.tab === tab);
+  if (!s) throw new Error(`section introuvable : ${tab}`);
+  return renderToStaticMarkup(createElement(ExtraView, { s, extra, setExtra: () => {} }));
+}
 
 interface CiSpec { N: string; P: string; R: string; rho: string; w: string; nat: string }
 const emptyCi = (): CiSpec => ({ N: '', P: '', R: '', rho: '', w: '', nat: '' });
@@ -165,7 +174,7 @@ describe('buildFastlabPayload — DoD §8 (ALLOWLIST fail-closed)', () => {
   const ALLOWED_PREFIX = /^(m_|w_|gr_|ll_|pl_|v_|pr_|ci_|cb_|oe_|tu_|tc_|es_|la_|md_|mc_|sz_|su_|pe_|uc_|rs_|rs2_|d_|di_|dd_|ra_)/;
   const ALLOWED_TOGGLES = new Set([
     'gr_M', 'prType', 'ciMethod', 'ci_shape', 'laVar', 'mdeVar', 'mdeMode', 'mdeWet',
-    'permMode', 'su_type', 'rsMethod', 'cbType', 'densMethod', 'densShape',
+    'permMode', 'su_type', 'rsMethod', 'cbType', 'densMethod', 'densShape', 'forcedState',
   ]);
 
   it('toute clé du payload est une mesure/toggle connu (aucune grandeur de résultat)', () => {
@@ -179,5 +188,185 @@ describe('buildFastlabPayload — DoD §8 (ALLOWLIST fail-closed)', () => {
     for (const forbidden of ['classe', 'ip', 'wl', 'wp', 'vbs', 'p80', 'dmax', 'code', 'path', 'cbr', 'mde', 'rhos', 'es', 'la', 'c_cis', 'phi_cis']) {
       expect(Object.prototype.hasOwnProperty.call(p, forbidden)).toBe(false);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAJEUR — passe de fidélité FASTLAB7 (tamis grossiers, m_geo R, MDE campagne,
+// perméa charge constante, ρ apparente 3 méthodes, WA24, forçage état, pl_np).
+// Chaque champ DOIT traverser buildFastlabPayload vers la clé moteur exacte ; les
+// sections conditionnelles DOIVENT rendre les bons champs selon le toggle.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('MAJEUR 1 — tamis grossiers (Dmax non plafonné, famille C détectable)', () => {
+  it('la série de tamis couvre les 6 coupures grossières 100→31,5 mm (ids moteur gr_*)', () => {
+    const keys = SIEVES.map((s) => s.key);
+    for (const k of ['gr_100', 'gr_80', 'gr_63', 'gr_50', 'gr_40', 'gr_31_5']) {
+      expect(keys, `tamis grossier manquant : ${k}`).toContain(k);
+    }
+    // Et les fins historiques restent présents (non-régression).
+    for (const k of ['gr_20', 'gr_2', 'gr_0_08']) expect(keys).toContain(k);
+    expect(SIEVES.length).toBe(18);
+  });
+
+  it('un refus sur un tamis grossier traverse le payload (clé gr_* brute)', () => {
+    const p = buildFastlabPayload(form({ sieves: { gr_50: '120', gr_31_5: '80', gr_2: '90' } }));
+    expect(p.gr_50).toBe('120');
+    expect(p.gr_31_5).toBe('80');
+    expect(p.gr_2).toBe('90');
+  });
+});
+
+describe('MAJEUR 2 — famille géologique rocheuse m_geo (R1-R6)', () => {
+  it('le choix de famille R traverse vers m_geo (mapping ident → m_*)', () => {
+    const p = buildFastlabPayload(form({ ident: { ref: 'RC1', geo: 'R3' } }));
+    expect(p.m_geo).toBe('R3');
+    expect(p.m_ref).toBe('RC1');
+  });
+
+  it('« non rocheux » (geo vide) n’émet aucune clé m_geo', () => {
+    const p = buildFastlabPayload(form({ ident: { ref: 'S', geo: '' } }));
+    expect('m_geo' in p).toBe(false);
+  });
+});
+
+describe('MAJEUR 3 — Micro-Deval campagne CAFEC (mc_*) + mdeWet', () => {
+  it('mode campagne : les 4 déterminations mc_A/mc_B/mc_cls/mc_ch/mc_rot traversent le payload', () => {
+    const p = buildFastlabPayload(form({
+      extra: {
+        mdeMode: 'camp',
+        mc_cls0: '3/8', mc_cls2: '3/8', mc_ch0: '2000', mc_rot0: '12000',
+        mc_A0: '500', mc_B0: '470', mc_A1: '500', mc_B1: '468',
+        mc_A2: '500', mc_B2: '455', mc_A3: '500', mc_B3: '452',
+      },
+    }));
+    expect(p.mdeMode).toBe('camp');
+    expect(p.mc_A0).toBe('500');
+    expect(p.mc_B0).toBe('470');
+    expect(p.mc_A3).toBe('500');
+    expect(p.mc_B3).toBe('452');
+    expect(p.mc_cls0).toBe('3/8');
+    expect(p.mc_ch0).toBe('2000');
+    expect(p.mc_rot0).toBe('12000');
+  });
+
+  it('condition à sec (mdeWet=s) traverse le payload', () => {
+    expect(buildFastlabPayload(form({ extra: { mdeWet: 's' } })).mdeWet).toBe('s');
+  });
+
+  it('rend le tableau campagne (et pas le normalisé) quand mdeMode=camp', () => {
+    const camp = renderExtra('mde', { mdeMode: 'camp' });
+    expect(camp).toContain('Poids initial A (g)');
+    expect(camp).toContain('Refus 1,6 mm B (g)');
+    expect(camp).toContain('Classe granulaire (mm)');
+    expect(camp).not.toContain('Masse initiale M (g)');
+  });
+
+  it('rend le tableau normalisé (et pas la campagne) quand mdeMode=norme', () => {
+    const norme = renderExtra('mde', { mdeMode: 'norme' });
+    expect(norme).toContain('Masse initiale M (g)');
+    expect(norme).toContain('En présence d’eau (MDE)'); // sélecteur mdeWet visible
+    expect(norme).not.toContain('Poids initial A (g)');
+  });
+});
+
+describe('MAJEUR 4 — perméabilité charge constante (pe_V/pe_L/pe_A/pe_dh/pe_t)', () => {
+  it('les mesures de charge constante traversent le payload', () => {
+    const p = buildFastlabPayload(form({
+      extra: { permMode: 'const', pe_V: '250', pe_L: '10', pe_A: '20', pe_dh: '30', pe_t: '120' },
+    }));
+    expect(p.permMode).toBe('const');
+    expect(p.pe_V).toBe('250');
+    expect(p.pe_L).toBe('10');
+    expect(p.pe_A).toBe('20');
+    expect(p.pe_dh).toBe('30');
+    expect(p.pe_t).toBe('120');
+  });
+
+  it('rend les champs charge constante quand permMode=const, variable sinon', () => {
+    const cst = renderExtra('perm', { permMode: 'const' });
+    expect(cst).toContain('Volume recueilli V (cm³)');
+    expect(cst).toContain('Charge Δh (cm)');
+    expect(cst).not.toContain('Section tube a (cm²)');
+    const vr = renderExtra('perm', { permMode: 'var' });
+    expect(vr).toContain('Section tube a (cm²)');
+    expect(vr).not.toContain('Volume recueilli V (cm³)');
+  });
+});
+
+describe('MAJEUR 5 — masse volumique apparente 3 méthodes (linéaire/immersion/déplacement)', () => {
+  it('cylindre (d_d/d_Lc/d_mc) traverse le payload', () => {
+    const p = buildFastlabPayload(form({ extra: { densMethod: 'lin', densShape: 'cyl', d_d: '50', d_Lc: '100', d_mc: '350' } }));
+    expect(p.densShape).toBe('cyl');
+    expect(p.d_d).toBe('50');
+    expect(p.d_Lc).toBe('100');
+    expect(p.d_mc).toBe('350');
+  });
+
+  it('immersion (di_*) et déplacement (dd_*) traversent le payload', () => {
+    const pi = buildFastlabPayload(form({ extra: { densMethod: 'imm', di_m: '350', di_mg: '210', di_rfl: '0.998' } }));
+    expect(pi.densMethod).toBe('imm');
+    expect(pi.di_m).toBe('350');
+    expect(pi.di_mg).toBe('210');
+    const pd = buildFastlabPayload(form({ extra: { densMethod: 'dep', dd_m: '350', dd_m2: '640' } }));
+    expect(pd.densMethod).toBe('dep');
+    expect(pd.dd_m).toBe('350');
+    expect(pd.dd_m2).toBe('640');
+  });
+
+  it('rend les bons champs selon la méthode ρ apparente', () => {
+    const cyl = renderExtra('dens', { densMethod: 'lin', densShape: 'cyl' });
+    expect(cyl).toContain('Diamètre d (mm)');
+    expect(cyl).not.toContain('Largeur W (mm)');
+    const imm = renderExtra('dens', { densMethod: 'imm' });
+    expect(imm).toContain('m_g masse immergée (g)');
+    expect(imm).not.toContain('Diamètre d (mm)');
+    const dep = renderExtra('dens', { densMethod: 'dep' });
+    expect(dep).toContain('m_2 récipient + fluide déplacé (g)');
+    const prism = renderExtra('dens', { densMethod: 'lin', densShape: 'prism' });
+    expect(prism).toContain('Largeur W (mm)');
+    expect(prism).not.toContain('Diamètre d (mm)');
+  });
+});
+
+describe('MAJEUR 6 — absorption / masse vol granulats WA24 (ra_*)', () => {
+  it('les masses ra_M1..ra_M4/ra_rw traversent le payload', () => {
+    const p = buildFastlabPayload(form({ extra: { ra_M1: '505', ra_M2: '1650', ra_M3: '1340', ra_M4: '500', ra_rw: '0.998' } }));
+    expect(p.ra_M1).toBe('505');
+    expect(p.ra_M2).toBe('1650');
+    expect(p.ra_M3).toBe('1340');
+    expect(p.ra_M4).toBe('500');
+    expect(p.ra_rw).toBe('0.998');
+  });
+
+  it('rend la saisie WA24 (section Absorption, NF EN 1097-6)', () => {
+    const html = renderExtra('rho', {});
+    expect(html).toContain('M₁ — surface sèche SSD (g)');
+    expect(html).toContain('M₄ — séché à l’étuve (g)');
+    expect(html).toContain('NF EN 1097-6');
+  });
+});
+
+describe('MAJEUR 7 — forçage de l’état hydrique (forcedState)', () => {
+  it('un état forcé traverse le payload', () => {
+    expect(buildFastlabPayload(form({ extra: { forcedState: 'th' } })).forcedState).toBe('th');
+    expect(buildFastlabPayload(form({ extra: { forcedState: 'ts' } })).forcedState).toBe('ts');
+  });
+
+  it('« Auto » (forcedState vide) n’émet aucune clé forcedState', () => {
+    const p = buildFastlabPayload(form({ extra: { forcedState: '' } }));
+    expect('forcedState' in p).toBe(false);
+  });
+});
+
+describe('MAJEUR 8 — Atterberg « sol non plastique » (pl_np)', () => {
+  it('la case cochée traverse le payload en pl_np (lu par chk côté moteur)', () => {
+    const p = buildFastlabPayload(form({ extra: { pl_np: 'true' } }));
+    expect(p.pl_np).toBe('true');
+  });
+
+  it('la case décochée (chaîne vide) n’émet aucune clé pl_np', () => {
+    const p = buildFastlabPayload(form({ extra: { pl_np: '' } }));
+    expect('pl_np' in p).toBe(false);
   });
 });
