@@ -21,7 +21,13 @@ export class ProjectsService {
   list(): Promise<Project[]> {
     const orgId = requireOrgId();
     return this.prisma.withTenant(orgId, (tx) =>
-      tx.project.findMany({ orderBy: { createdAt: 'desc' } }),
+      // Soft-delete : un projet ARCHIVED est « supprime » cote metier -> exclu de
+      // la liste (il reste en base pour ne pas casser l'integrite des PV/calc qui
+      // le referencent). Voir archive().
+      tx.project.findMany({
+        where: { status: { not: 'ARCHIVED' } },
+        orderBy: { createdAt: 'desc' },
+      }),
     );
   }
 
@@ -45,7 +51,56 @@ export class ProjectsService {
   getById(projectId: string): Promise<Project | null> {
     const orgId = requireOrgId();
     return this.prisma.withTenant(orgId, (tx) =>
-      tx.project.findUnique({ where: { id: projectId } }),
+      // findFirst (et non findUnique) : on ajoute le filtre status pour qu'un projet
+      // ARCHIVED (soft-delete) soit invisible en lecture detail, comme dans la liste
+      // — « supprime » = introuvable (404 tenant-safe rendu par le controleur).
+      tx.project.findFirst({
+        where: { id: projectId, status: { not: 'ARCHIVED' } },
+      }),
     );
+  }
+
+  /**
+   * Renomme un projet du tenant courant (PATCH /projects/:id). updateMany (et non
+   * update) : sur une ligne ABSENTE, HORS-TENANT (RLS invisible) ou DEJA ARCHIVED,
+   * updateMany renvoie count=0 SANS lever (update leverait P2025) -> on rend `null`,
+   * traduit en 404 tenant-safe par le controleur (anti-enumeration : « n'existe pas »
+   * et « pas chez vous » indistinguables). WITH CHECK cote base interdit tout
+   * deplacement d'org. Renvoie le projet a jour (findFirst re-lit sous RLS).
+   */
+  async rename(projectId: string, name: string): Promise<Project | null> {
+    const orgId = requireOrgId();
+    return this.prisma.withTenant(orgId, async (tx) => {
+      const res = await tx.project.updateMany({
+        where: { id: projectId, status: { not: 'ARCHIVED' } },
+        data: { name },
+      });
+      if (res.count === 0) return null;
+      return tx.project.findFirst({ where: { id: projectId } });
+    });
+  }
+
+  /**
+   * SOFT-DELETE d'un projet (DELETE /projects/:id) : passe le status a ARCHIVED.
+   *
+   * CHOIX (documente) : soft-delete plutot que hard delete. Un projet peut porter
+   * des calc_results et surtout des PV OFFICIELS scelles ; un DELETE physique
+   * casserait l'integrite (les calc_results sont en CASCADE sur projects). Les
+   * official_pvs sont AUTOPORTANTS/immuables (aucune FK vivante) et survivent de
+   * toute facon — mais on protege aussi la chaine calc. Le soft-delete rend le
+   * projet invisible (liste + detail) sans rien detruire : reversible, integrite
+   * preservee. Idempotence : archiver un projet absent/hors-tenant/deja archive
+   * renvoie `null` (count=0) -> 404 par le controleur.
+   */
+  async archive(projectId: string): Promise<Project | null> {
+    const orgId = requireOrgId();
+    return this.prisma.withTenant(orgId, async (tx) => {
+      const res = await tx.project.updateMany({
+        where: { id: projectId, status: { not: 'ARCHIVED' } },
+        data: { status: 'ARCHIVED' },
+      });
+      if (res.count === 0) return null;
+      return tx.project.findFirst({ where: { id: projectId } });
+    });
   }
 }

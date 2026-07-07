@@ -22,13 +22,23 @@ function withOrg<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 describe('ProjectsService.getById', () => {
-  let tx: { project: { findUnique: jest.Mock } };
+  let tx: {
+    project: {
+      findFirst: jest.Mock;
+      updateMany: jest.Mock;
+    };
+  };
   let prisma: { withTenant: jest.Mock };
   let service: ProjectsService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    tx = { project: { findUnique: jest.fn() } };
+    tx = {
+      project: {
+        findFirst: jest.fn(),
+        updateMany: jest.fn(),
+      },
+    };
     prisma = {
       withTenant: jest.fn(
         (_orgId: string, fn: (t: Prisma.TransactionClient) => unknown) =>
@@ -38,9 +48,9 @@ describe('ProjectsService.getById', () => {
     service = new ProjectsService(prisma as unknown as PrismaService);
   });
 
-  it('given un projet existant : le renvoie via withTenant(orgId du contexte)', async () => {
+  it('given un projet existant : le renvoie via withTenant(orgId du contexte), en excluant les archives', async () => {
     const project = { id: 'proj-1', orgId: ORG_ID } as unknown as Project;
-    tx.project.findUnique.mockResolvedValue(project);
+    tx.project.findFirst.mockResolvedValue(project);
 
     const out = await withOrg(() => service.getById('proj-1'));
     expect(out).toBe(project);
@@ -48,15 +58,101 @@ describe('ProjectsService.getById', () => {
       ORG_ID,
       expect.any(Function),
     );
-    expect(tx.project.findUnique).toHaveBeenCalledWith({
-      where: { id: 'proj-1' },
+    // findFirst filtre l'id ET exclut les projets ARCHIVED (soft-delete invisible).
+    expect(tx.project.findFirst).toHaveBeenCalledWith({
+      where: { id: 'proj-1', status: { not: 'ARCHIVED' } },
     });
   });
 
   it('given un id absent / masque par la RLS : renvoie null (le 404 est rendu par le controleur)', async () => {
-    tx.project.findUnique.mockResolvedValue(null);
+    tx.project.findFirst.mockResolvedValue(null);
     await expect(
       withOrg(() => service.getById('proj-autre-org')),
     ).resolves.toBeNull();
+  });
+});
+
+/**
+ * ProjectsService.rename / archive — mutations de cycle de vie, scope tenant.
+ *
+ * Prouve (base stubbee : pas de vrai vert d'integration ici, l'isolation reelle
+ * est aux e2e) que :
+ *  - rename/archive passent par withTenant(orgId du contexte) ;
+ *  - updateMany (et non update) est utilise pour rester tenant-safe (count=0 ->
+ *    null -> 404, jamais un P2025) et exclure les projets deja ARCHIVED ;
+ *  - archive ecrit status=ARCHIVED (soft-delete), sans DELETE physique.
+ */
+describe('ProjectsService.rename / archive', () => {
+  let tx: {
+    project: {
+      findFirst: jest.Mock;
+      updateMany: jest.Mock;
+    };
+  };
+  let prisma: { withTenant: jest.Mock };
+  let service: ProjectsService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    tx = {
+      project: {
+        findFirst: jest.fn(),
+        updateMany: jest.fn(),
+      },
+    };
+    prisma = {
+      withTenant: jest.fn(
+        (_orgId: string, fn: (t: Prisma.TransactionClient) => unknown) =>
+          fn(tx as unknown as Prisma.TransactionClient),
+      ),
+    };
+    service = new ProjectsService(prisma as unknown as PrismaService);
+  });
+
+  it('rename : updateMany scope (id + non archive) puis relit le projet a jour', async () => {
+    tx.project.updateMany.mockResolvedValue({ count: 1 });
+    const renamed = {
+      id: 'proj-1',
+      name: 'Nouveau',
+    } as unknown as Project;
+    tx.project.findFirst.mockResolvedValue(renamed);
+
+    const out = await withOrg(() => service.rename('proj-1', 'Nouveau'));
+    expect(out).toBe(renamed);
+    expect(tx.project.updateMany).toHaveBeenCalledWith({
+      where: { id: 'proj-1', status: { not: 'ARCHIVED' } },
+      data: { name: 'Nouveau' },
+    });
+  });
+
+  it('rename : rien affecte (absent/hors-tenant/archive) -> null (404 par le controleur)', async () => {
+    tx.project.updateMany.mockResolvedValue({ count: 0 });
+    const out = await withOrg(() => service.rename('proj-x', 'X'));
+    expect(out).toBeNull();
+    // Aucune relecture inutile si rien n'a ete modifie.
+    expect(tx.project.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('archive : soft-delete via status=ARCHIVED (jamais de DELETE physique)', async () => {
+    tx.project.updateMany.mockResolvedValue({ count: 1 });
+    const archived = {
+      id: 'proj-1',
+      status: 'ARCHIVED',
+    } as unknown as Project;
+    tx.project.findFirst.mockResolvedValue(archived);
+
+    const out = await withOrg(() => service.archive('proj-1'));
+    expect(out).toBe(archived);
+    expect(tx.project.updateMany).toHaveBeenCalledWith({
+      where: { id: 'proj-1', status: { not: 'ARCHIVED' } },
+      data: { status: 'ARCHIVED' },
+    });
+  });
+
+  it('archive : deja archive / absent -> null (404 par le controleur)', async () => {
+    tx.project.updateMany.mockResolvedValue({ count: 0 });
+    const out = await withOrg(() => service.archive('proj-x'));
+    expect(out).toBeNull();
+    expect(tx.project.findFirst).not.toHaveBeenCalled();
   });
 });

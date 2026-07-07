@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Req,
 } from '@nestjs/common';
@@ -21,6 +23,13 @@ const createProjectSchema = z.object({
   name: z.string().trim().min(1).max(200),
 });
 type CreateProjectDto = z.infer<typeof createProjectSchema>;
+
+// Renommage : meme borne que la creation (nom non vide, <= 200). Objet strict :
+// aucun autre champ n'est accepte (on ne renomme QUE le nom via cette route).
+const renameProjectSchema = z
+  .object({ name: z.string().trim().min(1).max(200) })
+  .strict();
+type RenameProjectDto = z.infer<typeof renameProjectSchema>;
 
 // UUID du parametre de chemin (defense en profondeur : un id malforme -> 400,
 // jamais une requete base avec une valeur non-uuid). Meme garde que PvController.
@@ -83,5 +92,53 @@ export class ProjectsController {
       name: body.name,
       createdById: req.auth!.userId,
     });
+  }
+
+  /**
+   * PATCH /projects/:projectId — renomme un projet du tenant courant.
+   *
+   * RBAC : mutation de projet -> OWNER/ADMIN/ENGINEER (comme la creation), plus
+   * SUPERADMIN (back-office). Un VIEWER/TECHNICIAN ne renomme pas. Isolation : le
+   * renommage passe par withTenant (RLS scope) ; un projet d'un AUTRE org (ou
+   * archive) est invisible -> service null -> 404 « introuvable » a l'identique
+   * d'un id inexistant (tenant-safe, anti-enumeration). La persistance reelle
+   * (rename -> re-GET -> nouveau nom) est prouvee par les e2e (Postgres reel).
+   */
+  @Patch(':projectId')
+  @Roles('OWNER', 'ADMIN', 'ENGINEER', 'SUPERADMIN')
+  async rename(
+    @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
+    @Body(new ZodValidationPipe(renameProjectSchema)) body: RenameProjectDto,
+  ): Promise<Project> {
+    const project = await this.projects.rename(projectId, body.name);
+    if (!project) {
+      throw new NotFoundException(
+        'Projet introuvable dans cette organisation.',
+      );
+    }
+    return project;
+  }
+
+  /**
+   * DELETE /projects/:projectId — SUPPRESSION (soft-delete) d'un projet.
+   *
+   * Le projet passe en ARCHIVED : il disparait des listes/lectures tenant mais
+   * reste en base (integrite des calc_results et PV scelles preservee — cf.
+   * ProjectsService.archive). RBAC identique au renommage. 404 tenant-safe si
+   * introuvable / hors-tenant / deja archive. Renvoie le projet archive (status
+   * ARCHIVED) pour confirmation.
+   */
+  @Delete(':projectId')
+  @Roles('OWNER', 'ADMIN', 'ENGINEER', 'SUPERADMIN')
+  async remove(
+    @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
+  ): Promise<Project> {
+    const project = await this.projects.archive(projectId);
+    if (!project) {
+      throw new NotFoundException(
+        'Projet introuvable dans cette organisation.',
+      );
+    }
+    return project;
   }
 }

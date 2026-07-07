@@ -16,6 +16,18 @@ export interface OrgSubscriptionSummary {
   expired: boolean; // now() base > date_fin (jamais l'horloge cliente, TM-1)
 }
 
+/**
+ * Detail d'abonnement (GET /admin/orgs/:id) : resume + LISTE REELLE des entitlements
+ * (modules/moteurs debloques, colonne subscriptions.entitlements). Le resume de LISTE
+ * (admin_list_orgs) ne porte PAS cette liste ; seul le DETAIL l'expose. Necessaire au
+ * modal d'edition des modules qui, sans elle, re-approxime les entitlements depuis le
+ * pack et ECRASE les vrais a l'enregistrement (corruption). Source = lecture withTenant
+ * scopee a l'org (meme voie que le reste du resume), pas un DEFINER cross-tenant.
+ */
+export interface OrgSubscriptionDetail extends OrgSubscriptionSummary {
+  entitlements: string[];
+}
+
 /** Identite d'une org (back-office). */
 export interface AdminOrgIdentity {
   id: string;
@@ -45,7 +57,8 @@ export interface OrgUsage {
 export interface AdminOrgDetail {
   org: AdminOrgIdentity;
   members: OrgMemberView[];
-  subscription: OrgSubscriptionSummary | null;
+  // DETAIL (avec entitlements REELS), pas le resume : le modal Modules en a besoin.
+  subscription: OrgSubscriptionDetail | null;
   usage: OrgUsage;
 }
 
@@ -75,6 +88,7 @@ interface OrgIdentityRow {
 }
 interface SubRow {
   pack: string;
+  entitlements: string[];
   quota: number;
   consommation: number;
   date_fin: Date;
@@ -278,10 +292,10 @@ export class AdminOrgsService {
    */
   private async loadSubscription(
     orgId: string,
-  ): Promise<OrgSubscriptionSummary | null> {
+  ): Promise<OrgSubscriptionDetail | null> {
     return this.prisma.withTenant(orgId, async (tx) => {
       const rows = await tx.$queryRaw<SubRow[]>`
-        SELECT pack, quota, consommation, date_fin, (now() > date_fin) AS expired
+        SELECT pack, entitlements, quota, consommation, date_fin, (now() > date_fin) AS expired
         FROM subscriptions
         LIMIT 1
       `;
@@ -289,6 +303,10 @@ export class AdminOrgsService {
       if (!r) return null;
       return {
         pack: r.pack,
+        // Liste REELLE des modules debloques (subscriptions.entitlements) : source
+        // de verite du modal Modules. Sans elle, l'UI re-approxime depuis le pack et
+        // ECRASE les vrais entitlements a l'enregistrement (BLOQUANT corrige ici).
+        entitlements: r.entitlements,
         quota: r.quota,
         consommation: r.consommation,
         remaining: Math.max(0, r.quota - r.consommation),

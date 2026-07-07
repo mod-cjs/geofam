@@ -126,3 +126,54 @@ describe('ProjectsController.getOne — detail projet + 404 tenant-safe', () => 
     );
   });
 });
+
+/**
+ * ProjectsController.rename / remove — PATCH & DELETE /projects/:projectId.
+ *
+ * Couche controleur : le service rend `null` quand la ligne est absente, hors
+ * tenant (RLS) ou deja archivee -> le controleur traduit en 404 tenant-safe (meme
+ * message borne). La persistance/isolation REELLE est prouvee aux e2e (Postgres
+ * reel). Ici : aucun chemin ne transforme un null-service en autre chose qu'un 404.
+ */
+describe('ProjectsController.rename / remove — 404 tenant-safe', () => {
+  let service: { rename: jest.Mock; archive: jest.Mock };
+  let controller: ProjectsController;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = { rename: jest.fn(), archive: jest.fn() };
+    controller = new ProjectsController(service as unknown as ProjectsService);
+  });
+
+  it('rename : projet du tenant -> renvoie le projet a jour et passe (id, name) au service', async () => {
+    const project = { id: 'proj-1', name: 'Nouveau' };
+    service.rename.mockResolvedValue(project);
+
+    await expect(
+      controller.rename('proj-1', { name: 'Nouveau' }),
+    ).resolves.toBe(project);
+    expect(service.rename).toHaveBeenCalledWith('proj-1', 'Nouveau');
+  });
+
+  it('rename : service null (absent/hors-tenant/archive) -> 404 borne', async () => {
+    service.rename.mockResolvedValue(null);
+    await expect(
+      controller.rename('proj-x', { name: 'X' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('remove : soft-delete -> renvoie le projet archive', async () => {
+    const archived = { id: 'proj-1', status: 'ARCHIVED' };
+    service.archive.mockResolvedValue(archived);
+
+    await expect(controller.remove('proj-1')).resolves.toBe(archived);
+    expect(service.archive).toHaveBeenCalledWith('proj-1');
+  });
+
+  it('remove : service null (absent/hors-tenant/deja archive) -> 404 borne', async () => {
+    service.archive.mockResolvedValue(null);
+    await expect(controller.remove('proj-absent')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+});

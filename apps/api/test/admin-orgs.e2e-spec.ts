@@ -382,6 +382,28 @@ describe('Back-office lecture SUPERADMIN (e2e)', () => {
     expect(res.status).toBe(404);
   });
 
+  // --- 3quater) ENTITLEMENTS REELS DANS LE DETAIL (BLOQUANT modal Modules) -----
+  //
+  // Le modal « Modules » lit GET /admin/orgs/:id.subscription.entitlements pour
+  // pre-cocher les modules. Sans ce champ, l'UI re-approxime depuis le pack et
+  // ECRASE les vrais entitlements a l'enregistrement (corruption). L'abo d'orgA
+  // est seede avec la liste EXACTE ARRAY['burmister'] — DIFFERENTE de ce qu'un
+  // pack ROUTES impliquerait naivement — pour prouver qu'on renvoie la valeur
+  // STOCKEE, pas une derivation du pack. Mutation : retirer la colonne entitlements
+  // du SELECT (ou la mapper depuis le pack) -> ce test vire ROUGE.
+  it('3quater) GET /admin/orgs/:id -> subscription.entitlements = la liste REELLE stockee (pas une approximation du pack)', async () => {
+    if (!ready()) return;
+    const superToken = await login(emailSuper());
+    const res = await authGet(`/admin/orgs/${orgA}`, superToken);
+    expect(res.status).toBe(200);
+    const body = res.body as {
+      subscription: { pack: string; entitlements: string[] } | null;
+    };
+    expect(body.subscription).not.toBeNull();
+    // Egalite EXACTE avec la valeur seedee (ARRAY['burmister']), pas un superset du pack.
+    expect(body.subscription!.entitlements).toEqual(['burmister']);
+  });
+
   // --- 4) RBAC + /admin/me ---------------------------------------------------
 
   it('4) RBAC : un OWNER (non-SUPERADMIN) sur /admin/** -> 403 ; me confirme SUPERADMIN', async () => {
