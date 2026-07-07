@@ -8,7 +8,6 @@ import type { ReactNode } from 'react';
 import { Providers } from '@/providers';
 import { Sidebar } from '@/components/shell/Sidebar';
 import { Topbar } from '@/components/shell/Topbar';
-import { DemoPanel } from '@/components/shell/DemoPanel';
 
 interface ShellLayoutProps {
   children: ReactNode;
@@ -60,8 +59,6 @@ export default async function ShellLayout({ children, params }: ShellLayoutProps
       >
         {children}
       </main>
-
-      <DemoPanel />
 
       <style>{`
         .skip-link:focus {

@@ -11,8 +11,7 @@
 
 import {
   FolderOpen,
-  Library,
-  Settings,
+    Settings,
   HelpCircle,
   ChevronDown,
   ChevronLeft,
@@ -65,12 +64,6 @@ function useNavItems(orgSlug: string): NavItem[] {
       label: 'Mes projets',
       icon: <FolderOpen size={20} strokeWidth={1.5} aria-hidden="true" />,
       href: `/app/${orgSlug}/projets`,
-    },
-    {
-      id: 'bibliotheque',
-      label: 'Bibliothèque de moteurs',
-      icon: <Library size={20} strokeWidth={1.5} aria-hidden="true" />,
-      href: `/app/${orgSlug}/bibliotheque`,
     },
   ];
 }
