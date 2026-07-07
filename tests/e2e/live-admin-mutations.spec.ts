@@ -451,25 +451,26 @@ test.describe('LIVE MUTATIONS — Back-office SUPERADMIN (données E2E-TEST-)', 
     ).toBeVisible({ timeout: 15_000 });
     await shot(page, 'w4-A-owner-transferred');
 
-    // ── Retirer l'ancien OWNER A (rétrogradé) ──────────────────────────────
+    // ── Retirer l'ancien OWNER A (rétrogradé) — HARD delete (migration 0020) ──
     const aRow = page.getByRole('row').filter({ hasText: ownerA.email });
     await aRow.getByRole('button', { name: /^Retirer/ }).click();
     const remDlg = page.getByRole('dialog');
-    await expect(remDlg.getByRole('heading', { name: 'Retirer le membre' })).toBeVisible();
+    await expect(
+      remDlg.getByRole('heading', { name: /Retirer définitivement ce membre/ }),
+    ).toBeVisible();
     const remResp = await runMutation(
       page,
-      () => remDlg.getByRole('button', { name: 'Confirmer le retrait' }).click(),
+      () => remDlg.getByRole('button', { name: 'Confirmer le retrait définitif' }).click(),
       (r) => r.url().includes(`/orgs/${org.orgId}/members/`) && r.request().method() === 'DELETE',
       'retrait membre',
     );
     expect(remResp.status(), 'retrait du membre A doit réussir').toBeLessThan(300);
-    // Le retrait est un SOFT-remove (is_active=false) : le membre RESTE listé, marqué
-    // « Suspendu » (design « retrait soft par défaut » pour l'audit/réversibilité ; il n'est
-    // PAS supprimé de la table). On assert donc l'état inactif, pas une disparition.
+    // Le retrait est un HARD delete (décision titulaire, migration 0020) : le membre
+    // disparaît de la liste (appartenance supprimée), pas juste marqué « Suspendu ».
     await expect(
-      page.getByRole('row').filter({ hasText: ownerA.email }).getByText('Suspendu'),
-      'A doit être soft-retiré (marqué Suspendu), pas supprimé',
-    ).toBeVisible({ timeout: 15_000 });
+      page.getByRole('row').filter({ hasText: ownerA.email }),
+      'A doit être retiré définitivement (ligne disparue), pas soft-suspendu',
+    ).toHaveCount(0, { timeout: 15_000 });
     await shot(page, 'w4-A-member-removed');
   });
 

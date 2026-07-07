@@ -269,6 +269,11 @@ export default function NewOrgPage() {
         setSuccess(`Organisation créée (${result.orgId}). Redirection…`);
         setTimeout(() => router.push('/admin/orgs'), 1500);
       } catch (err: unknown) {
+        // NB : le 409 « un user = une org » (R0015, migration 0020) et le 409 slug
+        // déjà pris ont chacun un message backend déjà clair et distinct
+        // (provisionOrg, auth.service.ts) — pas de normalisation nécessaire ici,
+        // contrairement à l'ajout de membre où R0015 peut venir de deux fonctions
+        // avec des textes différents (cf. describeAddMemberError, OrgDetailClient).
         const msg =
           typeof err === 'object' && err !== null && 'message' in err
             ? String((err as { message: string }).message)
@@ -618,46 +623,76 @@ function Step0({
                 overflow: 'hidden',
               }}
             >
-              {state.ownerSearchResults.map((u) => (
-                <li key={u.userId}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={false}
-                    onClick={() =>
-                      setState((s) => ({
-                        ...s,
-                        ownerSelected: u,
-                        ownerSearchResults: [],
-                      }))
-                    }
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      background: 'none',
-                      border: 'none',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      borderBottom: '1px solid var(--border-subtle)',
-                    }}
-                    onMouseOver={(e) => {
-                      (e.currentTarget as HTMLElement).style.background = 'var(--row-hover-bg)';
-                    }}
-                    onMouseOut={(e) => {
-                      (e.currentTarget as HTMLElement).style.background = 'none';
-                    }}
-                  >
-                    <div
-                      style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--text-primary)' }}
+              {state.ownerSearchResults.map((u) => {
+                // Un user = une org (migration 0020) : signaler/désactiver les comptes
+                // déjà membres d'une organisation (l'ajout comme OWNER échouerait en
+                // 409 R0015). Info disponible directement sur AdminUserView.nbOrgs.
+                const alreadyInOrg = u.nbOrgs > 0;
+                return (
+                  <li key={u.userId}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={false}
+                      disabled={alreadyInOrg}
+                      aria-disabled={alreadyInOrg}
+                      title={
+                        alreadyInOrg
+                          ? 'Cet utilisateur appartient déjà à une organisation.'
+                          : undefined
+                      }
+                      onClick={() => {
+                        if (alreadyInOrg) return;
+                        setState((s) => ({
+                          ...s,
+                          ownerSelected: u,
+                          ownerSearchResults: [],
+                        }));
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        background: 'none',
+                        border: 'none',
+                        textAlign: 'left',
+                        cursor: alreadyInOrg ? 'not-allowed' : 'pointer',
+                        opacity: alreadyInOrg ? 0.6 : 1,
+                        borderBottom: '1px solid var(--border-subtle)',
+                      }}
+                      onMouseOver={(e) => {
+                        if (!alreadyInOrg) {
+                          (e.currentTarget as HTMLElement).style.background = 'var(--row-hover-bg)';
+                        }
+                      }}
+                      onMouseOut={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = 'none';
+                      }}
                     >
-                      {u.fullName}
-                    </div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-                      {u.email}
-                    </div>
-                  </button>
-                </li>
-              ))}
+                      <div
+                        style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--text-primary)' }}
+                      >
+                        {u.fullName}
+                        {alreadyInOrg && (
+                          <span
+                            style={{
+                              marginLeft: 6,
+                              fontSize: 'var(--text-xs)',
+                              fontWeight: 400,
+                              fontStyle: 'italic',
+                              color: 'var(--status-fail-tx)',
+                            }}
+                          >
+                            déjà dans une organisation
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                        {u.email}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
 

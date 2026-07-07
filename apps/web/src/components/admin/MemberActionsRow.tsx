@@ -4,8 +4,11 @@
  * MemberActionsRow — actions inline sur un membre (Lot 2).
  *
  * - Changer le rôle (OWNER non proposé, anti-lockout → 409 affiché).
- * - Suspendre / Réactiver (toggle is_active).
- * - Retirer un membre (soft, confirmation).
+ * - Suspendre / Réactiver (toggle is_active) — action RÉVERSIBLE.
+ * - Retirer un membre — action DÉFINITIVE (DELETE = hard delete, migration 0020) :
+ *   l'appartenance à l'org est supprimée, pas juste désactivée. Le compte
+ *   utilisateur global, lui, est conservé (peut être rattaché à une org plus
+ *   tard). Confirmation dédiée pour ne pas confondre avec Suspendre.
  *
  * Confidentialité DoD §8 : aucun import @roadsen/engines.
  */
@@ -127,13 +130,18 @@ export function MemberActionsRow({
           </div>
         )}
 
-        {/* Suspend / Réactiver */}
+        {/* Suspend / Réactiver — réversible, accès désactivé temporairement */}
         <Button
           variant="ghost"
           size="sm"
           onClick={handleToggleActive}
           loading={activeLoading}
           disabled={activeLoading}
+          title={
+            member.isActive
+              ? 'Suspendre : désactive temporairement l’accès (réversible)'
+              : 'Réactiver : restaure l’accès'
+          }
           aria-label={
             member.isActive
               ? `Suspendre ${member.fullName}`
@@ -143,14 +151,15 @@ export function MemberActionsRow({
           {member.isActive ? 'Suspendre' : 'Réactiver'}
         </Button>
 
-        {/* Retirer */}
+        {/* Retirer — DÉFINITIF, distinct visuellement (danger) et par le libellé */}
         <Button
           variant="danger"
           size="sm"
           onClick={() => setShowRemoveModal(true)}
-          aria-label={`Retirer ${member.fullName}`}
+          title="Retirer : suppression définitive de l’appartenance à l’organisation"
+          aria-label={`Retirer définitivement ${member.fullName}`}
         >
-          Retirer
+          Retirer définitivement
         </Button>
       </div>
 
@@ -250,7 +259,7 @@ function RemoveMemberModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Retirer le membre"
+      title="Retirer définitivement ce membre de l'organisation ?"
       size="sm"
       error={error}
       footer={
@@ -265,7 +274,7 @@ function RemoveMemberModal({
             loading={loading}
             disabled={loading}
           >
-            Confirmer le retrait
+            Confirmer le retrait définitif
           </Button>
         </>
       }
@@ -280,8 +289,10 @@ function RemoveMemberModal({
           margin: '8px 0 0',
         }}
       >
-        Le compte utilisateur est conservé. Le membre perd l&apos;accès au prochain appel.
-        La réactivation reste possible via le back-office.
+        Action <strong>définitive</strong> : l&apos;appartenance à cette organisation est
+        supprimée (pas une suspension). Le membre perd l&apos;accès immédiatement. Le
+        compte utilisateur global est conservé et pourra être rattaché à une organisation
+        plus tard si besoin — via « Ajouter un membre » ou la fiche utilisateur.
       </p>
       {member.role === 'OWNER' && (
         <p

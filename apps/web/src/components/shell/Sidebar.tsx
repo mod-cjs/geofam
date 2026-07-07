@@ -13,10 +13,8 @@ import {
   FolderOpen,
     Settings,
   HelpCircle,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Check,
   LogOut,
   Menu,
   X,
@@ -167,21 +165,6 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
 
   const currentOrg = orgs.find((o) => o.slug === orgSlug);
 
-  const [orgMenuOpen, setOrgMenuOpen] = useState(false);
-  const orgMenuRef = useRef<HTMLDivElement>(null);
-
-  // Fermer le menu org en cliquant hors zone
-  useEffect(() => {
-    if (!orgMenuOpen) return;
-    function handleMouseDown(e: MouseEvent) {
-      if (orgMenuRef.current && !orgMenuRef.current.contains(e.target as Node)) {
-        setOrgMenuOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleMouseDown, true);
-    return () => document.removeEventListener('mousedown', handleMouseDown, true);
-  }, [orgMenuOpen]);
-
   function isActive(href: string, exact = false) {
     return exact ? pathname === href : pathname.startsWith(href);
   }
@@ -200,14 +183,6 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
     await logout();
     document.cookie = 'roadsen_mock_auth=; path=/; max-age=0';
     router.push('/login');
-  }
-
-  function handleOrgSwitch(slug: string) {
-    setOrgMenuOpen(false);
-    if (slug !== orgSlug) {
-      // queryClient.clear() équivalent — ici on navigue simplement
-      router.push(`/app/${slug}/projets`);
-    }
   }
 
   return (
@@ -256,164 +231,44 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
       {/* Séparateur */}
       <div style={{ height: 1, background: 'var(--border-nav)', flexShrink: 0 }} />
 
-      {/* OrgSwitcher */}
+      {/* Org courante — un user = une org (pas de bascule, cf. décision titulaire) */}
       <div
-        ref={orgMenuRef}
         style={{
-          position: 'relative',
           padding: collapsed ? '8px 4px' : '8px 8px',
           flexShrink: 0,
         }}
       >
-        <button
-          aria-haspopup="listbox"
-          aria-expanded={orgMenuOpen}
-          onClick={() => setOrgMenuOpen((v) => !v)}
+        <div
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: 8,
             width: '100%',
             padding: collapsed ? '8px 0' : '8px 10px',
-            background: orgMenuOpen ? 'var(--nav-selected)' : 'transparent',
-            border: 'none',
-            borderRadius: 'var(--radius-base)',
-            cursor: 'pointer',
-            color: 'var(--text-on-nav)',
-            textAlign: 'left',
             justifyContent: collapsed ? 'center' : 'flex-start',
-            transition: `background var(--dur-fast) var(--ease-state)`,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--nav-hover)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = orgMenuOpen
-              ? 'var(--nav-selected)'
-              : 'transparent';
           }}
         >
           <Avatar name={currentOrg?.slug ?? orgSlug} size="sm" />
           {!collapsed && (
-            <>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: 500,
-                    color: 'var(--text-on-nav)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {orgSlug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-                </div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-on-nav)' }}>
-                  {currentOrg?.role ?? 'MEMBER'}
-                </div>
-              </div>
-              <ChevronDown
-                size={14}
-                strokeWidth={1.5}
-                aria-hidden="true"
-                style={{
-                  color: 'var(--muted-on-nav)',
-                  flexShrink: 0,
-                  transform: orgMenuOpen ? 'rotate(180deg)' : 'none',
-                  transition: `transform var(--dur-fast) var(--ease-state)`,
-                }}
-              />
-            </>
-          )}
-        </button>
-
-        {/* Dropdown orgs */}
-        {orgMenuOpen && (
-          <div
-            role="listbox"
-            aria-label="Choisir une organisation"
-            style={{
-              position: 'absolute',
-              top: '100%',
-              left: 8,
-              right: 8,
-              background: 'var(--surface-base)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow: 'var(--elevation-popover)',
-              zIndex: 50,
-              overflow: 'hidden',
-              animation: `slideDown var(--dur-base) var(--ease-entrance)`,
-            }}
-          >
-            {orgs.length === 0 ? (
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
-                  padding: '12px 14px',
                   fontSize: 'var(--text-sm)',
-                  color: 'var(--text-muted)',
+                  fontWeight: 500,
+                  color: 'var(--text-on-nav)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
                 }}
               >
-                Aucune organisation
+                {orgSlug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
               </div>
-            ) : (
-              orgs.map((org) => (
-                <button
-                  key={org.id}
-                  role="option"
-                  aria-selected={org.slug === orgSlug}
-                  onClick={() => handleOrgSwitch(org.slug)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    width: '100%',
-                    padding: '10px 14px',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    borderBottom: '1px solid var(--border-subtle)',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--row-hover-bg)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'none';
-                  }}
-                >
-                  <Avatar name={org.slug} size="sm" />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 'var(--text-sm)',
-                        color: 'var(--text-primary)',
-                        fontWeight: org.slug === orgSlug ? 500 : 400,
-                      }}
-                    >
-                      {org.slug
-                        .replace(/-/g, ' ')
-                        .replace(/\b\w/g, (c) => c.toUpperCase())}
-                    </div>
-                    <div
-                      style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}
-                    >
-                      {org.role}
-                    </div>
-                  </div>
-                  {org.slug === orgSlug && (
-                    <Check
-                      size={14}
-                      strokeWidth={1.5}
-                      aria-hidden="true"
-                      style={{ color: 'var(--struct-petrole)' }}
-                    />
-                  )}
-                </button>
-              ))
-            )}
-          </div>
-        )}
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--muted-on-nav)' }}>
+                {currentOrg?.role ?? 'MEMBER'}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Séparateur */}

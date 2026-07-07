@@ -452,7 +452,7 @@ function AddMemberModal({
       setResults([]);
       setPicked(null);
     } catch (e) {
-      setError((e as { message?: string }).message ?? "Échec de l'ajout.");
+      setError(describeAddMemberError(e));
     } finally {
       setLoading(false);
     }
@@ -498,28 +498,58 @@ function AddMemberModal({
         />
         {results.length > 0 && !picked && (
           <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-base)', maxHeight: 180, overflowY: 'auto' }}>
-            {results.map((u) => (
-              <button
-                key={u.userId}
-                type="button"
-                onClick={() => setPicked(u)}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '8px 10px',
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: '1px solid var(--border-subtle)',
-                  cursor: 'pointer',
-                  fontSize: 'var(--text-sm)',
-                  color: 'var(--text-primary)',
-                }}
-              >
-                <span style={{ fontWeight: 500 }}>{u.fullName}</span>{' '}
-                <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>{u.email}</span>
-              </button>
-            ))}
+            {results.map((u) => {
+              // Un user = une org (migration 0020) : nbOrgs > 0 signifie déjà membre
+              // ACTIF d'une autre org (existingIds a déjà exclu ceux de CETTE org) ->
+              // l'ajout échouerait à coup sûr (409 R0015). On désactive plutôt que
+              // laisser tenter puis échouer.
+              const alreadyElsewhere = u.nbOrgs > 0;
+              return (
+                <button
+                  key={u.userId}
+                  type="button"
+                  disabled={alreadyElsewhere}
+                  aria-disabled={alreadyElsewhere}
+                  title={
+                    alreadyElsewhere
+                      ? 'Cet utilisateur appartient déjà à une organisation.'
+                      : undefined
+                  }
+                  onClick={() => {
+                    if (alreadyElsewhere) return;
+                    setPicked(u);
+                  }}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '8px 10px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderBottom: '1px solid var(--border-subtle)',
+                    cursor: alreadyElsewhere ? 'not-allowed' : 'pointer',
+                    fontSize: 'var(--text-sm)',
+                    color: alreadyElsewhere ? 'var(--text-muted)' : 'var(--text-primary)',
+                    opacity: alreadyElsewhere ? 0.6 : 1,
+                  }}
+                >
+                  <span style={{ fontWeight: 500 }}>{u.fullName}</span>{' '}
+                  <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>{u.email}</span>
+                  {alreadyElsewhere && (
+                    <span
+                      style={{
+                        marginLeft: 6,
+                        fontSize: 'var(--text-xs)',
+                        color: 'var(--status-fail-tx)',
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      déjà dans une organisation
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
         {picked && (
@@ -700,4 +730,17 @@ function formatDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+/**
+ * Message d'erreur pour l'ajout d'un membre — normalise le 409 « un user = une
+ * org » (R0015, migration 0020) en un message stable, indépendant du texte
+ * backend exact (provision_member vs provision_org peuvent différer). Tout
+ * autre statut affiche le message serveur tel quel.
+ */
+function describeAddMemberError(e: unknown): string {
+  if (e && typeof e === 'object' && 'statusCode' in e && (e as { statusCode: number }).statusCode === 409) {
+    return 'Cet utilisateur appartient déjà à une organisation.';
+  }
+  return (e as { message?: string })?.message ?? "Échec de l'ajout.";
 }

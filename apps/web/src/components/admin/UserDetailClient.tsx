@@ -157,7 +157,17 @@ export function UserDetailClient({ user: initialUser }: UserDetailClientProps) {
           <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-primary)' }}>
             Organisations ({user.orgs.length})
           </span>
-          <Button variant="action" size="sm" onClick={() => setAddOrgOpen(true)}>
+          <Button
+            variant="action"
+            size="sm"
+            onClick={() => setAddOrgOpen(true)}
+            disabled={user.orgs.length > 0}
+            title={
+              user.orgs.length > 0
+                ? 'Un compte ne peut appartenir qu’à une seule organisation. Retirez-le de son organisation actuelle avant d’en choisir une autre.'
+                : undefined
+            }
+          >
             Ajouter à une org
           </Button>
         </div>
@@ -460,15 +470,21 @@ function OrgMembershipRow({
           <OrgStatusBadge status={org.orgStatus as 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED'} />
         </td>
         <td style={{ padding: '10px 16px' }}>
-          <Button variant="danger" size="sm" onClick={() => setShowConfirm(true)} aria-label={`Retirer de ${org.orgName}`}>
-            Retirer
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setShowConfirm(true)}
+            title="Retirer : suppression définitive de l’appartenance à cette organisation"
+            aria-label={`Retirer définitivement de ${org.orgName}`}
+          >
+            Retirer définitivement
           </Button>
         </td>
       </tr>
       <Modal
         open={showConfirm}
         onClose={() => setShowConfirm(false)}
-        title="Retirer de l'organisation"
+        title="Retirer définitivement ce membre de l'organisation ?"
         size="sm"
         error={error}
         footer={
@@ -477,13 +493,17 @@ function OrgMembershipRow({
               Annuler
             </Button>
             <Button variant="danger" size="sm" onClick={handleRemove} loading={loading} disabled={loading}>
-              Confirmer le retrait
+              Confirmer le retrait définitif
             </Button>
           </>
         }
       >
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', margin: 0 }}>
           Retirer cet utilisateur de <strong>{org.orgName}</strong> ?
+        </p>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: '8px 0 0' }}>
+          Action <strong>définitive</strong> : l&apos;appartenance à cette organisation est
+          supprimée (pas une suspension). Le compte utilisateur global est conservé.
         </p>
         {org.role === 'OWNER' && (
           <p role="alert" style={{ fontSize: 'var(--text-sm)', color: 'var(--status-fail-tx)', marginTop: 10, fontWeight: 500 }}>
@@ -652,7 +672,13 @@ function AddToOrgModal({
       });
       handleClose();
     } catch (err) {
-      setError(extractMessage(err));
+      // 409 « un user = une org » (R0015, migration 0020) : message stable,
+      // indépendant du texte backend exact (provision_member vs provision_org).
+      setError(
+        isConflict(err)
+          ? 'Cet utilisateur appartient déjà à une organisation.'
+          : extractMessage(err),
+      );
     } finally {
       setLoading(false);
     }
