@@ -45,9 +45,6 @@ type PgClientCtor = new (cfg: { connectionString: string }) => PgClient;
 interface AuthBody {
   accessToken?: unknown;
 }
-interface AddMemberBody {
-  membershipId?: unknown;
-}
 interface CalcBody {
   calcResultId?: unknown;
   ok?: unknown;
@@ -158,12 +155,14 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
       `INSERT INTO organizations (id, name, slug, "updatedAt") VALUES ($1,'Org A',$2,now()), ($3,'Org B',$4,now())`,
       [orgA, slugA, orgB, `org-b-${orgB.slice(0, 8)}`],
     );
-    // Memberships INITIAUX : les 2 OWNER + memberDual DANS B (ENGINEER). Les autres
-    // membres sont ajoutés PAR L'API pendant les tests (c'est la fonctionnalité sous test) ;
-    // memberDual sera aussi provisionné dans A en test 10 pour prouver l'isolation de l'UPDATE.
+    // Memberships INITIAUX : les 2 OWNER + memberDual DANS A ET B (ENGINEER). Les autres
+    // membres sont ajoutés PAR L'API pendant les tests (c'est la fonctionnalité sous test).
+    // memberDual est seedé DIRECTEMENT (SQL admin) dans A ET B : depuis 0020 (« un user =
+    // une org »), un membre bi-org n'est plus créable PAR L'API — mais le seed direct reste
+    // possible et sert à prouver l'isolation de l'UPDATE de set_member_active (test 10).
     await admin.query(
       `INSERT INTO memberships (id, org_id, user_id, role) VALUES
-        ($1,$2,$3,'OWNER'), ($4,$5,$6,'OWNER'), ($7,$5,$8,'ENGINEER')`,
+        ($1,$2,$3,'OWNER'), ($4,$5,$6,'OWNER'), ($7,$5,$8,'ENGINEER'), ($9,$2,$8,'ENGINEER')`,
       [
         randomUUID(),
         orgA,
@@ -173,6 +172,7 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
         ownerB,
         randomUUID(),
         memberDual,
+        randomUUID(),
       ],
     );
     await admin.query(
@@ -538,10 +538,9 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
     if (!ready()) return;
     superToken = await login(emailSuper());
 
-    // memberDual est seedé membre de B ; on le provisionne AUSSI dans A via l'API.
-    const add = await addMember(orgA, memberDual, 'ENGINEER');
-    expect(add.status).toBe(201);
-
+    // memberDual est seedé membre de A ET B (SQL direct, cf. beforeAll) : l'API ne
+    // permet plus de créer un bi-org (0020), mais la fonction set_member_active doit
+    // rester correctement cloisonnée sur un tel état hérité.
     // Suspendre via le path de orgB : l'UPDATE (WHERE org_id=orgB) ne doit toucher QUE B.
     const off = await setActive(orgB, memberDual, false);
     expect(off.status).toBe(200);

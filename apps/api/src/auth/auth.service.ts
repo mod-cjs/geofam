@@ -68,6 +68,9 @@ const PG_UNIQUE_VIOLATION = '23505';
 // SQLSTATE d'une violation de cle etrangere (ici : ownerUserId inexistant lors de
 // l'INSERT du membership OWNER par provision_org).
 const PG_FOREIGN_KEY_VIOLATION = '23503';
+// SQLSTATE applicatif (migration 0020) : l'owner designe appartient DEJA a une autre
+// org (regle « un user = une org »). provision_org le leve avant l'INSERT membership.
+const PG_ONE_ORG_VIOLATION = 'R0015';
 
 /**
  * AuthService — login (verif mdp + emission tokens), refresh, et resolution
@@ -269,6 +272,13 @@ export class AuthService {
           'Création impossible : conflit (slug déjà pris)',
         );
       }
+      if (isOneOrgViolation(err)) {
+        // Owner désigné déjà membre actif d'une autre org : refusé (un user = une
+        // org, migration 0020). Un owner créé inline (nouveau user) passe la garde.
+        throw new ConflictException(
+          'Cet utilisateur appartient déjà à une organisation',
+        );
+      }
       throw err;
     }
   }
@@ -374,6 +384,11 @@ function isUniqueViolation(err: unknown): boolean {
 /** Detecte une violation de cle etrangere PostgreSQL (SQLSTATE 23503). */
 function isForeignKeyViolation(err: unknown): boolean {
   return hasSqlState(err, PG_FOREIGN_KEY_VIOLATION);
+}
+
+/** Detecte la garde « un user = une org » (R0015, migration 0020). */
+function isOneOrgViolation(err: unknown): boolean {
+  return hasSqlState(err, PG_ONE_ORG_VIOLATION);
 }
 
 /**

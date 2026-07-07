@@ -17,7 +17,7 @@
  *      l'acces revient (auth NON-REGRESSION).
  *   6) ANTI-ESCALADE / ANTI-LOCKOUT : role OWNER par la route -> 400 (Zod) ; retrograder
  *      OU retirer le dernier OWNER actif -> 409.
- *   7) ROLE / RETRAIT (happy path) : changement de role 200 ; retrait SOFT 200 (is_active=false).
+ *   7) ROLE / RETRAIT (happy path) : changement de role 200 ; retrait HARD 200 (appartenance supprimee).
  *   8) RENOUVELLEMENT : reset consommation + nouvelle fenetre, trace.
  *   9) ENTITLEMENTS : edition pack + modules, trace.
  *  10) AUDIT IMMUABLE : UPDATE/DELETE sur admin_audit_log -> refuse (trigger).
@@ -480,25 +480,26 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
 
   // --- 7) ROLE / RETRAIT (happy path) ----------------------------------------
 
-  it('7) role happy path 200 (ENGINEER->ADMIN) puis retrait SOFT 200 (is_active=false)', async () => {
+  it('7) role happy path 200 (ENGINEER->ADMIN) puis retrait HARD 200 (appartenance SUPPRIMEE)', async () => {
     if (!ready()) return;
     superToken = await login(emailSuper());
 
     const promote = await setRole(orgA, memberRole, 'ADMIN');
     expect(promote.status).toBe(200);
-    let { rows } = await admin!.query<{ role: string; is_active: boolean }>(
+    const { rows } = await admin!.query<{ role: string; is_active: boolean }>(
       `SELECT role, is_active FROM memberships WHERE org_id = $1 AND user_id = $2`,
       [orgA, memberRole],
     );
     expect(rows[0].role).toBe('ADMIN');
 
+    // Retrait = VRAI retrait (HARD DELETE, 0020) : plus AUCUNE ligne d'appartenance.
     const removed = await removeMember(orgA, memberRole);
     expect(removed.status).toBe(200);
-    ({ rows } = await admin!.query<{ role: string; is_active: boolean }>(
-      `SELECT role, is_active FROM memberships WHERE org_id = $1 AND user_id = $2`,
+    const after = await admin!.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM memberships WHERE org_id = $1 AND user_id = $2`,
       [orgA, memberRole],
-    ));
-    expect(rows[0].is_active).toBe(false); // SOFT : suspendu, pas supprime
+    );
+    expect(after.rows[0].n).toBe('0'); // HARD : supprimé, pas suspendu
   });
 
   // --- 8) RENOUVELLEMENT ------------------------------------------------------

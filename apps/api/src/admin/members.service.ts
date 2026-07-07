@@ -23,6 +23,9 @@ export interface OrgMemberView {
 // (userId ou orgId inexistant lors de l'INSERT du membership).
 const PG_UNIQUE_VIOLATION = '23505';
 const PG_FOREIGN_KEY_VIOLATION = '23503';
+// SQLSTATE applicatif (migration 0020) : le user appartient DEJA a une autre org
+// (regle « un user = une org »). provision_member le leve avant l'INSERT.
+const PG_ONE_ORG_VIOLATION = 'R0015';
 
 // Ligne brute renvoyee par list_org_members (snake_case = colonnes SQL).
 interface MemberRow {
@@ -53,7 +56,9 @@ export class MembersService {
   /**
    * Attache `userId` à l'org `orgId` avec `role` (≠ OWNER). Renvoie l'id du
    * membership créé. Un ré-ajout (couple déjà membre) -> 409 générique ; un
-   * userId (ou orgId) inexistant -> 400 borné (FK), sans divulguer lequel.
+   * userId (ou orgId) inexistant -> 400 borné (FK), sans divulguer lequel ; un
+   * user DÉJÀ membre actif d'une AUTRE org -> 409 (règle « un user = une org »,
+   * migration 0020). Ré-attacher dans LA MÊME org (après un retrait) reste permis.
    */
   async provisionMember(
     orgId: string,
@@ -81,6 +86,12 @@ export class MembersService {
         // Déjà membre : 409 générique (pas de fuite d'existence de membership).
         throw new ConflictException(
           'Ce compte est déjà membre de cette organisation',
+        );
+      }
+      if (isOneOrgViolation(err)) {
+        // Déjà membre actif d'une AUTRE org : refusé (un user = une org, 0020).
+        throw new ConflictException(
+          'Ce compte appartient déjà à une autre organisation',
         );
       }
       throw err;
@@ -177,6 +188,11 @@ function isUniqueViolation(err: unknown): boolean {
 /** Détecte une violation de clé étrangère PostgreSQL (23503). */
 function isForeignKeyViolation(err: unknown): boolean {
   return hasSqlState(err, PG_FOREIGN_KEY_VIOLATION);
+}
+
+/** Détecte la garde « un user = une org » (R0015, migration 0020). */
+function isOneOrgViolation(err: unknown): boolean {
+  return hasSqlState(err, PG_ONE_ORG_VIOLATION);
 }
 
 /**

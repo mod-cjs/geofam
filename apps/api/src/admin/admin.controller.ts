@@ -44,7 +44,11 @@ import {
   searchUsersQuerySchema,
 } from './admin.dto';
 import type { PlatformStats } from './admin-stats.service';
-import { AdminPvService, type PvDetailView, type PvListItem } from './admin-pv.service';
+import {
+  AdminPvService,
+  type PvDetailView,
+  type PvListItem,
+} from './admin-pv.service';
 import { AdminStatsService } from './admin-stats.service';
 import type {
   AuditEntryView,
@@ -269,7 +273,9 @@ export class AdminController {
    * (org + role + statut). Lecture d'IDENTITE (admin_get_user DEFINER). 404 si inconnu.
    */
   @Get('users/:userId')
-  async getUser(@Param('userId', ParseUUIDPipe) userId: string): Promise<AdminUserDetail> {
+  async getUser(
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ): Promise<AdminUserDetail> {
     const detail = await this.users.getUser(userId);
     if (!detail) throw new NotFoundException('Utilisateur introuvable');
     return detail;
@@ -343,7 +349,12 @@ export class AdminController {
     @Body(new ZodValidationPipe(addMemberSchema)) body: AddMemberDto,
     @Req() req: AuthedRequest,
   ): Promise<AdminOrgDetail> {
-    await this.members.provisionMember(orgId, body.userId, body.role, this.actor(req));
+    await this.members.provisionMember(
+      orgId,
+      body.userId,
+      body.role,
+      this.actor(req),
+    );
     // Renvoie le detail FRAIS (avec le nouveau membre) — comme les autres mutations
     // membres : le front (onMutated) reconstruit la table depuis detail.members. Avant,
     // addMember renvoyait { membershipId } -> la table ne se rafraichissait pas (bug e2e W4).
@@ -480,9 +491,10 @@ export class AdminController {
   }
 
   /**
-   * DELETE /admin/orgs/:orgId/members/:userId — retrait SOFT (is_active=false).
-   * Retirer le dernier OWNER actif -> 409 ; membre introuvable -> 404. Reactivation via
-   * PATCH …/members/:userId (isActive=true).
+   * DELETE /admin/orgs/:orgId/members/:userId — VRAI retrait (hard-delete de
+   * l'appartenance, migration 0020), tracé MEMBER_REMOVED. Distinct de « Suspendre »
+   * (PATCH …/members/:userId isActive=false, réversible). Retirer le dernier OWNER
+   * actif -> 409 ; membre introuvable -> 404. Après retrait, le compte est ré-ajoutable.
    */
   @Delete('orgs/:orgId/members/:userId')
   async removeMember(

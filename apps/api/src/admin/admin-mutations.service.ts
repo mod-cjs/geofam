@@ -160,9 +160,11 @@ export class AdminMutationsService {
   }
 
   /**
-   * RETRAIT (SOFT) : suspend le membre (is_active=false). Retirer le dernier OWNER
-   * actif -> 409 ; membre introuvable -> 404. Idempotent. La reactivation se fait via
-   * PATCH …/members/:userId (set_member_active, MembersService).
+   * RETRAIT (HARD, migration 0020) : VRAI retrait de l'appartenance (DELETE), tracé
+   * MEMBER_REMOVED. Distinct de « Suspendre » (set_member_active, is_active=false,
+   * réversible). Retirer le dernier OWNER actif -> 409 (anti-lockout) ; membre
+   * introuvable -> 404. Idempotent (clé rejouée -> no-op). Après retrait, le compte
+   * peut être ré-ajouté à CETTE org (ou attaché à une autre).
    */
   async removeMember(args: {
     orgId: string;
