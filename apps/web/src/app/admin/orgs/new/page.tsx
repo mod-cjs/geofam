@@ -85,10 +85,13 @@ export async function resolveOwnerUserId(
 
 const PACKS = ['ROUTES', 'FONDATIONS', 'COMPLETE'] as const;
 
+// Slugs de GATE du calcul (= vérifiés par SubscriptionGuard), PAS les noms de logiciels.
+// Bug corrigé : casagrande/geoplaque/pressiopro/fastlab (labels) -> pieux/radier/pressiometre/
+// labo (slugs) ; sinon une org créée avec FONDATIONS/COMPLETE ne pouvait pas calculer ces 4.
 const PACK_ENTITLEMENTS: Record<string, string[]> = {
   ROUTES: ['burmister'],
-  FONDATIONS: ['terzaghi', 'casagrande', 'geoplaque', 'pressiopro'],
-  COMPLETE: ['burmister', 'terzaghi', 'casagrande', 'geoplaque', 'pressiopro', 'fastlab'],
+  FONDATIONS: ['terzaghi', 'pieux', 'radier', 'pressiometre'],
+  COMPLETE: ['burmister', 'terzaghi', 'pieux', 'radier', 'pressiometre', 'labo'],
 };
 
 const STEP_LABELS = [

@@ -27,14 +27,18 @@ import {
 } from '@/lib/api/admin-mutations-client';
 import type { AdminOrgDetail, OrgSubscriptionSummary } from '@/lib/api/admin-server';
 
-// Modules connus (même liste que le wizard)
+// Modules connus. Le `slug` STOCKÉ dans les entitlements DOIT être le slug de GATE du
+// calcul (celui que SubscriptionGuard/assertAccess vérifie), PAS le nom du logiciel.
+// Bug corrigé (E2E modules/packs) : l'UI stockait casagrande/geoplaque/pressiopro/fastlab
+// alors que le gate attend pieux/radier/pressiometre/labo -> ces modules « cochés »
+// restaient gatés 403. On stocke le slug, on AFFICHE un libellé lisible.
 const ALL_ENTITLEMENTS = [
-  'burmister',
-  'terzaghi',
-  'casagrande',
-  'geoplaque',
-  'pressiopro',
-  'fastlab',
+  { slug: 'burmister', label: 'ROADSENS — Chaussées' },
+  { slug: 'terzaghi', label: 'Terzaghi — Fondations superficielles' },
+  { slug: 'pieux', label: 'CASAGRANDE — Pieux' },
+  { slug: 'radier', label: 'GEOPLAQUE — Radier & plaque' },
+  { slug: 'pressiometre', label: 'PressioPro — Pressiomètre' },
+  { slug: 'labo', label: 'FASTLAB — Labo GTR' },
 ] as const;
 
 const PACKS = ['ROUTES', 'FONDATIONS', 'COMPLETE'] as const;
@@ -689,7 +693,7 @@ function EntitlementsModal({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {ALL_ENTITLEMENTS.map((e) => (
               <label
-                key={e}
+                key={e.slug}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -700,10 +704,10 @@ function EntitlementsModal({
               >
                 <input
                   type="checkbox"
-                  checked={selected.has(e)}
-                  onChange={() => toggleEntitlement(e)}
+                  checked={selected.has(e.slug)}
+                  onChange={() => toggleEntitlement(e.slug)}
                 />
-                {e}
+                {e.label}
               </label>
             ))}
           </div>
@@ -741,10 +745,11 @@ export function canSubmitTopUp({
 // Constantes partagées (même que le wizard)
 // ---------------------------------------------------------------------------
 
+// Slugs de GATE (= ceux vérifiés par SubscriptionGuard), pas les noms de logiciels.
 const PACK_ENTITLEMENTS: Record<string, string[]> = {
   ROUTES: ['burmister'],
-  FONDATIONS: ['terzaghi', 'casagrande', 'geoplaque', 'pressiopro'],
-  COMPLETE: ['burmister', 'terzaghi', 'casagrande', 'geoplaque', 'pressiopro', 'fastlab'],
+  FONDATIONS: ['terzaghi', 'pieux', 'radier', 'pressiometre'],
+  COMPLETE: ['burmister', 'terzaghi', 'pieux', 'radier', 'pressiometre', 'labo'],
 };
 
 // ---------------------------------------------------------------------------
