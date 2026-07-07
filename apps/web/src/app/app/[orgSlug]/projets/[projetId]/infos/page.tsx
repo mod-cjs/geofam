@@ -5,13 +5,15 @@
  * Renommage (optimistic) + métadonnées en lecture.
  */
 
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Field';
+import { Modal } from '@/components/ui/Modal';
 import { Skeleton } from '@/components/ui/Skeleton.client';
 import { useToast } from '@/components/ui/Toast';
-import { getProject } from '@/lib/api/client';
+import { getProject, renameProject, deleteProject } from '@/lib/api/client';
 import type { Project } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 
@@ -31,6 +33,7 @@ function formatDate(iso: string): string {
 }
 
 export default function InfosPage({ params: paramsPromise }: Props) {
+  const router = useRouter();
   const { addToast } = useToast();
   const [orgSlug, setOrgSlug] = useState('');
   const [projetId, setProjetId] = useState('');
@@ -43,6 +46,8 @@ export default function InfosPage({ params: paramsPromise }: Props) {
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Étape 1 : extraire les paramètres de route depuis la Promise.
   useEffect(() => {
@@ -65,21 +70,42 @@ export default function InfosPage({ params: paramsPromise }: Props) {
   }, [orgId, projetId]);
 
   async function handleSave() {
-    if (!project || !name.trim()) return;
+    if (!project || !name.trim() || !orgId) return;
     setSaving(true);
     // Optimistic UI
     const prev = project.name;
-    setProject({ ...project, name: name.trim() });
+    const trimmed = name.trim();
+    setProject({ ...project, name: trimmed });
     try {
-      await new Promise((r) => setTimeout(r, 400)); // mock save
+      // PATCH /projects/:id — persiste réellement côté serveur (plus de faux succès).
+      const updated = await renameProject(orgId, project.id, trimmed);
+      setProject(updated);
+      setName(updated.name);
       addToast({ type: 'success', message: 'Projet renommé.' });
     } catch {
-      // Rollback
+      // Rollback : le renommage n'a pas persisté, on revient à l'état précédent.
       setProject({ ...project, name: prev });
       setName(prev);
-      addToast({ type: 'error', message: 'Erreur lors de la sauvegarde.' });
+      addToast({ type: 'error', message: 'Erreur lors de la sauvegarde. Le projet n’a pas été renommé.' });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!project || !orgId) return;
+    setDeleting(true);
+    try {
+      await deleteProject(orgId, project.id);
+      addToast({
+        type: 'success',
+        message: `Projet "${project.name}" archivé. Les PV scellés restent conservés.`,
+      });
+      router.push(`/app/${orgSlug}/projets`);
+    } catch {
+      addToast({ type: 'error', message: 'Erreur lors de la suppression du projet.' });
+      setDeleting(false);
+      setDeleteOpen(false);
     }
   }
 
@@ -171,6 +197,79 @@ export default function InfosPage({ params: paramsPromise }: Props) {
         <MetaRow label="Créé le" value={formatDate(project.createdAt)} />
         <MetaRow label="Modifié le" value={formatDate(project.updatedAt)} />
       </div>
+
+      {/* Zone dangereuse — suppression (archivage) */}
+      <div
+        style={{
+          marginTop: 32,
+          padding: 16,
+          border: '1px solid var(--status-fail-tx)',
+          borderRadius: 'var(--radius-lg)',
+        }}
+      >
+        <h3
+          style={{
+            fontSize: 'var(--text-sm)',
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            margin: '0 0 4px',
+          }}
+        >
+          Supprimer ce projet
+        </h3>
+        <p
+          style={{
+            fontSize: 'var(--text-xs)',
+            color: 'var(--text-secondary)',
+            margin: '0 0 12px',
+          }}
+        >
+          Archive le projet — il disparaît de la liste. Les calculs et PV scellés déjà
+          émis restent conservés.
+        </p>
+        <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
+          Supprimer le projet
+        </Button>
+      </div>
+
+      {/* Modale confirmation suppression */}
+      <Modal
+        open={deleteOpen}
+        onClose={() => {
+          if (!deleting) setDeleteOpen(false);
+        }}
+        title="Supprimer le projet ?"
+        size="sm"
+        footer={
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={() => setDeleteOpen(false)}
+              disabled={deleting}
+            >
+              Annuler
+            </Button>
+            <Button variant="danger" size="md" loading={deleting} onClick={handleDelete}>
+              Supprimer le projet
+            </Button>
+          </div>
+        }
+      >
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', margin: 0 }}>
+          Le projet « {project.name} » sera retiré de la liste des projets.
+        </p>
+        <p
+          style={{
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-secondary)',
+            marginTop: 8,
+          }}
+        >
+          Il s&apos;agit d&apos;un archivage : les calculs et PV scellés déjà émis restent
+          conservés et ne sont pas supprimés.
+        </p>
+      </Modal>
     </div>
   );
 }

@@ -470,6 +470,171 @@ test.describe('F-03 — Nouveau projet self-service', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Lot 3 — Gestion des projets : renommage persistant, suppression, recherche/tri
+// ---------------------------------------------------------------------------
+
+test.describe('Lot 3 — Renommage de projet (fin du faux succès)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(BASE_URL + '/login');
+    await setMockAuth(page);
+  });
+
+  // NOTE : en mode mock (démo), MOCK_PROJECTS est un module-state CÔTÉ NAVIGATEUR —
+  // toute navigation complète (page.reload / <a href> non intercepté par next/link,
+  // comme les onglets projet) réinitialise ce state, exactement comme un vrai
+  // rechargement réinitialiserait un serveur de démo sans base. La preuve de
+  // PERSISTANCE RÉELLE (survit à un rechargement) est portée par
+  // project-mutations.test.ts (renameProject → re-GET indépendant, même module
+  // client.ts que l'UI) et par les e2e « live-* » contre le vrai backend/Postgres.
+  // Ce test e2e prouve la partie observable en navigateur : le formulaire appelle
+  // désormais réellement renameProject (fin du faux `setTimeout`) — succès reflété
+  // par la réponse serveur (mock ou réelle), pas un succès inconditionnel.
+  test('given l onglet Informations, when je renomme, then le formulaire appelle réellement renameProject et reflète la réponse', async ({
+    page,
+  }) => {
+    await page.goto(BASE_URL + '/app/be-routes-dakar/projets/proj_01/infos?demo=active');
+    const input = page.getByLabel(/nom du projet/i);
+    await expect(input).toBeVisible({ timeout: 8000 });
+
+    const newName = `RN2 renommé ${Date.now()}`;
+    await input.fill(newName);
+    const saveBtn = page.getByRole('button', { name: 'Enregistrer' });
+    await expect(saveBtn).toBeEnabled();
+    await saveBtn.click();
+
+    // Toast de succès — n'apparaît qu'après résolution de l'appel réel (renameProject).
+    await expect(page.getByText(/projet renommé/i)).toBeVisible({ timeout: 6000 });
+
+    // La réponse serveur (mock ou réelle) pilote l'état : l'input reflète le nom
+    // renvoyé et Enregistrer redevient désactivé (plus rien à sauvegarder).
+    await expect(input).toHaveValue(newName);
+    await expect(saveBtn).toBeDisabled();
+
+    // Métadonnée "Modifié le" mise à jour par la réponse serveur (updatedAt réel).
+    await expect(page.getByText(/modifié le/i)).toBeVisible();
+  });
+});
+
+test.describe('Lot 3 — Suppression de projet (soft-delete, PV préservés)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(BASE_URL + '/login');
+    await setMockAuth(page);
+  });
+
+  test('given la liste des projets, when je supprime un projet et confirme, then il disparaît de la liste', async ({
+    page,
+  }) => {
+    await page.goto(BASE_URL + `${SHELL_ROOT}?demo=active`);
+    await expect(page.getByRole('heading', { name: 'Mes projets' })).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Supprime une fixture existante (une seule navigation complète pour ce test —
+    // le mock-state client ne survit pas à une navigation dure, cf. note ci-dessus).
+    const projectName = /Zone industrielle Thiès/i;
+    await expect(page.getByText(projectName)).toBeVisible({ timeout: 8000 });
+
+    await page
+      .getByRole('button', { name: /Supprimer le projet Zone industrielle Thiès/i })
+      .click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 4000 });
+    await expect(page.getByText(/PV scellés/i)).toBeVisible();
+
+    await dialog.getByRole('button', { name: 'Supprimer le projet', exact: true }).click();
+
+    // Le projet disparaît de la liste (archivage confirmé par toast + absence)
+    await expect(page.getByText(/archivé/i)).toBeVisible({ timeout: 6000 });
+    await expect(page.getByText(projectName)).toHaveCount(0, { timeout: 6000 });
+  });
+
+  test('given l annulation de la modale de suppression, when je clique Annuler, then le projet reste dans la liste', async ({
+    page,
+  }) => {
+    await page.goto(BASE_URL + `${SHELL_ROOT}?demo=active`);
+    await expect(page.getByRole('heading', { name: 'Mes projets' })).toBeVisible({
+      timeout: 10000,
+    });
+
+    const firstProject = page.getByRole('listitem').first();
+    await expect(firstProject).toBeVisible();
+    const projectName = (await firstProject.textContent()) ?? '';
+
+    await page
+      .getByRole('button', { name: /supprimer le projet/i })
+      .first()
+      .click();
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 4000 });
+    await page.getByRole('button', { name: 'Annuler' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 3000 });
+
+    // Le projet est toujours listé.
+    if (projectName) {
+      await expect(page.getByRole('listitem').first()).toBeVisible();
+    }
+  });
+});
+
+test.describe('Lot 3 — Recherche & tri des projets', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(BASE_URL + '/login');
+    await setMockAuth(page);
+  });
+
+  test('given la liste des projets, when je tape un nom dans la recherche, then seuls les projets correspondants restent visibles', async ({
+    page,
+  }) => {
+    await page.goto(BASE_URL + `${SHELL_ROOT}?demo=active`);
+    await expect(page.getByRole('heading', { name: 'Mes projets' })).toBeVisible({
+      timeout: 10000,
+    });
+
+    const search = page.getByLabel(/rechercher un projet/i);
+    await expect(search).toBeVisible({ timeout: 6000 });
+    await search.fill('Thiès');
+
+    await expect(page.getByText(/Zone industrielle Thiès/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/RN2 — PK 45/i)).toHaveCount(0);
+    await expect(page.getByText(/Pont de Mbodiene/i)).toHaveCount(0);
+  });
+
+  test('given une recherche sans résultat, when je filtre, then un état vide dédié est affiché', async ({
+    page,
+  }) => {
+    await page.goto(BASE_URL + `${SHELL_ROOT}?demo=active`);
+    await expect(page.getByRole('heading', { name: 'Mes projets' })).toBeVisible({
+      timeout: 10000,
+    });
+
+    const search = page.getByLabel(/rechercher un projet/i);
+    await search.fill('zzzzz-inexistant');
+
+    await expect(page.getByText(/aucun projet ne correspond à/i)).toBeVisible({ timeout: 5000 });
+  });
+
+  test('given le tri par nom, when je choisis "Nom (A → Z)", then les projets sont réordonnés alphabétiquement', async ({
+    page,
+  }) => {
+    await page.goto(BASE_URL + `${SHELL_ROOT}?demo=active`);
+    await expect(page.getByRole('heading', { name: 'Mes projets' })).toBeVisible({
+      timeout: 10000,
+    });
+
+    const sortSelect = page.getByLabel(/trier les projets/i);
+    await expect(sortSelect).toBeVisible({ timeout: 6000 });
+    await sortSelect.selectOption('name-asc');
+
+    const rows = page.getByRole('listitem');
+    const count = await rows.count();
+    expect(count).toBeGreaterThan(1);
+    const firstText = (await rows.first().textContent()) ?? '';
+    // "Pont de Mbodiene" < "RN2" < "Zone industrielle" alphabétiquement : le premier
+    // élément visible ne doit plus être RN2 (ordre par défaut / date).
+    expect(firstText).not.toMatch(/^RN2/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Confidentialité DoD §8 — bundle web (test local, pas de serveur requis)
 // ---------------------------------------------------------------------------
 

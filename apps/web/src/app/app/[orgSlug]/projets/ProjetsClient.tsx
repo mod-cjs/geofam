@@ -5,9 +5,9 @@
  * États : chargement · vide · filtre sans résultat · erreur · liste
  */
 
-import { Plus, FolderOpen, AlertCircle, RefreshCw } from 'lucide-react';
+import { Plus, FolderOpen, AlertCircle, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { DomainTag } from '@/components/ui/DomainTag';
@@ -16,9 +16,11 @@ import { Input, Select, Textarea } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { Skeleton } from '@/components/ui/Skeleton.client';
 import { useToast } from '@/components/ui/Toast';
-import { listProjects, createProject } from '@/lib/api/client';
+import { listProjects, createProject, deleteProject } from '@/lib/api/client';
 import type { Project, ProjectDomain } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
+
+type SortKey = 'date-desc' | 'name-asc';
 
 /**
  * Date relative calculée côté client uniquement (useEffect après montage).
@@ -55,6 +57,21 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
   const [newDescription, setNewDescription] = useState('');
   const [newDomain, setNewDomain] = useState<ProjectDomain>('CH');
   const [newNameError, setNewNameError] = useState<string | undefined>();
+
+  // Recherche / tri
+  const [query, setQuery] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('date-desc');
+
+  // Suppression (soft-delete)
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  function resetNewProjectForm() {
+    setNewName('');
+    setNewDescription('');
+    setNewDomain('CH');
+    setNewNameError(undefined);
+  }
 
   const loadProjects = useCallback(async () => {
     if (!orgId) {
@@ -95,11 +112,10 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
         description: newDescription.trim() || undefined,
         domain: newDomain,
       });
-      setProjects((prev) => [...prev, p]);
+      // En tête de liste : cohérent avec le tri par défaut (le plus récent d'abord).
+      setProjects((prev) => [p, ...prev]);
       setNewProjectOpen(false);
-      setNewName('');
-      setNewDescription('');
-      setNewDomain('CH');
+      resetNewProjectForm();
       addToast({ type: 'success', message: `Projet "${p.name}" créé.` });
       router.push(`/app/${orgSlug}/projets/${p.id}`);
     } catch {
@@ -108,6 +124,38 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
       setCreating(false);
     }
   }
+
+  async function handleDeleteProject() {
+    if (!projectToDelete || !orgId) return;
+    setDeleting(true);
+    try {
+      await deleteProject(orgId, projectToDelete.id);
+      setProjects((prev) => prev.filter((p) => p.id !== projectToDelete.id));
+      addToast({
+        type: 'success',
+        message: `Projet "${projectToDelete.name}" archivé. Les PV scellés restent conservés.`,
+      });
+      setProjectToDelete(null);
+    } catch {
+      addToast({ type: 'error', message: 'Erreur lors de la suppression du projet.' });
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const visibleProjects = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? projects.filter((p) => p.name.toLowerCase().includes(q))
+      : projects;
+    const sorted = [...filtered];
+    if (sortKey === 'name-asc') {
+      sorted.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    } else {
+      sorted.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    }
+    return sorted;
+  }, [projects, query, sortKey]);
 
   return (
     <div style={{ padding: '32px 32px', maxWidth: 1100, margin: '0 auto' }}>
@@ -205,7 +253,7 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
         </div>
       )}
 
-      {/* État vide */}
+      {/* État vide (aucun projet du tout) */}
       {!loading && !error && projects.length === 0 && (
         <EmptyState
           variant="blank"
@@ -216,18 +264,91 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
         />
       )}
 
-      {/* Liste des projets */}
+      {/* Barre recherche + tri */}
       {!loading && !error && projects.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 16,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 200 }}>
+            <Search
+              size={15}
+              strokeWidth={1.5}
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                left: 10,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--text-muted)',
+                pointerEvents: 'none',
+              }}
+            />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Rechercher un projet…"
+              aria-label="Rechercher un projet par nom"
+              style={{
+                width: '100%',
+                padding: '8px 12px 8px 32px',
+                fontSize: 'var(--text-sm)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-lg)',
+                background: 'var(--surface-base)',
+                color: 'var(--text-primary)',
+              }}
+            />
+          </div>
+          <select
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as SortKey)}
+            aria-label="Trier les projets"
+            style={{
+              padding: '8px 12px',
+              fontSize: 'var(--text-sm)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+              background: 'var(--surface-base)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            <option value="date-desc">Modifié récemment</option>
+            <option value="name-asc">Nom (A → Z)</option>
+          </select>
+        </div>
+      )}
+
+      {/* Filtre sans résultat */}
+      {!loading && !error && projects.length > 0 && visibleProjects.length === 0 && (
+        <EmptyState
+          variant="blank"
+          title="Aucun projet ne correspond"
+          description={`Aucun projet ne correspond à « ${query} ».`}
+          ctaLabel="Réinitialiser la recherche"
+          onCta={() => setQuery('')}
+        />
+      )}
+
+      {/* Liste des projets */}
+      {!loading && !error && visibleProjects.length > 0 && (
         <div
           role="list"
           aria-label="Liste des projets"
           style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
         >
-          {projects.map((project) => (
+          {visibleProjects.map((project) => (
             <ProjectRow
               key={project.id}
               project={project}
               onClick={() => router.push(`/app/${orgSlug}/projets/${project.id}`)}
+              onDelete={() => setProjectToDelete(project)}
             />
           ))}
         </div>
@@ -239,9 +360,7 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
         onClose={() => {
           if (!creating) {
             setNewProjectOpen(false);
-            setNewName('');
-            setNewDescription('');
-            setNewNameError(undefined);
+            resetNewProjectForm();
           }
         }}
         title="Nouveau projet"
@@ -251,7 +370,10 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
             <Button
               variant="ghost"
               size="md"
-              onClick={() => setNewProjectOpen(false)}
+              onClick={() => {
+                setNewProjectOpen(false);
+                resetNewProjectForm();
+              }}
               disabled={creating}
             >
               Annuler
@@ -306,6 +428,51 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
           </div>
         </form>
       </Modal>
+
+      {/* Modale confirmation suppression (soft-delete / archivage) */}
+      <Modal
+        open={projectToDelete !== null}
+        onClose={() => {
+          if (!deleting) setProjectToDelete(null);
+        }}
+        title="Supprimer le projet ?"
+        size="sm"
+        footer={
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={() => setProjectToDelete(null)}
+              disabled={deleting}
+            >
+              Annuler
+            </Button>
+            <Button
+              variant="danger"
+              size="md"
+              loading={deleting}
+              onClick={handleDeleteProject}
+            >
+              Supprimer le projet
+            </Button>
+          </div>
+        }
+      >
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', margin: 0 }}>
+          Le projet « {projectToDelete?.name} » sera retiré de la liste des projets.
+        </p>
+        <p
+          style={{
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-secondary)',
+            marginTop: 8,
+          }}
+        >
+          Il s&apos;agit d&apos;un archivage : les calculs et PV scellés déjà émis restent
+          conservés et ne sont pas supprimés. Cette action peut être annulée par un
+          administrateur si besoin.
+        </p>
+      </Modal>
     </div>
   );
 }
@@ -314,10 +481,21 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
 // Ligne de projet
 // ---------------------------------------------------------------------------
 
-function ProjectRow({ project, onClick }: { project: Project; onClick: () => void }) {
+function ProjectRow({
+  project,
+  onClick,
+  onDelete,
+}: {
+  project: Project;
+  onClick: () => void;
+  onDelete: () => void;
+}) {
   const rowRef = useRef<HTMLDivElement>(null);
 
   function handleKeyDown(e: React.KeyboardEvent) {
+    // Ignorer si la touche vient d'un enfant interactif (ex. bouton Supprimer) :
+    // seul le focus sur la ligne elle-même déclenche la navigation clavier.
+    if (e.target !== rowRef.current) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onClick();
@@ -409,6 +587,35 @@ function ProjectRow({ project, onClick }: { project: Project; onClick: () => voi
       >
         <ClientRelativeDate iso={project.updatedAt} />
       </div>
+
+      <button
+        type="button"
+        aria-label={`Supprimer le projet ${project.name}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'none',
+          border: 'none',
+          borderRadius: 'var(--radius-base)',
+          padding: 6,
+          cursor: 'pointer',
+          color: 'var(--text-muted)',
+          flexShrink: 0,
+        }}
+        onMouseOver={(e) => {
+          (e.currentTarget as HTMLElement).style.color = 'var(--status-fail-tx)';
+        }}
+        onMouseOut={(e) => {
+          (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)';
+        }}
+      >
+        <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" />
+      </button>
     </div>
   );
 }

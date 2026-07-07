@@ -433,6 +433,36 @@ export async function httpGetProject(orgId: string, projectId: string): Promise<
   return adaptProject(raw);
 }
 
+/**
+ * PATCH /projects/:id — renomme le projet (PERSISTE côté serveur).
+ * Le backend renvoie le projet Prisma à jour ; on l'adapte en Project front.
+ */
+export async function httpRenameProject(
+  orgId: string,
+  projectId: string,
+  name: string,
+): Promise<Project> {
+  const raw = await apiFetch<PrismaProject>(`/projects/${projectId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+    orgId,
+  });
+  return adaptProject(raw);
+}
+
+/**
+ * DELETE /projects/:id — soft-delete (archivage). Les calc-results et PV
+ * scellés du projet sont préservés côté serveur ; le projet disparaît
+ * simplement des listes/lectures tenant (GET /projects l'exclut).
+ */
+export async function httpDeleteProject(orgId: string, projectId: string): Promise<Project> {
+  const raw = await apiFetch<PrismaProject>(`/projects/${projectId}`, {
+    method: 'DELETE',
+    orgId,
+  });
+  return adaptProject(raw);
+}
+
 // ---------------------------------------------------------------------------
 // CALCULS
 // ---------------------------------------------------------------------------

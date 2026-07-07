@@ -26,6 +26,8 @@ import {
   httpListProjects,
   httpCreateProject,
   httpGetProject,
+  httpRenameProject,
+  httpDeleteProject,
   httpListCalcResults,
   httpGetCalcResult,
   httpRunCalc,
@@ -230,6 +232,42 @@ export async function getProject(_orgId: string, projectId: string): Promise<Pro
   const p = MOCK_PROJECTS.find((x) => x.id === projectId);
   if (!p) throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Projet introuvable' };
   return p;
+}
+
+/**
+ * Renomme un projet — PERSISTE réellement (PATCH /projects/:id côté backend).
+ * Mock : mute l'entrée MOCK_PROJECTS en place (name + updatedAt) pour que la
+ * persistance soit observable par un re-GET ultérieur, comme en mode réel.
+ */
+export async function renameProject(
+  orgId: string,
+  projectId: string,
+  name: string,
+): Promise<Project> {
+  if (_USE_REAL_BACKEND) return httpRenameProject(orgId, projectId, name);
+
+  await delay(400);
+  const p = MOCK_PROJECTS.find((x) => x.id === projectId);
+  if (!p) throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Projet introuvable' };
+  p.name = name;
+  p.updatedAt = new Date().toISOString();
+  return p;
+}
+
+/**
+ * Supprime (archive) un projet — DELETE /projects/:id côté backend.
+ * Soft-delete : les calc-results et PV scellés restent conservés en base ;
+ * le projet disparaît simplement des listes (GET /projects l'exclut).
+ * Mock : retire l'entrée de MOCK_PROJECTS pour reproduire cette exclusion.
+ */
+export async function deleteProject(orgId: string, projectId: string): Promise<Project> {
+  if (_USE_REAL_BACKEND) return httpDeleteProject(orgId, projectId);
+
+  await delay(400);
+  const idx = MOCK_PROJECTS.findIndex((x) => x.id === projectId);
+  if (idx === -1) throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Projet introuvable' };
+  const [archived] = MOCK_PROJECTS.splice(idx, 1);
+  return archived;
 }
 
 // ---------------------------------------------------------------------------
