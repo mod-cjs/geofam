@@ -5,14 +5,20 @@
  * Fond --struct-petrole · libellé "BACK-OFFICE" · avatar utilisateur.
  */
 
-import { LogOut, Shield } from 'lucide-react';
+import { LogOut, Menu, Shield } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { Avatar } from '@/components/ui/Avatar';
 import { getStoredUser, logout } from '@/lib/api/client';
 
-export function AdminTopbar() {
+interface AdminTopbarProps {
+  /** Piloté par AdminNav (état partagé avec le drawer AdminSidebar). */
+  mobileOpen?: boolean;
+  onMenuToggle?: () => void;
+}
+
+export function AdminTopbar({ mobileOpen = false, onMenuToggle }: AdminTopbarProps) {
   // Valeur hydratée après montage (sessionStorage inaccessible côté serveur).
   const [user, setUser] = useState<{ name: string }>({ name: 'A' });
   const [signingOut, setSigningOut] = useState(false);
@@ -56,6 +62,27 @@ export function AdminTopbar() {
         style={{ flexShrink: 0 }}
         aria-hidden="true"
       />
+
+      {/* Hamburger mobile — affiché < 1024px via CSS */}
+      <button
+        type="button"
+        aria-label={mobileOpen ? 'Fermer la navigation' : 'Ouvrir la navigation'}
+        aria-expanded={mobileOpen}
+        aria-controls="admin-sidebar-drawer"
+        onClick={onMenuToggle}
+        style={{
+          display: 'none', // CSS media query l'active
+          flexShrink: 0,
+          background: 'none',
+          border: 'none',
+          color: 'var(--struct-petrole-fg)',
+          cursor: 'pointer',
+          padding: 4,
+        }}
+        className="admin-mobile-nav-trigger"
+      >
+        <Menu size={20} strokeWidth={1.5} aria-hidden="true" />
+      </button>
 
       {/* Libellé contexte */}
       <div
@@ -142,6 +169,7 @@ export function AdminTopbar() {
         }
         @media (max-width: 1023px) {
           .admin-topbar-offset { width: 0; }
+          .admin-mobile-nav-trigger { display: flex !important; }
         }
       `}</style>
     </header>

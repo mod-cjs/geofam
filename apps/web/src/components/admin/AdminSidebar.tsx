@@ -4,9 +4,13 @@
  * AdminSidebar — back-office SUPERADMIN.
  * 5 entrées : Tableau de bord / Organisations / Abonnements / Audit / Utilisateurs.
  * Même palette que la Sidebar tenant (--surface-nav asphalte).
+ *
+ * Responsive : sidebar fixe en desktop (>=1024px), drawer mobile en dessous
+ * (piloté par AdminNav, même patron que la Sidebar tenant : bouton toggle,
+ * overlay, inert/aria-hidden du main, fermeture ESC).
  */
 
-import { Building2, FileCheck, LayoutDashboard, ScrollText, Users, Wallet } from 'lucide-react';
+import { Building2, FileCheck, LayoutDashboard, ScrollText, Users, Wallet, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -51,7 +55,11 @@ const NAV_ITEMS = [
   },
 ] as const;
 
-export function AdminSidebar() {
+interface AdminNavContentProps {
+  onClose?: () => void;
+}
+
+function AdminNavContent({ onClose }: AdminNavContentProps) {
   const pathname = usePathname();
 
   function isActive(href: string) {
@@ -62,23 +70,7 @@ export function AdminSidebar() {
   }
 
   return (
-    <aside
-      aria-label="Navigation back-office"
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        bottom: 0,
-        width: 240,
-        background: 'var(--surface-nav)',
-        borderRight: '1px solid var(--border-nav)',
-        zIndex: 30,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-      }}
-      className="admin-sidebar"
-    >
+    <>
       {/* Logotype */}
       <div
         style={{
@@ -89,6 +81,24 @@ export function AdminSidebar() {
         }}
       >
         <Logotype size={36} />
+        {onClose && (
+          <button
+            onClick={onClose}
+            aria-label="Fermer la navigation"
+            style={{
+              marginLeft: 'auto',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--text-on-nav)',
+              padding: 4,
+              borderRadius: 'var(--radius-base)',
+              display: 'flex',
+            }}
+          >
+            <X size={20} strokeWidth={1.5} aria-hidden="true" />
+          </button>
+        )}
       </div>
 
       {/* Séparateur */}
@@ -155,13 +165,90 @@ export function AdminSidebar() {
           })}
         </ul>
       </nav>
+    </>
+  );
+}
 
-      {/* Styles responsive — masquer sur mobile */}
+interface AdminSidebarProps {
+  /** Piloté par AdminNav (état partagé avec le bouton hamburger de la topbar). */
+  mobileOpen?: boolean;
+  onClose?: () => void;
+}
+
+export function AdminSidebar({ mobileOpen = false, onClose }: AdminSidebarProps) {
+  return (
+    <>
+      {/* Backdrop mobile */}
+      {mobileOpen && (
+        <div
+          aria-hidden="true"
+          onClick={onClose}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(17,18,16,0.6)',
+            zIndex: 40,
+            display: 'none',
+          }}
+          className="admin-mobile-backdrop"
+        />
+      )}
+
+      {/* Drawer mobile */}
+      <aside
+        id="admin-sidebar-drawer"
+        aria-label="Navigation back-office"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: 280,
+          background: 'var(--surface-nav)',
+          zIndex: 50,
+          transform: mobileOpen ? 'translateX(0)' : 'translateX(-100%)',
+          transition: 'transform var(--dur-base) var(--ease-state)',
+          display: 'none', // CSS media query l'active
+          flexDirection: 'column',
+          boxShadow: mobileOpen ? 'var(--elevation-modal)' : 'none',
+        }}
+        className="admin-sidebar-mobile"
+      >
+        <AdminNavContent onClose={onClose} />
+      </aside>
+
+      {/* Sidebar desktop */}
+      <aside
+        aria-label="Navigation back-office"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: 240,
+          background: 'var(--surface-nav)',
+          borderRight: '1px solid var(--border-nav)',
+          zIndex: 30,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+        className="admin-sidebar"
+      >
+        <AdminNavContent />
+      </aside>
+
+      {/* Styles responsive */}
       <style>{`
         @media (max-width: 1023px) {
           .admin-sidebar { display: none !important; }
+          .admin-sidebar-mobile { display: flex !important; }
+          .admin-mobile-backdrop { display: block !important; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .admin-sidebar-mobile { transition: none !important; }
         }
       `}</style>
-    </aside>
+    </>
   );
 }

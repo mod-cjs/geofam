@@ -16,8 +16,7 @@
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
 
-import { AdminSidebar } from '@/components/admin/AdminSidebar';
-import { AdminTopbar } from '@/components/admin/AdminTopbar';
+import { AdminNav } from '@/components/admin/AdminNav';
 import { adminGetMe } from '@/lib/api/admin-server';
 
 interface AdminLayoutProps {
@@ -60,8 +59,7 @@ export default async function AdminLayout({ children }: AdminLayoutProps) {
         Aller au contenu principal
       </a>
 
-      <AdminSidebar />
-      <AdminTopbar />
+      <AdminNav />
 
       <main
         id="admin-main"

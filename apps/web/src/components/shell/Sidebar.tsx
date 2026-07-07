@@ -195,8 +195,8 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
     return () => document.removeEventListener('mousedown', handleMouseDown, true);
   }, [orgMenuOpen]);
 
-  function isActive(href: string) {
-    return pathname.startsWith(href);
+  function isActive(href: string, exact = false) {
+    return exact ? pathname === href : pathname.startsWith(href);
   }
 
   function showTooltip(id: string) {
@@ -462,7 +462,10 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
 
         <ul role="list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {navItems.slice(0, 1).map((item) => {
-            const active = isActive(item.href);
+            // "Accueil — Logiciels" est une page racine exacte (/logiciels) : en
+            // startsWith, elle resterait active sur toute sous-page /logiciels/<x>,
+            // ce qui double l'état actif avec l'item logiciel correspondant.
+            const active = isActive(item.href, true);
             return (
               <li key={item.id} style={{ position: 'relative' }}>
                 <a
@@ -735,7 +738,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
             justifyContent: collapsed ? 'center' : 'flex-start',
           }}
         >
-          <Avatar name={user.name} size="sm" />
+          {!collapsed && <Avatar name={user.name} size="sm" />}
           {!collapsed && (
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
@@ -752,11 +755,19 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
               </div>
             </div>
           )}
-          {!collapsed && (
+          {/* Le logout doit rester accessible dans TOUS les états de la sidebar
+              (replié inclus) : c'est le seul point de sortie du shell. */}
+          <div
+            style={{ position: 'relative' }}
+            onMouseEnter={() => showTooltip('logout')}
+            onMouseLeave={() => hideTooltip('logout')}
+          >
             <button
               onClick={handleLogout}
               aria-label="Se déconnecter"
               title="Se déconnecter"
+              onFocus={() => showTooltip('logout')}
+              onBlur={() => hideTooltip('logout')}
               style={{
                 background: 'none',
                 border: 'none',
@@ -774,8 +785,10 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
               }}
             >
               <LogOut size={16} strokeWidth={1.5} aria-hidden="true" />
+              {collapsed && <span className="sr-only">Se déconnecter</span>}
             </button>
-          )}
+            <NavTooltip label="Se déconnecter" visible={collapsed && tooltipId === 'logout'} />
+          </div>
         </div>
       </div>
     </div>
