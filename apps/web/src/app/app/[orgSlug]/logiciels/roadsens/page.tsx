@@ -14,7 +14,7 @@
  */
 
 import { useParams } from 'next/navigation';
-import { useState, useCallback, useEffect, useId } from 'react';
+import { useState, useCallback, useEffect, useId, useRef, Fragment } from 'react';
 import {
   Route,
   Calculator,
@@ -357,12 +357,17 @@ const PF_COLS = ['PF1', 'PF2', 'PF2qs', 'PF3', 'PF4'];
 // Types d'état
 // ---------------------------------------------------------------------------
 
+/** Mode d'interface entre cette couche et la suivante (Tab. 68 AGEROUTE) — même allowlist que le contrat moteur. */
+type LayerIface = 'auto' | 'collée' | 'semi-collée' | 'glissante';
+
 interface Layer {
   id: number;
   mat: string;
   h: number; // épaisseur (m)
   E: number; // module (MPa)
   nu: number; // Poisson
+  /** Condition d'interface imposée (Tab. 68) — 'auto' par défaut (définitive, #87 étape 2/2). */
+  iface: LayerIface;
 }
 
 interface PF {
@@ -387,6 +392,10 @@ interface Load {
   r: string; // risque : 'auto' | '5' | '10' | '15' | '25'
   sh: string; // dispersion Sh : 'auto' | '1' | '1.5' | '2.5' | '3'
   ks: string; // hétérogénéité ks : 'auto' | valeur numérique
+  /** Module GNT automatique (fiche catalogue p.79, #87 étape 1/2) — défaut ON (définitive). */
+  gntAuto: boolean;
+  /** Conditions d'interface automatiques (Tab. 68 AGEROUTE, #87 étape 2/2) — défaut ON (définitive). */
+  ifaceAuto: boolean;
 }
 
 type TabId =
@@ -464,7 +473,13 @@ export function buildBurmisterPayload(
   load: Load,
 ): Record<string, unknown> {
   return {
-    layers: layers.map((l) => ({ mat: l.mat, E: l.E, nu: l.nu, h: l.h })),
+    layers: layers.map((l) => ({
+      mat: l.mat,
+      E: l.E,
+      nu: l.nu,
+      h: l.h,
+      iface: l.iface ?? 'auto',
+    })),
     subgrade: { cls: pf.cls !== 'custom' ? pf.cls : undefined, E: pf.E, nu: pf.nu },
     traffic: {
       T: traffic.T,
@@ -481,8 +496,27 @@ export function buildBurmisterPayload(
       r: load.r === 'auto' ? 'auto' : Number(load.r),
       sh: load.sh,
       ks: load.ks,
+      gntAuto: load.gntAuto,
+      ifaceAuto: load.ifaceAuto,
     },
   };
+}
+
+/**
+ * Libellé d'affichage de la condition d'interface AUTOMATIQUE entre deux couches
+ * adjacentes (Tab. 68 AGEROUTE, référence PUBLIQUE — même règle que `ifaceAuto()`
+ * du HTML client) : deux couches traitées (MTLH/béton) → semi-collée, sauf deux
+ * couches « BC » (béton goujonné) → glissante ; sinon collée. Affichage seul
+ * (sert de texte d'aide dans le sélecteur « Auto · … » avant calcul) : ne
+ * détermine JAMAIS le résultat — le calcul effectif reste serveur.
+ */
+export function autoIfaceLabel(matA: string, matB: string | null): LayerIface {
+  const a = MATERIALS[matA];
+  const b = matB ? MATERIALS[matB] : null;
+  if (a?.nature === 'mtlh' && b?.nature === 'mtlh') {
+    return matA.startsWith('BC') && matB!.startsWith('BC') ? 'glissante' : 'semi-collée';
+  }
+  return 'collée';
 }
 
 // ---------------------------------------------------------------------------
@@ -814,14 +848,16 @@ function CrossSection({ layers, pf, load }: CrossSectionProps) {
 let _nextLayerId = 4;
 
 const DEFAULT_LAYERS: Layer[] = [
-  { id: 1, mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
-  { id: 2, mat: 'GB3', h: 0.1, E: 2588, nu: 0.45 },
-  { id: 3, mat: 'GL1', h: 0.25, E: 200, nu: 0.35 },
+  { id: 1, mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45, iface: 'auto' },
+  { id: 2, mat: 'GB3', h: 0.1, E: 2588, nu: 0.45, iface: 'auto' },
+  { id: 3, mat: 'GL1', h: 0.25, E: 200, nu: 0.35, iface: 'auto' },
 ];
 const DEFAULT_PF: PF = { cls: 'PF2', E: 50, nu: 0.35 };
 // Trafic a 0 par defaut (revue adverse) : force la saisie du trafic projet avant tout
 // resultat/PV. La structure (DEFAULT_LAYERS) reste un gabarit de conception a modifier.
 const DEFAULT_TRAFFIC: Traffic = { T: 0, C: 0.9, N: 20, tau: 4.0, dir: 1.0, tv: 1.0 };
+// Défauts = version définitive du HTML client (gntAutoChk coché, ifaceAuto actif
+// par défaut — #87 étapes 1/2 et 2/2).
 const DEFAULT_LOAD: Load = {
   p: 0.662,
   a: 0.125,
@@ -829,6 +865,8 @@ const DEFAULT_LOAD: Load = {
   r: 'auto',
   sh: 'auto',
   ks: 'auto',
+  gntAuto: true,
+  ifaceAuto: true,
 };
 
 const TABS: Array<{ id: TabId; label: string; Icon: typeof Layers }> = [
@@ -905,8 +943,13 @@ export default function RoadsensPage() {
   const addLayer = useCallback(() => {
     setLayers((prev) => [
       ...prev,
-      { id: _nextLayerId++, mat: 'GL1', h: 0.2, E: 200, nu: 0.35 },
+      { id: _nextLayerId++, mat: 'GL1', h: 0.2, E: 200, nu: 0.35, iface: 'auto' },
     ]);
+  }, []);
+
+  /** Met à jour la condition d'interface imposée d'une couche (Tab. 68, dédié : `iface` est une union stricte). */
+  const updateLayerIface = useCallback((id: number, iface: LayerIface) => {
+    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, iface } : l)));
   }, []);
 
   const removeLayer = useCallback((id: number) => {
@@ -946,6 +989,15 @@ export default function RoadsensPage() {
   // Bouton Calculer — branchement API réel
   // --------------------------------------------------------------------------
 
+  // Mémoïsé : l'identité de `buildPayload` change dès qu'un champ d'entrée
+  // (couches, PSC, trafic, charge — dont gntAuto/ifaceAuto/iface) change ; sert
+  // à la fois à construire le payload et à détecter la péremption du résultat
+  // affiché (cf. useEffect d'invalidation ci-dessous).
+  const buildPayload = useCallback(
+    () => buildBurmisterPayload(layers, pf, traffic, load),
+    [layers, pf, traffic, load],
+  );
+
   const handleCalculer = useCallback(async () => {
     if (!orgId || !projectId) return;
 
@@ -953,7 +1005,7 @@ export default function RoadsensPage() {
     setCalcError(null);
     setPvResult(null);
 
-    const payload = buildBurmisterPayload(layers, pf, traffic, load);
+    const payload = buildPayload();
     const ne = computeNE(traffic);
     const label = `ROADSENS — ${neClass(ne)} — ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })}`;
 
@@ -979,7 +1031,7 @@ export default function RoadsensPage() {
     } finally {
       setCalculating(false);
     }
-  }, [orgId, projectId, layers, pf, traffic, load]);
+  }, [orgId, projectId, traffic, buildPayload]);
 
   // --------------------------------------------------------------------------
   // Bouton Émettre PV
@@ -1009,6 +1061,22 @@ export default function RoadsensPage() {
     setCalcError(null);
     setActiveTab('structure');
   }, []);
+
+  // Invalidation (même patron que Terzaghi, §Lot 5bis) : toute saisie devenue
+  // périmée invalide le résultat déjà affiché — dont gntAuto/ifaceAuto/iface
+  // (#87), qui changent le calcul serveur au même titre que E/ν/h. `buildPayload`
+  // change d'identité dès qu'un champ d'entrée change ; pas d'invalidation au
+  // tout premier rendu (résultat déjà null).
+  const firstFormRender = useRef(true);
+  useEffect(() => {
+    if (firstFormRender.current) {
+      firstFormRender.current = false;
+      return;
+    }
+    setCalcResult(null);
+    setPvResult(null);
+    setCalcError(null);
+  }, [buildPayload]);
 
   if (!mounted) {
     return (
@@ -1349,7 +1417,9 @@ export default function RoadsensPage() {
           onRemoveLayer={removeLayer}
           onMoveLayer={moveLayer}
           onUpdateLayer={updateLayer}
+          onUpdateLayerIface={updateLayerIface}
           onUpdatePf={setPf}
+          onUpdateLoad={setLoad}
         />
       </div>
 
@@ -1605,7 +1675,9 @@ interface TabStructureProps {
   onRemoveLayer: (id: number) => void;
   onMoveLayer: (id: number, dir: -1 | 1) => void;
   onUpdateLayer: (id: number, field: keyof Layer, value: string | number) => void;
+  onUpdateLayerIface: (id: number, iface: LayerIface) => void;
   onUpdatePf: (pf: PF) => void;
+  onUpdateLoad: (load: Load) => void;
 }
 
 function TabStructure({
@@ -1616,9 +1688,12 @@ function TabStructure({
   onRemoveLayer,
   onMoveLayer,
   onUpdateLayer,
+  onUpdateLayerIface,
   onUpdatePf,
+  onUpdateLoad,
 }: TabStructureProps) {
   const matOptions = Object.entries(MATERIALS);
+  const gntAutoId = useId();
 
   return (
     <div>
@@ -1668,8 +1743,8 @@ function TabStructure({
               const nature = mat?.nature ?? 'granulaire';
               const ns = NATURE_STYLE[nature];
               return (
+                <Fragment key={l.id}>
                 <tr
-                  key={l.id}
                   style={{
                     borderBottom:
                       i < layers.length - 1 ? '1px solid var(--border-subtle)' : 'none',
@@ -1814,6 +1889,67 @@ function TabStructure({
                     </button>
                   </td>
                 </tr>
+
+                {/* ⇲ interface — Tab. 68 AGEROUTE, override par couche (#87 étape 2/2) */}
+                {i < layers.length - 1 && (
+                  <tr>
+                    <td></td>
+                    <td
+                      colSpan={6}
+                      style={{
+                        padding: '3px 11px 6px',
+                        borderTop: '1px dashed var(--border-subtle)',
+                        borderBottom:
+                          i < layers.length - 2
+                            ? '1px solid var(--border-subtle)'
+                            : 'none',
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          fontSize: 10.5,
+                          color: 'var(--text-secondary)',
+                        }}
+                      >
+                        <span style={{ letterSpacing: '0.3px' }}>
+                          {`⇲ interface C${i + 1} / C${i + 2}`}
+                        </span>
+                        <select
+                          value={l.iface}
+                          aria-label={`Condition d'interface couche ${i + 1} / couche ${i + 2}`}
+                          onChange={(e) =>
+                            onUpdateLayerIface(l.id, e.target.value as LayerIface)
+                          }
+                          style={{
+                            fontSize: 10.5,
+                            padding: '1px 4px',
+                            borderRadius: 6,
+                            border: '1px solid var(--border-default)',
+                            background: 'var(--surface-base)',
+                            color: 'var(--text-primary)',
+                            fontFamily: 'inherit',
+                          }}
+                        >
+                          <option value="auto">
+                            {`Auto · ${autoIfaceLabel(l.mat, layers[i + 1]?.mat ?? null)}`}
+                          </option>
+                          <option value="collée">Collée</option>
+                          <option value="semi-collée">Semi-collée</option>
+                          <option value="glissante">Glissante</option>
+                        </select>
+                        {l.iface !== 'auto' && (
+                          <span style={{ color: '#bd6a30', fontWeight: 700, fontSize: 9.5 }}>
+                            IMPOSÉE
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -1844,6 +1980,35 @@ function TabStructure({
         <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
           Couche de roulement en position 1
         </span>
+      </div>
+
+      {/* Module GNT automatique — fiche catalogue p.79 (#87 étape 1/2), défaut ON (définitive) */}
+      <div
+        style={{
+          marginTop: 9,
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 7,
+          fontSize: 11,
+        }}
+      >
+        <input
+          type="checkbox"
+          id={gntAutoId}
+          checked={load.gntAuto}
+          onChange={(e) => onUpdateLoad({ ...load, gntAuto: e.target.checked })}
+          style={{ width: 14, height: 14, marginTop: 1 }}
+        />
+        <label
+          htmlFor={gntAutoId}
+          style={{ color: 'var(--text-primary)', cursor: 'pointer', lineHeight: 1.4 }}
+        >
+          Module GNT automatique{' '}
+          <span style={{ color: 'var(--text-secondary)' }}>
+            (catalogue p.79 : 3×E sous-jacent · plafond 360 GNT/GB · 600 GNT/GNT · base
+            600 · ν=0,35)
+          </span>
+        </label>
       </div>
 
       {/* ── Plateforme support ── */}

@@ -93,13 +93,22 @@ describe('neClass', () => {
 
 describe('buildBurmisterPayload', () => {
   const layers = [
-    { id: 1, mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
-    { id: 2, mat: 'GB3', h: 0.1, E: 2588, nu: 0.45 },
-    { id: 3, mat: 'GL1', h: 0.25, E: 200, nu: 0.35 },
+    { id: 1, mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45, iface: 'auto' as const },
+    { id: 2, mat: 'GB3', h: 0.1, E: 2588, nu: 0.45, iface: 'auto' as const },
+    { id: 3, mat: 'GL1', h: 0.25, E: 200, nu: 0.35, iface: 'auto' as const },
   ];
   const pf = { cls: 'PF2', E: 50, nu: 0.35 };
   const traffic = { T: 150, C: 0.9, N: 20, tau: 4.0, dir: 1.0, tv: 1.0 };
-  const load = { p: 0.662, a: 0.125, d: 0.375, r: 'auto', sh: 'auto', ks: 'auto' };
+  const load = {
+    p: 0.662,
+    a: 0.125,
+    d: 0.375,
+    r: 'auto',
+    sh: 'auto',
+    ks: 'auto',
+    gntAuto: true,
+    ifaceAuto: true,
+  };
 
   it('contains layers array of correct length', () => {
     const payload = buildBurmisterPayload(layers, pf, traffic, load) as Record<
@@ -168,6 +177,55 @@ describe('buildBurmisterPayload', () => {
     expect(payload).not.toContain('"e6"');
     expect(payload).not.toContain('"kc"');
     expect(payload).not.toContain('"s6"');
+  });
+
+  // -------------------------------------------------------------------------
+  // GNT auto + interface (#87 étapes 1/2 et 2/2) — activation de la définitive
+  // -------------------------------------------------------------------------
+
+  it('given gntAuto/ifaceAuto=true (défaut), le payload load les transporte', () => {
+    const payload = buildBurmisterPayload(layers, pf, traffic, load) as Record<
+      string,
+      unknown
+    >;
+    const ld = payload.load as Record<string, unknown>;
+    expect(ld.gntAuto).toBe(true);
+    expect(ld.ifaceAuto).toBe(true);
+  });
+
+  it('given gntAuto/ifaceAuto=false, le payload les transporte tels quels (pas de valeur imposée)', () => {
+    const loadOff = { ...load, gntAuto: false, ifaceAuto: false };
+    const payload = buildBurmisterPayload(layers, pf, traffic, loadOff) as Record<
+      string,
+      unknown
+    >;
+    const ld = payload.load as Record<string, unknown>;
+    expect(ld.gntAuto).toBe(false);
+    expect(ld.ifaceAuto).toBe(false);
+  });
+
+  it('chaque couche porte un champ iface (défaut "auto")', () => {
+    const payload = buildBurmisterPayload(layers, pf, traffic, load) as Record<
+      string,
+      unknown
+    >;
+    const ls = payload.layers as Array<Record<string, unknown>>;
+    ls.forEach((l) => expect(l.iface).toBe('auto'));
+  });
+
+  it('une interface imposée (ex. "glissante") traverse jusqu’au payload', () => {
+    const layersImposed = [
+      { ...layers[0], iface: 'glissante' as const },
+      layers[1],
+      layers[2],
+    ];
+    const payload = buildBurmisterPayload(layersImposed, pf, traffic, load) as Record<
+      string,
+      unknown
+    >;
+    const ls = payload.layers as Array<Record<string, unknown>>;
+    expect(ls[0].iface).toBe('glissante');
+    expect(ls[1].iface).toBe('auto');
   });
 });
 
