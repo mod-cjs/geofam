@@ -71,6 +71,15 @@ export function burmisterDefinitiveSourceAvailable(): boolean {
  */
 export function loadDefinitiveCompute(): {
   computeHtml: (state: BurmisterInput) => unknown;
+  /**
+   * Variante avec surcharge des lois de fatigue (#93 sous-port 3d) : mute `M`
+   * en PLACE (comme la reference reelle) avant `doCalc()`. Voir doc au point
+   * d'implementation.
+   */
+  computeHtmlWithFatigueOverrides: (
+    state: BurmisterInput,
+    overrides: ReadonlyArray<{ mat: string; e6?: number; s6?: number }>,
+  ) => unknown;
   cleanup: () => void;
 } {
   const html = readFileSync(DEFINITIVE_PATH, 'utf8');
@@ -96,5 +105,30 @@ export function loadDefinitiveCompute(): {
     return JSON.parse(win.eval(code) as string);
   };
 
-  return { computeHtml, cleanup: () => dom.window.close() };
+  /**
+   * Pilote la table des lois de fatigue EDITABLE de la reference (#93 sous-port
+   * 3d) : reproduit EXACTEMENT `onchange="M['${'${k}'}'].e6=+this.value"` / `s6=`
+   * (mutation en PLACE de la globale `M`, table des materiaux du fichier de
+   * reference) avant d'appeler `doCalc()`. `overrides` = meme forme que
+   * `load.fatigueOverrides` (contract.ts) : tableau `{mat,e6?,s6?}[]`. MUTATION
+   * PERSISTANTE sur cette instance de fenetre jsdom (comme la reference reelle,
+   * ou l'edition reste jusqu'a une nouvelle saisie) : n'utiliser qu'avec une
+   * instance DEDIEE (`loadDefinitiveCompute()` frais) par scenario de test.
+   */
+  const computeHtmlWithFatigueOverrides = (
+    state: BurmisterInput,
+    overrides: ReadonlyArray<{ mat: string; e6?: number; s6?: number }>,
+  ): unknown => {
+    for (const ov of overrides) {
+      if (typeof ov.e6 === 'number') {
+        win.eval(`M[${JSON.stringify(ov.mat)}].e6 = ${JSON.stringify(ov.e6)};`);
+      }
+      if (typeof ov.s6 === 'number') {
+        win.eval(`M[${JSON.stringify(ov.mat)}].s6 = ${JSON.stringify(ov.s6)};`);
+      }
+    }
+    return computeHtml(state);
+  };
+
+  return { computeHtml, computeHtmlWithFatigueOverrides, cleanup: () => dom.window.close() };
 }

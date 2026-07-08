@@ -229,8 +229,13 @@ function shapeOutput(D: Record<string, unknown>): unknown {
   };
 
   // --- Critere de fatigue (couche liee), si une couche liee existe ---
-  // On expose la valeur sollicitante et l'admissible FINALES + verdict. Les
-  // contraintes brutes (s0/sd2/bz) et coefficients (kr/ks/kc/sh/e6) restent serveur.
+  // On expose la valeur sollicitante et l'admissible FINALES + verdict, ET la
+  // valeur ε₆/σ₆ EFFECTIVEMENT retenue (`D.e6` = `minE6`, deja post-surcharge
+  // `fatigueOverrides` cote moteur : cf. engine.ts `mergeFatigueOverrides`).
+  // ε₆/σ₆ sont des grandeurs PUBLIQUES du catalogue AGEROUTE (la reference
+  // definitive les edite en clair) : honnetete du PV — on trace l'entree REELLE
+  // (surchargee ou defaut), jamais la valeur de table si le client l'a editee.
+  // Les coefficients de calage restants (kr/ks/kc/sh/kθ) restent serveur.
   // REQUIS (§8, booleen de verdict public) — le critere PRINCIPAL est PLIE dans
   // `conforme` quand il est requis. Fidele a la logique passT du moteur (engine.ts
   // L969-970) : pour une famille RIGIDE (useRig) le critere σ_t principal (okMain)
@@ -248,6 +253,7 @@ function shapeOutput(D: Record<string, unknown>): unknown {
       admissible: fin(etA) ? etA : null,
       ok: D.passT === true,
       requis: useRig || D.etReq === true,
+      referenceCatalogue: fin(D.e6) ? (D.e6 as number) : null,
     };
   }
 

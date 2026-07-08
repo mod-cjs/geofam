@@ -1328,16 +1328,49 @@ function doCalcPure(M, ly, pf, tr, cp) {
  * recalage engage la SCIENCE STARFIRE : son activation produit necessite une
  * validation `expert-genie-civil`/STARFIRE prealable (cf. tete de fichier #93).
  *
+ * FATIGUE OVERRIDES (#93 sous-port 3d, reference DEFINITIVE — table des lois de
+ * fatigue editable) : `load.fatigueOverrides` (contract.ts, TABLEAU `{mat,e6?,
+ * s6?}[]` — pas un objet a cles ouvertes, rejete par le garde-fou anti-fuite)
+ * surcharge ε₆/σ₆ PAR MATERIAU, fidele a l'edition en place de la reference
+ * definitive (`onchange="M['${k}'].e6=+this.value"` / `s6=`). On ne MUTE JAMAIS
+ * les tables partagees `AGEROUTE_MATERIALS`/`AGEROUTE_MATERIALS_DEFINITIVE`
+ * (modules singleton, une mutation en place fuirait entre requetes / romprait
+ * le determinisme) : `mergeFatigueOverrides` construit une COPIE locale de la
+ * table selectionnee, avec seulement les entrees surchargees remplacees — mêmes
+ * lectures `M[mat].e6`/`M[mat].s6` partout dans `doCalcPure` (fatigue
+ * principale, phases 2/inverse, couches traitees), aucune science reordonnee.
+ * Doublons de `mat` dans le tableau : la DERNIERE entree gagne (parcours dans
+ * l'ordre, ecrasement simple — deterministe, meme discipline qu'un objet JS
+ * construit par assignations successives). GATE NATUREL : `fatigueOverrides`
+ * absent/vide -> `M` INCHANGEE (meme reference d'objet), equivalence
+ * HISTORIQUE preservee au bit pres.
+ *
  * Renvoie l'objet de resultat BRUT `_D` (identique au HTML), OU `{ err }` si la
  * science leve (parite avec le `try/catch` du HTML : `runCalc` affiche e.message).
  * La PROJECTION client-safe est faite par index.ts (whitelist + redaction).
  */
+function mergeFatigueOverrides(baseTable, overrides) {
+  if (!Array.isArray(overrides) || overrides.length === 0) return baseTable;
+  const merged = { ...baseTable };
+  for (const ov of overrides) {
+    if (!ov || typeof ov !== 'object' || typeof ov.mat !== 'string') continue;
+    const base = merged[ov.mat] || baseTable[ov.mat];
+    if (!base) continue;
+    const next = { ...base };
+    if (typeof ov.e6 === 'number' && Number.isFinite(ov.e6)) next.e6 = ov.e6;
+    if (typeof ov.s6 === 'number' && Number.isFinite(ov.s6)) next.s6 = ov.s6;
+    merged[ov.mat] = next;
+  }
+  return merged;
+}
+
 export function computeBurmister(state) {
   const cpForMaterials = state && state.load ? state.load : {};
-  const M =
+  const baseTable =
     cpForMaterials && cpForMaterials.materialsRev === 'definitive'
       ? AGEROUTE_MATERIALS_DEFINITIVE
       : AGEROUTE_MATERIALS;
+  const M = mergeFatigueOverrides(baseTable, cpForMaterials && cpForMaterials.fatigueOverrides);
   const lyIn = state && Array.isArray(state.layers) ? state.layers : [];
   const pf = state && state.subgrade ? state.subgrade : {};
   const tr = state && state.traffic ? state.traffic : {};

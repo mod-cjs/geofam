@@ -290,6 +290,42 @@ const LoadSchema = z
      * DEUX tables figees serveur est selectionnee (aucune cle `materials` libre).
      */
     materialsRev: z.enum(['definitive']).optional(),
+    /**
+     * SURCHARGE des parametres de FATIGUE ε₆ (bitumineux) / σ₆ (MTLH/beton) par
+     * materiau (#93 sous-port 3d, reference DEFINITIVE — table des lois de
+     * fatigue editable, `onchange="M['${k}'].e6=+this.value"` / `s6=`). TABLEAU
+     * (pas un `z.record` : conteneur a cles ouvertes REJETE par le garde-fou
+     * anti-fuite `assertWhitelistSafe` — cf. `packages/shared/src/engine-io.ts —
+     * ZodRecord non liste en type sur) — chaque entree porte `mat` = code
+     * materiau (ex. "BBSG1", "GLc2"...). Quand une entree existe pour le
+     * materiau DIMENSIONNANT (celui dont la base porte le critere de fatigue —
+     * cf. `mD` en engine.ts), la valeur SAISIE remplace le defaut de la table
+     * `AGEROUTE_MATERIALS`/`AGEROUTE_MATERIALS_DEFINITIVE` (calage catalogue) —
+     * fidele a la reference definitive, ou l'edition mute `M` en place. Bornes
+     * = celles des champs de saisie de la reference (e6 : 50-300 μdef, s6 :
+     * 0,05-5,0 MPa). Doublons de `mat` : la DERNIERE entree du tableau gagne
+     * (ordre stable, deterministe — cf. `mergeFatigueOverrides` en engine.ts).
+     * GATE NATUREL : absent/vide -> defauts catalogue INCHANGES (equivalence
+     * HISTORIQUE preservee). e6/σ₆ sont des grandeurs PUBLIQUES du catalogue
+     * AGEROUTE (la reference les edite en clair) : ni secret ni coefficient de
+     * calage proprietaire (contrairement a kr/ks/kc/Sh/kθ, qui restent internes
+     * et non surchargeables ici).
+     */
+    fatigueOverrides: z
+      .array(
+        z
+          .object({
+            /** Cle materiau surchargee (ex. "BBSG1", "GLc2"...) — bornee. */
+            mat: z.string().min(1).max(32),
+            /** ε₆ (10 °C, 25 Hz) — deformation de fatigue de reference, μdef. */
+            e6: z.number().finite().min(50).max(300).optional(),
+            /** σ₆ — contrainte de fatigue de reference (MTLH/beton), MPa. */
+            s6: z.number().finite().min(0.05).max(5.0).optional(),
+          })
+          .strict(),
+      )
+      .max(20)
+      .optional(),
   })
   .strict();
 
@@ -299,10 +335,16 @@ const LoadSchema = z
  * PAS de champ `materials` : le referentiel/la calibration de fatigue est FIGE
  * cote moteur a `AGEROUTE_MATERIALS` (reference θ=34 °C), jamais fourni par le
  * client (cf. en-tete « CALIBRATION VERROUILLEE »). Le schema etant `.strict()`,
- * une entree portant `materials` (ou tout autre coefficient de calage e6/kc/b/…)
+ * une entree portant `materials` (ou tout autre coefficient de calage kc/b/kr/…)
  * est REJETEE (400) — aucune science substituee ne peut atteindre le calcul ni
  * etre scellee dans le PV. Les couches portent E/ν/h (les seules grandeurs
- * elastiques saisies) ; les coefficients de calage ne transitent jamais par l'entree.
+ * elastiques saisies) ; les coefficients de calage ne transitent jamais par l'entree,
+ * A L'EXCEPTION BORNEE ET EXPLICITE de `load.fatigueOverrides` (ε₆/σ₆ PAR
+ * materiau, fidele a la table editable de la reference definitive — cf.
+ * `LoadSchema`) : ce sont des grandeurs PUBLIQUES du catalogue AGEROUTE, pas un
+ * secret de calage (contrairement a kr/ks/kc/Sh/kθ), et la valeur EFFECTIVEMENT
+ * retenue (surchargee ou defaut) est retracee en sortie (cf. `FatigueSchema`)
+ * pour l'honnetete du PV.
  */
 export const BurmisterInputSchema = z
   .object({
@@ -338,6 +380,16 @@ const FatigueSchema = z
     ok: z.boolean(),
     /** Critere requis par la famille de structure ? (informatif sinon). */
     requis: z.boolean(),
+    /**
+     * ε₆ (bitumineux, μdef) ou σ₆ (MTLH/beton, MPa) EFFECTIVEMENT retenu pour le
+     * materiau DIMENSIONNANT (`rigide` indique lequel) — valeur surchargee via
+     * `load.fatigueOverrides` si fournie pour ce materiau, sinon defaut du
+     * catalogue AGEROUTE. PUBLIC (grandeur de catalogue, pas un coefficient de
+     * calage) : trace ici pour que le PV enregistre l'entree REELLEMENT utilisee
+     * (honnetete du sceau), jamais la valeur de table si elle a ete surchargee.
+     * `null` si aucun materiau dimensionnant n'est identifie (ex. paquet non lie).
+     */
+    referenceCatalogue: z.number().finite().nullable(),
   })
   .strict();
 
