@@ -20,6 +20,13 @@ import {
   buildBurmisterPayload,
   extractBurmisterKpis,
   buildBurmisterDiagnostics,
+  resolveRisk,
+  effectiveNE,
+  uRisk,
+  ROADSENS_PRESETS,
+  buildLayersFromPreset,
+  catalogueMaterialAt,
+  CAT,
 } from '../page';
 
 import { adaptCalcResult } from '@/lib/api/adapters';
@@ -104,10 +111,14 @@ describe('buildBurmisterPayload', () => {
     a: 0.125,
     d: 0.375,
     r: 'auto',
+    rCustom: '',
     sh: 'auto',
     ks: 'auto',
     gntAuto: true,
     ifaceAuto: true,
+    neDirect: false,
+    neDirectValue: 0,
+    fatigueOverrides: {},
   };
 
   it('contains layers array of correct length', () => {
@@ -226,6 +237,331 @@ describe('buildBurmisterPayload', () => {
     const ls = payload.layers as Array<Record<string, unknown>>;
     expect(ls[0].iface).toBe('glissante');
     expect(ls[1].iface).toBe('auto');
+  });
+
+  // -------------------------------------------------------------------------
+  // materialsRev — rebase définitive (#93 sous-port 3c) : envoyé par défaut
+  // -------------------------------------------------------------------------
+
+  it('given le rebase définitive, load.materialsRev = "definitive" par défaut', () => {
+    const payload = buildBurmisterPayload(layers, pf, traffic, load) as Record<
+      string,
+      unknown
+    >;
+    const ld = payload.load as Record<string, unknown>;
+    expect(ld.materialsRev).toBe('definitive');
+  });
+
+  // -------------------------------------------------------------------------
+  // NE direct (#93 sous-port 3b) — neForce absent par défaut, présent si activé
+  // -------------------------------------------------------------------------
+
+  it('given neDirect=false (défaut), le payload ne porte pas neForce', () => {
+    const payload = buildBurmisterPayload(layers, pf, traffic, load) as Record<
+      string,
+      unknown
+    >;
+    const ld = payload.load as Record<string, unknown>;
+    expect(ld).not.toHaveProperty('neForce');
+  });
+
+  it('given neDirect=true avec une valeur positive, le payload porte neForce', () => {
+    const loadNeDirect = { ...load, neDirect: true, neDirectValue: 3e7 };
+    const payload = buildBurmisterPayload(layers, pf, traffic, loadNeDirect) as Record<
+      string,
+      unknown
+    >;
+    const ld = payload.load as Record<string, unknown>;
+    expect(ld.neForce).toBe(3e7);
+  });
+
+  it('given neDirect=true mais valeur invalide (0/NaN), neForce absent (fail-closed)', () => {
+    const loadInvalid = { ...load, neDirect: true, neDirectValue: 0 };
+    const payload = buildBurmisterPayload(layers, pf, traffic, loadInvalid) as Record<
+      string,
+      unknown
+    >;
+    const ld = payload.load as Record<string, unknown>;
+    expect(ld).not.toHaveProperty('neForce');
+  });
+
+  // -------------------------------------------------------------------------
+  // Risque personnalisé — r='custom' + rCustom (saisie libre)
+  // -------------------------------------------------------------------------
+
+  it('given r="custom" avec rCustom="18", le payload porte le nombre 18', () => {
+    const loadCustom = { ...load, r: 'custom', rCustom: '18' };
+    const payload = buildBurmisterPayload(layers, pf, traffic, loadCustom) as Record<
+      string,
+      unknown
+    >;
+    const ld = payload.load as Record<string, unknown>;
+    expect(ld.r).toBe(18);
+  });
+
+  it('given r="custom" avec rCustom vide/invalide, retombe sur "auto" (fail-closed)', () => {
+    const loadCustom = { ...load, r: 'custom', rCustom: '' };
+    const payload = buildBurmisterPayload(layers, pf, traffic, loadCustom) as Record<
+      string,
+      unknown
+    >;
+    const ld = payload.load as Record<string, unknown>;
+    expect(ld.r).toBe('auto');
+  });
+
+  // -------------------------------------------------------------------------
+  // fatigueOverrides — surcharge ε₆/σ₆ par matériau (#93 sous-port 3d)
+  // -------------------------------------------------------------------------
+
+  it('given fatigueOverrides vide (défaut), le payload ne porte pas fatigueOverrides', () => {
+    const payload = buildBurmisterPayload(layers, pf, traffic, load) as Record<
+      string,
+      unknown
+    >;
+    const ld = payload.load as Record<string, unknown>;
+    expect(ld).not.toHaveProperty('fatigueOverrides');
+  });
+
+  it('given un e6 édité pour un matériau, le payload porte fatigueOverrides=[{mat,e6}]', () => {
+    const loadOverride = { ...load, fatigueOverrides: { BBSG1: { e6: 110 } } };
+    const payload = buildBurmisterPayload(layers, pf, traffic, loadOverride) as Record<
+      string,
+      unknown
+    >;
+    const ld = payload.load as Record<string, unknown>;
+    expect(ld.fatigueOverrides).toEqual([{ mat: 'BBSG1', e6: 110 }]);
+  });
+
+  it('given un s6 édité pour un matériau MTLH, le payload porte fatigueOverrides=[{mat,s6}]', () => {
+    const loadOverride = { ...load, fatigueOverrides: { GLc2: { s6: 0.4 } } };
+    const payload = buildBurmisterPayload(layers, pf, traffic, loadOverride) as Record<
+      string,
+      unknown
+    >;
+    const ld = payload.load as Record<string, unknown>;
+    expect(ld.fatigueOverrides).toEqual([{ mat: 'GLc2', s6: 0.4 }]);
+  });
+
+  it('given plusieurs matériaux édités, le payload porte toutes les entrées', () => {
+    const loadOverride = {
+      ...load,
+      fatigueOverrides: { BBSG1: { e6: 110 }, GLc2: { s6: 0.4 } },
+    };
+    const payload = buildBurmisterPayload(layers, pf, traffic, loadOverride) as Record<
+      string,
+      unknown
+    >;
+    const ld = payload.load as Record<string, unknown>;
+    expect(ld.fatigueOverrides).toEqual([
+      { mat: 'BBSG1', e6: 110 },
+      { mat: 'GLc2', s6: 0.4 },
+    ]);
+  });
+
+  it('given une entrée fatigueOverrides sans e6 ni s6 défini, elle est omise (fail-closed)', () => {
+    const loadOverride = { ...load, fatigueOverrides: { BBSG1: {} } };
+    const payload = buildBurmisterPayload(layers, pf, traffic, loadOverride) as Record<
+      string,
+      unknown
+    >;
+    const ld = payload.load as Record<string, unknown>;
+    expect(ld).not.toHaveProperty('fatigueOverrides');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveRisk — résolution du risque effectif depuis la saisie Load
+// ---------------------------------------------------------------------------
+
+describe('resolveRisk', () => {
+  const base = {
+    p: 0.662,
+    a: 0.125,
+    d: 0.375,
+    r: 'auto',
+    rCustom: '',
+    sh: 'auto',
+    ks: 'auto',
+    gntAuto: true,
+    ifaceAuto: true,
+    neDirect: false,
+    neDirectValue: 3e7,
+    fatigueOverrides: {},
+  };
+
+  it('given r="auto", retourne "auto"', () => {
+    expect(resolveRisk(base)).toBe('auto');
+  });
+
+  it('given r="10" (choix prédéfini), retourne le nombre 10', () => {
+    expect(resolveRisk({ ...base, r: '10' })).toBe(10);
+  });
+
+  it('given r="50" (nouveau choix prédéfini), retourne le nombre 50', () => {
+    expect(resolveRisk({ ...base, r: '50' })).toBe(50);
+  });
+
+  it('given r="custom" avec rCustom="7.5", retourne le nombre 7.5', () => {
+    expect(resolveRisk({ ...base, r: 'custom', rCustom: '7.5' })).toBe(7.5);
+  });
+
+  it('given r="custom" avec rCustom non numérique, retombe sur "auto"', () => {
+    expect(resolveRisk({ ...base, r: 'custom', rCustom: 'abc' })).toBe('auto');
+  });
+
+  it('given r="custom" avec rCustom négatif ou nul, retombe sur "auto" (fail-closed)', () => {
+    expect(resolveRisk({ ...base, r: 'custom', rCustom: '0' })).toBe('auto');
+    expect(resolveRisk({ ...base, r: 'custom', rCustom: '-5' })).toBe('auto');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// effectiveNE — NE affiché (estimation), tient compte du NE direct (#93 3b)
+// ---------------------------------------------------------------------------
+
+describe('effectiveNE', () => {
+  const traffic = { T: 150, C: 0.9, N: 20, tau: 4.0, dir: 1.0, tv: 1.0 };
+  const loadBase = {
+    p: 0.662,
+    a: 0.125,
+    d: 0.375,
+    r: 'auto',
+    rCustom: '',
+    sh: 'auto',
+    ks: 'auto',
+    gntAuto: true,
+    ifaceAuto: true,
+    neDirect: false,
+    neDirectValue: 3e7,
+    fatigueOverrides: {},
+  };
+
+  it('given neDirect=false, retourne computeNE(traffic)', () => {
+    expect(effectiveNE(traffic, loadBase)).toBeCloseTo(computeNE(traffic), 0);
+  });
+
+  it('given neDirect=true, retourne neDirectValue au lieu de computeNE(traffic)', () => {
+    const load = { ...loadBase, neDirect: true, neDirectValue: 3e7 };
+    expect(effectiveNE(traffic, load)).toBe(3e7);
+  });
+
+  it('given neDirect=true mais neDirectValue invalide, retombe sur computeNE(traffic)', () => {
+    const load = { ...loadBase, neDirect: true, neDirectValue: 0 };
+    expect(effectiveNE(traffic, load)).toBeCloseTo(computeNE(traffic), 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// uRisk — quantile u_r associé au risque r (%) — affichage informatif seul
+// (algorithme d'Acklam, formule statistique publique — pas un coefficient de
+// calage AGEROUTE confidentiel)
+// ---------------------------------------------------------------------------
+
+describe('uRisk', () => {
+  it('retourne les valeurs catalogue exactes pour 5/10/15/25/50 %', () => {
+    expect(uRisk(5)).toBeCloseTo(1.645, 3);
+    expect(uRisk(10)).toBeCloseTo(1.282, 3);
+    expect(uRisk(15)).toBeCloseTo(1.036, 3);
+    expect(uRisk(25)).toBeCloseTo(0.674, 3);
+    expect(uRisk(50)).toBeCloseTo(0.0, 3);
+  });
+
+  it('pour un risque hors table (ex. 18 %), calcule via la loi normale inverse', () => {
+    const u = uRisk(18);
+    // u_18% doit être strictement entre u_25%=0.674 et u_15%=1.036 (monotone décroissant)
+    expect(u).toBeGreaterThan(0.674);
+    expect(u).toBeLessThan(1.036);
+  });
+
+  it('est décroissant : un risque plus élevé donne un quantile plus faible', () => {
+    expect(uRisk(5)).toBeGreaterThan(uRisk(10));
+    expect(uRisk(10)).toBeGreaterThan(uRisk(25));
+    expect(uRisk(25)).toBeGreaterThan(uRisk(50));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ROADSENS_PRESETS / buildLayersFromPreset — cas de validation du catalogue
+// ---------------------------------------------------------------------------
+
+describe('ROADSENS_PRESETS', () => {
+  it('contient au moins 15 cas de validation (catalogue + annexes)', () => {
+    expect(ROADSENS_PRESETS.length).toBeGreaterThanOrEqual(15);
+  });
+
+  it('chaque preset a un id unique', () => {
+    const ids = ROADSENS_PRESETS.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('chaque preset porte au moins une couche', () => {
+    ROADSENS_PRESETS.forEach((p) => expect(p.layers.length).toBeGreaterThan(0));
+  });
+});
+
+describe('buildLayersFromPreset', () => {
+  it('construit des couches avec h en mètres depuis des cm', () => {
+    const preset = ROADSENS_PRESETS.find((p) => p.id === 's2')!;
+    const layers = buildLayersFromPreset(preset);
+    expect(layers[0].mat).toBe('BBSG1');
+    expect(layers[0].h).toBeCloseTo(0.08, 3); // 8 cm -> 0.08 m
+    expect(layers[1].mat).toBe('GB3');
+    expect(layers[1].h).toBeCloseTo(0.32, 3); // 32 cm
+  });
+
+  it('applique la surcharge de module E quand fournie (3e élément du tuple)', () => {
+    const preset = ROADSENS_PRESETS.find((p) => p.id === 's3')!;
+    const layers = buildLayersFromPreset(preset);
+    const gntLayer = layers.find((l) => l.mat === 'GNT1')!;
+    expect(gntLayer.E).toBe(400); // surcharge explicite du preset, pas le défaut catalogue
+  });
+
+  it('les identifiants de couche sont uniques et croissants', () => {
+    const preset = ROADSENS_PRESETS.find((p) => p.id === 's6')!;
+    const layers = buildLayersFromPreset(preset);
+    const ids = layers.map((l) => l.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// catalogueMaterialAt / CAT — 14 familles (S1-S11, S13-S15), placement matériau
+// ---------------------------------------------------------------------------
+
+describe('catalogueMaterialAt', () => {
+  it('la première couche est toujours le matériau de surface (top)', () => {
+    expect(catalogueMaterialAt({ top: 'BBSG1', body: 'GB2' }, 0, 3)).toBe('BBSG1');
+  });
+
+  it('la dernière couche est le matériau "tail" quand défini', () => {
+    expect(catalogueMaterialAt({ top: 'BBSG1', body: 'GB2', tail: 'GNT1' }, 3, 4)).toBe(
+      'GNT1',
+    );
+  });
+
+  it('la 2e couche est le matériau "mid" quand défini', () => {
+    expect(
+      catalogueMaterialAt({ top: 'BBSG1', mid: 'GLc2', body: 'GL2' }, 1, 3),
+    ).toBe('GLc2');
+  });
+
+  it('sans mid/tail, les couches intermédiaires retombent sur "body"', () => {
+    expect(catalogueMaterialAt({ top: 'BBSG1', body: 'GB3' }, 2, 4)).toBe('GB3');
+  });
+});
+
+describe('CAT — catalogue AGEROUTE 2015 (14 familles)', () => {
+  it('contient exactement les familles S1-S11, S13, S14, S15', () => {
+    const expected = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S13', 'S14', 'S15'];
+    expect(Object.keys(CAT).sort()).toEqual(expected.sort());
+  });
+
+  it('chaque famille porte un label et un mapping matériau top/body', () => {
+    Object.values(CAT).forEach((f) => {
+      expect(typeof f.label).toBe('string');
+      expect(f.m.top).toBeTruthy();
+      expect(f.m.body).toBeTruthy();
+    });
   });
 });
 

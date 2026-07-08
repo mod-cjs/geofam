@@ -43,6 +43,17 @@ import { useOrgId } from '@/lib/org-context';
 const ENGINE_ID = 'burmister';
 
 // ---------------------------------------------------------------------------
+// Retint définitif (rebase, décision titulaire) — palette locale à CETTE page
+// uniquement : on ne touche PAS aux tokens globaux du design system (`--surface-*`
+// restent inchangés ailleurs dans l'app), on remplace juste les valeurs littérales
+// utilisées ici par les teintes exactes du HTML définitif.
+// ---------------------------------------------------------------------------
+const RS_PANEL = '#eaf1f9'; // fond en-tête / nav onglets / panneaux
+const RS_PANEL_2 = '#dde7f2'; // fond en-tête de tableau / survol / cartes secondaires
+const RS_FIELD = '#f4f8fc'; // fond des champs de saisie + cartes métriques
+const RS_BRAND_TINT = '#e2ecf7'; // teinte d'accent (tag, dégradés)
+
+// ---------------------------------------------------------------------------
 // Constantes de matériaux — DISPLAY ONLY (pas de coefficients de calcul)
 // Source : AGEROUTE Sénégal 2015 (document public), valeurs nominales
 // ---------------------------------------------------------------------------
@@ -187,6 +198,15 @@ const MATERIALS: Record<string, MaterialUI> = {
     color: '#d0d0c8',
     nature: 'mtlh',
   },
+  // Rebase définitive (#93 sous-port 3c) : dalle béton BC5 goujonnée (Tab. 68) —
+  // même module/ν que BC5, kd goujonné réservé au moteur (materialsRev='definitive').
+  BC5g: {
+    label: 'Béton BC5 (dalle goujonnée)',
+    E: 35000,
+    nu: 0.25,
+    color: '#e8e8de',
+    nature: 'mtlh',
+  },
 };
 
 /**
@@ -228,6 +248,7 @@ const FATIGUE_MTLH: Record<string, FatigueMtlhEntry> = {
   BQc: { label: 'Banco-coquillage (BQc)', s6: 0.3, b: 11, kc: 1.4, source: 'T.35' },
   BC5: { label: 'Béton BC5', s6: 2.15, b: 16, kc: 1.5, source: 'T.37' },
   BC2: { label: 'Béton Maigre BC2', s6: 1.37, b: 14, kc: 1.5, source: 'T.37' },
+  BC5g: { label: 'Béton BC5 (dalle goujonnée)', s6: 2.15, b: 16, kc: 1.5, source: 'T.37' },
 };
 
 /** Preset de modules des classes de plateforme support (AGEROUTE 2015). */
@@ -249,34 +270,54 @@ const PF_PRESETS: Record<string, { E: number; label: string }> = {
  */
 type CatEntry = Record<string, Record<string, number[]>>;
 
+/**
+ * Placement des matériaux dans une structure de famille catalogue : `top` = couche
+ * de roulement (toujours 1re), `tail` = couche de fond (si présente, seule couche
+ * granulaire non liée sous le paquet traité), `mid` = 2e couche quand la structure a
+ * 3 couches liées distinctes (ex. S9 : BBSG / GLc2 / GL2), `body` = matériau par
+ * défaut pour toute position intermédiaire non couverte par mid/tail.
+ */
+interface CatMats {
+  top: string;
+  mid?: string;
+  body: string;
+  tail?: string;
+}
+
 interface CatFamily {
   label: string;
-  mats: string[]; // clés de MATERIALS (dans l'ordre couche 1→N)
+  m: CatMats;
   data: CatEntry;
 }
 
-const CAT: Record<string, CatFamily> = {
-  S2: {
-    label: 'BBSG / GB3',
-    mats: ['BBSG1', 'GB3', 'GB3', 'GB3'],
-    data: {
-      C1: { PF2: [6, 7, 8], PF2qs: [6, 12], PF3: [6, 9], PF4: [6, 8] },
-      C2: { PF2: [6, 9, 10], PF2qs: [6, 8, 8], PF3: [6, 14], PF4: [6, 10] },
-      C3: { PF2: [6, 12, 12], PF2qs: [6, 10, 10], PF3: [6, 8, 9], PF4: [6, 14] },
-      C4: { PF2: [6, 9, 10, 10], PF2qs: [6, 12, 13], PF3: [6, 11, 11], PF4: [6, 8, 9] },
-      C5: { PF3: [8, 13, 14], PF4: [8, 11, 12] },
-      C6: { PF3: [8, 10, 11, 11], PF4: [8, 9, 10, 10] },
-      C7: { PF3: [8, 11, 12, 12], PF4: [8, 10, 10, 11] },
-      C8: { PF3: [8, 13, 13, 13], PF4: [8, 11, 12, 12] },
-    },
-  },
+/**
+ * Résout le matériau (clé MATERIALS) affiché à la position `i` (0-based) d'une
+ * structure catalogue de longueur `L`. Reproduit fidèlement `catMat()` de la
+ * définitive : top en tête, tail en pied (si défini), mid en position 1 (si défini
+ * et pas déjà couvert par tail), sinon body. EXPORTÉ pour tests DoD §9.
+ */
+export function catalogueMaterialAt(m: CatMats, i: number, L: number): string {
+  if (i === 0) return m.top;
+  if (m.tail && i === L - 1) return m.tail;
+  if (m.mid && i === 1) return m.mid;
+  return m.body;
+}
+
+/** Catalogue AGEROUTE 2015 — 14 familles (S1-S11, S13-S15), données de la définitive. */
+export const CAT: Record<string, CatFamily> = {
   S1: {
     label: 'BBSG / GB2',
-    mats: ['BBSG1', 'GB2', 'GB2', 'GB2'],
+    m: { top: 'BBSG1', body: 'GB2' },
     data: {
-      C1: { PF1: [6, 11, 11], PF2: [6, 8, 9], PF2qs: [6, 7], PF3: [6, 11], PF4: [6, 8] },
-      C2: { PF2: [6, 10, 10], PF2qs: [6, 8, 9], PF3: [6, 14], PF4: [6, 11] },
-      C3: { PF2: [6, 12, 13], PF2qs: [6, 11, 11], PF3: [6, 9, 9], PF4: [6, 15] },
+      C1: { PF1: [6, 11, 11], PF2: [6, 8, 9], PF2qs: [6, 7, 7], PF3: [6, 11], PF4: [6, 8] },
+      C2: { PF1: [6, 13, 13], PF2: [6, 10, 10], PF2qs: [6, 8, 9], PF3: [6, 14], PF4: [6, 11] },
+      C3: {
+        PF1: [6, 10, 10, 10],
+        PF2: [6, 12, 13],
+        PF2qs: [6, 11, 11],
+        PF3: [6, 9, 9],
+        PF4: [6, 15],
+      },
       C4: { PF2: [6, 9, 10, 10], PF2qs: [6, 13, 13], PF3: [6, 11, 12], PF4: [6, 9, 10] },
       C5: { PF3: [8, 10, 10, 10], PF4: [8, 13, 13] },
       C6: { PF3: [8, 11, 12, 12], PF4: [8, 10, 10, 11] },
@@ -284,9 +325,130 @@ const CAT: Record<string, CatFamily> = {
       C8: { PF3: [8, 14, 14, 14], PF4: [8, 12, 13, 13] },
     },
   },
+  S2: {
+    label: 'BBSG / GB3',
+    m: { top: 'BBSG1', body: 'GB3' },
+    data: {
+      C1: { PF2: [6, 7, 8], PF2qs: [6, 12], PF3: [6, 9], PF4: [6, 8] },
+      C2: { PF2: [6, 9, 10], PF2qs: [6, 8, 8], PF3: [6, 14], PF4: [6, 10] },
+      C3: { PF2: [6, 12, 12], PF2qs: [6, 10, 10], PF3: [6, 8, 9], PF4: [6, 14] },
+      C4: { PF2: [6, 9, 10, 10], PF2qs: [6, 12, 13], PF3: [6, 11, 11], PF4: [6, 8, 9] },
+      C5: { PF2qs: [8, 10, 10, 11], PF3: [8, 13, 14], PF4: [8, 11, 12] },
+      C6: { PF3: [8, 10, 11, 11], PF4: [8, 9, 10, 10] },
+      C7: { PF3: [8, 11, 12, 12], PF4: [8, 10, 10, 11] },
+      C8: { PF3: [8, 13, 13, 13], PF4: [8, 11, 12, 12] },
+    },
+  },
+  S3: {
+    label: 'BBSG / GB2 / GNT1',
+    m: { top: 'BBSG1', body: 'GB2', tail: 'GNT1' },
+    data: {
+      C2: { PF2: [6, 7, 8, 25], PF2qs: [6, 11, 25], PF3: [6, 8, 15] },
+      C3: { PF2: [6, 10, 10, 25], PF2qs: [6, 7, 8, 25], PF3: [6, 13, 15] },
+      C4: { PF2: [6, 12, 12, 25], PF2qs: [6, 10, 10, 25], PF3: [6, 9, 9, 15] },
+      C5: { PF2: [8, 10, 11, 11, 25], PF2qs: [8, 14, 14, 25], PF3: [8, 12, 13, 15] },
+    },
+  },
+  S4: {
+    label: 'BBSG / GB3 / GNT1',
+    m: { top: 'BBSG1', body: 'GB3', tail: 'GNT1' },
+    data: {
+      C1: { PF2: [6, 9, 25] },
+      C2: { PF2: [6, 14, 25], PF2qs: [6, 9, 25], PF3: [6, 8, 15] },
+      C3: { PF2: [6, 9, 10, 25], PF2qs: [6, 14, 25], PF3: [6, 13, 15] },
+      C4: { PF2: [6, 12, 12, 25], PF2qs: [6, 9, 9, 25], PF3: [6, 8, 9, 15] },
+      C5: { PF2: [8, 9, 10, 10, 25], PF2qs: [8, 12, 13, 15], PF3: [8, 12, 13, 15] },
+      C6: { PF2qs: [8, 10, 10, 11, 25], PF3: [8, 14, 14, 15] },
+      C7: { PF3: [8, 10, 10, 11, 15] },
+    },
+  },
+  S5: {
+    label: 'BBSG3 / EME2',
+    m: { top: 'BBSG2', body: 'EME2' },
+    data: {
+      C1: { PF2qs: [6, 7] },
+      C2: { PF2qs: [6, 11], PF3: [6, 9], PF4: [6, 7] },
+      C3: { PF2qs: [6, 7, 7], PF3: [6, 12], PF4: [6, 9] },
+      C4: { PF2qs: [6, 9, 9], PF3: [6, 7, 8], PF4: [6, 12] },
+      C5: { PF2qs: [8, 10, 11], PF3: [8, 9, 9], PF4: [8, 8, 8] },
+      C6: { PF2qs: [8, 12, 13], PF3: [8, 11, 11], PF4: [8, 10, 10] },
+      C7: { PF2qs: [8, 9, 9, 9], PF3: [8, 12, 12], PF4: [8, 11, 11] },
+      C8: { PF2qs: [8, 10, 10, 10], PF3: [8, 9, 9, 9], PF4: [8, 12, 12] },
+    },
+  },
+  S6: {
+    label: 'BBSG / GC-T3',
+    m: { top: 'BBSG1', body: 'GC3' },
+    data: {
+      C2: { PF2: [6, 29], PF2qs: [6, 27], PF3: [6, 25], PF4: [6, 22] },
+      C3: { PF2: [6, 20, 20], PF2qs: [6, 29], PF3: [6, 26], PF4: [6, 25] },
+      C4: { PF2: [6, 20, 20], PF2qs: [6, 30], PF3: [6, 27], PF4: [6, 25] },
+      C5: { PF2: [8, 23, 20], PF2qs: [8, 21, 20], PF3: [8, 19, 18], PF4: [8, 18, 15] },
+      C6: { PF2: [10, 23, 20], PF2qs: [10, 21, 20], PF3: [10, 19, 18], PF4: [10, 18, 15] },
+      C7: { PF2qs: [12, 21, 20], PF3: [12, 19, 18], PF4: [12, 18, 15] },
+      C8: { PF2qs: [14, 21, 20], PF3: [14, 19, 18], PF4: [14, 18, 15] },
+    },
+  },
+  S7: {
+    label: 'BBSG / SC-T2',
+    m: { top: 'BBSG1', body: 'SC2' },
+    data: {
+      C1: { PF2qs: [6, 28], PF3: [6, 25], PF4: [6, 23] },
+      C2: { PF2qs: [6, 30], PF3: [6, 27], PF4: [6, 24] },
+      C3: { PF2: [6, 20, 20], PF2qs: [6, 20, 20], PF3: [6, 29], PF4: [6, 26] },
+      C4: { PF2: [6, 22, 20], PF2qs: [6, 20, 20], PF3: [6, 18, 18], PF4: [6, 28] },
+    },
+  },
+  S8: {
+    label: 'BBSG / GLc2',
+    m: { top: 'BBSG1', body: 'GLc2' },
+    data: {
+      C1: { PF2qs: [6, 27], PF3: [6, 22], PF4: [6, 18] },
+      C2: { PF2qs: [6, 29], PF3: [6, 24], PF4: [6, 20] },
+      C3: { PF2qs: [6, 20, 20], PF3: [6, 27], PF4: [6, 25] },
+      C4: { PF2: [6, 22, 20], PF2qs: [6, 20, 20], PF3: [6, 29], PF4: [6, 25] },
+      C5: { PF2: [8, 27, 24], PF2qs: [8, 24, 21], PF3: [8, 20, 18], PF4: [8, 17, 15] },
+      C6: { PF2qs: [10, 23, 22], PF3: [10, 20, 19], PF4: [10, 17, 17] },
+      C7: { PF2qs: [12, 23, 22], PF3: [12, 20, 19], PF4: [12, 17, 17] },
+      C8: { PF2qs: [14, 23, 22], PF3: [14, 21, 19], PF4: [14, 18, 17] },
+    },
+  },
+  S9: {
+    label: 'BBSG / GLc2 / GL2',
+    m: { top: 'BBSG1', mid: 'GLc2', body: 'GL2' },
+    data: {
+      C1: { PF2: [6, 26, 25], PF2qs: [6, 22, 25] },
+      C2: { PF2: [6, 29, 25], PF2qs: [6, 25, 25] },
+      C3: { PF2: [6, 30, 30], PF2qs: [6, 25, 30] },
+      C4: { PF2qs: [6, 28, 30] },
+    },
+  },
+  S10: {
+    label: 'BBSG / GLc1',
+    m: { top: 'BBSG1', body: 'GLc1' },
+    data: {
+      C1: { PF2: [6, 25, 23], PF2qs: [6, 23, 21], PF3: [6, 20, 18], PF4: [6, 16, 15] },
+      C2: { PF2: [6, 27, 25], PF2qs: [6, 24, 22], PF3: [6, 22, 20], PF4: [6, 18, 17] },
+      C3: { PF2: [6, 29, 27], PF2qs: [6, 26, 24], PF3: [6, 24, 22], PF4: [6, 19, 19] },
+      C4: { PF2: [6, 30, 30], PF2qs: [6, 28, 26], PF3: [6, 25, 24], PF4: [6, 22, 20] },
+      C5: { PF4: [8, 28, 27] },
+      C6: { PF4: [10, 29, 28] },
+    },
+  },
+  S11: {
+    label: 'BBSG / BQc',
+    m: { top: 'BBSG1', body: 'BQc' },
+    data: {
+      C1: { PF2: [6, 24, 23], PF2qs: [6, 23, 21], PF3: [6, 21, 20], PF4: [6, 19, 18] },
+      C2: { PF2: [6, 26, 25], PF2qs: [6, 24, 23], PF3: [6, 23, 21], PF4: [6, 21, 19] },
+      C3: { PF2: [6, 27, 27], PF2qs: [6, 26, 24], PF3: [6, 25, 23], PF4: [6, 22, 21] },
+      C4: { PF2: [6, 29, 28], PF2qs: [6, 28, 26], PF3: [6, 26, 24], PF4: [6, 24, 22] },
+      C5: { PF4: [8, 29, 27] },
+    },
+  },
   S13: {
     label: 'BBSG / GNT1',
-    mats: ['BBSG1', 'GNT1', 'GNT1'],
+    m: { top: 'BBSG1', body: 'GNT1' },
     data: {
       C1: { PF2: [6, 30], PF2qs: [6, 20], PF3: [6, 15] },
       C2: { PF2: [6, 25, 25], PF2qs: [6, 15, 20], PF3: [6, 25] },
@@ -296,7 +458,7 @@ const CAT: Record<string, CatFamily> = {
   },
   S14: {
     label: 'BBSG / GL1',
-    mats: ['BBSG1', 'GL1', 'GL1'],
+    m: { top: 'BBSG1', body: 'GL1' },
     data: {
       C1: {
         PF1: [6, 15, 25, 25],
@@ -308,35 +470,13 @@ const CAT: Record<string, CatFamily> = {
     },
   },
   S15: {
-    label: 'BBSG / GL2+GL1',
-    mats: ['BBSG1', 'GL2', 'GL1'],
+    label: 'BBSG / GL2 / GL1',
+    m: { top: 'BBSG1', mid: 'GL2', body: 'GL1' },
     data: {
-      C1: { PF2: [6, 15, 20], PF2qs: [6, 15, 10] },
+      C1: { PF1: [6, 15, 20, 25], PF2: [6, 15, 20], PF2qs: [6, 15, 10] },
       C2: { PF2: [6, 20, 15, 20], PF2qs: [6, 20, 20], PF3: [6, 20, 10] },
       C3: { PF2: [6, 20, 20, 25], PF2qs: [6, 20, 30], PF3: [6, 20, 20] },
       C4: { PF2: [6, 20, 25, 30], PF2qs: [6, 20, 20, 20], PF3: [6, 20, 30] },
-    },
-  },
-  S8: {
-    label: 'BBSG / GLc2',
-    mats: ['BBSG1', 'GLc2', 'GLc2'],
-    data: {
-      C1: { PF2qs: [6, 27], PF3: [6, 22], PF4: [6, 18] },
-      C2: { PF2qs: [6, 29], PF3: [6, 24], PF4: [6, 20] },
-      C3: { PF2qs: [6, 20, 20], PF3: [6, 27], PF4: [6, 25] },
-      C4: { PF2: [6, 22, 20], PF2qs: [6, 20, 20], PF3: [6, 29], PF4: [6, 25] },
-      C5: { PF2: [8, 27, 24], PF2qs: [8, 24, 21], PF3: [8, 20, 18], PF4: [8, 17, 15] },
-      C6: { PF2qs: [10, 23, 22], PF3: [10, 20, 19], PF4: [10, 17, 17] },
-    },
-  },
-  S10: {
-    label: 'BBSG / GLc1',
-    mats: ['BBSG1', 'GLc1', 'GLc1'],
-    data: {
-      C1: { PF2: [6, 25, 23], PF2qs: [6, 23, 21], PF3: [6, 20, 18], PF4: [6, 16, 15] },
-      C2: { PF2: [6, 27, 25], PF2qs: [6, 24, 22], PF3: [6, 22, 20], PF4: [6, 18, 17] },
-      C3: { PF2: [6, 29, 27], PF2qs: [6, 26, 24], PF3: [6, 24, 22], PF4: [6, 19, 19] },
-      C4: { PF2: [6, 30, 30], PF2qs: [6, 28, 26], PF3: [6, 25, 24], PF4: [6, 22, 20] },
     },
   },
 };
@@ -389,13 +529,27 @@ interface Load {
   p: number; // pression (MPa)
   a: number; // rayon (m)
   d: number; // entre-axe (m)
-  r: string; // risque : 'auto' | '5' | '10' | '15' | '25'
+  r: string; // risque : 'auto' | '5' | '10' | '15' | '25' | '50' | 'custom'
+  /** Saisie libre du risque (%) quand `r === 'custom'` — texte, converti à l'envoi. */
+  rCustom: string;
   sh: string; // dispersion Sh : 'auto' | '1' | '1.5' | '2.5' | '3'
   ks: string; // hétérogénéité ks : 'auto' | valeur numérique
   /** Module GNT automatique (fiche catalogue p.79, #87 étape 1/2) — défaut ON (définitive). */
   gntAuto: boolean;
   /** Conditions d'interface automatiques (Tab. 68 AGEROUTE, #87 étape 2/2) — défaut ON (définitive). */
   ifaceAuto: boolean;
+  /** NE cumulé — saisie directe (#93 sous-port 3b) : coché → `neForce` envoyé, court-circuite le calcul TMJA. */
+  neDirect: boolean;
+  /** Valeur du NE cumulé imposé (PL équivalents) — utilisée seulement si `neDirect === true`. */
+  neDirectValue: number;
+  /**
+   * Surcharge des lois de fatigue ε₆ (bitumineux, µdef) / σ₆ (MTLH, MPa) par matériau
+   * (#93 sous-port 3d, table éditable de la définitive — `M['${k}'].e6=+this.value`).
+   * Clé = code matériau (ex. "BBSG1", "GLc2") ; entrée absente/vide → défaut catalogue
+   * inchangé côté serveur. Converti en tableau `{mat,e6?,s6?}` par
+   * `buildBurmisterPayload` (forme attendue du contrat moteur).
+   */
+  fatigueOverrides: Record<string, { e6?: number; s6?: number }>;
 }
 
 type TabId =
@@ -434,6 +588,95 @@ export function computeNE(traffic: Traffic): number {
   const t = traffic.tau / 100;
   const Ccum = Math.abs(t) < 1e-4 ? traffic.N : (Math.pow(1 + t, traffic.N) - 1) / t;
   return 365 * traffic.T * Ccum * traffic.C * traffic.dir * traffic.tv;
+}
+
+/**
+ * NE affiché (estimation) — tient compte du NE cumulé en saisie directe (#93 sous-port
+ * 3b, `neDirect`/`neDirectValue`) : quand activé et valide, court-circuite `computeNE`
+ * comme le fait le moteur serveur (`neForce`). Fail-closed sur valeur invalide/nulle
+ * (retombe sur l'estimation TMJA classique).
+ */
+export function effectiveNE(traffic: Traffic, load: Load): number {
+  if (load.neDirect && Number.isFinite(load.neDirectValue) && load.neDirectValue > 0) {
+    return load.neDirectValue;
+  }
+  return computeNE(traffic);
+}
+
+/**
+ * Résout le risque effectif (%) à envoyer au moteur depuis la saisie `Load` :
+ * 'auto' (Tab. 70) ; un choix prédéfini ('5'|'10'|'15'|'25'|'50') converti en nombre ;
+ * ou 'custom' + `rCustom` (saisie libre). Fail-closed : `rCustom` vide/non numérique/
+ * négatif ou nul retombe sur 'auto' (jamais un risque absurde envoyé au serveur — le
+ * schéma serveur re-borne de toute façon 0,001-50 %, mais on évite un 400 évitable).
+ */
+export function resolveRisk(load: Load): 'auto' | number {
+  if (load.r === 'auto') return 'auto';
+  if (load.r === 'custom') {
+    const n = parseFloat(load.rCustom);
+    return Number.isFinite(n) && n > 0 ? n : 'auto';
+  }
+  const n = Number(load.r);
+  return Number.isFinite(n) ? n : 'auto';
+}
+
+/**
+ * Quantile u_r associé à un risque r (%) — affichage informatif seul (indice de
+ * quantile à côté du champ Risque, comme la définitive). Valeurs catalogue exactes
+ * pour 5/10/15/25/50 % (Tab. 70 AGEROUTE), loi normale inverse (algorithme d'Acklam,
+ * |erreur| < 1,2e-9) pour tout autre risque. Formule STATISTIQUE PUBLIQUE (pas un
+ * coefficient de calage AGEROUTE confidentiel) : le kr effectif (qui combine u_r à
+ * SN/Sh/b propriétaires) reste calculé côté serveur (DoD §8).
+ */
+const U_RISK: Record<number, number> = { 5: 1.645, 10: 1.282, 15: 1.036, 25: 0.674, 50: 0.0 };
+
+/** Loi normale inverse (algorithme d'Acklam) — fractile pour un risque quelconque. */
+export function invNorm(p: number): number {
+  if (p <= 0) return -Infinity;
+  if (p >= 1) return Infinity;
+  const a = [
+    -3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2,
+    -3.066479806614716e1, 2.506628277459239e0,
+  ];
+  const b = [
+    -5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1,
+    -1.328068155288572e1,
+  ];
+  const c = [
+    -7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838e0, -2.549732539343734e0,
+    4.374664141464968e0, 2.938163982698783e0,
+  ];
+  const d = [
+    7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996e0, 3.754408661907416e0,
+  ];
+  const pl = 0.02425;
+  const ph = 1 - pl;
+  if (p < pl) {
+    const q = Math.sqrt(-2 * Math.log(p));
+    return (
+      (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+    );
+  }
+  if (p <= ph) {
+    const q = p - 0.5;
+    const r = q * q;
+    return (
+      ((((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q) /
+      (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+    );
+  }
+  const q = Math.sqrt(-2 * Math.log(1 - p));
+  return (
+    -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+    ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+  );
+}
+
+/** u_r associé au risque r (%) : valeurs catalogue exactes, sinon calcul (invNorm). */
+export function uRisk(r: number): number {
+  const v = U_RISK[r];
+  return v !== undefined ? v : invNorm(1 - r / 100);
 }
 
 /** Classe de NE (AGEROUTE 2015 Tab. 70). */
@@ -493,11 +736,29 @@ export function buildBurmisterPayload(
       p: load.p,
       a: load.a,
       d: load.d,
-      r: load.r === 'auto' ? 'auto' : Number(load.r),
+      r: resolveRisk(load),
       sh: load.sh,
       ks: load.ks,
       gntAuto: load.gntAuto,
       ifaceAuto: load.ifaceAuto,
+      // NE cumulé — saisie directe (#93 sous-port 3b) : absent/invalide -> calcul
+      // TMJA historique inchangé côté serveur (gate naturel du schéma `neForce?`).
+      ...(load.neDirect && Number.isFinite(load.neDirectValue) && load.neDirectValue > 0
+        ? { neForce: load.neDirectValue }
+        : {}),
+      // Rebase définitive (#93 sous-port 3c, décision titulaire) : référentiel
+      // matériaux CORRIGÉ envoyé par défaut (GLc2/BQc recalés + BC5g disponible).
+      materialsRev: 'definitive' as const,
+      // Surcharge ε₆/σ₆ (#93 sous-port 3d) : seules les entrées réellement éditées
+      // sont transmises (tableau {mat,e6?,s6?}, forme attendue du contrat moteur) ;
+      // vide/absent -> défauts catalogue inchangés (gate naturel, équivalence
+      // historique préservée).
+      ...(() => {
+        const overrides = Object.entries(load.fatigueOverrides)
+          .filter(([, v]) => v.e6 !== undefined || v.s6 !== undefined)
+          .map(([mat, v]) => ({ mat, ...v }));
+        return overrides.length > 0 ? { fatigueOverrides: overrides } : {};
+      })(),
     },
   };
 }
@@ -517,6 +778,197 @@ export function autoIfaceLabel(matA: string, matB: string | null): LayerIface {
     return matA.startsWith('BC') && matB!.startsWith('BC') ? 'glissante' : 'semi-collée';
   }
   return 'collée';
+}
+
+// ---------------------------------------------------------------------------
+// Cas de validation du catalogue (presets) — dimensionnements pré-remplis (preuve)
+// ---------------------------------------------------------------------------
+
+/** Tuple couche d'un preset : [clé matériau, épaisseur en CM, module E imposé (MPa) optionnel]. */
+type PresetLayerTuple = [mat: string, hCm: number, EOverride?: number];
+
+export interface RoadsensPreset {
+  id: string;
+  label: string;
+  crit: string;
+  pfCls: string;
+  ne: number;
+  desc: string;
+  layers: PresetLayerTuple[];
+}
+
+/**
+ * Cas de validation du catalogue AGEROUTE 2015 — données EXACTES de la définitive
+ * (`PRESETS`). Chaque preset pré-remplit structure/PSC/NE (saisie directe) pour
+ * reproduire un point de référence documenté (ε_t,adm / σ_t,adm / ε_z,adm) ;
+ * `gntAuto` est désactivé au chargement (modules déjà explicites dans `layers`).
+ */
+export const ROADSENS_PRESETS: RoadsensPreset[] = [
+  {
+    id: 's1',
+    label: '1 — BBSG / GB2 (bitumineuse épaisse)',
+    crit: 'ε_t base bitumineux',
+    pfCls: 'PF3',
+    ne: 3e7,
+    desc: 'Réf. catalogue : ε_t,adm = 83,96 µdef',
+    layers: [['BBSG1', 8], ['GB2', 35]],
+  },
+  {
+    id: 's2',
+    label: '2 — BBSG / GB3 (bitumineuse épaisse)',
+    crit: 'ε_t base bitumineux',
+    pfCls: 'PF3',
+    ne: 3e7,
+    desc: 'Réf. catalogue : ε_t,adm = 94,45 µdef',
+    layers: [['BBSG1', 8], ['GB3', 32]],
+  },
+  {
+    id: 's3',
+    label: '3 — BBSG / GB2 / GNT1 (bitumineuse + assise GNT)',
+    crit: 'ε_t base bitumineux',
+    pfCls: 'PF3',
+    ne: 3e7,
+    desc: 'Réf. catalogue : ε_t,adm = 83,96 µdef',
+    layers: [['BBSG1', 8], ['GB2', 30], ['GNT1', 15, 400]],
+  },
+  {
+    id: 's4',
+    label: '4 — BBSG / GB3 / GNT1 (bitumineuse + assise GNT)',
+    crit: 'ε_t base bitumineux',
+    pfCls: 'PF3',
+    ne: 3e7,
+    desc: 'Réf. catalogue : ε_t,adm = 94,45 µdef',
+    layers: [['BBSG1', 8], ['GB3', 27], ['GNT1', 15, 400]],
+  },
+  {
+    id: 's5',
+    label: '5 — BBSG / EME2 (bitumineuse épaisse)',
+    crit: 'ε_t base bitumineux',
+    pfCls: 'PF2',
+    ne: 1e7,
+    desc: 'Surface BBSG E = 1512 MPa (convention fichier) · Réf. catalogue : ε_t,adm = 94,67 µdef',
+    layers: [['BBSG1', 8], ['EME2', 24]],
+  },
+  {
+    id: 's6',
+    label: '6 — BBSG / GC-T3 / GC-T3 (semi-rigide)',
+    crit: 'σ_t base traitées',
+    pfCls: 'PF3',
+    ne: 3e7,
+    desc: 'Réf. catalogue : σ_t,adm = 0,596 MPa',
+    layers: [['BBSG1', 8], ['GC3', 19], ['GC3', 18]],
+  },
+  {
+    id: 's7',
+    label: '7 — BBSG / SC-T2 / SC-T2 (semi-rigide)',
+    crit: 'σ_t base traitées',
+    pfCls: 'PF3',
+    ne: 1e7,
+    desc: 'Réf. catalogue : σ_t,adm = 0,451 MPa',
+    layers: [['BBSG1', 8], ['SC2', 22], ['SC2', 18]],
+  },
+  {
+    id: 's8',
+    label: '8 — BBSG / GLc2 / GLc2 (semi-rigide, latérite ciment)',
+    crit: 'σ_t base traitées',
+    pfCls: 'PF3',
+    ne: 1e7,
+    desc: 'Réf. catalogue : σ_t,adm = 0,279 MPa',
+    layers: [['BBSG1', 8], ['GLc2', 20], ['GLc2', 18]],
+  },
+  {
+    id: 's10',
+    label: '10 — BBSG / GLc1 / GLc1 (semi-rigide, latérite ciment)',
+    crit: 'σ_t base traitées',
+    pfCls: 'PF4',
+    ne: 1e7,
+    desc: 'Réf. catalogue : σ_t,adm = 0,143 MPa',
+    layers: [['BBSG1', 8], ['GLc1', 28], ['GLc1', 27]],
+  },
+  {
+    id: 's11',
+    label: '11 — BBSG / BQc / BQc (semi-rigide, banco-coquillage)',
+    crit: 'σ_t base traitées',
+    pfCls: 'PF4',
+    ne: 1e7,
+    desc: 'Réf. catalogue : σ_t,adm = 0,229 MPa',
+    layers: [['BBSG1', 8], ['BQc', 29], ['BQc', 27]],
+  },
+  {
+    id: 's13',
+    label: '13 — BBSG / GNT1 (souple)',
+    crit: 'ε_z sol support',
+    pfCls: 'PF2',
+    ne: 1e5,
+    desc: 'Contrôle ε_z indicatif (modèle GNT distinct) · Réf. catalogue : ε_z,adm = 1239 µdef',
+    layers: [['BBSG1', 6], ['GNT1', 26, 400]],
+  },
+  {
+    id: 's14',
+    label: '14 — BBSG / GL1 / GL1 (souple, latérite)',
+    crit: 'ε_z sol support',
+    pfCls: 'PF2',
+    ne: 1e5,
+    desc: 'Latérite en sandwich (2×E plafonné à 200) · contrôle ε_z indicatif · Réf. : ε_z,adm = 1239 µdef',
+    layers: [['BBSG1', 6], ['GL1', 15, 200], ['GL1', 24, 100]],
+  },
+  {
+    id: 's16',
+    label: '16 — BC5 / BC2 (rigide, béton)',
+    crit: 'σ_t dalles béton',
+    pfCls: 'PF3',
+    ne: 3e7,
+    desc: 'Épaisseur catalogue · Réf. : σ_t,adm dalle = 1,196 MPa',
+    layers: [['BC5', 22], ['BC2', 20]],
+  },
+  {
+    id: 's17',
+    label: '17 — BC5 goujonné / BC2 (rigide, béton)',
+    crit: 'σ_t dalles béton',
+    pfCls: 'PF3',
+    ne: 3e7,
+    desc: 'Dalle goujonnée (kd = 1/1,47) · épaisseur catalogue · Réf. : σ_t,adm dalle = 1,383 MPa',
+    layers: [['BC5g', 22], ['BC2', 15]],
+  },
+  {
+    id: 'sa',
+    label: 'annexe — BBSG / GLa (souple, latérite améliorée — hors catalogue)',
+    crit: 'ε_z sol support',
+    pfCls: 'PF2',
+    ne: 1e5,
+    desc: 'Hors catalogue · contrôle ε_z indicatif · Réf. : ε_z,adm = 1239 µdef',
+    layers: [['BBSG1', 6], ['GLa', 19, 800]],
+  },
+  {
+    id: 'sb',
+    label: 'annexe — BBSG / GL2 / GL2 (souple, latérite — hors catalogue)',
+    crit: 'ε_z sol support',
+    pfCls: 'PF2qs',
+    ne: 1e5,
+    desc: 'Hors catalogue · latérite sandwich (2×E plafonné à 400) · Réf. : ε_z,adm = 1239 µdef',
+    layers: [['BBSG1', 6], ['GL2', 15, 320], ['GL2', 10, 160]],
+  },
+];
+
+/**
+ * Construit les couches React (`Layer[]`) depuis un preset : h en cm -> m, ν
+ * toujours issu du catalogue matériaux, E = surcharge du preset si fournie sinon
+ * valeur catalogue par défaut. Identifiants séquentiels 1..N (auto, interface).
+ * EXPORTÉ pour tests DoD §9 (équivalence préréglage -> état applicable).
+ */
+export function buildLayersFromPreset(preset: RoadsensPreset): Layer[] {
+  let id = 1;
+  return preset.layers.map(([mat, hCm, EOverride]) => {
+    const matDef = MATERIALS[mat];
+    return {
+      id: id++,
+      mat,
+      h: hCm / 100,
+      E: EOverride ?? matDef?.E ?? 0,
+      nu: matDef?.nu ?? 0.35,
+      iface: 'auto' as const,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -863,10 +1315,14 @@ const DEFAULT_LOAD: Load = {
   a: 0.125,
   d: 0.375,
   r: 'auto',
+  rCustom: '',
   sh: 'auto',
   ks: 'auto',
   gntAuto: true,
   ifaceAuto: true,
+  neDirect: false,
+  neDirectValue: 3e7,
+  fatigueOverrides: {},
 };
 
 const TABS: Array<{ id: TabId; label: string; Icon: typeof Layers }> = [
@@ -1114,7 +1570,7 @@ export default function RoadsensPage() {
           marginBottom: 18,
           padding: '15px 19px',
           background:
-            'linear-gradient(118deg, var(--surface-base), var(--surface-base) 52%, #edf3f9)',
+            `linear-gradient(118deg, ${RS_PANEL}, ${RS_PANEL} 52%, ${RS_BRAND_TINT})`,
           border: '1px solid var(--border-subtle)',
           borderRadius: 18,
           boxShadow: 'var(--elevation-card)',
@@ -1182,7 +1638,7 @@ export default function RoadsensPage() {
                 letterSpacing: '0.04em',
                 textTransform: 'uppercase',
                 color: '#1a4a7a',
-                background: '#edf3f9',
+                background: RS_BRAND_TINT,
                 border: '1px solid rgba(26,74,122,.22)',
                 padding: '3px 10px',
                 borderRadius: 999,
@@ -1347,7 +1803,7 @@ export default function RoadsensPage() {
           gap: 4,
           flexWrap: 'nowrap',
           overflowX: 'auto',
-          background: 'var(--surface-base)',
+          background: RS_PANEL,
           border: '1px solid var(--border-subtle)',
           borderRadius: 14,
           padding: 5,
@@ -1384,8 +1840,7 @@ export default function RoadsensPage() {
               }}
               onMouseOver={(e) => {
                 if (!isActive)
-                  (e.currentTarget as HTMLElement).style.background =
-                    'var(--surface-canvas)';
+                  (e.currentTarget as HTMLElement).style.background = RS_PANEL_2;
               }}
               onMouseOut={(e) => {
                 if (!isActive)
@@ -1420,6 +1875,7 @@ export default function RoadsensPage() {
           onUpdateLayerIface={updateLayerIface}
           onUpdatePf={setPf}
           onUpdateLoad={setLoad}
+          onSetLayers={setLayers}
         />
       </div>
 
@@ -1430,7 +1886,12 @@ export default function RoadsensPage() {
         hidden={activeTab !== 'trafic'}
         style={activeTab === 'trafic' ? panelStyle : undefined}
       >
-        <TabTrafic traffic={traffic} onUpdate={setTraffic} />
+        <TabTrafic
+          traffic={traffic}
+          onUpdate={setTraffic}
+          load={load}
+          onUpdateLoad={setLoad}
+        />
       </div>
 
       <div
@@ -1505,7 +1966,7 @@ export default function RoadsensPage() {
 const panelStyle: React.CSSProperties = {
   display: 'block',
   animation: 'roadsens-rise .26s ease',
-  background: 'var(--surface-base)',
+  background: RS_PANEL,
   border: '1px solid var(--border-subtle)',
   borderRadius: 18,
   padding: '22px 24px',
@@ -1561,11 +2022,7 @@ function Note({
   const borderColor =
     variant === 'green' ? '#2f7d32' : variant === 'orange' ? '#bd6a30' : '#1a4a7a';
   const bg =
-    variant === 'green'
-      ? '#e8f3e2'
-      : variant === 'orange'
-        ? '#fbf1e8'
-        : 'var(--surface-canvas)';
+    variant === 'green' ? '#e8f3e2' : variant === 'orange' ? '#fbf1e8' : RS_PANEL_2;
   return (
     <div
       style={{
@@ -1615,7 +2072,7 @@ const inputStyle: React.CSSProperties = {
   padding: '6px 9px',
   fontSize: 12.5,
   color: 'var(--text-primary)',
-  background: 'var(--surface-base)',
+  background: RS_FIELD,
   border: '1px solid var(--border-default)',
   borderRadius: 8,
   outline: 'none',
@@ -1678,6 +2135,7 @@ interface TabStructureProps {
   onUpdateLayerIface: (id: number, iface: LayerIface) => void;
   onUpdatePf: (pf: PF) => void;
   onUpdateLoad: (load: Load) => void;
+  onSetLayers: (layers: Layer[]) => void;
 }
 
 function TabStructure({
@@ -1691,12 +2149,85 @@ function TabStructure({
   onUpdateLayerIface,
   onUpdatePf,
   onUpdateLoad,
+  onSetLayers,
 }: TabStructureProps) {
   const matOptions = Object.entries(MATERIALS);
   const gntAutoId = useId();
+  const [presetId, setPresetId] = useState('');
+
+  /** Charge un cas de validation du catalogue (#93, fidèle à `loadPreset()` de la
+   * définitive) : remplace structure + PSC + impose le NE cumulé du cas (saisie
+   * directe) ; `''` réinitialise aux valeurs par défaut. */
+  const applyPreset = (id: string) => {
+    setPresetId(id);
+    if (!id) {
+      onSetLayers(DEFAULT_LAYERS);
+      onUpdatePf(DEFAULT_PF);
+      onUpdateLoad({ ...load, gntAuto: true, neDirect: false });
+      return;
+    }
+    const preset = ROADSENS_PRESETS.find((p) => p.id === id);
+    if (!preset) return;
+    onSetLayers(buildLayersFromPreset(preset));
+    const pfPreset = PF_PRESETS[preset.pfCls];
+    onUpdatePf({ cls: preset.pfCls, E: pfPreset?.E ?? pf.E, nu: pf.nu });
+    onUpdateLoad({
+      ...load,
+      gntAuto: false,
+      neDirect: true,
+      neDirectValue: preset.ne,
+    });
+  };
 
   return (
     <div>
+      {/* ── Cas de validation du catalogue (presets) ── */}
+      <SectionTitle>Cas de validation du catalogue</SectionTitle>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: '0.6rem' }}>
+        <select
+          value={presetId}
+          aria-label="Charger une famille de structure validée"
+          onChange={(e) => applyPreset(e.target.value)}
+          style={{ ...inputStyle, flex: '1 1 320px', minWidth: 280 }}
+        >
+          <option value="">— Charger une famille de structure validée —</option>
+          {ROADSENS_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => applyPreset('')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '7px 13px',
+            borderRadius: 9,
+            cursor: 'pointer',
+            fontSize: 11,
+            fontWeight: 500,
+            color: 'var(--text-secondary)',
+            background: RS_FIELD,
+            border: '1px solid var(--border-subtle)',
+            fontFamily: 'inherit',
+          }}
+        >
+          Réinitialiser
+        </button>
+      </div>
+      {presetId &&
+        (() => {
+          const preset = ROADSENS_PRESETS.find((p) => p.id === presetId);
+          return preset ? (
+            <Note>
+              {preset.crit} — {preset.desc}
+            </Note>
+          ) : null;
+        })()}
+
       {/* ── Table couches ── */}
       <SectionTitle>Couches — surface → fond</SectionTitle>
 
@@ -1707,7 +2238,7 @@ function TabStructure({
             borderCollapse: 'separate',
             borderSpacing: 0,
             fontSize: 12.5,
-            background: 'var(--surface-base)',
+            background: RS_FIELD,
             border: '1px solid var(--border-subtle)',
             borderRadius: 12,
             overflow: 'hidden',
@@ -1722,7 +2253,7 @@ function TabStructure({
                   style={{
                     textAlign: 'left',
                     padding: '9px 11px',
-                    background: 'var(--surface-canvas)',
+                    background: RS_PANEL_2,
                     fontSize: 10,
                     fontWeight: 600,
                     letterSpacing: '0.05em',
@@ -1928,7 +2459,7 @@ function TabStructure({
                             padding: '1px 4px',
                             borderRadius: 6,
                             border: '1px solid var(--border-default)',
-                            background: 'var(--surface-base)',
+                            background: RS_FIELD,
                             color: 'var(--text-primary)',
                             fontFamily: 'inherit',
                           }}
@@ -1970,7 +2501,7 @@ function TabStructure({
             fontSize: 12,
             fontWeight: 500,
             color: '#1a4a7a',
-            background: '#edf3f9',
+            background: RS_BRAND_TINT,
             border: '1px solid rgba(26,74,122,.22)',
             fontFamily: 'inherit',
           }}
@@ -2098,7 +2629,7 @@ const actionBtnStyle: React.CSSProperties = {
   fontSize: 11,
   fontWeight: 500,
   color: 'var(--text-secondary)',
-  background: 'var(--surface-base)',
+  background: RS_PANEL,
   border: '1px solid var(--border-default)',
   borderRadius: 7,
   cursor: 'pointer',
@@ -2123,11 +2654,15 @@ const CAM_GUIDES = [
 function TabTrafic({
   traffic,
   onUpdate,
+  load,
+  onUpdateLoad,
 }: {
   traffic: Traffic;
   onUpdate: (t: Traffic) => void;
+  load: Load;
+  onUpdateLoad: (load: Load) => void;
 }) {
-  const ne = computeNE(traffic);
+  const ne = effectiveNE(traffic, load);
   const t = traffic.tau / 100;
   const Ccum = Math.abs(t) < 1e-4 ? traffic.N : (Math.pow(1 + t, traffic.N) - 1) / t;
 
@@ -2250,6 +2785,45 @@ function TabTrafic({
         librement modifiable.
       </Note>
 
+      <SectionTitle>NE cumulé — saisie directe</SectionTitle>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 12.5,
+            cursor: 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={load.neDirect}
+            aria-label="Imposer le NE cumulé directement"
+            onChange={(e) => onUpdateLoad({ ...load, neDirect: e.target.checked })}
+          />
+          Imposer le NE cumulé (essieux équivalents), sans passer par le TMJA
+        </label>
+        {load.neDirect && (
+          <input
+            type="number"
+            value={load.neDirectValue}
+            min={1}
+            step={1e5}
+            aria-label="NE cumulé imposé (essieux équivalents)"
+            onChange={(e) =>
+              onUpdateLoad({ ...load, neDirectValue: parseFloat(e.target.value) || 0 })
+            }
+            style={{ ...inputStyle, width: 160 }}
+          />
+        )}
+      </div>
+      <Note>
+        Court-circuite le calcul TMJA × CAM × croissance × durée ci-dessus : le NE
+        imposé est envoyé directement au moteur (fail-closed si valeur invalide/nulle —
+        retombe sur l&apos;estimation TMJA).
+      </Note>
+
       {/* Résumé trafic — ESTIMATION à la saisie (aperçu). La valeur qui fait foi est le
           NE recalculé SERVEUR, affiché dans les résultats après « Calculer » (revue adverse :
           ne pas juxtaposer deux NE calculés indépendamment comme s'ils étaient équivalents). */}
@@ -2329,7 +2903,10 @@ function TabTrafic({
 }
 
 // ---------------------------------------------------------------------------
-// Tables de lois de fatigue — LECTURE SEULE (valeurs publiques du catalogue)
+// Tables de lois de fatigue — éditables (#93 sous-port 3d, fidèle à la
+// définitive : `onchange="M['${k}'].e6=+this.value"`). Valeurs PUBLIQUES du
+// catalogue AGEROUTE (pas un coefficient de calage, DoD §8) ; kr/ks/Sh restent
+// calculés côté serveur.
 // ---------------------------------------------------------------------------
 
 const fatigueThStyle: React.CSSProperties = {
@@ -2349,17 +2926,24 @@ const fatigueTdStyle: React.CSSProperties = {
   borderBottom: '1px solid var(--border-subtle)',
 };
 
-const fatigueDisabledInputStyle: React.CSSProperties = {
+const fatigueInputStyle: React.CSSProperties = {
   ...inputStyle,
   width: 65,
   textAlign: 'right',
-  background: 'var(--surface-canvas)',
-  color: 'var(--text-secondary)',
-  cursor: 'not-allowed',
 };
 
-/** Table « Lois de fatigue — bitumineux » — lecture seule, non branchée au calcul. */
-function FatigueBitTable() {
+/**
+ * Table « Lois de fatigue — bitumineux » — ε₆ éditable par matériau (#93 sous-port
+ * 3d). `overrides`/`onChange` portent uniquement l'ÉCART au catalogue ; bornes =
+ * celles du contrat moteur (50-300 µdef).
+ */
+function FatigueBitTable({
+  overrides,
+  onChange,
+}: {
+  overrides: Record<string, { e6?: number; s6?: number }>;
+  onChange: (mat: string, e6: number | undefined) => void;
+}) {
   const entries = Object.entries(FATIGUE_BIT);
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -2374,7 +2958,7 @@ function FatigueBitTable() {
           borderRadius: 12,
           overflow: 'hidden',
         }}
-        aria-label="Lois de fatigue — matériaux bitumineux (lecture seule)"
+        aria-label="Lois de fatigue — matériaux bitumineux (éditable)"
       >
         <thead>
           <tr>
@@ -2386,34 +2970,53 @@ function FatigueBitTable() {
           </tr>
         </thead>
         <tbody>
-          {entries.map(([key, v], i) => (
-            <tr key={key} style={i === entries.length - 1 ? undefined : undefined}>
-              <td style={fatigueTdStyle}>{v.label}</td>
-              <td style={fatigueTdStyle}>
-                <input
-                  type="number"
-                  value={v.e6}
-                  disabled
-                  aria-label={`ε₆ ${v.label} (µdef, lecture seule)`}
-                  style={fatigueDisabledInputStyle}
-                  readOnly
-                />
-              </td>
-              <td style={fatigueTdStyle}>{v.b}</td>
-              <td style={fatigueTdStyle}>{v.kc}</td>
-              <td style={{ ...fatigueTdStyle, fontSize: 10.5, color: 'var(--text-secondary)' }}>
-                {v.source}
-              </td>
-            </tr>
-          ))}
+          {entries.map(([key, v]) => {
+            const value = overrides[key]?.e6 ?? v.e6;
+            return (
+              <tr key={key}>
+                <td style={fatigueTdStyle}>{v.label}</td>
+                <td style={fatigueTdStyle}>
+                  <input
+                    type="number"
+                    value={value}
+                    min={50}
+                    max={300}
+                    step={5}
+                    aria-label={`ε₆ ${v.label} (µdef)`}
+                    style={fatigueInputStyle}
+                    onChange={(e) => {
+                      const n = parseFloat(e.target.value);
+                      onChange(key, Number.isFinite(n) ? n : undefined);
+                    }}
+                  />
+                </td>
+                <td style={fatigueTdStyle}>{v.b}</td>
+                <td style={fatigueTdStyle}>{v.kc}</td>
+                <td
+                  style={{ ...fatigueTdStyle, fontSize: 10.5, color: 'var(--text-secondary)' }}
+                >
+                  {v.source}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-/** Table « Lois de fatigue — MTLH » — lecture seule, non branchée au calcul. */
-function FatigueMtlhTable() {
+/**
+ * Table « Lois de fatigue — MTLH » — σ₆ éditable par matériau (#93 sous-port 3d).
+ * Bornes = celles du contrat moteur (0,05-5,0 MPa).
+ */
+function FatigueMtlhTable({
+  overrides,
+  onChange,
+}: {
+  overrides: Record<string, { e6?: number; s6?: number }>;
+  onChange: (mat: string, s6: number | undefined) => void;
+}) {
   const entries = Object.entries(FATIGUE_MTLH);
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -2428,7 +3031,7 @@ function FatigueMtlhTable() {
           borderRadius: 12,
           overflow: 'hidden',
         }}
-        aria-label="Lois de fatigue — matériaux MTLH (lecture seule)"
+        aria-label="Lois de fatigue — matériaux MTLH (éditable)"
       >
         <thead>
           <tr>
@@ -2440,26 +3043,36 @@ function FatigueMtlhTable() {
           </tr>
         </thead>
         <tbody>
-          {entries.map(([key, v]) => (
-            <tr key={key}>
-              <td style={fatigueTdStyle}>{v.label}</td>
-              <td style={fatigueTdStyle}>
-                <input
-                  type="number"
-                  value={v.s6}
-                  disabled
-                  aria-label={`σ₆ ${v.label} (MPa, lecture seule)`}
-                  style={fatigueDisabledInputStyle}
-                  readOnly
-                />
-              </td>
-              <td style={fatigueTdStyle}>{`1/${v.b}`}</td>
-              <td style={fatigueTdStyle}>{v.kc}</td>
-              <td style={{ ...fatigueTdStyle, fontSize: 10.5, color: 'var(--text-secondary)' }}>
-                {v.source}
-              </td>
-            </tr>
-          ))}
+          {entries.map(([key, v]) => {
+            const value = overrides[key]?.s6 ?? v.s6;
+            return (
+              <tr key={key}>
+                <td style={fatigueTdStyle}>{v.label}</td>
+                <td style={fatigueTdStyle}>
+                  <input
+                    type="number"
+                    value={value}
+                    min={0.05}
+                    max={5.0}
+                    step={0.01}
+                    aria-label={`σ₆ ${v.label} (MPa)`}
+                    style={fatigueInputStyle}
+                    onChange={(e) => {
+                      const n = parseFloat(e.target.value);
+                      onChange(key, Number.isFinite(n) ? n : undefined);
+                    }}
+                  />
+                </td>
+                <td style={fatigueTdStyle}>{`1/${v.b}`}</td>
+                <td style={fatigueTdStyle}>{v.kc}</td>
+                <td
+                  style={{ ...fatigueTdStyle, fontSize: 10.5, color: 'var(--text-secondary)' }}
+                >
+                  {v.source}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -2531,21 +3144,42 @@ function TabParametres({ load, onUpdate }: { load: Load; onUpdate: (l: Load) => 
       </Note>
 
       <SectionTitle>Risque</SectionTitle>
-      <div style={{ maxWidth: 280 }}>
-        <FieldWrap label="Risque r (%)">
-          <select
-            value={load.r}
-            aria-label="Niveau de risque"
-            onChange={(e) => onUpdate({ ...load, r: e.target.value })}
-            style={inputStyle}
-          >
-            <option value="auto">Auto — Tab. 70 (25 % si NE &lt; 3M, 5 % au-delà)</option>
-            <option value="5">r = 5 %</option>
-            <option value="10">r = 10 %</option>
-            <option value="15">r = 15 %</option>
-            <option value="25">r = 25 %</option>
-          </select>
-        </FieldWrap>
+      <div style={{ display: 'flex', gap: 10, maxWidth: 400, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 220px' }}>
+          <FieldWrap label="Risque r (%)">
+            <select
+              value={load.r}
+              aria-label="Niveau de risque"
+              onChange={(e) => onUpdate({ ...load, r: e.target.value })}
+              style={inputStyle}
+            >
+              <option value="auto">Auto — Tab. 70 (25 % si NE &lt; 3M, 5 % au-delà)</option>
+              <option value="5">r = 5 %</option>
+              <option value="10">r = 10 %</option>
+              <option value="15">r = 15 %</option>
+              <option value="25">r = 25 %</option>
+              <option value="50">r = 50 %</option>
+              <option value="custom">Personnalisé…</option>
+            </select>
+          </FieldWrap>
+        </div>
+        {load.r === 'custom' && (
+          <div style={{ flex: '0 0 100px' }}>
+            <FieldWrap label="r (%)">
+              <input
+                type="number"
+                value={load.rCustom}
+                min={1}
+                max={50}
+                step={0.5}
+                placeholder="r %"
+                aria-label="Risque personnalisé (%)"
+                onChange={(e) => onUpdate({ ...load, rCustom: e.target.value })}
+                style={inputStyle}
+              />
+            </FieldWrap>
+          </div>
+        )}
       </div>
 
       <SectionTitle>Coefficients LCPC — ε_t admissible</SectionTitle>
@@ -2595,7 +3229,18 @@ function TabParametres({ load, onUpdate }: { load: Load; onUpdate: (l: Load) => 
         ε_t_adm = ε₆ · kθ · (NE/10⁶)<sup>b</sup> · kr · kc · ks — LCPC 1994 (VI.4.2)
         &nbsp;·&nbsp; kθ = √(E(10°C)/E(θ_éq=34°C))
       </div>
-      <FatigueBitTable />
+      <FatigueBitTable
+        overrides={load.fatigueOverrides}
+        onChange={(mat, e6) =>
+          onUpdate({
+            ...load,
+            fatigueOverrides: {
+              ...load.fatigueOverrides,
+              [mat]: { ...load.fatigueOverrides[mat], e6 },
+            },
+          })
+        }
+      />
 
       <SectionTitle>Lois de fatigue — MTLH</SectionTitle>
       <div
@@ -2607,13 +3252,24 @@ function TabParametres({ load, onUpdate }: { load: Load; onUpdate: (l: Load) => 
       >
         σ_t_adm = σ₆ · (NE/10⁶)<sup>b</sup> · kr · kc · ks [MPa] — LCPC 1994
       </div>
-      <FatigueMtlhTable />
+      <FatigueMtlhTable
+        overrides={load.fatigueOverrides}
+        onChange={(mat, s6) =>
+          onUpdate({
+            ...load,
+            fatigueOverrides: {
+              ...load.fatigueOverrides,
+              [mat]: { ...load.fatigueOverrides[mat], s6 },
+            },
+          })
+        }
+      />
       <Note>
-        Tableaux affichés en lecture seule (valeurs publiques du catalogue AGEROUTE 2015).
-        L&apos;édition en direct de ces lois arrivera dans une prochaine itération, une
-        fois branchée côté moteur ; kr, ks et Sh (dépendants du risque et du support)
-        restent calculés côté serveur (DoD §8). Le résultat de vérification (ε_t/ε_t,adm)
-        est affiché dans l&apos;onglet Résultats après calcul.
+        Lois de fatigue éditables (valeurs publiques du catalogue AGEROUTE 2015, comme
+        dans la référence) : ε₆/σ₆ modifiés ici sont transmis au moteur et remplacent le
+        défaut catalogue pour le matériau dimensionnant. kr, ks et Sh (dépendants du
+        risque et du support) restent calculés côté serveur (DoD §8). Le résultat de
+        vérification (ε_t/ε_t,adm) est affiché dans l&apos;onglet Résultats après calcul.
       </Note>
 
       <SectionTitle>Moteur ROADSENS — Burmister multi-couche exact</SectionTitle>
@@ -2710,7 +3366,13 @@ function TabCatalogue({ pfCls }: { pfCls: string }) {
       <div
         style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: '0.65rem' }}
       >
-        {family.mats.map((mk, i) => {
+        {Array.from(
+          new Set(
+            [family.m.top, family.m.mid, family.m.body, family.m.tail].filter(
+              (x): x is string => Boolean(x)
+            )
+          )
+        ).map((mk, i) => {
           const col = MATERIALS[mk]?.color ?? '#888';
           return (
             <span
@@ -2846,7 +3508,7 @@ function TabCatalogue({ pfCls }: { pfCls: string }) {
                         >
                           {thicknesses.map((h, idx) => {
                             const ph = h * scale;
-                            const mk = family.mats[Math.min(idx, family.mats.length - 1)];
+                            const mk = catalogueMaterialAt(family.m, idx, thicknesses.length);
                             const col = MATERIALS[mk]?.color ?? '#888';
                             const y0 = cumY;
                             cumY += ph;
