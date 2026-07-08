@@ -241,6 +241,47 @@ export const AGEROUTE_MATERIALS = {
 } as const;
 
 // ===========================================================================
+// REFERENTIEL MATERIAUX — REVISION « definitive » (#93 sous-port 3c, SCIENCE —
+// calage STARFIRE, PAS un simple port)
+// ===========================================================================
+//
+// La reference DEFINITIVE corrige deux coefficients s6 (GLc2 0.37->0.3705, BQc
+// 0.30->0.304 — recalage de la loi de fatigue) et AJOUTE un materiau BC5g (Beton
+// BC5 dalle GOUJONNEE, meme E/nu/s6/b/kc/sn/Sh que BC5 mais kd=1/1,47 au lieu de
+// 1/1,7 — Tab. 68 AGEROUTE, joint goujonne). C'est un changement de CALAGE
+// scientifique, pas juste une extraction : GATE derriere `load.materialsRev`.
+//
+// GATE STRICTE (meme discipline que gntAuto/ifaceAuto, #87) : absent/tout sauf
+// 'definitive' -> `AGEROUTE_MATERIALS` (table HISTORIQUE, s6 0.37/0.30, PAS de
+// BC5g) est utilisee, equivalence contre l'ANCIENNE reference + toutes les
+// fixtures existantes PRESERVEE au bit pres. `load.materialsRev==='definitive'`
+// -> cette table CORRIGEE (avec BC5g) est utilisee a la place.
+//
+// ⚠️ ACTIVATION EN PRODUCTION : ce recalage engage la SCIENCE (coefficients de
+// fatigue STARFIRE). L'activation du flag cote produit necessite une validation
+// explicite `expert-genie-civil`/STARFIRE avant tout usage hors verification
+// d'equivalence-portage — cf. tete de fichier #93.
+export const AGEROUTE_MATERIALS_DEFINITIVE = {
+  ...AGEROUTE_MATERIALS,
+  GLc2: { ...AGEROUTE_MATERIALS.GLc2, s6: 0.3705 },
+  BQc: { ...AGEROUTE_MATERIALS.BQc, s6: 0.304 },
+  BC5g: {
+    n: 'Béton BC5 (dalle goujonnée)',
+    E: 35000,
+    nu: 0.25,
+    rig: 1,
+    s6: 2.15,
+    b: 16,
+    kc: 1.5,
+    sn: 1,
+    Sh: 1,
+    kd: 1 / 1.47,
+    c: '#e8e8de',
+    s: 'T.37',
+  },
+} as const;
+
+// ===========================================================================
 // SCIENCE TRANSCRITE VERBATIM (HTML d'origine — NE RIEN MODIFIER)
 // ===========================================================================
 
@@ -308,10 +349,68 @@ function J1(x) {
 }
 
 const U_RISK = { 5: 1.645, 10: 1.282, 15: 1.036, 25: 0.674, 50: 0.0 };
+// Loi normale inverse (algorithme d'Acklam, |erreur| < 1.2e-9) — fractile pour un
+// risque quelconque. Transcription VERBATIM de la reference DEFINITIVE (#93,
+// sous-port 3a) : coefficients rationnels par morceaux (queue basse/haute/centre).
+function invNorm(p) {
+  if (p <= 0) return -Infinity;
+  if (p >= 1) return Infinity;
+  var a = [
+    -3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2,
+    1.38357751867269e2, -3.066479806614716e1, 2.506628277459239e0,
+  ];
+  var b = [
+    -5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2,
+    6.680131188771972e1, -1.328068155288572e1,
+  ];
+  var c = [
+    -7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838e0,
+    -2.549732539343734e0, 4.374664141464968e0, 2.938163982698783e0,
+  ];
+  var d = [
+    7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996e0,
+    3.754408661907416e0,
+  ];
+  var pl = 0.02425,
+    ph = 1 - pl,
+    q,
+    r,
+    x;
+  if (p < pl) {
+    q = Math.sqrt(-2 * Math.log(p));
+    x =
+      (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+  } else if (p <= ph) {
+    q = p - 0.5;
+    r = q * q;
+    x =
+      (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
+      (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+  } else {
+    q = Math.sqrt(-2 * Math.log(1 - p));
+    x =
+      -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+  }
+  return x;
+}
+// u_r associe au risque r (%) : valeurs catalogue EXACTES pour 5/10/15/25/50
+// (table historique preservee bit-a-bit), calcul (Acklam) pour tout autre r —
+// transcription VERBATIM de la reference DEFINITIVE (#93, sous-port 3a). L'ancien
+// moteur repliait tout risque hors table sur 1,282 (=10 %, bug de portage) ;
+// la definitive calcule le vrai quantile de la loi normale inverse.
+// Exportee (uniquement) pour verification unitaire directe de la table
+// standard/du calcul continu (#93 sous-port 3a) — jamais importee par le front
+// (module @roadsen/engines reserve a l'API, cf. en-tete de fichier).
+export function uRisk(r) {
+  var v = U_RISK[r];
+  return v !== undefined ? v : invNorm(1 - r / 100);
+}
 // kr — LCPC 1994 (VI.4.2) : kr = 10^(-u·b·δ), δ = √(SN² + (c²/b²)·Sh²), c = 0,02 cm⁻¹
 // b = pente de la loi de fatigue = -1/B (B = valeur stockee positive), Sh en cm
 function krLCPC(r, sn, B, sh) {
-  var u = U_RISK[r] !== undefined ? U_RISK[r] : 1.282;
+  var u = uRisk(r);
   var delta = Math.sqrt(sn * sn + Math.pow(0.02 * B * sh, 2));
   return Math.pow(10, (-u * delta) / B);
 }
@@ -624,12 +723,16 @@ function applyGntAuto(M, ly, pf) {
 //     (deballes ici depuis `state`) ;
 //   - on RETOURNE l'objet `_D` au lieu de l'ecrire dans une globale et d'appeler
 //     `renderRes`/`renderDetails` (DOM). Le calcul de `_D` est IDENTIQUE.
-//   - `calcNE()` est inline (il ne lit que `tr`).
+//   - `calcNE()` est inline (il lit `tr` ET `cp.neForce`, #93 sous-port 3b).
 // Aucune formule, aucun ordre de sommation, aucun seuil n'est modifie.
 
 function doCalcPure(M, ly, pf, tr, cp) {
-  // calcNE() inline (HTML : lit la globale tr)
+  // calcNE() inline (HTML : lit les globales tr/cp — reference DEFINITIVE
+  // l.547 : `if(cp.neForce!=null&&!isNaN(cp.neForce)&&cp.neForce>0)return cp.neForce;`
+  // court-circuite le calcul TMJA x CAM x ... quand un NE direct est fourni.
+  // GATE naturel : `cp.neForce` absent/null -> calcul historique INCHANGE.
   const NE = (() => {
+    if (cp.neForce != null && !isNaN(cp.neForce) && cp.neForce > 0) return cp.neForce;
     const t = tr.tau / 100,
       C = Math.abs(t) < 1e-4 ? tr.N : (Math.pow(1 + t, tr.N) - 1) / t;
     return 365 * tr.T * C * tr.C * tr.dir * tr.tv;
@@ -1209,19 +1312,32 @@ function doCalcPure(M, ly, pf, tr, cp) {
  * pas de globale).
  *
  * CALIBRATION VERROUILLEE (integrite PV, defense en profondeur) : le referentiel
- * materiaux `M` est TOUJOURS la table de REFERENCE `AGEROUTE_MATERIALS` (θ=34 °C).
- * On n'accepte JAMAIS `state.materials` : le contrat d'entree rejette deja cette
- * cle (400, `.strict()`) — cette ligne est la 2e barriere (si un appelant court-
- * circuitait le parse, aucune calibration client ne peut atteindre le calcul ni
- * le PV). `doCalcPure` conserve `M` en parametre (#46 : pas de codage en dur dans
- * la science) ; c'est la VALEUR injectee qui est figee, pas l'architecture.
+ * materiaux `M` est TOUJOURS l'une des DEUX tables de REFERENCE SERVEUR (θ=34 °C) —
+ * jamais une valeur fournie par le client. On n'accepte JAMAIS `state.materials` :
+ * le contrat d'entree rejette deja cette cle (400, `.strict()`) — cette ligne est
+ * la 2e barriere (si un appelant court-circuitait le parse, aucune calibration
+ * client ne peut atteindre le calcul ni le PV). `doCalcPure` conserve `M` en
+ * parametre (#46 : pas de codage en dur dans la science) ; ce sont les VALEURS
+ * injectees qui sont figees, pas l'architecture.
+ *
+ * REVISION MATERIAUX (#93 sous-port 3c, GATE SCIENCE) : `load.materialsRev`
+ * selectionne laquelle des deux tables FIGEES est utilisee — jamais un coefficient
+ * arbitraire. Absent/tout sauf 'definitive' -> `AGEROUTE_MATERIALS` (table
+ * HISTORIQUE, equivalence ANCIENNE reference preservee). `'definitive'` ->
+ * `AGEROUTE_MATERIALS_DEFINITIVE` (s6 GLc2/BQc corriges + materiau BC5g). Ce
+ * recalage engage la SCIENCE STARFIRE : son activation produit necessite une
+ * validation `expert-genie-civil`/STARFIRE prealable (cf. tete de fichier #93).
  *
  * Renvoie l'objet de resultat BRUT `_D` (identique au HTML), OU `{ err }` si la
  * science leve (parite avec le `try/catch` du HTML : `runCalc` affiche e.message).
  * La PROJECTION client-safe est faite par index.ts (whitelist + redaction).
  */
 export function computeBurmister(state) {
-  const M = AGEROUTE_MATERIALS;
+  const cpForMaterials = state && state.load ? state.load : {};
+  const M =
+    cpForMaterials && cpForMaterials.materialsRev === 'definitive'
+      ? AGEROUTE_MATERIALS_DEFINITIVE
+      : AGEROUTE_MATERIALS;
   const lyIn = state && Array.isArray(state.layers) ? state.layers : [];
   const pf = state && state.subgrade ? state.subgrade : {};
   const tr = state && state.traffic ? state.traffic : {};

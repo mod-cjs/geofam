@@ -271,6 +271,25 @@ const LoadSchema = z
      * fixtures GNT etape 1). Defaut `false`.
      */
     ifaceAuto: z.boolean().optional(),
+    /**
+     * NE direct (#93 sous-port 3b, reference DEFINITIVE — `cp.neForce`) : nombre
+     * d'essieux equivalents CUMULES impose directement, court-circuitant le calcul
+     * TMJA x CAM x croissance x duree (`calcNE`). GATE NATUREL : absent/null ->
+     * calcul historique INCHANGE (equivalence PRESERVEE). Fourni (fini, positif)
+     * -> NE = neForce.
+     */
+    neForce: z.number().finite().positive().max(1e9).optional(),
+    /**
+     * Revision du referentiel MATERIAUX (#93 sous-port 3c, GATE SCIENCE) :
+     * absent -> table HISTORIQUE `AGEROUTE_MATERIALS` (GLc2 s6=0.37, BQc s6=0.30,
+     * pas de BC5g) ; `'definitive'` -> table CORRIGEE `AGEROUTE_MATERIALS_DEFINITIVE`
+     * (GLc2 s6=0.3705, BQc s6=0.304, materiau BC5g ajoute — dalle beton goujonnee,
+     * Tab. 68). Recalage de CALAGE scientifique STARFIRE, pas un simple port :
+     * l'activation produit necessite une validation `expert-genie-civil`/STARFIRE
+     * prealable. Ne SUBSTITUE jamais un coefficient arbitraire — seule une des
+     * DEUX tables figees serveur est selectionnee (aucune cle `materials` libre).
+     */
+    materialsRev: z.enum(['definitive']).optional(),
   })
   .strict();
 
