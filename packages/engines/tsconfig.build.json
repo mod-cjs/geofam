@@ -34,6 +34,7 @@
     "dist",
     "src/**/*.test.ts",
     "src/**/*.spec.ts",
+    "src/**/*-harness.ts",
     "src/**/equivalence-harness.ts"
   ]
 }
