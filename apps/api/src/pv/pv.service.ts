@@ -181,7 +181,7 @@ export class PvService {
             'Le calcul ne peut plus etre reproduit par le moteur : emission du PV refusee (integrite).',
           );
         }
-        const recomputedOutput = projectEngineOutput(
+        const recomputedOutput: unknown = projectEngineOutput(
           dispatch.contract.outputSchema,
           recomputed.output,
         );
@@ -198,7 +198,10 @@ export class PvService {
             'Ce calcul est en erreur : emission du PV refusee (aucun livrable scelle sur un calcul echoue).',
           );
         }
-        if (canonicalize(recomputedOutput) !== canonicalize(calc.output)) {
+        if (
+          canonicalize(recomputedOutput as SealableValue) !==
+          canonicalize(calc.output)
+        ) {
           // On DISTINGUE une derive de version (le moteur a ete mis a jour depuis le calcul
           // -> divergence LEGITIME) d'une ALTERATION en base. Message non alarmant dans le
           // 1er cas : l'utilisateur relance le calcul, il n'y a pas de falsification.

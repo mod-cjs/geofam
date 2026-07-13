@@ -291,6 +291,14 @@ const FDN_ETAT: Record<string, string> = {
   ELS_QP: 'ELS quasi-permanent',
 };
 
+/** Coercition texte sûre pour le PDF : string/number tels quels, tout autre
+ * type (objet, null, …) → « — » — jamais de « [object Object] » dans un PV. */
+function pdfText(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  return '—';
+}
+
 /** Nombre → texte fr-FR (espaces normalisées), sinon « — ». */
 function fdnNum(v: unknown, decimals: number, unit?: string): string {
   const n =
@@ -371,7 +379,7 @@ function buildFondationBody(sealed: SealedContent): Content[] {
   };
   kv(
     'Forme de la fondation',
-    FDN_FORME[String(input.forme)] ?? String(input.forme ?? '—'),
+    FDN_FORME[pdfText(input.forme)] ?? pdfText(input.forme),
   );
   kv('Largeur B', fdnNum(input.B, 2, 'm'));
   if (input.L != null && input.L !== '')
@@ -379,12 +387,9 @@ function buildFondationBody(sealed: SealedContent): Content[] {
   kv('Profondeur d’encastrement D', fdnNum(input.D, 2, 'm'));
   kv(
     'Catégorie de sol',
-    FDN_SOL[String(input.solCat)] ?? String(input.solCat ?? '—'),
+    FDN_SOL[pdfText(input.solCat)] ?? pdfText(input.solCat),
   );
-  kv(
-    'Type d’essai',
-    FDN_ESSAI[String(input.essai)] ?? String(input.essai ?? '—'),
-  );
+  kv('Type d’essai', FDN_ESSAI[pdfText(input.essai)] ?? pdfText(input.essai));
   kv('Poids volumique γ (avant travaux)', fdnNum(input.gAvant, 1, 'kN/m³'));
   kv('Poids volumique γ (après travaux)', fdnNum(input.gApres, 1, 'kN/m³'));
   body.push({
@@ -396,7 +401,7 @@ function buildFondationBody(sealed: SealedContent): Content[] {
   // Profil de sondage
   const sondage = (Array.isArray(input.sondage) ? input.sondage : []).filter(
     isPlainObject,
-  ) as Record<string, unknown>[];
+  );
   if (sondage.length > 0) {
     const sb: TableCell[][] = [
       [
@@ -425,7 +430,7 @@ function buildFondationBody(sealed: SealedContent): Content[] {
   // Cas de charge
   const charges = (Array.isArray(input.charges) ? input.charges : []).filter(
     isPlainObject,
-  ) as Record<string, unknown>[];
+  );
   if (charges.length > 0) {
     const cb: TableCell[][] = [
       [
@@ -438,7 +443,7 @@ function buildFondationBody(sealed: SealedContent): Content[] {
     for (const c of charges) {
       cb.push([
         {
-          text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'),
+          text: FDN_ETAT[pdfText(c.etat)] ?? pdfText(c.etat),
           style: 'cell',
         },
         { text: fdnNum(c.fz, 0), style: 'cell', alignment: 'right' },
@@ -457,7 +462,7 @@ function buildFondationBody(sealed: SealedContent): Content[] {
   // 2) RÉSULTATS — vérifications par cas
   body.push(sectionTitle('Résultats — vérifications'));
   const cas = (Array.isArray(output.cas) ? output.cas : []).filter(
-    (c) => isPlainObject(c) && (c as Record<string, unknown>).invalide !== true,
+    (c) => isPlainObject(c) && c.invalide !== true,
   ) as Record<string, unknown>[];
 
   if (cas.length === 0) {
@@ -485,7 +490,7 @@ function buildFondationBody(sealed: SealedContent): Content[] {
           : '—';
       rb.push([
         {
-          text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'),
+          text: FDN_ETAT[pdfText(c.etat)] ?? pdfText(c.etat),
           style: 'cell',
         },
         { text: fdnNum(c.Rtot, 1), style: 'cell', alignment: 'right' },
@@ -529,7 +534,7 @@ function buildFondationBody(sealed: SealedContent): Content[] {
             : '—';
         gb.push([
           {
-            text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'),
+            text: FDN_ETAT[pdfText(c.etat)] ?? pdfText(c.etat),
             style: 'cell',
           },
           { text: fdnNum(c.Rhd, 1), style: 'cell', alignment: 'right' },
@@ -576,7 +581,7 @@ function buildFondationBody(sealed: SealedContent): Content[] {
         );
         tb.push([
           {
-            text: FDN_ETAT[String(c.etat)] ?? String(c.etat ?? '—'),
+            text: FDN_ETAT[pdfText(c.etat)] ?? pdfText(c.etat),
             style: 'cell',
           },
           { text: fdnNum(t, 3), style: 'cell', alignment: 'right' },
@@ -779,11 +784,11 @@ function buildFonProfondeBody(sealed: SealedContent): Content[] {
   kv('Catégorie de pieu', fdnNum(output.categorie, 0));
   kv(
     'Méthode de portance',
-    PIEUX_METH[String(output.methode)] ?? String(output.methode ?? '—'),
+    PIEUX_METH[pdfText(output.methode)] ?? pdfText(output.methode),
   );
   kv(
     'Sens de sollicitation',
-    PIEUX_SENS[String(output.sens)] ?? String(output.sens ?? '—'),
+    PIEUX_SENS[pdfText(output.sens)] ?? pdfText(output.sens),
   );
   body.push({
     table: { headerRows: 1, widths: ['*', 'auto'], body: geo },
@@ -1142,7 +1147,10 @@ function buildLaboBody(sealed: SealedContent): Content[] {
     // `code`/`full` incluent DÉJÀ la lettre de famille (code='A2', full='A2 h') :
     // concaténer `fam` la dupliquerait ('AA2'). Libellé canonique `full`, repli `code`.
     const full = typeof c.full === 'string' ? c.full.trim() : '';
-    const code = c.code != null && c.code !== '' ? String(c.code).trim() : '';
+    const code =
+      c.code != null && c.code !== '' && pdfText(c.code) !== '—'
+        ? pdfText(c.code).trim()
+        : '';
     classe = full || code;
     // desc (allowlisté sur l'ensemble NF P 11-300) + path (allowlisté) = client-safe.
     laboDesc = safeLaboDescPv(c.desc);
