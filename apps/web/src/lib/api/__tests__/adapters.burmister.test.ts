@@ -190,8 +190,20 @@ describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’af
             fatiguePhase2: { valeur: 509.37, admissible: 201.54, ok: false, couche: 1 },
             fatigueInverse: null,
             couchesTraitees: [
-              { couche: 2, mode: 'semi-collée', valeur: 0.2697, admissible: 0.4225, ok: true },
-              { couche: 3, mode: 'semi-collée', valeur: 0.3345, admissible: 0.384, ok: true },
+              {
+                couche: 2,
+                mode: 'semi-collée',
+                valeur: 0.2697,
+                admissible: 0.4225,
+                ok: true,
+              },
+              {
+                couche: 3,
+                mode: 'semi-collée',
+                valeur: 0.3345,
+                admissible: 0.384,
+                ok: true,
+              },
             ],
             couchesGranulaires: [],
           },
@@ -199,7 +211,9 @@ describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’af
       ).output,
     );
     // phase 2 -> ligne de résultat (rows), µdef, verdict fail, n° de couche baké.
-    const p2 = out.rows.find((r) => r.label === 'Fatigue phase 2 — base bitumineuse ε_t (couche 1)');
+    const p2 = out.rows.find(
+      (r) => r.label === 'Fatigue phase 2 — base bitumineuse ε_t (couche 1)',
+    );
     expect(p2).toBeDefined();
     expect(p2!.value).toBe(509.37);
     expect(p2!.unit).toBe('μdef');
@@ -236,9 +250,7 @@ describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’af
     expect(inv!.unit).toBe('MPa');
     expect(inv!.status).toBe('fail');
     // phase 2 null -> pas de ligne.
-    expect(
-      out.rows.some((r) => r.label.startsWith('Fatigue phase 2')),
-    ).toBe(false);
+    expect(out.rows.some((r) => r.label.startsWith('Fatigue phase 2'))).toBe(false);
   });
 
   it('MAJEUR-1 : structure CONFORME + phase 2 dépassée mais NON requise -> ligne SANS status fail (informatif)', () => {
@@ -249,14 +261,33 @@ describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’af
             ...LIVE_BURMISTER_OUTPUT,
             conforme: true,
             famille: 'semi-rigide',
-            fatigue: { ok: true, requis: true, rigide: true, valeur: 1.3, admissible: 1.6 },
+            fatigue: {
+              ok: true,
+              requis: true,
+              rigide: true,
+              valeur: 1.3,
+              admissible: 1.6,
+            },
             ornierage: { ok: true, valeur: 400, admissible: 511 },
             // phase 2 dépassée MAIS non requise -> ne doit pas porter status 'fail'
             // (sinon un ✗ rouge s'afficherait sous un verdict PASS = contradiction).
-            fatiguePhase2: { valeur: 509.37, admissible: 201.54, ok: false, requis: false, couche: 1 },
+            fatiguePhase2: {
+              valeur: 509.37,
+              admissible: 201.54,
+              ok: false,
+              requis: false,
+              couche: 1,
+            },
             fatigueInverse: null,
             couchesTraitees: [
-              { couche: 2, mode: 'semi-collée', valeur: 0.27, admissible: 0.42, ok: true, requis: true },
+              {
+                couche: 2,
+                mode: 'semi-collée',
+                valeur: 0.27,
+                admissible: 0.42,
+                ok: true,
+                requis: true,
+              },
             ],
             couchesGranulaires: [],
           },
@@ -278,17 +309,31 @@ describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’af
             ...LIVE_BURMISTER_OUTPUT,
             conforme: true,
             famille: 'souple à faible trafic',
-            fatigue: { ok: true, requis: false, rigide: false, valeur: 300, admissible: 450 },
+            fatigue: {
+              ok: true,
+              requis: false,
+              rigide: false,
+              valeur: 300,
+              admissible: 450,
+            },
             ornierage: { ok: true, valeur: 400, admissible: 511 },
             couchesGranulaires: [
-              { couche: 2, valeur: 2107.23, admissible: 1600.7, ok: false, requis: false },
+              {
+                couche: 2,
+                valeur: 2107.23,
+                admissible: 1600.7,
+                ok: false,
+                requis: false,
+              },
             ],
           },
         }),
       ).output,
     );
     expect(out.verdict).toBe('PASS');
-    const cg = (out.details ?? []).find((r) => r.label.startsWith('ε_z sommet couche granulaire'));
+    const cg = (out.details ?? []).find((r) =>
+      r.label.startsWith('ε_z sommet couche granulaire'),
+    );
     expect(cg).toBeDefined();
     expect(cg!.status).toBeUndefined();
     // le critère principal ε_t, non requis pour cette famille, n'est pas 'fail' non plus.
@@ -311,7 +356,9 @@ describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’af
     );
     expect(out.rows.some((r) => r.label.startsWith('Fatigue phase 2'))).toBe(false);
     expect(out.rows.some((r) => r.label.startsWith('Structure inverse'))).toBe(false);
-    expect((out.details ?? []).some((r) => r.label.startsWith('σ_t couche traitée'))).toBe(false);
+    expect(
+      (out.details ?? []).some((r) => r.label.startsWith('σ_t couche traitée')),
+    ).toBe(false);
   });
 });
 
@@ -482,5 +529,78 @@ describe('adaptCalcResult — passthrough des sorties déjà normalisées / autr
   it('given output null, then output reste null et ne crash pas', () => {
     const r = adaptCalcResult(makeRaw({ output: null }));
     expect(r.output).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M4 (revue fidélité) — ε₆/σ₆ « référence catalogue » : grandeur PUBLIQUE du
+// catalogue AGEROUTE, exposée délibérément par le moteur (fatigue.referenceCatalogue,
+// cf. engines/burmister index — « la référence définitive les édite en clair »).
+// L'adaptateur doit l'émettre comme ligne, pour que l'onglet Détails affiche le
+// « Matériau dimensionnant » comme la définitive (reference:1519) au lieu de le
+// masquer à tort comme coefficient de calage.
+// ---------------------------------------------------------------------------
+
+describe('adaptCalcResult — ε₆/σ₆ référence catalogue (grandeur publique, M4)', () => {
+  it('given fatigue bitumineuse (rigide=false) avec referenceCatalogue=100, then ligne « Référence catalogue ε₆ » 100 μdef, sans status', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            fatigue: { ...LIVE_BURMISTER_OUTPUT.fatigue, referenceCatalogue: 100 },
+          },
+        }),
+      ).output,
+    );
+    const ref = out.rows.find((r) => r.label === 'Référence catalogue ε₆');
+    expect(ref).toBeDefined();
+    expect(ref!.value).toBe(100);
+    expect(ref!.unit).toBe('μdef');
+    // Informatif (référence), pas un critère : jamais de ✓/✗.
+    expect(ref!.status).toBeUndefined();
+  });
+
+  it('given structure rigide (rigide=true) avec referenceCatalogue=0.75, then ligne « Référence catalogue σ₆ » 0.75 MPa', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            fatigue: {
+              ok: true,
+              requis: true,
+              rigide: true,
+              valeur: 0.61,
+              admissible: 0.7,
+              referenceCatalogue: 0.75,
+            },
+          },
+        }),
+      ).output,
+    );
+    const ref = out.rows.find((r) => r.label === 'Référence catalogue σ₆');
+    expect(ref).toBeDefined();
+    expect(ref!.value).toBe(0.75);
+    expect(ref!.unit).toBe('MPa');
+  });
+
+  it('given referenceCatalogue null (e6 infini — pas de matériau dimensionnant), then AUCUNE ligne référence (fail-closed, comme d.e6<Infinity)', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            fatigue: { ...LIVE_BURMISTER_OUTPUT.fatigue, referenceCatalogue: null },
+          },
+        }),
+      ).output,
+    );
+    expect(out.rows.some((r) => r.label.startsWith('Référence catalogue'))).toBe(false);
+  });
+
+  it('given fatigue SANS champ referenceCatalogue (ancien calcul persisté), then aucune ligne et pas de crash', () => {
+    const out = asNormalized(adaptCalcResult(makeRaw()).output);
+    expect(out.rows.some((r) => r.label.startsWith('Référence catalogue'))).toBe(false);
   });
 });

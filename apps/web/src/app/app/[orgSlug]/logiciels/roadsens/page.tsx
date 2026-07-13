@@ -13,8 +13,6 @@
  * Coupe transversale : SVG généré depuis l'état React (fidèle à rSec() de l'original).
  */
 
-import { useParams } from 'next/navigation';
-import { useState, useCallback, useEffect, useId, useRef, Fragment } from 'react';
 import {
   Route,
   Calculator,
@@ -25,7 +23,11 @@ import {
   BarChart3,
   Microscope,
 } from 'lucide-react';
+import { useParams } from 'next/navigation';
+import { useState, useCallback, useEffect, useId, useRef, Fragment } from 'react';
 
+import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
+import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
 import type {
   Project,
@@ -35,10 +37,8 @@ import type {
   OfficialPv,
   EntitlementsResponse,
 } from '@/lib/api/types';
-import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
-import { ProjectPicker } from '@/components/ui/ProjectPicker';
-import { evaluateGate } from '@/lib/subscription-gate';
 import { useOrgId } from '@/lib/org-context';
+import { evaluateGate } from '@/lib/subscription-gate';
 
 const ENGINE_ID = 'burmister';
 
@@ -248,7 +248,13 @@ const FATIGUE_MTLH: Record<string, FatigueMtlhEntry> = {
   BQc: { label: 'Banco-coquillage (BQc)', s6: 0.3, b: 11, kc: 1.4, source: 'T.35' },
   BC5: { label: 'Béton BC5', s6: 2.15, b: 16, kc: 1.5, source: 'T.37' },
   BC2: { label: 'Béton Maigre BC2', s6: 1.37, b: 14, kc: 1.5, source: 'T.37' },
-  BC5g: { label: 'Béton BC5 (dalle goujonnée)', s6: 2.15, b: 16, kc: 1.5, source: 'T.37' },
+  BC5g: {
+    label: 'Béton BC5 (dalle goujonnée)',
+    s6: 2.15,
+    b: 16,
+    kc: 1.5,
+    source: 'T.37',
+  },
 };
 
 /** Preset de modules des classes de plateforme support (AGEROUTE 2015). */
@@ -309,8 +315,20 @@ export const CAT: Record<string, CatFamily> = {
     label: 'BBSG / GB2',
     m: { top: 'BBSG1', body: 'GB2' },
     data: {
-      C1: { PF1: [6, 11, 11], PF2: [6, 8, 9], PF2qs: [6, 7, 7], PF3: [6, 11], PF4: [6, 8] },
-      C2: { PF1: [6, 13, 13], PF2: [6, 10, 10], PF2qs: [6, 8, 9], PF3: [6, 14], PF4: [6, 11] },
+      C1: {
+        PF1: [6, 11, 11],
+        PF2: [6, 8, 9],
+        PF2qs: [6, 7, 7],
+        PF3: [6, 11],
+        PF4: [6, 8],
+      },
+      C2: {
+        PF1: [6, 13, 13],
+        PF2: [6, 10, 10],
+        PF2qs: [6, 8, 9],
+        PF3: [6, 14],
+        PF4: [6, 11],
+      },
       C3: {
         PF1: [6, 10, 10, 10],
         PF2: [6, 12, 13],
@@ -384,7 +402,12 @@ export const CAT: Record<string, CatFamily> = {
       C3: { PF2: [6, 20, 20], PF2qs: [6, 29], PF3: [6, 26], PF4: [6, 25] },
       C4: { PF2: [6, 20, 20], PF2qs: [6, 30], PF3: [6, 27], PF4: [6, 25] },
       C5: { PF2: [8, 23, 20], PF2qs: [8, 21, 20], PF3: [8, 19, 18], PF4: [8, 18, 15] },
-      C6: { PF2: [10, 23, 20], PF2qs: [10, 21, 20], PF3: [10, 19, 18], PF4: [10, 18, 15] },
+      C6: {
+        PF2: [10, 23, 20],
+        PF2qs: [10, 21, 20],
+        PF3: [10, 19, 18],
+        PF4: [10, 18, 15],
+      },
       C7: { PF2qs: [12, 21, 20], PF3: [12, 19, 18], PF4: [12, 18, 15] },
       C8: { PF2qs: [14, 21, 20], PF3: [14, 19, 18], PF4: [14, 18, 15] },
     },
@@ -585,9 +608,14 @@ function fmtSci(v: number): string {
  * Affiché à titre informatif dans la saisie ; recalculé côté serveur.
  */
 export function computeNE(traffic: Traffic): number {
+  return 365 * traffic.T * computeCcum(traffic) * traffic.C * traffic.dir * traffic.tv;
+}
+
+/** Coefficient cumulatif C = [(1+τ)^n - 1] / τ (formule publique AGEROUTE §3.2) —
+ * extrait de `computeNE` pour affichage isolé (onglet Détails, section Trafic). */
+export function computeCcum(traffic: Traffic): number {
   const t = traffic.tau / 100;
-  const Ccum = Math.abs(t) < 1e-4 ? traffic.N : (Math.pow(1 + t, traffic.N) - 1) / t;
-  return 365 * traffic.T * Ccum * traffic.C * traffic.dir * traffic.tv;
+  return Math.abs(t) < 1e-4 ? traffic.N : (Math.pow(1 + t, traffic.N) - 1) / t;
 }
 
 /**
@@ -628,7 +656,13 @@ export function resolveRisk(load: Load): 'auto' | number {
  * coefficient de calage AGEROUTE confidentiel) : le kr effectif (qui combine u_r à
  * SN/Sh/b propriétaires) reste calculé côté serveur (DoD §8).
  */
-const U_RISK: Record<number, number> = { 5: 1.645, 10: 1.282, 15: 1.036, 25: 0.674, 50: 0.0 };
+const U_RISK: Record<number, number> = {
+  5: 1.645,
+  10: 1.282,
+  15: 1.036,
+  25: 0.674,
+  50: 0.0,
+};
 
 /** Loi normale inverse (algorithme d'Acklam) — fractile pour un risque quelconque. */
 export function invNorm(p: number): number {
@@ -636,18 +670,18 @@ export function invNorm(p: number): number {
   if (p >= 1) return Infinity;
   const a = [
     -3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2,
-    -3.066479806614716e1, 2.506628277459239e0,
+    -3.066479806614716e1, 2.506628277459239,
   ];
   const b = [
     -5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1,
     -1.328068155288572e1,
   ];
   const c = [
-    -7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838e0, -2.549732539343734e0,
-    4.374664141464968e0, 2.938163982698783e0,
+    -7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734,
+    4.374664141464968, 2.938163982698783,
   ];
   const d = [
-    7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996e0, 3.754408661907416e0,
+    7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416,
   ];
   const pl = 0.02425;
   const ph = 1 - pl;
@@ -690,6 +724,48 @@ export function neClass(ne: number): string {
   if (ne < 50e6) return 'C7';
   if (ne < 100e6) return 'C8';
   return '>C8';
+}
+
+/** Chiffres exposant (Unicode) — fidèle à `_neFmt()` de la définitive. */
+const SUP_DIGITS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+
+/**
+ * Formate un NE en notation scientifique compacte à exposant réel (ex. « 3,0×10⁷ »),
+ * fidèle à `_neFmt()` de la définitive — utilisé UNIQUEMENT pour l'affichage de la
+ * note d'un cas de validation du catalogue (formule d'affichage PUBLIQUE, aucun
+ * résultat moteur — l'entrée est `preset.ne`, une constante du catalogue).
+ */
+export function formatNeExponent(ne: number): string {
+  if (!ne || !isFinite(ne) || ne <= 0) return '—';
+  const e = Math.floor(Math.log10(ne) + 1e-9);
+  const m = ne / Math.pow(10, e);
+  const exp = String(e)
+    .split('')
+    .map((c) => (c === '-' ? '⁻' : SUP_DIGITS[Number(c)]))
+    .join('');
+  return `${m.toFixed(1).replace('.', ',')}×10${exp}`;
+}
+
+/**
+ * Classe de trafic affichée dans la note d'un cas de validation du catalogue —
+ * fidèle à `_trClass()` de la définitive (seuils avec marge ×1,7, Tableau 70
+ * AGEROUTE 2015). DISTINCTE de `neClass()` (saisie TMJA classique, seuils sans
+ * marge) — les deux existent dans la définitive pour des usages différents.
+ */
+export function presetTrafficClass(ne: number): string {
+  const thresholds: Array<[number, string]> = [
+    [1e5, 'C1'],
+    [3e5, 'C2'],
+    [1e6, 'C3'],
+    [3e6, 'C4'],
+    [1e7, 'C5'],
+    [3e7, 'C6'],
+    [1e8, 'C7'],
+  ];
+  for (const [t, label] of thresholds) {
+    if (ne <= t * 1.7) return label;
+  }
+  return 'C8';
 }
 
 /** Classe de TMJA (AGEROUTE 2015). */
@@ -780,6 +856,21 @@ export function autoIfaceLabel(matA: string, matB: string | null): LayerIface {
   return 'collée';
 }
 
+/** Libellé court d'un matériau — fidèle à `_matLbl()` de la définitive (utilisé
+ * dans la note d'un cas de validation, pas dans le tableau de saisie complet).
+ * Fallback = IDENTITÉ (la clé), comme `_matLbl(k) || k` — jamais le libellé
+ * catalogue long, qui dupliquerait E dans la note. */
+const MAT_SHORT_LABEL: Record<string, string> = {
+  BBSG1: 'BBSG',
+  BBSG2: 'BBSG 2/3',
+  GNT1: 'GNT',
+  GNT2: 'GNT',
+  BC5g: 'BC5 (goujonnée)',
+};
+function matShortLabel(mat: string): string {
+  return MAT_SHORT_LABEL[mat] ?? mat;
+}
+
 // ---------------------------------------------------------------------------
 // Cas de validation du catalogue (presets) — dimensionnements pré-remplis (preuve)
 // ---------------------------------------------------------------------------
@@ -811,7 +902,10 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF3',
     ne: 3e7,
     desc: 'Réf. catalogue : ε_t,adm = 83,96 µdef',
-    layers: [['BBSG1', 8], ['GB2', 35]],
+    layers: [
+      ['BBSG1', 8],
+      ['GB2', 35],
+    ],
   },
   {
     id: 's2',
@@ -820,7 +914,10 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF3',
     ne: 3e7,
     desc: 'Réf. catalogue : ε_t,adm = 94,45 µdef',
-    layers: [['BBSG1', 8], ['GB3', 32]],
+    layers: [
+      ['BBSG1', 8],
+      ['GB3', 32],
+    ],
   },
   {
     id: 's3',
@@ -829,7 +926,11 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF3',
     ne: 3e7,
     desc: 'Réf. catalogue : ε_t,adm = 83,96 µdef',
-    layers: [['BBSG1', 8], ['GB2', 30], ['GNT1', 15, 400]],
+    layers: [
+      ['BBSG1', 8],
+      ['GB2', 30],
+      ['GNT1', 15, 400],
+    ],
   },
   {
     id: 's4',
@@ -838,7 +939,11 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF3',
     ne: 3e7,
     desc: 'Réf. catalogue : ε_t,adm = 94,45 µdef',
-    layers: [['BBSG1', 8], ['GB3', 27], ['GNT1', 15, 400]],
+    layers: [
+      ['BBSG1', 8],
+      ['GB3', 27],
+      ['GNT1', 15, 400],
+    ],
   },
   {
     id: 's5',
@@ -847,7 +952,10 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF2',
     ne: 1e7,
     desc: 'Surface BBSG E = 1512 MPa (convention fichier) · Réf. catalogue : ε_t,adm = 94,67 µdef',
-    layers: [['BBSG1', 8], ['EME2', 24]],
+    layers: [
+      ['BBSG1', 8],
+      ['EME2', 24],
+    ],
   },
   {
     id: 's6',
@@ -856,7 +964,11 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF3',
     ne: 3e7,
     desc: 'Réf. catalogue : σ_t,adm = 0,596 MPa',
-    layers: [['BBSG1', 8], ['GC3', 19], ['GC3', 18]],
+    layers: [
+      ['BBSG1', 8],
+      ['GC3', 19],
+      ['GC3', 18],
+    ],
   },
   {
     id: 's7',
@@ -865,7 +977,11 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF3',
     ne: 1e7,
     desc: 'Réf. catalogue : σ_t,adm = 0,451 MPa',
-    layers: [['BBSG1', 8], ['SC2', 22], ['SC2', 18]],
+    layers: [
+      ['BBSG1', 8],
+      ['SC2', 22],
+      ['SC2', 18],
+    ],
   },
   {
     id: 's8',
@@ -874,7 +990,11 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF3',
     ne: 1e7,
     desc: 'Réf. catalogue : σ_t,adm = 0,279 MPa',
-    layers: [['BBSG1', 8], ['GLc2', 20], ['GLc2', 18]],
+    layers: [
+      ['BBSG1', 8],
+      ['GLc2', 20],
+      ['GLc2', 18],
+    ],
   },
   {
     id: 's10',
@@ -883,7 +1003,11 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF4',
     ne: 1e7,
     desc: 'Réf. catalogue : σ_t,adm = 0,143 MPa',
-    layers: [['BBSG1', 8], ['GLc1', 28], ['GLc1', 27]],
+    layers: [
+      ['BBSG1', 8],
+      ['GLc1', 28],
+      ['GLc1', 27],
+    ],
   },
   {
     id: 's11',
@@ -892,7 +1016,11 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF4',
     ne: 1e7,
     desc: 'Réf. catalogue : σ_t,adm = 0,229 MPa',
-    layers: [['BBSG1', 8], ['BQc', 29], ['BQc', 27]],
+    layers: [
+      ['BBSG1', 8],
+      ['BQc', 29],
+      ['BQc', 27],
+    ],
   },
   {
     id: 's13',
@@ -901,7 +1029,10 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF2',
     ne: 1e5,
     desc: 'Contrôle ε_z indicatif (modèle GNT distinct) · Réf. catalogue : ε_z,adm = 1239 µdef',
-    layers: [['BBSG1', 6], ['GNT1', 26, 400]],
+    layers: [
+      ['BBSG1', 6],
+      ['GNT1', 26, 400],
+    ],
   },
   {
     id: 's14',
@@ -910,7 +1041,11 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF2',
     ne: 1e5,
     desc: 'Latérite en sandwich (2×E plafonné à 200) · contrôle ε_z indicatif · Réf. : ε_z,adm = 1239 µdef',
-    layers: [['BBSG1', 6], ['GL1', 15, 200], ['GL1', 24, 100]],
+    layers: [
+      ['BBSG1', 6],
+      ['GL1', 15, 200],
+      ['GL1', 24, 100],
+    ],
   },
   {
     id: 's16',
@@ -919,7 +1054,10 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF3',
     ne: 3e7,
     desc: 'Épaisseur catalogue · Réf. : σ_t,adm dalle = 1,196 MPa',
-    layers: [['BC5', 22], ['BC2', 20]],
+    layers: [
+      ['BC5', 22],
+      ['BC2', 20],
+    ],
   },
   {
     id: 's17',
@@ -928,7 +1066,10 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF3',
     ne: 3e7,
     desc: 'Dalle goujonnée (kd = 1/1,47) · épaisseur catalogue · Réf. : σ_t,adm dalle = 1,383 MPa',
-    layers: [['BC5g', 22], ['BC2', 15]],
+    layers: [
+      ['BC5g', 22],
+      ['BC2', 15],
+    ],
   },
   {
     id: 'sa',
@@ -937,7 +1078,10 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF2',
     ne: 1e5,
     desc: 'Hors catalogue · contrôle ε_z indicatif · Réf. : ε_z,adm = 1239 µdef',
-    layers: [['BBSG1', 6], ['GLa', 19, 800]],
+    layers: [
+      ['BBSG1', 6],
+      ['GLa', 19, 800],
+    ],
   },
   {
     id: 'sb',
@@ -946,7 +1090,11 @@ export const ROADSENS_PRESETS: RoadsensPreset[] = [
     pfCls: 'PF2qs',
     ne: 1e5,
     desc: 'Hors catalogue · latérite sandwich (2×E plafonné à 400) · Réf. : ε_z,adm = 1239 µdef',
-    layers: [['BBSG1', 6], ['GL2', 15, 320], ['GL2', 10, 160]],
+    layers: [
+      ['BBSG1', 6],
+      ['GL2', 15, 320],
+      ['GL2', 10, 160],
+    ],
   },
 ];
 
@@ -971,6 +1119,74 @@ export function buildLayersFromPreset(preset: RoadsensPreset): Layer[] {
   });
 }
 
+/**
+ * Conditions d'un cas de validation à afficher sous le sélecteur de presets —
+ * équivalent de `#presetNote` / `buildPresetNote()` de la définitive. `famille`
+ * et `risqueLine` proviennent du RÉSULTAT du calcul serveur (comme l'original,
+ * qui construit la note APRÈS le retour de `doCalc()`) ; le reste (PF, classe de
+ * trafic, structure, interfaces auto) est connu côté saisie/catalogue public.
+ */
+export interface PresetConditions {
+  pfLine: string;
+  trafficLine: string;
+  risqueLine: string;
+  famille: string | null;
+  layerLines: string[];
+  interfaceLines: Array<string | null>;
+  detail: string;
+}
+
+/**
+ * Construit les conditions affichables d'un cas de validation — EXPORTÉ pour
+ * tests DoD §9. `output` = `CalcResult.output` déjà normalisé (rows/details
+ * whitelistés, DoD §8) ; `null`/absent → famille et risque affichés en attente.
+ */
+export function buildPresetConditions(
+  preset: RoadsensPreset,
+  layersNext: Layer[],
+  pfNext: PF,
+  output: unknown,
+): PresetConditions {
+  const o =
+    output != null && typeof output === 'object'
+      ? (output as { rows?: unknown; details?: unknown })
+      : null;
+  const rows = Array.isArray(o?.rows) ? (o!.rows as CalcOutputRow[]) : [];
+  const details = Array.isArray(o?.details) ? (o!.details as CalcOutputRow[]) : [];
+
+  const familleRow = findOutputRow(rows, 'Famille de structure');
+  const famille =
+    typeof familleRow?.value === 'string' && familleRow.value.length > 0
+      ? familleRow.value
+      : null;
+
+  const risqueRow = findOutputRow(details, 'Risque effectif');
+  const risqueNum = rowNumber(risqueRow);
+  const risqueLine =
+    risqueNum !== null ? `${fmtNum(risqueNum, 2)} % (auto, Tableau 70)` : '—';
+
+  const nuStr = String(pfNext.nu).replace('.', ',');
+  const pfLine = `${preset.pfCls} — E = ${pfNext.E} MPa, ν = ${nuStr}`;
+  const trafficLine = `${presetTrafficClass(preset.ne)} — NE = ${formatNeExponent(preset.ne)} essieux équivalents`;
+
+  const layerLines = layersNext.map(
+    (l) => `${matShortLabel(l.mat)} — ${Math.round(l.h * 100)} cm · E = ${l.E} MPa`,
+  );
+  const interfaceLines = layersNext.map((l, i) =>
+    i < layersNext.length - 1 ? autoIfaceLabel(l.mat, layersNext[i + 1].mat) : null,
+  );
+
+  return {
+    pfLine,
+    trafficLine,
+    risqueLine,
+    famille,
+    layerLines,
+    interfaceLines,
+    detail: preset.desc,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Helpers écran Résultats — EXPORTÉS pour tests DoD §9
 // ---------------------------------------------------------------------------
@@ -981,6 +1197,41 @@ export function buildLayersFromPreset(preset: RoadsensPreset): Layer[] {
  */
 function findOutputRow(rows: CalcOutputRow[], prefix: string): CalcOutputRow | undefined {
   return rows.find((r) => r.label.startsWith(prefix));
+}
+
+/** Toutes les lignes dont le label commence par `prefix` (détail par couche). */
+function findAllOutputRows(rows: CalcOutputRow[], prefix: string): CalcOutputRow[] {
+  return rows.filter((r) => r.label.startsWith(prefix));
+}
+
+/** Formate la valeur d'une ligne de résultat (nombre FR ou texte tel quel).
+ * Décimales FIXES comme le formatteur `f(v,n)` de la définitive (toFixed —
+ * « 43,00 », jamais « 43 »), en locale FR (convention de la page). `scale` =
+ * facteur d'affichage (ex. 100 pour rendre en cm une épaisseur émise en m par
+ * l'adaptateur — la définitive édite `f(d.H_tot*100,2)`) ; ignoré pour une
+ * valeur texte. EXPORTÉ pour tests DoD §9. */
+export function reportRowValue(
+  row: CalcOutputRow | undefined,
+  decimals = 2,
+  scale = 1,
+): string {
+  if (!row) return '—';
+  if (typeof row.value !== 'number') return String(row.value);
+  if (!isFinite(row.value)) return '—';
+  return (row.value * scale).toLocaleString('fr-FR', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+/** Garde de l'onglet Détails : la définitive n'édite JAMAIS de rapport pour un
+ * calcul en échec — un statut ≠ DONE affiche le message d'échec, pas les 9
+ * sections (sinon rapport « NON CONFORME » factice à zéros). EXPORTÉ pour tests. */
+export function tabDetailsMode(
+  result: { status: CalcResult['status'] } | null,
+): 'placeholder' | 'error' | 'report' {
+  if (!result) return 'placeholder';
+  return result.status === 'DONE' ? 'report' : 'error';
 }
 
 /** Extrais d'une valeur de ligne le nombre ou null. */
@@ -1293,6 +1544,21 @@ function CrossSection({ layers, pf, load }: CrossSectionProps) {
   );
 }
 
+/**
+ * Message d'erreur affiché depuis une réponse d'API de calcul en échec — factorisé
+ * entre `handleCalculer` et `handleApplyPreset` (même mapping de raisons).
+ */
+function deriveCalcErrorMessage(err: unknown): string {
+  const apiErr = err as { reason?: string; message?: string };
+  return apiErr?.reason === 'EXPIRED'
+    ? 'Abonnement expiré — calcul impossible.'
+    : apiErr?.reason === 'QUOTA'
+      ? 'Quota de calculs épuisé.'
+      : apiErr?.reason === 'MODULE_NOT_IN_PACK'
+        ? "Le moteur ROADSENS (burmister) n'est pas inclus dans votre abonnement."
+        : (apiErr?.message ?? 'Erreur lors du calcul. Réessayez.');
+}
+
 // ---------------------------------------------------------------------------
 // Composant principal — page ROADSENS
 // ---------------------------------------------------------------------------
@@ -1353,6 +1619,11 @@ export default function RoadsensPage() {
   const [pf, setPf] = useState<PF>(DEFAULT_PF);
   const [traffic, setTraffic] = useState<Traffic>(DEFAULT_TRAFFIC);
   const [load, setLoad] = useState<Load>(DEFAULT_LOAD);
+
+  // ── Cas de validation du catalogue (presets, #93/#GAP1) ──────────────────
+  const [presetId, setPresetId] = useState('');
+  const [presetConditions, setPresetConditions] = useState<PresetConditions | null>(null);
+  const [presetLoading, setPresetLoading] = useState(false);
 
   // ── Projets ─────────────────────────────────────────────────────────────
   const [projects, setProjects] = useState<Project[]>([]);
@@ -1474,20 +1745,84 @@ export default function RoadsensPage() {
       setCalcResult(result);
       setActiveTab('resultats');
     } catch (err: unknown) {
-      const apiErr = err as { reason?: string; message?: string };
-      const msg =
-        apiErr?.reason === 'EXPIRED'
-          ? 'Abonnement expiré — calcul impossible.'
-          : apiErr?.reason === 'QUOTA'
-            ? 'Quota de calculs épuisé.'
-            : apiErr?.reason === 'MODULE_NOT_IN_PACK'
-              ? "Le moteur ROADSENS (burmister) n'est pas inclus dans votre abonnement."
-              : (apiErr?.message ?? 'Erreur lors du calcul. Réessayez.');
-      setCalcError(msg);
+      setCalcError(deriveCalcErrorMessage(err));
     } finally {
       setCalculating(false);
     }
   }, [orgId, projectId, traffic, buildPayload]);
+
+  // --------------------------------------------------------------------------
+  // Cas de validation du catalogue (presets) — fidèle à `loadPreset()` de la
+  // définitive (l.608-620) : pose la structure + PSC + NE direct du cas,
+  // DÉCLENCHE le calcul serveur (async, contrairement à l'original synchrone),
+  // et À LA RÉCEPTION du résultat construit la note « Conditions du cas de
+  // validation » (famille/risque effectif proviennent du résultat, whitelistés
+  // DoD §8) puis bascule sur l'onglet Résultats.
+  // --------------------------------------------------------------------------
+  const handleApplyPreset = useCallback(
+    async (id: string) => {
+      setPresetId(id);
+
+      if (!id) {
+        setLayers(DEFAULT_LAYERS);
+        setPf(DEFAULT_PF);
+        setLoad((prev) => ({ ...prev, gntAuto: true, neDirect: false }));
+        setPresetConditions(null);
+        return;
+      }
+
+      const preset = ROADSENS_PRESETS.find((p) => p.id === id);
+      if (!preset) return;
+
+      const layersNext = buildLayersFromPreset(preset);
+      const pfPreset = PF_PRESETS[preset.pfCls];
+      const pfNext: PF = { cls: preset.pfCls, E: pfPreset?.E ?? pf.E, nu: 0.35 };
+      // Presets : GNT auto désactivé (module explicite du cas), r/sh remis en
+      // auto (fidèle à `syncPresetUI()` — pr='auto', prv='', psh='auto').
+      const loadNext: Load = {
+        ...load,
+        gntAuto: false,
+        neDirect: true,
+        neDirectValue: preset.ne,
+        r: 'auto',
+        rCustom: '',
+        sh: 'auto',
+      };
+
+      setLayers(layersNext);
+      setPf(pfNext);
+      setLoad(loadNext);
+      setPresetConditions(null);
+
+      // Aucun projet sélectionné : structure posée, calcul différé (bouton
+      // Calculer manuel) — pas de régression si l'utilisateur n'a pas encore
+      // choisi de dossier/projet.
+      if (!orgId || !projectId) return;
+
+      setPresetLoading(true);
+      setCalcError(null);
+      setPvResult(null);
+      try {
+        const payload = buildBurmisterPayload(layersNext, pfNext, traffic, loadNext);
+        const label = `ROADSENS — Cas ${preset.id} (catalogue) — ${new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })}`;
+        const result = await runCalc(orgId, projectId, {
+          engineId: 'burmister',
+          label,
+          params: payload as Record<string, unknown>,
+        });
+        setCalcResult(result);
+        setPresetConditions(
+          buildPresetConditions(preset, layersNext, pfNext, result.output),
+        );
+        setActiveTab('resultats');
+      } catch (err: unknown) {
+        setCalcError(deriveCalcErrorMessage(err));
+      } finally {
+        setPresetLoading(false);
+      }
+    },
+    [orgId, projectId, load, pf, traffic],
+  );
 
   // --------------------------------------------------------------------------
   // Bouton Émettre PV
@@ -1569,8 +1904,7 @@ export default function RoadsensPage() {
           flexWrap: 'wrap',
           marginBottom: 18,
           padding: '15px 19px',
-          background:
-            `linear-gradient(118deg, ${RS_PANEL}, ${RS_PANEL} 52%, ${RS_BRAND_TINT})`,
+          background: `linear-gradient(118deg, ${RS_PANEL}, ${RS_PANEL} 52%, ${RS_BRAND_TINT})`,
           border: '1px solid var(--border-subtle)',
           borderRadius: 18,
           boxShadow: 'var(--elevation-card)',
@@ -1699,7 +2033,10 @@ export default function RoadsensPage() {
             fontWeight: 600,
             letterSpacing: '0.01em',
             borderRadius: 12,
-            cursor: calculating || !projectId || !orgId || !gate.allowed ? 'not-allowed' : 'pointer',
+            cursor:
+              calculating || !projectId || !orgId || !gate.allowed
+                ? 'not-allowed'
+                : 'pointer',
             boxShadow:
               calculating || !projectId || !orgId || !gate.allowed
                 ? 'none'
@@ -1875,7 +2212,10 @@ export default function RoadsensPage() {
           onUpdateLayerIface={updateLayerIface}
           onUpdatePf={setPf}
           onUpdateLoad={setLoad}
-          onSetLayers={setLayers}
+          presetId={presetId}
+          presetConditions={presetConditions}
+          presetLoading={presetLoading}
+          onSelectPreset={(id) => void handleApplyPreset(id)}
         />
       </div>
 
@@ -1945,7 +2285,13 @@ export default function RoadsensPage() {
         hidden={activeTab !== 'details'}
         style={activeTab === 'details' ? panelStyle : undefined}
       >
-        <TabDetails result={calcResult} />
+        <TabDetails
+          result={calcResult}
+          layers={layers}
+          pf={pf}
+          load={load}
+          traffic={traffic}
+        />
       </div>
 
       <style>{`
@@ -2042,6 +2388,84 @@ function Note({
   );
 }
 
+/**
+ * Note « Conditions du cas de validation » — équivalent de `#presetNote` /
+ * `buildPresetNote()` de la définitive. `conditions` est `null` tant que le
+ * résultat serveur n'est pas revenu (aucun projet sélectionné, ou calcul en
+ * cours) : affiche alors le critère/référence catalogue seuls (comme avant
+ * calcul), sans famille/risque (whitelistés depuis le résultat, DoD §8).
+ */
+function PresetConditionsNote({
+  preset,
+  conditions,
+}: {
+  preset: RoadsensPreset;
+  conditions: PresetConditions | null;
+}) {
+  if (!conditions) {
+    return (
+      <Note>
+        {preset.crit} — {preset.desc}
+      </Note>
+    );
+  }
+  const rowStyle: React.CSSProperties = {
+    padding: '2px 9px 2px 0',
+    verticalAlign: 'top',
+    color: 'var(--text-secondary)',
+    whiteSpace: 'nowrap',
+    fontWeight: 600,
+  };
+  const valStyle: React.CSSProperties = { padding: '2px 0', verticalAlign: 'top' };
+  return (
+    <Note>
+      <div style={{ fontWeight: 700, color: '#1a4a7a', marginBottom: 5 }}>
+        Conditions du cas de validation
+      </div>
+      <table style={{ borderCollapse: 'collapse', fontSize: 11, width: '100%' }}>
+        <tbody>
+          <tr>
+            <td style={rowStyle}>Plateforme support</td>
+            <td style={valStyle}>{conditions.pfLine}</td>
+          </tr>
+          <tr>
+            <td style={rowStyle}>Classe de trafic</td>
+            <td style={valStyle}>{conditions.trafficLine}</td>
+          </tr>
+          <tr>
+            <td style={rowStyle}>Risque de calcul</td>
+            <td style={valStyle}>{conditions.risqueLine}</td>
+          </tr>
+          <tr>
+            <td style={rowStyle}>Famille (LCPC 1994)</td>
+            <td style={valStyle}>{conditions.famille ?? '—'}</td>
+          </tr>
+          <tr>
+            <td style={rowStyle}>Structure (surface → support)</td>
+            <td style={valStyle}>
+              {conditions.layerLines.map((line, i) => (
+                <div key={i}>
+                  <div>{line}</div>
+                  {conditions.interfaceLines[i] != null && (
+                    <div
+                      style={{ color: '#c1622b', fontSize: 10, margin: '1px 0 3px 12px' }}
+                    >
+                      ⇲ interface {conditions.interfaceLines[i]}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div style={{ marginTop: 6, fontStyle: 'italic', color: 'var(--text-secondary)' }}>
+        {conditions.detail}
+      </div>
+    </Note>
+  );
+}
+
 /** Champ de formulaire labelisé. */
 function FieldWrap({
   label,
@@ -2135,7 +2559,10 @@ interface TabStructureProps {
   onUpdateLayerIface: (id: number, iface: LayerIface) => void;
   onUpdatePf: (pf: PF) => void;
   onUpdateLoad: (load: Load) => void;
-  onSetLayers: (layers: Layer[]) => void;
+  presetId: string;
+  presetConditions: PresetConditions | null;
+  presetLoading: boolean;
+  onSelectPreset: (id: string) => void;
 }
 
 function TabStructure({
@@ -2149,35 +2576,16 @@ function TabStructure({
   onUpdateLayerIface,
   onUpdatePf,
   onUpdateLoad,
-  onSetLayers,
+  presetId,
+  presetConditions,
+  presetLoading,
+  onSelectPreset,
 }: TabStructureProps) {
   const matOptions = Object.entries(MATERIALS);
   const gntAutoId = useId();
-  const [presetId, setPresetId] = useState('');
-
-  /** Charge un cas de validation du catalogue (#93, fidèle à `loadPreset()` de la
-   * définitive) : remplace structure + PSC + impose le NE cumulé du cas (saisie
-   * directe) ; `''` réinitialise aux valeurs par défaut. */
-  const applyPreset = (id: string) => {
-    setPresetId(id);
-    if (!id) {
-      onSetLayers(DEFAULT_LAYERS);
-      onUpdatePf(DEFAULT_PF);
-      onUpdateLoad({ ...load, gntAuto: true, neDirect: false });
-      return;
-    }
-    const preset = ROADSENS_PRESETS.find((p) => p.id === id);
-    if (!preset) return;
-    onSetLayers(buildLayersFromPreset(preset));
-    const pfPreset = PF_PRESETS[preset.pfCls];
-    onUpdatePf({ cls: preset.pfCls, E: pfPreset?.E ?? pf.E, nu: pf.nu });
-    onUpdateLoad({
-      ...load,
-      gntAuto: false,
-      neDirect: true,
-      neDirectValue: preset.ne,
-    });
-  };
+  const selectedPreset = presetId
+    ? ROADSENS_PRESETS.find((p) => p.id === presetId)
+    : undefined;
 
   return (
     <div>
@@ -2187,7 +2595,8 @@ function TabStructure({
         <select
           value={presetId}
           aria-label="Charger une famille de structure validée"
-          onChange={(e) => applyPreset(e.target.value)}
+          onChange={(e) => onSelectPreset(e.target.value)}
+          disabled={presetLoading}
           style={{ ...inputStyle, flex: '1 1 320px', minWidth: 280 }}
         >
           <option value="">— Charger une famille de structure validée —</option>
@@ -2199,34 +2608,31 @@ function TabStructure({
         </select>
         <button
           type="button"
-          onClick={() => applyPreset('')}
+          onClick={() => onSelectPreset('')}
+          disabled={presetLoading}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: 6,
             padding: '7px 13px',
             borderRadius: 9,
-            cursor: 'pointer',
+            cursor: presetLoading ? 'default' : 'pointer',
             fontSize: 11,
             fontWeight: 500,
             color: 'var(--text-secondary)',
             background: RS_FIELD,
             border: '1px solid var(--border-subtle)',
             fontFamily: 'inherit',
+            opacity: presetLoading ? 0.6 : 1,
           }}
         >
           Réinitialiser
         </button>
       </div>
-      {presetId &&
-        (() => {
-          const preset = ROADSENS_PRESETS.find((p) => p.id === presetId);
-          return preset ? (
-            <Note>
-              {preset.crit} — {preset.desc}
-            </Note>
-          ) : null;
-        })()}
+      {presetLoading && <Note>Calcul du cas de validation en cours…</Note>}
+      {!presetLoading && selectedPreset && (
+        <PresetConditionsNote preset={selectedPreset} conditions={presetConditions} />
+      )}
 
       {/* ── Table couches ── */}
       <SectionTitle>Couches — surface → fond</SectionTitle>
@@ -2275,211 +2681,213 @@ function TabStructure({
               const ns = NATURE_STYLE[nature];
               return (
                 <Fragment key={l.id}>
-                <tr
-                  style={{
-                    borderBottom:
-                      i < layers.length - 1 ? '1px solid var(--border-subtle)' : 'none',
-                  }}
-                >
-                  {/* # */}
-                  <td
+                  <tr
                     style={{
-                      padding: '8px 11px',
-                      color: 'var(--text-secondary)',
-                      fontSize: 10.5,
-                      width: 28,
+                      borderBottom:
+                        i < layers.length - 1 ? '1px solid var(--border-subtle)' : 'none',
                     }}
                   >
-                    {i + 1}
-                  </td>
-
-                  {/* Matériau */}
-                  <td style={{ padding: '8px 6px', minWidth: 190 }}>
-                    <select
-                      value={l.mat}
-                      onChange={(e) => onUpdateLayer(l.id, 'mat', e.target.value)}
-                      aria-label={`Matériau couche ${i + 1}`}
-                      style={{ ...inputStyle, maxWidth: '100%' }}
-                    >
-                      {matOptions.map(([key, m]) => (
-                        <option key={key} value={key}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-
-                  {/* h */}
-                  <td style={{ padding: '8px 6px', width: 80 }}>
-                    <input
-                      type="number"
-                      value={l.h}
-                      min={0.01}
-                      max={1.5}
-                      step={0.01}
-                      aria-label={`Épaisseur couche ${i + 1} (m)`}
-                      onChange={(e) =>
-                        onUpdateLayer(l.id, 'h', parseFloat(e.target.value) || l.h)
-                      }
-                      style={{ ...inputStyle, width: 72, textAlign: 'right' }}
-                    />
-                  </td>
-
-                  {/* E */}
-                  <td style={{ padding: '8px 6px', width: 90 }}>
-                    <input
-                      type="number"
-                      value={l.E}
-                      min={10}
-                      max={50000}
-                      step={100}
-                      aria-label={`Module E couche ${i + 1} (MPa)`}
-                      onChange={(e) =>
-                        onUpdateLayer(l.id, 'E', parseFloat(e.target.value) || l.E)
-                      }
-                      style={{ ...inputStyle, width: 72, textAlign: 'right' }}
-                    />
-                  </td>
-
-                  {/* ν */}
-                  <td style={{ padding: '8px 6px', width: 70 }}>
-                    <input
-                      type="number"
-                      value={l.nu}
-                      min={0.1}
-                      max={0.5}
-                      step={0.05}
-                      aria-label={`Poisson couche ${i + 1}`}
-                      onChange={(e) =>
-                        onUpdateLayer(l.id, 'nu', parseFloat(e.target.value) || l.nu)
-                      }
-                      style={{ ...inputStyle, width: 60, textAlign: 'right' }}
-                    />
-                  </td>
-
-                  {/* Nature */}
-                  <td style={{ padding: '8px 11px' }}>
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        padding: '3px 9px',
-                        borderRadius: 6,
-                        fontFamily: 'var(--font-mono, monospace)',
-                        fontSize: 10,
-                        fontWeight: 600,
-                        letterSpacing: '0.03em',
-                        background: ns.bg,
-                        color: ns.color,
-                      }}
-                    >
-                      {ns.label}
-                    </span>
-                  </td>
-
-                  {/* Actions */}
-                  <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>
-                    {i > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => onMoveLayer(l.id, -1)}
-                        aria-label={`Monter couche ${i + 1}`}
-                        style={actionBtnStyle}
-                      >
-                        ↑
-                      </button>
-                    )}{' '}
-                    {i < layers.length - 1 && (
-                      <button
-                        type="button"
-                        onClick={() => onMoveLayer(l.id, 1)}
-                        aria-label={`Descendre couche ${i + 1}`}
-                        style={actionBtnStyle}
-                      >
-                        ↓
-                      </button>
-                    )}{' '}
-                    <button
-                      type="button"
-                      onClick={() => onRemoveLayer(l.id)}
-                      disabled={layers.length <= 1}
-                      aria-label={`Supprimer couche ${i + 1}`}
-                      style={{
-                        ...actionBtnStyle,
-                        color: layers.length <= 1 ? 'var(--text-muted)' : '#b5392f',
-                        borderColor:
-                          layers.length <= 1
-                            ? 'var(--border-subtle)'
-                            : 'rgba(181,57,47,.3)',
-                        background: 'transparent',
-                        cursor: layers.length <= 1 ? 'not-allowed' : 'pointer',
-                        opacity: layers.length <= 1 ? 0.45 : 1,
-                        fontSize: 10.5,
-                      }}
-                    >
-                      ✕ Suppr.
-                    </button>
-                  </td>
-                </tr>
-
-                {/* ⇲ interface — Tab. 68 AGEROUTE, override par couche (#87 étape 2/2) */}
-                {i < layers.length - 1 && (
-                  <tr>
-                    <td></td>
+                    {/* # */}
                     <td
-                      colSpan={6}
                       style={{
-                        padding: '3px 11px 6px',
-                        borderTop: '1px dashed var(--border-subtle)',
-                        borderBottom:
-                          i < layers.length - 2
-                            ? '1px solid var(--border-subtle)'
-                            : 'none',
+                        padding: '8px 11px',
+                        color: 'var(--text-secondary)',
+                        fontSize: 10.5,
+                        width: 28,
                       }}
                     >
+                      {i + 1}
+                    </td>
+
+                    {/* Matériau */}
+                    <td style={{ padding: '8px 6px', minWidth: 190 }}>
+                      <select
+                        value={l.mat}
+                        onChange={(e) => onUpdateLayer(l.id, 'mat', e.target.value)}
+                        aria-label={`Matériau couche ${i + 1}`}
+                        style={{ ...inputStyle, maxWidth: '100%' }}
+                      >
+                        {matOptions.map(([key, m]) => (
+                          <option key={key} value={key}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+
+                    {/* h */}
+                    <td style={{ padding: '8px 6px', width: 80 }}>
+                      <input
+                        type="number"
+                        value={l.h}
+                        min={0.01}
+                        max={1.5}
+                        step={0.01}
+                        aria-label={`Épaisseur couche ${i + 1} (m)`}
+                        onChange={(e) =>
+                          onUpdateLayer(l.id, 'h', parseFloat(e.target.value) || l.h)
+                        }
+                        style={{ ...inputStyle, width: 72, textAlign: 'right' }}
+                      />
+                    </td>
+
+                    {/* E */}
+                    <td style={{ padding: '8px 6px', width: 90 }}>
+                      <input
+                        type="number"
+                        value={l.E}
+                        min={10}
+                        max={50000}
+                        step={100}
+                        aria-label={`Module E couche ${i + 1} (MPa)`}
+                        onChange={(e) =>
+                          onUpdateLayer(l.id, 'E', parseFloat(e.target.value) || l.E)
+                        }
+                        style={{ ...inputStyle, width: 72, textAlign: 'right' }}
+                      />
+                    </td>
+
+                    {/* ν */}
+                    <td style={{ padding: '8px 6px', width: 70 }}>
+                      <input
+                        type="number"
+                        value={l.nu}
+                        min={0.1}
+                        max={0.5}
+                        step={0.05}
+                        aria-label={`Poisson couche ${i + 1}`}
+                        onChange={(e) =>
+                          onUpdateLayer(l.id, 'nu', parseFloat(e.target.value) || l.nu)
+                        }
+                        style={{ ...inputStyle, width: 60, textAlign: 'right' }}
+                      />
+                    </td>
+
+                    {/* Nature */}
+                    <td style={{ padding: '8px 11px' }}>
                       <span
                         style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          fontSize: 10.5,
-                          color: 'var(--text-secondary)',
+                          display: 'inline-block',
+                          padding: '3px 9px',
+                          borderRadius: 6,
+                          fontFamily: 'var(--font-mono, monospace)',
+                          fontSize: 10,
+                          fontWeight: 600,
+                          letterSpacing: '0.03em',
+                          background: ns.bg,
+                          color: ns.color,
                         }}
                       >
-                        <span style={{ letterSpacing: '0.3px' }}>
-                          {`⇲ interface C${i + 1} / C${i + 2}`}
-                        </span>
-                        <select
-                          value={l.iface}
-                          aria-label={`Condition d'interface couche ${i + 1} / couche ${i + 2}`}
-                          onChange={(e) =>
-                            onUpdateLayerIface(l.id, e.target.value as LayerIface)
-                          }
-                          style={{
-                            fontSize: 10.5,
-                            padding: '1px 4px',
-                            borderRadius: 6,
-                            border: '1px solid var(--border-default)',
-                            background: RS_FIELD,
-                            color: 'var(--text-primary)',
-                            fontFamily: 'inherit',
-                          }}
-                        >
-                          <option value="auto">
-                            {`Auto · ${autoIfaceLabel(l.mat, layers[i + 1]?.mat ?? null)}`}
-                          </option>
-                          <option value="collée">Collée</option>
-                          <option value="semi-collée">Semi-collée</option>
-                          <option value="glissante">Glissante</option>
-                        </select>
-                        {l.iface !== 'auto' && (
-                          <span style={{ color: '#bd6a30', fontWeight: 700, fontSize: 9.5 }}>
-                            IMPOSÉE
-                          </span>
-                        )}
+                        {ns.label}
                       </span>
                     </td>
+
+                    {/* Actions */}
+                    <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>
+                      {i > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => onMoveLayer(l.id, -1)}
+                          aria-label={`Monter couche ${i + 1}`}
+                          style={actionBtnStyle}
+                        >
+                          ↑
+                        </button>
+                      )}{' '}
+                      {i < layers.length - 1 && (
+                        <button
+                          type="button"
+                          onClick={() => onMoveLayer(l.id, 1)}
+                          aria-label={`Descendre couche ${i + 1}`}
+                          style={actionBtnStyle}
+                        >
+                          ↓
+                        </button>
+                      )}{' '}
+                      <button
+                        type="button"
+                        onClick={() => onRemoveLayer(l.id)}
+                        disabled={layers.length <= 1}
+                        aria-label={`Supprimer couche ${i + 1}`}
+                        style={{
+                          ...actionBtnStyle,
+                          color: layers.length <= 1 ? 'var(--text-muted)' : '#b5392f',
+                          borderColor:
+                            layers.length <= 1
+                              ? 'var(--border-subtle)'
+                              : 'rgba(181,57,47,.3)',
+                          background: 'transparent',
+                          cursor: layers.length <= 1 ? 'not-allowed' : 'pointer',
+                          opacity: layers.length <= 1 ? 0.45 : 1,
+                          fontSize: 10.5,
+                        }}
+                      >
+                        ✕ Suppr.
+                      </button>
+                    </td>
                   </tr>
-                )}
+
+                  {/* ⇲ interface — Tab. 68 AGEROUTE, override par couche (#87 étape 2/2) */}
+                  {i < layers.length - 1 && (
+                    <tr>
+                      <td></td>
+                      <td
+                        colSpan={6}
+                        style={{
+                          padding: '3px 11px 6px',
+                          borderTop: '1px dashed var(--border-subtle)',
+                          borderBottom:
+                            i < layers.length - 2
+                              ? '1px solid var(--border-subtle)'
+                              : 'none',
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            fontSize: 10.5,
+                            color: 'var(--text-secondary)',
+                          }}
+                        >
+                          <span style={{ letterSpacing: '0.3px' }}>
+                            {`⇲ interface C${i + 1} / C${i + 2}`}
+                          </span>
+                          <select
+                            value={l.iface}
+                            aria-label={`Condition d'interface couche ${i + 1} / couche ${i + 2}`}
+                            onChange={(e) =>
+                              onUpdateLayerIface(l.id, e.target.value as LayerIface)
+                            }
+                            style={{
+                              fontSize: 10.5,
+                              padding: '1px 4px',
+                              borderRadius: 6,
+                              border: '1px solid var(--border-default)',
+                              background: RS_FIELD,
+                              color: 'var(--text-primary)',
+                              fontFamily: 'inherit',
+                            }}
+                          >
+                            <option value="auto">
+                              {`Auto · ${autoIfaceLabel(l.mat, layers[i + 1]?.mat ?? null)}`}
+                            </option>
+                            <option value="collée">Collée</option>
+                            <option value="semi-collée">Semi-collée</option>
+                            <option value="glissante">Glissante</option>
+                          </select>
+                          {l.iface !== 'auto' && (
+                            <span
+                              style={{ color: '#bd6a30', fontWeight: 700, fontSize: 9.5 }}
+                            >
+                              IMPOSÉE
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                    </tr>
+                  )}
                 </Fragment>
               );
             })}
@@ -2819,16 +3227,19 @@ function TabTrafic({
         )}
       </div>
       <Note>
-        Court-circuite le calcul TMJA × CAM × croissance × durée ci-dessus : le NE
-        imposé est envoyé directement au moteur (fail-closed si valeur invalide/nulle —
-        retombe sur l&apos;estimation TMJA).
+        Court-circuite le calcul TMJA × CAM × croissance × durée ci-dessus : le NE imposé
+        est envoyé directement au moteur (fail-closed si valeur invalide/nulle — retombe
+        sur l&apos;estimation TMJA).
       </Note>
 
       {/* Résumé trafic — ESTIMATION à la saisie (aperçu). La valeur qui fait foi est le
           NE recalculé SERVEUR, affiché dans les résultats après « Calculer » (revue adverse :
           ne pas juxtaposer deux NE calculés indépendamment comme s'ils étaient équivalents). */}
       <SectionTitle>Résumé — estimation à la saisie</SectionTitle>
-      <Note>Estimation indicative à partir du trafic saisi (formule AGEROUTE publique). Le NE qui fait foi est celui recalculé côté serveur, dans les résultats.</Note>
+      <Note>
+        Estimation indicative à partir du trafic saisi (formule AGEROUTE publique). Le NE
+        qui fait foi est celui recalculé côté serveur, dans les résultats.
+      </Note>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         {[
           { label: 'NE (estim.)', value: fmtSci(ne), sub: `Classe ${neClass(ne)}` },
@@ -2993,7 +3404,11 @@ function FatigueBitTable({
                 <td style={fatigueTdStyle}>{v.b}</td>
                 <td style={fatigueTdStyle}>{v.kc}</td>
                 <td
-                  style={{ ...fatigueTdStyle, fontSize: 10.5, color: 'var(--text-secondary)' }}
+                  style={{
+                    ...fatigueTdStyle,
+                    fontSize: 10.5,
+                    color: 'var(--text-secondary)',
+                  }}
                 >
                   {v.source}
                 </td>
@@ -3066,7 +3481,11 @@ function FatigueMtlhTable({
                 <td style={fatigueTdStyle}>{`1/${v.b}`}</td>
                 <td style={fatigueTdStyle}>{v.kc}</td>
                 <td
-                  style={{ ...fatigueTdStyle, fontSize: 10.5, color: 'var(--text-secondary)' }}
+                  style={{
+                    ...fatigueTdStyle,
+                    fontSize: 10.5,
+                    color: 'var(--text-secondary)',
+                  }}
                 >
                   {v.source}
                 </td>
@@ -3153,7 +3572,9 @@ function TabParametres({ load, onUpdate }: { load: Load; onUpdate: (l: Load) => 
               onChange={(e) => onUpdate({ ...load, r: e.target.value })}
               style={inputStyle}
             >
-              <option value="auto">Auto — Tab. 70 (25 % si NE &lt; 3M, 5 % au-delà)</option>
+              <option value="auto">
+                Auto — Tab. 70 (25 % si NE &lt; 3M, 5 % au-delà)
+              </option>
               <option value="5">r = 5 %</option>
               <option value="10">r = 10 %</option>
               <option value="15">r = 15 %</option>
@@ -3369,9 +3790,9 @@ function TabCatalogue({ pfCls }: { pfCls: string }) {
         {Array.from(
           new Set(
             [family.m.top, family.m.mid, family.m.body, family.m.tail].filter(
-              (x): x is string => Boolean(x)
-            )
-          )
+              (x): x is string => Boolean(x),
+            ),
+          ),
         ).map((mk, i) => {
           const col = MATERIALS[mk]?.color ?? '#888';
           return (
@@ -3508,7 +3929,11 @@ function TabCatalogue({ pfCls }: { pfCls: string }) {
                         >
                           {thicknesses.map((h, idx) => {
                             const ph = h * scale;
-                            const mk = catalogueMaterialAt(family.m, idx, thicknesses.length);
+                            const mk = catalogueMaterialAt(
+                              family.m,
+                              idx,
+                              thicknesses.length,
+                            );
                             const col = MATERIALS[mk]?.color ?? '#888';
                             const y0 = cumY;
                             cumY += ph;
@@ -4047,118 +4472,120 @@ function CritereCard({
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-      {/* Badge SATISFAIT / NON */}
-      <span
-        data-testid={`${testId}-badge`}
-        style={{
-          display: 'inline-block',
-          padding: '4px 11px',
-          borderRadius: 999,
-          fontSize: 10.5,
-          fontWeight: 700,
-          letterSpacing: '0.05em',
-          textTransform: 'uppercase',
-          background: isFail ? '#fee2e2' : isOk ? '#dcfce7' : 'var(--surface-canvas)',
-          color: isFail ? '#991b1b' : isOk ? '#15803d' : 'var(--text-secondary)',
-          flexShrink: 0,
-        }}
-      >
-        {isFail ? 'NON SATISFAIT' : isOk ? 'SATISFAIT' : '—'}
-      </span>
-
-      {/* Libellé + formule + famille */}
-      <div style={{ flex: 1, minWidth: 120 }}>
-        <div style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text-primary)' }}>
-          {label}
-        </div>
-        <div
+        {/* Badge SATISFAIT / NON */}
+        <span
+          data-testid={`${testId}-badge`}
           style={{
+            display: 'inline-block',
+            padding: '4px 11px',
+            borderRadius: 999,
             fontSize: 10.5,
-            color: 'var(--text-secondary)',
-            marginTop: 2,
-            fontFamily: 'var(--font-mono, monospace)',
+            fontWeight: 700,
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            background: isFail ? '#fee2e2' : isOk ? '#dcfce7' : 'var(--surface-canvas)',
+            color: isFail ? '#991b1b' : isOk ? '#15803d' : 'var(--text-secondary)',
+            flexShrink: 0,
           }}
         >
-          {formule}
-        </div>
-        {famille && (
+          {isFail ? 'NON SATISFAIT' : isOk ? 'SATISFAIT' : '—'}
+        </span>
+
+        {/* Libellé + formule + famille */}
+        <div style={{ flex: 1, minWidth: 120 }}>
+          <div style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text-primary)' }}>
+            {label}
+          </div>
           <div
-            data-testid={`${testId}-famille`}
-            style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2 }}
+            style={{
+              fontSize: 10.5,
+              color: 'var(--text-secondary)',
+              marginTop: 2,
+              fontFamily: 'var(--font-mono, monospace)',
+            }}
           >
-            Famille : {famille}
+            {formule}
+          </div>
+          {famille && (
+            <div
+              data-testid={`${testId}-famille`}
+              style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 2 }}
+            >
+              Famille : {famille}
+            </div>
+          )}
+        </div>
+
+        {/* Valeur sollicitante */}
+        {valeur != null && (
+          <div style={{ textAlign: 'right', minWidth: 90 }}>
+            <div
+              style={{
+                fontFamily: 'var(--font-mono, monospace)',
+                fontSize: 17,
+                fontWeight: 700,
+                color: isFail ? '#dc2626' : isOk ? '#16a34a' : 'var(--text-primary)',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {fmtNum(valeur, 1)} {unite}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+              sollicitante
+            </div>
           </div>
         )}
-      </div>
 
-      {/* Valeur sollicitante */}
-      {valeur != null && (
-        <div style={{ textAlign: 'right', minWidth: 90 }}>
+        {/* Séparateur / */}
+        {valeur != null && admissible != null && (
           <div
             style={{
+              fontSize: 18,
+              color: 'var(--text-muted)',
+              fontWeight: 300,
+              lineHeight: 1,
+            }}
+            aria-hidden="true"
+          >
+            /
+          </div>
+        )}
+
+        {/* Admissible + ratio */}
+        {admissible != null && (
+          <div style={{ textAlign: 'right', minWidth: 90 }}>
+            <div
+              style={{
+                fontFamily: 'var(--font-mono, monospace)',
+                fontSize: 17,
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {fmtNum(admissible, 1)} {unite}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>admissible</div>
+          </div>
+        )}
+
+        {/* Taux % */}
+        {ratio != null && (
+          <div
+            data-testid={`${testId}-ratio`}
+            style={{
               fontFamily: 'var(--font-mono, monospace)',
-              fontSize: 17,
+              fontSize: 14,
               fontWeight: 700,
-              color: isFail ? '#dc2626' : isOk ? '#16a34a' : 'var(--text-primary)',
+              color: ratio > 1 ? '#dc2626' : '#15803d',
+              minWidth: 48,
+              textAlign: 'right',
               fontVariantNumeric: 'tabular-nums',
             }}
           >
-            {fmtNum(valeur, 1)} {unite}
+            {Math.round(ratio * 100)} %
           </div>
-          <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>sollicitante</div>
-        </div>
-      )}
-
-      {/* Séparateur / */}
-      {valeur != null && admissible != null && (
-        <div
-          style={{
-            fontSize: 18,
-            color: 'var(--text-muted)',
-            fontWeight: 300,
-            lineHeight: 1,
-          }}
-          aria-hidden="true"
-        >
-          /
-        </div>
-      )}
-
-      {/* Admissible + ratio */}
-      {admissible != null && (
-        <div style={{ textAlign: 'right', minWidth: 90 }}>
-          <div
-            style={{
-              fontFamily: 'var(--font-mono, monospace)',
-              fontSize: 17,
-              fontWeight: 600,
-              color: 'var(--text-primary)',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {fmtNum(admissible, 1)} {unite}
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>admissible</div>
-        </div>
-      )}
-
-      {/* Taux % */}
-      {ratio != null && (
-        <div
-          data-testid={`${testId}-ratio`}
-          style={{
-            fontFamily: 'var(--font-mono, monospace)',
-            fontSize: 14,
-            fontWeight: 700,
-            color: ratio > 1 ? '#dc2626' : '#15803d',
-            minWidth: 48,
-            textAlign: 'right',
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {Math.round(ratio * 100)} %
-        </div>
-      )}
+        )}
       </div>
 
       {/* Barre de progression — % de l'admissible */}
@@ -4196,8 +4623,146 @@ function CritereCard({
   );
 }
 
-function TabDetails({ result }: { result: CalcResult | null }) {
-  if (!result) {
+/** Bandeau titre de section numérotée (fidèle à `sec()` de `renderDetails()` définitive). */
+function DetailSectionBanner({ children }: { children: React.ReactNode }) {
+  return (
+    <tr>
+      <td
+        colSpan={3}
+        style={{
+          padding: '7px 10px 3px',
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: '0.6px',
+          textTransform: 'uppercase',
+          color: '#fff',
+          background: '#1a4a7a',
+        }}
+      >
+        {children}
+      </td>
+    </tr>
+  );
+}
+
+/** Bandeau formule encadrée (fidèle à `fml()` de `renderDetails()` définitive). */
+function DetailFormula({ children }: { children: React.ReactNode }) {
+  return (
+    <tr>
+      <td
+        colSpan={3}
+        style={{
+          padding: '3px 12px 5px',
+          fontFamily: 'var(--font-mono, monospace)',
+          fontSize: 10.5,
+          background: '#f0f0f8',
+          color: '#333',
+          borderBottom: '.5px solid #ddd',
+        }}
+      >
+        {children}
+      </td>
+    </tr>
+  );
+}
+
+/** Ligne du rapport détaillé (label / valeur / commentaire) — fidèle à `row()`. */
+function DetailRow({
+  label,
+  value,
+  unit,
+  comment,
+  status,
+}: {
+  label: React.ReactNode;
+  value: React.ReactNode;
+  unit?: string;
+  comment?: React.ReactNode;
+  status?: 'ok' | 'fail';
+}) {
+  return (
+    <tr>
+      <td
+        style={{
+          padding: '5px 10px',
+          fontSize: 11,
+          color: '#444',
+          width: '38%',
+          borderBottom: '.5px solid #eee',
+        }}
+      >
+        {label}
+      </td>
+      <td
+        style={{
+          padding: '5px 10px',
+          fontSize: 11.5,
+          fontWeight: 600,
+          fontFamily: 'var(--font-mono, monospace)',
+          color: status === 'fail' ? '#c04000' : status === 'ok' ? '#2d6a11' : '#1a4a7a',
+          borderBottom: '.5px solid #eee',
+        }}
+      >
+        {value}
+        {unit ? (
+          <span style={{ fontWeight: 400, fontSize: 10, color: '#888', marginLeft: 4 }}>
+            {unit}
+          </span>
+        ) : null}
+      </td>
+      <td
+        style={{
+          padding: '5px 10px',
+          fontSize: 10,
+          color: '#888',
+          fontStyle: 'italic',
+          borderBottom: '.5px solid #eee',
+        }}
+      >
+        {comment ?? ''}
+      </td>
+    </tr>
+  );
+}
+
+/** Ligne « non exposé » — grandeur intermédiaire connue de la définitive mais PAS
+ * whitelistée côté client (DoD §8). N'INVENTE jamais de valeur : l'affiche
+ * explicitement comme absente + le motif (par défaut : coefficient de calage
+ * propriétaire ; `reason` pour un motif honnête différent, ex. intermédiaire
+ * simplement non whitelisté). */
+function NotExposedRow({
+  label,
+  symbols,
+  reason,
+}: {
+  label: React.ReactNode;
+  symbols: string;
+  reason?: string;
+}) {
+  return (
+    <DetailRow
+      label={label}
+      value={
+        <span style={{ color: '#999', fontWeight: 400 }}>non exposé côté client</span>
+      }
+      comment={
+        reason ??
+        `Coefficient de calage propriétaire (${symbols}) — reste côté serveur, DoD §8`
+      }
+    />
+  );
+}
+
+interface TabDetailsProps {
+  result: CalcResult | null;
+  layers: Layer[];
+  pf: PF;
+  load: Load;
+  traffic: Traffic;
+}
+
+function TabDetails({ result, layers, pf, load, traffic }: TabDetailsProps) {
+  if (tabDetailsMode(result) === 'placeholder' || !result) {
     return (
       <PlaceholderPane
         icon="microscope"
@@ -4207,21 +4772,609 @@ function TabDetails({ result }: { result: CalcResult | null }) {
     );
   }
 
+  // Calcul non abouti (ERROR/PENDING) : jamais de rapport 9 sections — la
+  // définitive n'édite pas de rapport en erreur (sinon « NON CONFORME » factice).
+  if (tabDetailsMode(result) === 'error') {
+    const isError = result.status === 'ERROR';
+    return (
+      <div
+        role="status"
+        data-testid="details-error"
+        style={{
+          padding: '14px 18px',
+          borderRadius: 14,
+          background: isError ? '#fef2f2' : 'var(--surface-canvas)',
+          border: `1px solid ${isError ? '#fca5a5' : 'var(--border-subtle)'}`,
+          borderLeft: `4px solid ${isError ? '#dc2626' : 'var(--border-subtle)'}`,
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 700,
+            fontSize: 14,
+            color: isError ? '#991b1b' : 'var(--text-primary)',
+          }}
+        >
+          {isError ? 'Erreur moteur — calcul non abouti' : 'Calcul en attente'}
+        </div>
+        <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 4 }}>
+          {isError
+            ? 'Aucun rapport détaillé n’est disponible pour un calcul en échec. Corrigez les entrées (onglet Résultats) puis relancez le calcul.'
+            : 'Le rapport détaillé sera disponible une fois le calcul terminé.'}
+        </div>
+      </div>
+    );
+  }
+
   const output = result.output as NormalizedCalcOutput | null;
   const rows = Array.isArray(output?.rows) ? (output!.rows as CalcOutputRow[]) : [];
-  const details = Array.isArray(output?.details) ? (output!.details as CalcOutputRow[]) : [];
+  const details = Array.isArray(output?.details)
+    ? (output!.details as CalcOutputRow[])
+    : [];
+  const verdict = output?.verdict ?? 'NA';
+
+  // ── Section 1 — Données d'entrée (saisie, publique) ──────────────────────
+  const risk = resolveRisk(load);
+  const riskLabel = risk === 'auto' ? 'auto — Tableau 70' : String(risk);
+
+  // ── Section 2 — Trafic NE ──────────────────────────────────────────────────
+  const neRow = findOutputRow(rows, 'Trafic cumulé (NE)');
+  const neVal = rowNumber(neRow);
+  const Ccum = computeCcum(traffic);
+  const ezAdmRow = findOutputRow(rows, 'Déformation ε_z admissible');
+
+  // ── Section 3 — Structure des couches ───────────────────────────────────
+  const hLieRow = findOutputRow(rows, 'Épaisseur de couches liées');
+  const hTotalRow = findOutputRow(rows, 'Épaisseur totale');
+  const hTotalNum = rowNumber(hTotalRow);
+  const E1PondRow = findOutputRow(details, 'Module pondéré du paquet lié');
+  const nu1PondRow = findOutputRow(details, 'Coefficient de Poisson pondéré');
+
+  // ── Section 4 — Matrice de transfert ────────────────────────────────────
+  const mMax =
+    hTotalNum != null && hTotalNum > 0 ? 100 / Math.max(hTotalNum, load.a) : null;
+  // Paquet lié (couches liées contiguës depuis la surface) — même inférence de
+  // saisie que l'annotation « paquet lié » de la section 3 (le d.be serveur
+  // n'est pas une sortie whitelistée ; indication avant calcul).
+  let beCount = 0;
+  for (const l of layers) {
+    if (MATERIALS[l.mat]?.nature === 'granulaire') break;
+    beCount++;
+  }
+
+  // ── Section 5 — Contraintes à l'interface critique ──────────────────────
+  const sigZ0 = findOutputRow(details, 'σ_z interface critique (r=0)');
+  const sigR0 = findOutputRow(details, 'σ_r interface critique (r=0)');
+  const sigZd2 = findOutputRow(details, 'σ_z entre roues (r=d/2');
+  const sigRd2 = findOutputRow(details, 'σ_r entre roues (r=d/2');
+
+  // ── Section 6 — Déformation εt / Fatigue ────────────────────────────────
+  const etR0 = findOutputRow(details, 'ε_t sous roue (r=0)');
+  const etD2 = findOutputRow(details, 'ε_t entre roues (r=d/2)');
+  const fatigueRow =
+    findOutputRow(rows, 'Déformation sollicitante ε_t') ??
+    findOutputRow(rows, 'Contrainte sollicitante σ_t');
+  const fatigueAdmRow =
+    findOutputRow(rows, 'Déformation admissible ε_t,adm') ??
+    findOutputRow(rows, 'Contrainte admissible σ_t,adm');
+  const familleRow = findOutputRow(rows, 'Famille de structure');
+  // ε₆/σ₆ du matériau dimensionnant — grandeur publique du catalogue AGEROUTE,
+  // émise par l'adaptateur depuis fatigue.referenceCatalogue (absente sur un
+  // ancien calcul persisté → « — »). Définitive : ligne « Matériau dimensionnant ».
+  const refCatRow = findOutputRow(rows, 'Référence catalogue');
+  // Point critique retenu (définitive : « critique: r=0 » / « critique: r=d/2 »).
+  const etR0Num = rowNumber(etR0);
+  const etD2Num = rowNumber(etD2);
+  const etCritique =
+    etR0Num != null && etD2Num != null
+      ? etR0Num >= etD2Num
+        ? 'critique : r=0'
+        : 'critique : r=d/2'
+      : undefined;
+  const couchesTraitees = findAllOutputRows(details, 'σ_t couche traitée');
+  const couchesTraiteesAdm = findAllOutputRows(details, 'σ_t admissible couche');
+  const phase2Row = findAllOutputRows(rows, 'Fatigue phase 2');
+  const inverseRow = findAllOutputRows(rows, 'Structure inverse');
+
+  // ── Section 7 — Déformation admissible ──────────────────────────────────
+  const risqueEffRow = findOutputRow(details, 'Risque effectif');
+  const risqueEffNum = rowNumber(risqueEffRow);
+  const uR = risqueEffNum != null ? uRisk(risqueEffNum) : null;
+  const etAdmRow = findOutputRow(details, 'ε_t admissible');
+
+  // ── Section 8 — Déformation εz / Orniérage ──────────────────────────────
+  const ezAxe = findOutputRow(details, 'ε_z axe de roue');
+  const ezMid = findOutputRow(details, 'ε_z entre-jumelage');
+  const ezCouchesGranulaires = findAllOutputRows(details, 'ε_z sommet couche granulaire');
+  const ornieRow = findOutputRow(rows, 'Déformation ε_z sollicitante (PSC)');
+  const ornieAdmRow = findOutputRow(rows, 'Déformation ε_z admissible');
+
+  // ── Section 9 — Synthèse ─────────────────────────────────────────────────
+  const fatigueVal = rowNumber(fatigueRow);
+  const fatigueAdmVal = rowNumber(fatigueAdmRow);
+  const fatigueRatio =
+    fatigueVal != null && fatigueAdmVal != null && fatigueAdmVal > 0
+      ? fatigueVal / fatigueAdmVal
+      : null;
+  const ornieVal = rowNumber(ornieRow);
+  const ornieAdmVal = rowNumber(ornieAdmRow);
+  const ornieRatio =
+    ornieVal != null && ornieAdmVal != null && ornieAdmVal > 0
+      ? ornieVal / ornieAdmVal
+      : null;
 
   return (
     <div data-testid="tab-details">
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          borderBottom: '2px solid #1a4a7a',
+          paddingBottom: 8,
+          marginBottom: 10,
+        }}
+      >
+        <div>
+          <strong style={{ color: '#1a4a7a' }}>ROADSENS — Rapport détaillé</strong>
+          <span style={{ fontSize: 10, color: '#888', marginLeft: 8 }}>
+            Burmister Transfer Matrix (n couches exactes) · AGEROUTE Sénégal 2015
+          </span>
+        </div>
+        <strong
+          style={{
+            color:
+              verdict === 'PASS' ? '#2d6a11' : verdict === 'FAIL' ? '#c04000' : '#888',
+          }}
+        >
+          {verdict === 'PASS'
+            ? '✓ CONFORME'
+            : verdict === 'FAIL'
+              ? '✗ NON CONFORME'
+              : '— sans verdict'}
+        </strong>
+      </div>
+
+      {/* ── Coupe transversale (structure d'entrée, connue côté front) ── */}
+      <div
+        style={{
+          margin: '0 0 14px',
+          padding: '11px 13px',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 10,
+          background: 'var(--surface-base)',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: '0.5px',
+            textTransform: 'uppercase',
+            color: '#1a4a7a',
+            marginBottom: 7,
+          }}
+        >
+          Coupe transversale de la structure
+        </div>
+        <div style={{ maxWidth: 440, margin: '0 auto' }}>
+          <CrossSection layers={layers} pf={pf} load={load} />
+        </div>
+      </div>
+
+      <Note>
+        Résultats de la méthode Transfer Matrix (Burmister exact, n couches). Les
+        intermédiaires de la méthode (contraintes σ, déformations ε, modules pondérés,
+        référence catalogue ε₆/σ₆) sont exposés ci-dessous ; seuls les coefficients de
+        calage propriétaires (b, kc, kr, ks, SN, Sh, kθ) restent côté serveur (DoD §8).
+      </Note>
+
+      {/* ── Rapport structuré — 9 sections numérotées (fidèle à renderDetails()) ── */}
+      <div style={{ overflowX: 'auto', marginTop: 14 }}>
+        <table
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontSize: 11,
+            border: '1px solid #ddd',
+          }}
+          aria-label="Rapport détaillé ROADSENS — sections numérotées"
+        >
+          <tbody>
+            <DetailSectionBanner>1. Données d&#39;entrée</DetailSectionBanner>
+            <DetailRow
+              label="Pression p0"
+              value={fmtNum(load.p, 3)}
+              unit="MPa"
+              comment="Essieu 130 kN"
+            />
+            <DetailRow label="Rayon a" value={fmtNum(load.a * 100, 1)} unit="cm" />
+            <DetailRow label="Entre-axe d" value={fmtNum(load.d * 100, 0)} unit="cm" />
+            {/* Définitive : valeur = risque EFFECTIF numérique (_rE), « auto — Tableau 70 » en commentaire */}
+            <DetailRow
+              label="Risque r"
+              value={risqueEffNum != null ? fmtNum(risqueEffNum, 2) : riskLabel}
+              unit={risqueEffNum != null || risk !== 'auto' ? '%' : undefined}
+              comment={risk === 'auto' ? 'auto — Tableau 70' : undefined}
+            />
+            <DetailRow
+              label={`Plateforme ${pf.cls}`}
+              value={fmtNum(pf.E, 0)}
+              unit="MPa"
+              comment={`ν=${pf.nu}`}
+            />
+
+            <DetailSectionBanner>2. Trafic NE</DetailSectionBanner>
+            <DetailFormula>
+              NE = 365 × TMJA × C × CAM × f_dir × f_tv &nbsp; avec &nbsp; C = [(1+τ)ⁿ - 1]
+              / τ
+            </DetailFormula>
+            <DetailRow label="TMJA" value={fmtNum(traffic.T, 0)} unit="PL/j/sens" />
+            <DetailRow label="CAM" value={fmtNum(traffic.C, 2)} />
+            <DetailRow label="Durée N" value={fmtNum(traffic.N, 0)} unit="ans" />
+            <DetailRow label="Taux τ" value={fmtNum(traffic.tau, 1)} unit="%/an" />
+            <DetailRow label="C cumulatif" value={fmtNum(Ccum, 3)} />
+            <DetailRow
+              label="NE"
+              value={reportRowValue(neRow, 0)}
+              unit="essieux"
+              comment={neVal != null ? `Classe ${neClass(neVal)}` : undefined}
+            />
+            <DetailRow
+              label="ε_z,adm catalogue"
+              value={reportRowValue(ezAdmRow, 1)}
+              unit="µdef"
+              comment={
+                neVal != null
+                  ? `${neVal <= 250000 ? '0,016' : '0,012'} × NE^(-1/4,5) — ${neVal <= 250000 ? 'NE≤250 000' : 'NE>250 000'} (p.124)`
+                  : undefined
+              }
+            />
+
+            <DetailSectionBanner>3. Structure des couches</DetailSectionBanner>
+            <DetailFormula>
+              Moteur : Burmister multi-couche exact — matrice de transfert 4×4 — aucune
+              réduction Odemark
+            </DetailFormula>
+            {layers.map((l, i) => {
+              const mat = MATERIALS[l.mat];
+              return (
+                <DetailRow
+                  key={l.id}
+                  label={`Couche ${i + 1} — ${mat?.label ?? l.mat}`}
+                  value={`${(l.h * 100).toFixed(0)} cm · E=${fmtNum(l.E)} MPa · ν=${l.nu.toFixed(2)}`}
+                  comment={mat?.nature === 'granulaire' ? 'non lié' : 'paquet lié'}
+                />
+              );
+            })}
+            {/* Adaptateur en m → affichage cm (définitive : f(d.H_bit*100,2)) */}
+            <DetailRow
+              label="h paquet lié (réel)"
+              value={reportRowValue(hLieRow, 2, 100)}
+              unit="cm"
+              comment="Épaisseur physique"
+            />
+            <DetailRow
+              label="h total couches"
+              value={reportRowValue(hTotalRow, 2, 100)}
+              unit="cm"
+            />
+            <DetailRow
+              label="Ē pondérée paquet lié"
+              value={reportRowValue(E1PondRow, 0)}
+              unit="MPa"
+              comment="Moy. pondérée sur h"
+            />
+            <DetailRow
+              label="ν̄ pondérée paquet lié"
+              value={reportRowValue(nu1PondRow, 3)}
+            />
+
+            <DetailSectionBanner>4. Matrice de transfert Burmister</DetailSectionBanner>
+            <DetailFormula>
+              Pour chaque m : état_sommet = [M_top × M_bot⁻¹] × état_base (4×4 par couche)
+            </DetailFormula>
+            <DetailFormula>
+              Propagation bottom-up : PSC semi-infini → couche N → … → couche 1 → CL
+              surface
+            </DetailFormula>
+            <DetailRow
+              label="Intégration Hankel"
+              value="400 pts midpoint"
+              comment={mMax != null ? `mMax=${fmtNum(mMax, 1)} m⁻¹` : undefined}
+            />
+            <DetailRow
+              label="CL surface"
+              value="σ_z=-m·J₀(mr) · τ_rz=0"
+              comment="éq. 8a-8b Burmister I"
+            />
+            {/* Définitive : d.be couches liées/PSC — inféré ici de la saisie
+                (couches liées contiguës depuis la surface). */}
+            <DetailRow
+              label="Interface critiques"
+              value={
+                beCount > 0
+                  ? `${beCount} couche${beCount > 1 ? 's' : ''}/PSC lue(s)`
+                  : 'aucune'
+              }
+            />
+
+            <DetailSectionBanner>
+              5. Contraintes à l&#39;interface critique (base paquet lié) — Éq. 6a, 6c
+              Burmister I
+            </DetailSectionBanner>
+            <DetailRow
+              label="σ_z r=0"
+              value={reportRowValue(sigZ0, 2)}
+              unit="kPa"
+              comment="sous roue (sup. jumelage)"
+            />
+            <DetailRow
+              label="σ_r r=0"
+              value={reportRowValue(sigR0, 2)}
+              unit="kPa"
+              comment="compression + / traction -"
+            />
+            <DetailRow
+              label="σ_z r=d/2 (×2)"
+              value={reportRowValue(sigZd2, 2)}
+              unit="kPa"
+              comment="entre roues (×2)"
+            />
+            <DetailRow
+              label="σ_r r=d/2 (×2)"
+              value={reportRowValue(sigRd2, 2)}
+              unit="kPa"
+            />
+
+            <DetailSectionBanner>6. Déformation εt — Fatigue</DetailSectionBanner>
+            <DetailFormula>
+              εt = [σ_r(1-ν_i) - ν_i·σ_z] / E_i &nbsp; [µdef] &nbsp; (couche i = dernier
+              bitumineux)
+            </DetailFormula>
+            <DetailRow label="εt r=0" value={reportRowValue(etR0, 2)} unit="µdef" />
+            <DetailRow
+              label="εt r=d/2"
+              value={reportRowValue(etD2, 2)}
+              unit="µdef"
+              comment="dual wheel"
+            />
+            <DetailRow
+              label="εt / σt retenue (max)"
+              value={reportRowValue(fatigueRow, 2)}
+              unit={fatigueRow?.unit}
+              status={fatigueRow?.status}
+              comment={etCritique}
+            />
+            <DetailRow
+              label="Famille de structure"
+              value={reportRowValue(familleRow, 0)}
+              comment={`critère ε_t ${fatigueRow?.status != null ? 'EXIGÉ' : 'informatif/non exigé'} (§4.2-4.5)`}
+            />
+            {/* ε₆/σ₆ = grandeur PUBLIQUE du catalogue (déjà affichée dans la saisie
+                fatigue) ; seuls les coefficients de calage restent masqués (§8). */}
+            <DetailRow
+              label="Matériau dimensionnant"
+              value={reportRowValue(refCatRow, refCatRow?.unit === 'MPa' ? 2 : 0)}
+              unit={refCatRow?.unit}
+              comment="base du paquet lié — ε₆/σ₆ référence catalogue AGEROUTE"
+            />
+            <NotExposedRow label="Coefficients de fatigue" symbols="1/b, kc, SN, kθ" />
+            {couchesTraitees.map((r, i) => (
+              <DetailRow
+                key={`ct-${i}`}
+                label={r.label}
+                value={reportRowValue(r, 3)}
+                unit={r.unit}
+                status={r.status}
+              />
+            ))}
+            {couchesTraiteesAdm.map((r, i) => (
+              <DetailRow
+                key={`cta-${i}`}
+                label={r.label}
+                value={reportRowValue(r, 3)}
+                unit={r.unit}
+              />
+            ))}
+            {phase2Row.map((r, i) => (
+              <DetailRow
+                key={`p2-${i}`}
+                label={r.label}
+                value={reportRowValue(r, 2)}
+                unit={r.unit}
+                status={r.status}
+              />
+            ))}
+            {inverseRow.map((r, i) => (
+              <DetailRow
+                key={`inv-${i}`}
+                label={r.label}
+                value={reportRowValue(r, 3)}
+                unit={r.unit}
+                status={r.status}
+              />
+            ))}
+
+            <DetailSectionBanner>
+              Conditions d&#39;interfaces — Tableau 68 AGEROUTE
+            </DetailSectionBanner>
+            {layers.map((l, i) => {
+              const nextMat = i + 1 < layers.length ? layers[i + 1].mat : null;
+              const nom =
+                i + 1 < layers.length
+                  ? `C${i + 1} / C${i + 2}`
+                  : `C${layers.length} / PSC`;
+              const overridden = l.iface !== 'auto';
+              const auto = autoIfaceLabel(l.mat, nextMat);
+              const cond = overridden ? l.iface : auto;
+              // Motifs riches de la définitive (BC5/BC2, MTLH demi-somme, fondation/support).
+              const note = overridden
+                ? `imposée par le concepteur (auto : ${auto})`
+                : auto === 'glissante'
+                  ? 'BC5/BC2 — Tab. 68 (auto)'
+                  : auto === 'semi-collée'
+                    ? 'MTLH/MTLH — Tab. 68 (auto, demi-somme collé+glissant)'
+                    : nextMat == null
+                      ? 'fondation / support — Tab. 68 (auto)'
+                      : 'Tab. 68 (auto)';
+              return (
+                <DetailRow
+                  key={`ifc-${l.id}`}
+                  label={`Interface ${nom}`}
+                  value={cond}
+                  comment={note}
+                />
+              );
+            })}
+            {/* Définitive : ligne émise seulement si le critère phase 2 (structures
+                mixtes §4.4.1) est présent dans la sortie moteur. */}
+            {phase2Row.length > 0 ? (
+              <DetailRow
+                label="Phase 2 mixte (§4.4.1)"
+                value="glissante"
+                comment="MTLH fissuré E/5 émulé — pour le critère εt phase 2 uniquement"
+              />
+            ) : null}
+
+            <DetailSectionBanner>
+              7. Déformation admissible — formule LCPC 1994 (VI.4.2)
+            </DetailSectionBanner>
+            <DetailFormula>
+              σt_adm = σ6 × (NE/10⁶)^b × kr × kc × ks × kd &nbsp; [MPa] &nbsp; (bitumineux
+              : et_adm = e6 × kθ × (NE/10⁶)^b × kr × kc × ks)
+            </DetailFormula>
+            <DetailFormula>
+              kθ = √(E(10°C)/E(θeq)) &nbsp; kr = 10^(-u·b·δ) &nbsp; δ = √(SN² +
+              (c²/b²)·Sh²) &nbsp; c = 0,02 cm⁻¹
+            </DetailFormula>
+            <NotExposedRow
+              label="kθ, kr, kc, ks, SN, Sh, δ"
+              symbols="kθ/kr/kc/ks/SN/Sh/δ"
+            />
+            <DetailRow
+              label="Risque r"
+              value={reportRowValue(risqueEffRow, 2)}
+              unit="%"
+              comment={
+                uR != null
+                  ? `quantile u_r = ${fmtNum(uR, 3)}${risk === 'auto' ? ' · auto Tab. 70' : ''}`
+                  : undefined
+              }
+            />
+            <DetailRow
+              label="εt / σt admissible"
+              value={reportRowValue(etAdmRow ?? fatigueAdmRow, 2)}
+              unit={(etAdmRow ?? fatigueAdmRow)?.unit}
+            />
+
+            <DetailSectionBanner>
+              8. Déformation εz — Orniérage PSC (Burmister multi-couche exact)
+            </DetailSectionBanner>
+            <DetailFormula>
+              εz = [σ_z - ν_PSC·(σ_xx + σ_yy)] / E_PSC — au sommet PSC, max(axe roue,
+              entre-jumelage)
+            </DetailFormula>
+            <DetailRow
+              label="h total couches"
+              value={reportRowValue(hTotalRow, 2, 100)}
+              unit="cm"
+              comment="épaisseur réelle (sans Odemark)"
+            />
+            <NotExposedRow
+              label="σ_z / σ_r PSC (brut)"
+              symbols="σz_PSC, σr_PSC"
+              reason="Intermédiaire non whitelisté côté client (σz_PSC, σr_PSC) — reste côté serveur, DoD §8"
+            />
+            <DetailRow label="εz axe roue" value={reportRowValue(ezAxe, 2)} unit="µdef" />
+            <DetailRow
+              label="εz entre-jumelage"
+              value={reportRowValue(ezMid, 2)}
+              unit="µdef"
+            />
+            {ezCouchesGranulaires.map((r, i) => (
+              <DetailRow
+                key={`ezg-${i}`}
+                label={r.label}
+                value={reportRowValue(r, 2)}
+                unit={r.unit}
+                status={r.status}
+              />
+            ))}
+            <DetailRow
+              label="εz retenue (max)"
+              value={reportRowValue(ornieRow, 2)}
+              unit="µdef"
+              status={ornieRow?.status}
+            />
+            <DetailRow
+              label="εz admissible"
+              value={reportRowValue(ornieAdmRow, 2)}
+              unit="µdef"
+            />
+
+            <DetailSectionBanner>9. Synthèse des critères</DetailSectionBanner>
+            <DetailRow
+              label="Fatigue εt/σt"
+              value={`${reportRowValue(fatigueRow, 2)} / ${reportRowValue(fatigueAdmRow, 2)}`}
+              unit={fatigueRow?.unit}
+              comment={
+                fatigueRatio != null
+                  ? `Ratio=${fmtNum(fatigueRatio, 3)} → ${fatigueRow?.status === 'ok' ? '✓ SATISFAIT' : fatigueRow?.status === 'fail' ? '✗ NON SATISFAIT' : 'informatif'}`
+                  : undefined
+              }
+              status={fatigueRow?.status}
+            />
+            <DetailRow
+              label="Orniérage εz"
+              value={`${reportRowValue(ornieRow, 2)} / ${reportRowValue(ornieAdmRow, 2)}`}
+              unit="µdef"
+              comment={
+                ornieRatio != null
+                  ? `Ratio=${fmtNum(ornieRatio, 3)} → ${ornieRow?.status === 'ok' ? '✓ SATISFAIT' : '✗ NON SATISFAIT'}`
+                  : undefined
+              }
+              status={ornieRow?.status}
+            />
+            <DetailRow
+              label="Verdict"
+              value={
+                verdict === 'PASS'
+                  ? 'CONFORME'
+                  : verdict === 'FAIL'
+                    ? 'NON CONFORME'
+                    : '—'
+              }
+              comment={
+                verdict === 'PASS'
+                  ? 'Les deux critères sont satisfaits'
+                  : verdict === 'FAIL'
+                    ? 'Au moins un critère non satisfait'
+                    : 'Pas de verdict de conformité pour ce moteur'
+              }
+            />
+          </tbody>
+        </table>
+      </div>
+
+      <div
+        style={{
+          marginTop: 8,
+          padding: '6px 10px',
+          background: 'var(--surface-canvas)',
+          fontSize: 10,
+          color: 'var(--text-secondary)',
+          borderLeft: '3px solid #1a4a7a',
+        }}
+      >
+        Burmister J.Appl.Phys.16 (1945) · Transfer Matrix 4×4 multi-couche · LCPC/SETRA ·
+        AGEROUTE Sénégal Nov.2015 (CC1/0351/AGR)
+      </div>
+
+      {/* ── Récapitulatif à plat (rows) — table de synthèse déjà whitelistée ── */}
       <SectionTitle>
         Récapitulatif des critères — calcul n° {result.id.slice(-8)}
       </SectionTitle>
-      <Note>
-        Résultats de la méthode Transfer Matrix (Burmister exact, n couches). Les
-        intermédiaires de la méthode (contraintes σ, déformations ε, modules pondérés)
-        sont exposés ci-dessous ; seuls les coefficients de calage propriétaires (ε₆, b,
-        kc, kr, ks, Sh, kθ) restent côté serveur (DoD §8).
-      </Note>
 
       {rows.length === 0 ? (
         <div style={{ padding: '1.5rem', color: 'var(--text-secondary)', fontSize: 13 }}>
@@ -4335,13 +5488,36 @@ function TabDetails({ result }: { result: CalcResult | null }) {
           <SectionTitle>Détails de calcul — intermédiaires de la méthode</SectionTitle>
           <div style={{ overflowX: 'auto', marginTop: 14 }}>
             <table
-              style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: 12.5, background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderRadius: 12, overflow: 'hidden' }}
+              style={{
+                width: '100%',
+                borderCollapse: 'separate',
+                borderSpacing: 0,
+                fontSize: 12.5,
+                background: 'var(--surface-base)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 12,
+                overflow: 'hidden',
+              }}
               aria-label="Détails de calcul ROADSENS — intermédiaires de méthode"
             >
               <thead>
                 <tr>
                   {['Grandeur', 'Valeur', 'Unité'].map((thh) => (
-                    <th key={thh} style={{ textAlign: 'left', padding: '9px 12px', background: 'var(--surface-canvas)', fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-subtle)', whiteSpace: 'nowrap' }}>
+                    <th
+                      key={thh}
+                      style={{
+                        textAlign: 'left',
+                        padding: '9px 12px',
+                        background: 'var(--surface-canvas)',
+                        fontSize: 10,
+                        fontWeight: 600,
+                        letterSpacing: '0.05em',
+                        textTransform: 'uppercase',
+                        color: 'var(--text-secondary)',
+                        borderBottom: '1px solid var(--border-subtle)',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
                       {thh}
                     </th>
                   ))}
@@ -4349,12 +5525,43 @@ function TabDetails({ result }: { result: CalcResult | null }) {
               </thead>
               <tbody>
                 {details.map((row, i) => (
-                  <tr key={i} style={{ borderBottom: i < details.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
-                    <td style={{ padding: '8px 12px', fontWeight: 500, color: 'var(--text-primary)' }}>{row.label}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'var(--font-mono, monospace)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)' }}>
+                  <tr
+                    key={i}
+                    style={{
+                      borderBottom:
+                        i < details.length - 1
+                          ? '1px solid var(--border-subtle)'
+                          : 'none',
+                    }}
+                  >
+                    <td
+                      style={{
+                        padding: '8px 12px',
+                        fontWeight: 500,
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      {row.label}
+                    </td>
+                    <td
+                      style={{
+                        padding: '8px 12px',
+                        fontFamily: 'var(--font-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
                       {typeof row.value === 'number' ? fmtNum(row.value, 2) : row.value}
                     </td>
-                    <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontSize: 11 }}>{row.unit || '—'}</td>
+                    <td
+                      style={{
+                        padding: '8px 12px',
+                        color: 'var(--text-secondary)',
+                        fontSize: 11,
+                      }}
+                    >
+                      {row.unit || '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
