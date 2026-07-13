@@ -135,7 +135,10 @@ export class MembersService {
       // détecte le SQLSTATE applicatif ET, en repli, le marqueur stable du message
       // (l'appel se fait via $executeRaw : selon la version Prisma, meta.code peut
       // ne pas porter le SQLSTATE d'origine — on ne se fie donc pas qu'à lui).
-      if (isOneOrgViolation(err) || rawMessageIncludes(err, 'appartient deja')) {
+      if (
+        isOneOrgViolation(err) ||
+        rawMessageIncludes(err, 'appartient deja')
+      ) {
         throw new ConflictException(
           'Ce compte appartient déjà à une autre organisation',
         );

@@ -63,16 +63,20 @@ describe('engine-dispatch — moteurs GEOPLAQUE (plane-strain / axi / tri-raft)'
       const env = d!.run(c.input);
       // On compare des OBJETS porteurs du slug : en cas d'echec, le message jest montre
       // quel moteur a devie (equivalent au 2e arg de vitest, non supporte par jest).
-      expect({ slug: c.slug, ok: env.ok, engineId: env.meta.engineId }).toEqual({
-        slug: c.slug,
-        ok: true,
-        engineId: c.engineId,
-      });
+      expect({ slug: c.slug, ok: env.ok, engineId: env.meta.engineId }).toEqual(
+        {
+          slug: c.slug,
+          ok: true,
+          engineId: c.engineId,
+        },
+      );
     }
   });
 
   it('resolution inverse registryId -> dispatch coherente', () => {
-    expect(findEngineDispatchByRegistryId('plane-strain')?.run).toBe(runPlaneStrain);
+    expect(findEngineDispatchByRegistryId('plane-strain')?.run).toBe(
+      runPlaneStrain,
+    );
     expect(findEngineDispatchByRegistryId('axi-plaque')?.run).toBe(runAxi);
     expect(findEngineDispatchByRegistryId('radier-tri')?.run).toBe(runTriRaft);
   });
