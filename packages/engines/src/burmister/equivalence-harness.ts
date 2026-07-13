@@ -80,9 +80,10 @@ export function loadOriginalCompute(): {
 
   const computeHtml = (state: BurmisterInput): unknown => {
     // CALIBRATION VERROUILLEE : le referentiel n'est plus un champ d'entree (fige a
-    // AGEROUTE_MATERIALS cote module). On garde donc le `M` d'usine du HTML, qui est
-    // exactement AGEROUTE_MATERIALS — les deux cotes utilisent la meme table de
-    // reference, ce qui renforce l'equivalence-portage.
+    // AGEROUTE_MATERIALS_DEFINITIVE cote module — table unique, ADR 0013). On garde
+    // le `M` d'usine du HTML pilote, qui EST cette meme table definitive (le registre
+    // pointe desormais la reference definitive) — les deux cotes utilisent la meme
+    // table, ce qui renforce l'equivalence-portage.
     // doCalc appelle renderRes/renderDetails (DOM) : ils s'executent sur la page
     // jsdom complete (sans effet sur _D, deja calcule avant). On capture _D.
     const code = `
