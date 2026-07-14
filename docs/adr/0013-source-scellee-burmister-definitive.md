@@ -58,12 +58,17 @@ ré-exécution du moteur ni consultation du registre).
    non standard (u hors table gatée), GLc2/BQc, BC5g, `gntAuto` on/off, NE direct,
    overrides fatigue.
 4. **Traitement des PV déjà émis.** Les PV scellés sous le hash `moderne` pour des calculs
-   exécutés en mode définitive sont **ré-émis** après bascule (nouveau PV, au bon hash). Les
-   PV déjà émis ne sont **jamais réécrits** : ils restent archivés, valides au sens du sceau
-   (intégrité et origine du contenu scellé, cf. ADR 0012), mais leur `engineSourceHash` reste
-   celui du moderne — un correctif de traçabilité, pas une falsification. Un calcul en mode
-   historique non encore émis en PV au moment de la bascule est refusé à l'émission
-   (`versionDrift`, « relancez le calcul ») : comportement attendu et documenté, pas un bug.
+   exécutés en mode définitive sont remplacés après bascule par la séquence **re-calcul puis
+   émission** : on relance le calcul (nouvelle ligne `calc_results` portant la meta courante
+   42bb/2.0.0), puis on émet le PV depuis cette nouvelle ligne. Une « ré-émission » depuis
+   l'ancienne ligne re-scellerait l'ancien hash (la meta scellée est celle de la ligne
+   stockée) — elle est donc **refusée techniquement** : une garde d'émission fail-closed
+   compare la meta de source stockée à celle du recalcul courant et refuse (409, « relancez
+   le calcul ») toute émission dont la source a changé depuis le calcul, **même à sortie
+   numériquement identique** (revue adverse, CRITIQUE-1). Les PV déjà émis ne sont **jamais
+   réécrits** : ils restent archivés, valides au sens du sceau (intégrité et origine du
+   contenu scellé, cf. ADR 0012), mais leur `engineSourceHash` reste celui du moderne — un
+   correctif de traçabilité, pas une falsification.
 
 ## Alternatives écartées
 

@@ -160,6 +160,17 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
       `INSERT INTO projects (id, org_id, name, created_by_id, updated_at) VALUES ($1,$2,'P-A',$3,now()), ($4,$5,'P-B',$6,now())`,
       [projectA, orgA, engineerA, projectB, orgB, userB],
     );
+    // Abonnements (enforcement ADR 0011 : org sans souscription = 403 NoSubscription,
+    // meme pour un ENGINEER legitime) : quota large + entitlement 'burmister' pour les
+    // deux orgs — la suite teste le pipeline PV, pas l'enforcement d'abonnement.
+    await admin.query(
+      `INSERT INTO subscriptions
+         (id, org_id, pack, entitlements, date_debut, date_fin, quota, consommation, created_at, updated_at)
+       VALUES
+         ($1,$2,'ROUTES', ARRAY['burmister'], now() - interval '1 day', now() + interval '365 days', 1000, 0, now(), now()),
+         ($3,$4,'ROUTES', ARRAY['burmister'], now() - interval '1 day', now() + interval '365 days', 1000, 0, now(), now())`,
+      [randomUUID(), orgA, randomUUID(), orgB],
+    );
 
     process.env.ROADSEN_DEV_HEADERS = '0';
     process.env.NODE_ENV = 'test';
@@ -193,6 +204,20 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
           orgB,
         ]);
         await admin.query(`DELETE FROM memberships WHERE org_id IN ($1,$2)`, [
+          orgA,
+          orgB,
+        ]);
+        // usage_ledger est APPEND-ONLY (trigger) : desactivation le temps du nettoyage.
+        await admin.query(`ALTER TABLE usage_ledger DISABLE TRIGGER USER`);
+        try {
+          await admin.query(
+            `DELETE FROM usage_ledger WHERE org_id IN ($1,$2)`,
+            [orgA, orgB],
+          );
+        } finally {
+          await admin.query(`ALTER TABLE usage_ledger ENABLE TRIGGER USER`);
+        }
+        await admin.query(`DELETE FROM subscriptions WHERE org_id IN ($1,$2)`, [
           orgA,
           orgB,
         ]);
@@ -481,6 +506,38 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
     const e = await emit(token, orgA, projectA, calcId);
     // Re-execution reproduit la sortie a l'identique (round-trip JSONB) -> scelle (201).
     expect(e.status).toBe(201);
+  });
+
+  it('4quinquies) TRACABILITE : calc_result d une source moteur ANTERIEURE (hash != registre) -> emission refusee (409), meme a sortie identique', async () => {
+    // Revue adverse ADR 0013 (CRITIQUE-1) : un calcul persiste AVANT la bascule de
+    // registre porte engine_source_hash = ancienne source (259a…, HTML moderne).
+    // Si sa sortie coincide numeriquement avec le recalcul courant, le garde
+    // d'alteration (recompute == stocke) ne se declenche PAS : sans garde dediee,
+    // on scellerait un PV neuf affirmant une source incapable de reproduire le
+    // calcul. La garde de source doit refuser INCONDITIONNELLEMENT (fail-closed) :
+    // hash stocke != hash registre courant => 409 « relancez le calcul ».
+    if (!ready()) return;
+    const token = await login(emailEng());
+    const c = await calc(token, orgA, projectA, 'burmister', burmisterInput);
+    expect(c.status).toBe(201);
+    const calcId = String((c.body as { calcResultId: string }).calcResultId);
+    // Simule une ligne pre-bascule : meme sortie (le moteur n'a pas change), mais
+    // meta de source ANTERIEURE (l'ancien sha du registre, HTML moderne v1.0.0).
+    await admin!.query(
+      `UPDATE calc_results
+         SET engine_source_hash = '259a58a8ac0881b20657a34a119de6e603a0ed2895fb4fca21527f2d8cfeb8ba'
+       WHERE id = $1`,
+      [calcId],
+    );
+    const e = await emit(token, orgA, projectA, calcId);
+    expect(e.status).toBe(409);
+    // Message actionnable : relancer le calcul (jamais de PV au mauvais hash).
+    expect(JSON.stringify(e.body)).toMatch(/relancez le calcul/i);
+    const count = await admin!.query(
+      `SELECT count(*)::int AS n FROM official_pvs WHERE calc_result_id = $1`,
+      [calcId],
+    );
+    expect(Number((count.rows[0] as { n: number }).n)).toBe(0);
   });
 
   // --- 5) IMMUABILITE -------------------------------------------------------

@@ -84,7 +84,12 @@ jobs:
         # specifier de package ET le MARQUEUR texte stable (un nom de symbole est
         # minifie, pas une chaine litterale). Convention : packages/engines/README.md.
         run: |
-          if grep -rIl -e "@roadsen/engines" -e "__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__" apps/web/.next/static 2>/dev/null; then
+          # 3e motif "burIntegrateMLWithPSC" : chaine stable du HTML client de reference
+          # versionne dans packages/engines/reference/ (revue adverse ADR 0013). Ce
+          # fichier ne peut pas porter le marqueur (byte-identite exigee avec le fichier
+          # client) et n'est pas un import — un asset copie fortuitement dans le bundle
+          # echapperait aux deux motifs precedents.
+          if grep -rIl -e "@roadsen/engines" -e "__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__" -e "burIntegrateMLWithPSC" apps/web/.next/static 2>/dev/null; then
             echo "::error::Code/marqueur moteur detecte dans le bundle navigateur (apps/web/.next/static)"; exit 1
           fi
           echo "OK : aucun symbole ni marqueur moteur dans le bundle navigateur"
