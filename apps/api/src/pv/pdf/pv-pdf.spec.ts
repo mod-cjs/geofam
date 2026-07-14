@@ -19,6 +19,7 @@ import {
 } from '@roadsen/shared';
 
 import { buildPvDocDefinition, collectPvPdfText, renderPvPdf } from './pv-pdf';
+import { COLORS } from './pv-pdf.theme';
 
 const SECRET = 'secret-unitaire-pv';
 
@@ -608,3 +609,208 @@ function findRowValue(
   walk(content);
   return found;
 }
+
+/** Concatène TOUT le texte sous un nœud (stack/columns/table). Sert à lire le
+ * contenu d'un encadré repéré par sa couleur de fond. */
+function nodeText(n: unknown): string {
+  const parts: string[] = [];
+  const walk = (x: unknown): void => {
+    if (x == null) return;
+    if (typeof x === 'string') {
+      parts.push(x);
+      return;
+    }
+    if (Array.isArray(x)) {
+      x.forEach(walk);
+      return;
+    }
+    if (typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      if (typeof o.text === 'string') parts.push(o.text);
+      else if (o.text != null) walk(o.text);
+      if (o.stack) walk(o.stack);
+      if (o.columns) walk(o.columns);
+      const table = o.table as { body?: unknown } | undefined;
+      if (table?.body) walk(table.body);
+    }
+  };
+  walk(n);
+  return parts.join(' ');
+}
+
+/** Texte de TOUS les nœuds ayant un fond de couleur `fill` (test de PROÉMINENCE :
+ * un encadré coloré, pas une ligne noyée dans une table). */
+function findFilledText(content: unknown, fill: string): string[] {
+  const out: string[] = [];
+  const walk = (n: unknown): void => {
+    if (n == null) return;
+    if (Array.isArray(n)) {
+      n.forEach(walk);
+      return;
+    }
+    if (typeof n === 'object') {
+      const o = n as Record<string, unknown>;
+      if (o.fillColor === fill) out.push(nodeText(o));
+      Object.values(o).forEach(walk);
+    }
+  };
+  walk(content);
+  return out;
+}
+
+/**
+ * PV RADIER / GEOPLAQUE — complétude de la synthèse + proéminence de l'alerte de
+ * poinçonnement (lot ADR 0014). Le moteur expose désormais dans la sortie scellée
+ * les diagnostics globaux du panneau « Synthèse » de l'outil client (bilans de
+ * charge/réaction, rotations, réactions/moments extrêmes) + conditionnels
+ * Winkler/ressorts/décollement (null si option inactive) + le warning de
+ * poinçonnement (résultats NON VALIDES). Le PDF doit les rendre — sans « — »
+ * parasites sur les options inactives, et le poinçonnement en ENCADRÉ D'ALERTE.
+ */
+describe('PV radier — synthèse (ADR 0014) + alerte de poinçonnement', () => {
+  const prevSecret = process.env.PV_SIGNING_SECRET;
+  beforeAll(() => {
+    process.env.PV_SIGNING_SECRET = SECRET;
+  });
+  afterAll(() => {
+    if (prevSecret === undefined) delete process.env.PV_SIGNING_SECRET;
+    else process.env.PV_SIGNING_SECRET = prevSecret;
+  });
+
+  /** Sortie radier représentative — options Winkler/ressorts/décollement INACTIVES
+   * (conditionnels null). tassements mm, distorsions ‰ (unités TRANCHÉES). */
+  const RADIER_OUT: SealableValue = {
+    erreur: null,
+    warnings: [],
+    wMax: 6.25,
+    wMin: 1.1,
+    diff: 5.15,
+    slopeMax: 0.8,
+    tiltMax: 0.3,
+    betaIntra: 1.2,
+    betaInter: 0,
+    interDiff: 0,
+    betaGov: 1.2,
+    nRafts: 1,
+    totalLoad: 1200,
+    sumReact: 1200,
+    txMax: 0.45,
+    tyMax: 0.38,
+    pMin: 12.3,
+    pMax: 210.7,
+    mxMax: 88.2,
+    myMax: 61.4,
+    mxyMax: 15.9,
+    sumWink: null,
+    sumSpr: null,
+    decolNodes: null,
+    worstLoadPair: null,
+  };
+
+  // Message CLIENT-SAFE émis par le moteur (OVER_CAP_WARNING) — recopié verbatim.
+  const OVER_CAP =
+    "Capacite de l'interface depassee (poinconnement) : la reaction requise excede le " +
+    "seuil de plastification q_lim sans qu'un equilibre admissible soit atteint — " +
+    'resultats a considerer comme NON VALIDES. Augmenter q_lim, elargir la fondation ou ' +
+    'reduire la charge.';
+
+  it('rend la synthèse : charge/réactions, rotations θx/θy, réactions sol min/max, |Mx|/|My|/|Mxy|', () => {
+    const pv = makeSealedPv({ engineId: 'radier-plaque', output: RADIER_OUT });
+    const def = buildPvDocDefinition(pv);
+    // fdnKvRow rend « valeur unité » dans une SEULE cellule (index 1).
+    expect(findRowValue(def.content, 'Charge appliquée Σ')?.value).toMatch(
+      /kN$/,
+    );
+    expect(findRowValue(def.content, 'Σ réactions du sol')?.value).toMatch(
+      /kN$/,
+    );
+    expect(findRowValue(def.content, 'Rotation θx max')?.value).toMatch(/‰$/);
+    expect(findRowValue(def.content, 'Rotation θy max')?.value).toMatch(/‰$/);
+    expect(
+      findRowValue(def.content, 'Réaction de sol minimale')?.value,
+    ).toMatch(/kPa$/);
+    expect(
+      findRowValue(def.content, 'Réaction de sol maximale')?.value,
+    ).toMatch(/kPa$/);
+    expect(findRowValue(def.content, 'Moment |Mx| max')?.value).toMatch(
+      /kN·m\/ml$/,
+    );
+    expect(findRowValue(def.content, 'Moment |My| max')?.value).toMatch(
+      /kN·m\/ml$/,
+    );
+    expect(
+      findRowValue(def.content, 'Moment de torsion |Mxy| max')?.value,
+    ).toMatch(/kN·m\/ml$/);
+    // Valeur exacte d'une ligne (pas une sous-chaîne globale).
+    expect(findRowValue(def.content, 'Réaction de sol maximale')?.value).toBe(
+      '210,7 kPa',
+    );
+  });
+
+  it('conditionnels INACTIFS (Winkler/ressorts/décollement = null) : lignes OMISES, aucun « — » parasite', () => {
+    const pv = makeSealedPv({ engineId: 'radier-plaque', output: RADIER_OUT });
+    const def = buildPvDocDefinition(pv);
+    // La section de synthèse EST rendue (ligne non conditionnelle présente)…
+    expect(findRowValue(def.content, 'Charge appliquée Σ')).not.toBeNull();
+    // …mais les grandeurs d'options inactives sont ABSENTES (pas de ligne « — »).
+    expect(findRowValue(def.content, 'Σ réaction de Winkler')).toBeNull();
+    expect(findRowValue(def.content, 'Σ réaction des ressorts')).toBeNull();
+    expect(
+      findRowValue(def.content, 'Nœuds décollés (contact unilatéral)'),
+    ).toBeNull();
+    expect(collectPvPdfText(pv)).not.toContain('Winkler');
+  });
+
+  it('conditionnels ACTIFS : Winkler/ressorts affichés (kN) ; 0 nœud décollé RENDU (décollement actif ≠ omis)', () => {
+    const pv = makeSealedPv({
+      engineId: 'radier-plaque',
+      output: { ...RADIER_OUT, sumWink: 120.5, sumSpr: 45, decolNodes: 0 },
+    });
+    const def = buildPvDocDefinition(pv);
+    expect(findRowValue(def.content, 'Σ réaction de Winkler')?.value).toMatch(
+      /kN$/,
+    );
+    expect(findRowValue(def.content, 'Σ réaction des ressorts')?.value).toMatch(
+      /kN$/,
+    );
+    // décollement ACTIF avec 0 nœud décollé : la ligne existe et vaut « 0 »
+    // (distinct de l'option inactive, qui l'omet).
+    expect(
+      findRowValue(def.content, 'Nœuds décollés (contact unilatéral)')?.value,
+    ).toBe('0');
+  });
+
+  it('warning de poinçonnement : ENCADRÉ D’ALERTE proéminent (fond bordeaux) mentionnant NON VALIDES', () => {
+    const pv = makeSealedPv({
+      engineId: 'radier-plaque',
+      output: { ...RADIER_OUT, warnings: [OVER_CAP] },
+    });
+    const def = buildPvDocDefinition(pv);
+    const alerts = findFilledText(def.content, COLORS.alert);
+    expect(alerts.length).toBeGreaterThan(0);
+    const joined = alerts.join(' ');
+    expect(joined).toMatch(/NON VALIDES/i);
+    expect(joined).toMatch(/poincon|poinçonn/i);
+  });
+
+  it('sans warning : AUCUN encadré d’alerte (pas de faux positif)', () => {
+    const pv = makeSealedPv({ engineId: 'radier-plaque', output: RADIER_OUT });
+    const def = buildPvDocDefinition(pv);
+    expect(findFilledText(def.content, COLORS.alert)).toHaveLength(0);
+  });
+
+  it('rendu réel en Buffer : PV radier complet (synthèse + alerte + glyphes ‰/·) sans erreur', async () => {
+    const pv = makeSealedPv({
+      engineId: 'radier-plaque',
+      output: {
+        ...RADIER_OUT,
+        sumWink: 120.5,
+        sumSpr: 45,
+        decolNodes: 0,
+        warnings: [OVER_CAP],
+      },
+    });
+    const buf = await renderPvPdf(pv);
+    expect(buf.length).toBeGreaterThan(0);
+  });
+});
