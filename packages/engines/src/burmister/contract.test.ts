@@ -20,6 +20,15 @@ import { runBurmister } from './index.js';
  * Couvre : tenseur de contraintes brut, coefficients de calage de fatigue,
  * deformations intermediaires par position, et les champs internes de l'objet `_D`.
  */
+// NOTE (decision titulaire 13/07 — alignement outil client) : les grandeurs
+// AFFICHEES par l'outil client (kθ/SN/Sh/δ/kr/kc/ks/1-b, admissible r=50 %,
+// σ_z/σ_r PSC) sont desormais des VALEURS DE SORTIE whitelistees sous des cles
+// NOMMEES (details.ktheta/sn/sh_cm/delta/kr/kc/ks/ub/adm_r50/sigmaZ_psc_kpa/
+// sigmaR_psc_kpa). On RETIRE donc de la blacklist les cles de sortie autorisees
+// (`kr`, `kc`, `ks`, `ub`) ; le MECANISME reste intact et continue de MORDRE sur
+// tout symbole INTERNE non whiteliste (noms bruts _D `ukth`/`usn`/`sh`/`ukc`/`bz`,
+// tenseur `sz`/`sr`/`sth`, e6/sig...). Le calage et le code du propagateur restent
+// serveur.
 const FUITES_INTERDITES = [
   // Tenseur de contraintes brut (propagateur 4×4)
   'sz',
@@ -30,13 +39,11 @@ const FUITES_INTERDITES = [
   's0',
   'sd2',
   'bz',
-  // Coefficients de calage des lois de fatigue
-  'kr',
-  'ks',
-  'kc',
+  // Noms BRUTS internes des coefficients de calage — RESTENT interdits (les cles de
+  // sortie whitelistees portent des noms DISTINCTS : ktheta/sn/sh_cm/kc). `kr`/`ks`
+  // sont retires car la sortie whitelistee reutilise ces MEMES noms (details.kr/ks).
   'sh',
   'e6',
-  'ub',
   'ukc',
   'usn',
   'ukth',
@@ -149,7 +156,7 @@ describe('burmister — contrat de sortie (whitelist stricte, anti-fuite)', () =
     expect(() => BurmisterOutputSchema.parse(pollue)).toThrow(/[Uu]nrecognized/);
   });
 
-  it('details expose les intermediaires PUBLICS mais AUCUN coefficient de calage (rescope §8)', () => {
+  it('details expose les grandeurs de l outil client (13/07) mais AUCUN nom brut de calage (fail-closed)', () => {
     const fx = BURMISTER_FIXTURES[0];
     if (!fx) return;
     const env = runBurmister(fx.input);
@@ -160,13 +167,51 @@ describe('burmister — contrat de sortie (whitelist stricte, anti-fuite)', () =
     if (!d) return;
     // Intermediaires PUBLICS presents (methode transparente)
     for (const k of ['E1_pond', 'nu1_pond', 'epsilonZ', 'epsilonZ_adm', 'risque_pct']) {
-      expect(Object.prototype.hasOwnProperty.call(d, k), `public ${k} present`).toBe(true);
+      expect(Object.prototype.hasOwnProperty.call(d, k), `public ${k} present`).toBe(
+        true,
+      );
     }
-    // AUCUN coefficient de CALAGE ne doit apparaitre dans details (fail-closed)
+    // Grandeurs AFFICHEES par l'outil client, exposees NOMMEMENT (decision titulaire
+    // 13/07 — alignement outil client, zero ecart d'affichage).
+    for (const k of [
+      'ktheta',
+      'sn',
+      'sh_cm',
+      'delta',
+      'kr',
+      'kc',
+      'ks',
+      'ub',
+      'adm_r50',
+      'sigmaZ_psc_kpa',
+      'sigmaR_psc_kpa',
+    ]) {
+      expect(
+        Object.prototype.hasOwnProperty.call(d, k),
+        `champ client ${k} present`,
+      ).toBe(true);
+    }
+    // Le MECANISME fail-closed reste actif : AUCUN nom BRUT interne de calage (ceux
+    // dont la cle de sortie n'est PAS whitelistee) ne doit apparaitre dans details.
+    // On garde des symboles internes NON exposes -> le test MORD toujours.
     const dk = new Set<string>();
     collectKeys(d, dk);
-    const CALAGE = ['e6', 'b', 'kc', 'kr', 'ks', 'sh', 'ub', 'ukc', 'usn', 'ukth', 'sig', 'kmix', 'Kmix'];
-    expect(CALAGE.filter((k) => dk.has(k)), 'aucun coefficient de calage dans details').toEqual([]);
+    const CALAGE_INTERNE = [
+      'e6',
+      'b',
+      'ukc',
+      'usn',
+      'ukth',
+      'sh',
+      'sig',
+      'kmix',
+      'Kmix',
+      'bz',
+    ];
+    expect(
+      CALAGE_INTERNE.filter((k) => dk.has(k)),
+      'aucun nom brut de calage interne dans details',
+    ).toEqual([]);
   });
 
   it('CALIBRATION VERROUILLEE : une entree forgee portant `materials` (calibration substituee) est REJETEE (400, fail-closed)', () => {

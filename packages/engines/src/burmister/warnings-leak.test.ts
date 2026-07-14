@@ -124,7 +124,12 @@ describe('FUITE #2 — ALLOWLIST fail-closed du canal warnings (curateWarnings)'
     // Le warning non reconnu a ete ECARTE : aucun warning n'atteint le client.
     expect(env.output.warnings).toEqual([]);
     const serialized = JSON.stringify(env.output);
-    expect(serialized).not.toContain('kc');
+    // NB : depuis la decision titulaire du 13/07, `kc` est une CLE de sortie
+    // whitelistee (details.kc) — on ne peut donc plus interdire la sous-chaine nue
+    // « kc ». On cible ce qui constitue la FUITE : la VALEUR confidentielle
+    // (`kc=1.3`, `1.3`) et la reference de section privee (`§`).
+    expect(serialized).not.toContain('kc=1.3');
+    expect(serialized).not.toContain('kc=');
     expect(serialized).not.toContain('1.3');
     expect(serialized).not.toMatch(SECTION_PRIVEE);
     expect(serialized).not.toContain('§');

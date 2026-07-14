@@ -454,10 +454,26 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
  * DÉTAILS DE CALCUL burmister — intermédiaires de MÉTHODE PUBLICS (rescope §8
  * « méthode transparente »). Lit UNIQUEMENT les champs NOMMÉS de `o.details`
  * (déjà whitelistés par `DetailsSchema` côté serveur) ; fail-closed : aucune
- * copie d'objet brut, JAMAIS de coefficient de calage (ε₆/b/kc/kr/ks/Sh/kθ).
+ * copie d'objet brut.
+ *
+ * Décision titulaire 13/07 (« zéro écart » avec la définitive du client) : les
+ * coefficients de méthode kθ/SN/Sh/δ/kr/kc/ks/1/b, l'admissible à r=50 % et
+ * σ_z/σ_r PSC sont désormais exposés eux aussi (ne sont plus masqués « non
+ * exposé côté client »). Ce sont des RÉSULTATS intermédiaires PUBLICS de la
+ * méthode LCPC 1994/AGEROUTE 2015 — le DoD §8 protège le CODE du moteur (son
+ * implémentation), pas ces nombres, déjà affichés en clair par l'outil de
+ * référence du client.
  */
 function buildBurmisterDetails(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
+  // Structure rigide (σt en MPa) vs souple (εt en μdef) — même dérivation que
+  // buildBurmisterRows ; nécessaire pour l'unité de « Adm. fatigue r=50 % ».
+  const fRaw = o.fatigue;
+  const fRigide =
+    fRaw != null &&
+    typeof fRaw === 'object' &&
+    (fRaw as { rigide?: unknown }).rigide === true;
+
   // Intermédiaires de méthode (o.details) — présents en fonctionnement normal,
   // absents sur le chemin d'erreur. Le détail PAR COUCHE (couchesTraitees /
   // couchesGranulaires) est INDÉPENDANT de cet objet (champs de sortie racine).
@@ -481,6 +497,22 @@ function buildBurmisterDetails(o: Record<string, unknown>): CalcOutputRow[] {
     pushRow(rows, 'ε_z entre-jumelage', g.epsilonZ_mid, 'μdef');
     pushRow(rows, 'ε_z retenue (max)', g.epsilonZ, 'μdef');
     pushRow(rows, 'ε_z admissible', g.epsilonZ_adm, 'μdef');
+
+    // Coefficients de MÉTHODE, désormais exposés (cf. docstring ci-dessus). Labels
+    // choisis pour n'être JAMAIS préfixe d'un autre label (garde-fou fail-closed de
+    // `findOutputRow`, qui matche par préfixe) — en particulier « Adm. fatigue
+    // r=50 % » ne doit jamais collisionner avec « ε_t admissible ».
+    pushRow(rows, 'kθ température', g.ktheta, '');
+    pushRow(rows, 'SN', g.sn, '');
+    pushRow(rows, 'Sh', g.sh_cm, 'cm');
+    pushRow(rows, 'δ', g.delta, '');
+    pushRow(rows, 'kr risque', g.kr, '');
+    pushRow(rows, 'kc calage', g.kc, '');
+    pushRow(rows, 'ks support', g.ks, '');
+    pushRow(rows, '1/b', g.ub, '');
+    pushRow(rows, 'Adm. fatigue r=50 %', g.adm_r50, fRigide ? 'MPa' : 'μdef');
+    pushRow(rows, 'σ_z PSC', g.sigmaZ_psc_kpa, 'kPa');
+    pushRow(rows, 'σ_r PSC', g.sigmaR_psc_kpa, 'kPa');
   }
 
   // σ_t PAR COUCHE traitée + mode d'interface (Tab. 68) — lecture de champs NOMMÉS

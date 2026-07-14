@@ -604,3 +604,187 @@ describe('adaptCalcResult — ε₆/σ₆ référence catalogue (grandeur publiq
     expect(out.rows.some((r) => r.label.startsWith('Référence catalogue'))).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// buildBurmisterDetails — intermédiaires de méthode « détails transparents »
+// (décision titulaire 13/07, zéro écart d'affichage avec la définitive : kθ, SN,
+// Sh, δ, kr, kc, ks, 1/b, l'admissible à r=50 %, et σ_z/σ_r PSC ne sont plus
+// masqués « non exposé côté client » — ce sont des RÉSULTATS de méthode publics,
+// pas le code du moteur). Contrat moteur (chantier parallèle, mocké ici) :
+// details.{ktheta,sn,sh_cm,delta,kr,kc,ks,ub,adm_r50,sigmaZ_psc_kpa,sigmaR_psc_kpa}.
+// ---------------------------------------------------------------------------
+
+const METHODE_DETAILS = {
+  E1_pond: 2100,
+  nu1_pond: 0.4,
+  E_psc: 50,
+  nu_psc: 0.35,
+  risque_pct: 10,
+  sigmaZ_r0: -450.2,
+  sigmaR_r0: 210.5,
+  ktheta: 0.923,
+  sn: 0.25,
+  sh_cm: 1.5,
+  delta: 0.2734,
+  kr: 0.7452,
+  kc: 1.3,
+  ks: 1.065,
+  ub: 5,
+  adm_r50: 130.4,
+  sigmaZ_psc_kpa: -62.18,
+  sigmaR_psc_kpa: 12.03,
+};
+
+describe('buildBurmisterDetails — coefficients de méthode exposés (décision titulaire 13/07)', () => {
+  it('given details complets (structure souple), then kθ/SN/Sh/δ/kr/kc/ks/1/b et Adm. fatigue r=50 % (μdef) sont poussés en details', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            fatigue: { ...LIVE_BURMISTER_OUTPUT.fatigue, rigide: false },
+            details: METHODE_DETAILS,
+          },
+        }),
+      ).output,
+    );
+    const details = out.details ?? [];
+
+    const kth = details.find((r) => r.label === 'kθ température');
+    expect(kth?.value).toBe(0.923);
+    expect(kth?.unit).toBe('');
+
+    const sn = details.find((r) => r.label === 'SN');
+    expect(sn?.value).toBe(0.25);
+
+    const sh = details.find((r) => r.label === 'Sh');
+    expect(sh?.value).toBe(1.5);
+    expect(sh?.unit).toBe('cm');
+
+    const delta = details.find((r) => r.label === 'δ');
+    expect(delta?.value).toBe(0.2734);
+
+    const kr = details.find((r) => r.label === 'kr risque');
+    expect(kr?.value).toBe(0.7452);
+
+    const kc = details.find((r) => r.label === 'kc calage');
+    expect(kc?.value).toBe(1.3);
+
+    const ks = details.find((r) => r.label === 'ks support');
+    expect(ks?.value).toBe(1.065);
+
+    const ub = details.find((r) => r.label === '1/b');
+    expect(ub?.value).toBe(5);
+
+    // Souple : unité μdef (comme la ligne « ε_t admissible » existante).
+    const admR50 = details.find((r) => r.label === 'Adm. fatigue r=50 %');
+    expect(admR50?.value).toBe(130.4);
+    expect(admR50?.unit).toBe('μdef');
+
+    const sigZ = details.find((r) => r.label === 'σ_z PSC');
+    expect(sigZ?.value).toBe(-62.18);
+    expect(sigZ?.unit).toBe('kPa');
+
+    const sigR = details.find((r) => r.label === 'σ_r PSC');
+    expect(sigR?.value).toBe(12.03);
+    expect(sigR?.unit).toBe('kPa');
+  });
+
+  it('given structure rigide (fatigue.rigide=true), then « Adm. fatigue r=50 % » est en MPa (unité de la fatigue rigide)', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            fatigue: {
+              ok: true,
+              requis: true,
+              rigide: true,
+              valeur: 0.61,
+              admissible: 0.7,
+            },
+            details: METHODE_DETAILS,
+          },
+        }),
+      ).output,
+    );
+    const admR50 = (out.details ?? []).find((r) => r.label === 'Adm. fatigue r=50 %');
+    expect(admR50?.value).toBe(130.4);
+    expect(admR50?.unit).toBe('MPa');
+  });
+
+  it('SENTINELLE anti-collision : « Adm. fatigue r=50 % » et « ε_t admissible » sont deux lignes DISTINCTES (pas de préfixe commun, pas de collision findOutputRow)', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            details: { ...METHODE_DETAILS, epsilonT_adm: 96.4 },
+          },
+        }),
+      ).output,
+    );
+    const details = out.details ?? [];
+    const etAdm = details.find((r) => r.label === 'ε_t admissible');
+    const admR50 = details.find((r) => r.label === 'Adm. fatigue r=50 %');
+    expect(etAdm?.value).toBe(96.4);
+    expect(admR50?.value).toBe(130.4);
+    // Aucun des deux labels n'est un préfixe de l'autre (protège findOutputRow, qui
+    // fait une recherche par préfixe — cf. page.tsx `findOutputRow`).
+    expect(admR50!.label.startsWith(etAdm!.label)).toBe(false);
+    expect(etAdm!.label.startsWith(admR50!.label)).toBe(false);
+  });
+
+  it('given un ancien calcul persisté (details SANS les nouveaux champs), then aucune ligne kθ/SN/Sh/δ/kr/kc/ks/1/b/Adm. r=50%/σPSC — pas de crash, pas de NaN', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            details: {
+              E1_pond: 2100,
+              nu1_pond: 0.4,
+              E_psc: 50,
+              nu_psc: 0.35,
+              risque_pct: 10,
+              sigmaZ_r0: -450.2,
+              sigmaR_r0: 210.5,
+            },
+          },
+        }),
+      ).output,
+    );
+    const details = out.details ?? [];
+    const NEW_LABELS = [
+      'kθ température',
+      'SN',
+      'Sh',
+      'δ',
+      'kr risque',
+      'kc calage',
+      'ks support',
+      'Adm. fatigue r=50 %',
+      'σ_z PSC',
+      'σ_r PSC',
+      '1/b',
+    ];
+    for (const label of NEW_LABELS) {
+      expect(details.some((r) => r.label === label)).toBe(false);
+    }
+    // Aucun NaN/valeur non finie n'a pu se glisser dans les lignes déjà présentes.
+    expect(
+      details.every((r) => typeof r.value !== 'number' || Number.isFinite(r.value)),
+    ).toBe(true);
+  });
+
+  it('given output.details ABSENT (calcul très ancien), then aucune ligne de méthode et pas de crash', () => {
+    const raw = makeRaw({
+      output: { ...LIVE_BURMISTER_OUTPUT, details: undefined },
+    });
+    expect(() => adaptCalcResult(raw)).not.toThrow();
+    const out = asNormalized(adaptCalcResult(raw).output);
+    expect(out.details ?? []).toEqual(
+      expect.not.arrayContaining([expect.objectContaining({ label: 'kr risque' })]),
+    );
+  });
+});

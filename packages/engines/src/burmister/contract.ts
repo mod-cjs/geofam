@@ -506,9 +506,19 @@ const CoucheGranulaireSchema = z
  * DETAILS DE CALCUL — intermediaires de la METHODE PUBLIEE (rescope §8
  * « methode transparente », decision titulaire). On expose les grandeurs
  * calculees de la methode Burmister/LCPC (contraintes sigma, deformations
- * epsilon intermediaires, modules ponderes) ; on n'expose JAMAIS les
- * coefficients de CALAGE proprietaires (e6, b, kc, kr, ks, Sh, ktheta, delta),
- * qui restent serveur. Objet FACULTATIF (absent en cas d'erreur de calcul).
+ * epsilon intermediaires, modules ponderes).
+ *
+ * ALIGNEMENT OUTIL CLIENT (decision titulaire 13/07 — « zero ecart d'affichage,
+ * le code moteur reste serveur ») : l'outil client (renderDetails du HTML
+ * definitif, l.1519-1573) AFFICHE en clair les coefficients LCPC de la formule de
+ * fatigue et les contraintes au sommet PSC. Pour ne laisser AUCUN ecart entre
+ * l'app et l'outil de reference, on expose desormais ces grandeurs comme VALEURS
+ * DE SORTIE (kθ, SN, Sh, δ, kr, kc, ks, 1/b, admissible a r=50 %, σ_z/σ_r PSC).
+ * Ce sont des VALEURS produites par la methode publiee, pas la methode elle-meme :
+ * le CALAGE (tables e6/σ6/b par materiau, θ_eq...) et le CODE du propagateur
+ * restent SERVEUR (jamais exposes). Les intermediaires bruts NON affiches par
+ * l'outil client (tenseur sz/sr/sth par interface, et0/etM, discriminant Kmix...)
+ * restent non whitelistes. Objet FACULTATIF (absent en cas d'erreur de calcul).
  */
 const DetailsSchema = z
   .object({
@@ -529,6 +539,30 @@ const DetailsSchema = z
     epsilonZ_mid: z.number().finite().nullable(),
     epsilonZ: z.number().finite(),
     epsilonZ_adm: z.number().finite(),
+    // --- Alignement outil client (decision titulaire 13/07) — grandeurs de la
+    // formule LCPC 1994 (VI.4.2) telles qu'AFFICHEES par renderDetails ---
+    /** kθ temperature (d.ukth) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    ktheta: z.number().finite().nullable(),
+    /** SN, ecart-type des essais de fatigue (d.usn) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    sn: z.number().finite().nullable(),
+    /** Sh (cm), ecart-type de construction (d.sh) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    sh_cm: z.number().finite().nullable(),
+    /** δ = √(SN² + (0,02·|b|·Sh)²) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    delta: z.number().finite().nullable(),
+    /** kr, coefficient de risque (d.kr) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    kr: z.number().finite().nullable(),
+    /** kc, coefficient de calage (d.ukc) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    kc: z.number().finite().nullable(),
+    /** ks, coefficient de discontinuite/support (d.ks) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    ks: z.number().finite().nullable(),
+    /** 1/b, inverse de la pente de la loi de fatigue (d.ub) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    ub: z.number().finite().nullable(),
+    /** et_adm / st_adm a r=50 % (e50 = e6·kθ·(1e6/NE)^(1/b)·kc·ks, kr=1) — meme unite que fatigue.admissible (µdef bitumineux / MPa rigide) ; null si aucune couche dimensionnante — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    adm_r50: z.number().finite().nullable(),
+    /** σ_z au sommet PSC en kPa (d.bz.sz·1000) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    sigmaZ_psc_kpa: z.number().finite().nullable(),
+    /** σ_r au sommet PSC en kPa (d.bz.sr·1000) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    sigmaR_psc_kpa: z.number().finite().nullable(),
   })
   .strict();
 

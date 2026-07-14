@@ -33,6 +33,9 @@ import {
   CAT,
   reportRowValue,
   tabDetailsMode,
+  buildKrComment,
+  buildMaterialComment,
+  buildAdmissibleAvecKrComment,
 } from '../page';
 
 import { adaptCalcResult } from '@/lib/api/adapters';
@@ -1191,5 +1194,79 @@ describe("tabDetailsMode — garde erreur de l'onglet Détails (M3)", () => {
 
   it("given status PENDING (calcul non abouti, sans sortie), then mode « error » plutôt qu'un rapport vide", () => {
     expect(tabDetailsMode({ status: 'PENDING' })).toBe('error');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildKrComment / buildMaterialComment / buildAdmissibleAvecKrComment —
+// commentaires composés section 6/7 du rapport détaillé (décision titulaire
+// 13/07, zéro écart d'affichage : les coefficients de méthode kθ/kr/kc/ks/SN/Sh/δ
+// sont désormais exposés). Fidèles aux formules de la définitive
+// (packages/engines/reference/roadsens_burmister_definitive.html:1519,1555,1560).
+// ---------------------------------------------------------------------------
+
+describe('buildKrComment — commentaire « kr risque » (formule composée avec les valeurs réelles)', () => {
+  it('given u_r/δ/1÷b connus, then la formule est composée fidèlement à la définitive', () => {
+    expect(buildKrComment(1.282, 0.2734, 5)).toBe('10^(-1,282×0,2734/5)');
+  });
+
+  it('given u_r manquant (ancien calcul), then undefined (jamais de formule à trous)', () => {
+    expect(buildKrComment(null, 0.2734, 5)).toBeUndefined();
+  });
+
+  it('given δ manquant, then undefined', () => {
+    expect(buildKrComment(1.282, null, 5)).toBeUndefined();
+  });
+
+  it('given 1/b manquant, then undefined', () => {
+    expect(buildKrComment(1.282, 0.2734, null)).toBeUndefined();
+  });
+});
+
+describe('buildMaterialComment — commentaire « Matériau dimensionnant » (section 6)', () => {
+  it('given structure SOUPLE (kθ pertinent) avec tous les intermédiaires, then kθ apparaît dans le commentaire', () => {
+    expect(buildMaterialComment(5, 1.3, 0.25, 0.923, true)).toBe(
+      'base du paquet lié · 1/b=5 kc=1,3 SN=0,25 kθ=0,923',
+    );
+  });
+
+  it('given structure RIGIDE (souple=false), then kθ est OMIS du commentaire (formule σt_adm sans kθ)', () => {
+    expect(buildMaterialComment(16, 1.5, 0.2, 0.923, false)).toBe(
+      'base du paquet lié · 1/b=16 kc=1,5 SN=0,2',
+    );
+  });
+
+  it('given un ancien calcul persisté (1/b manquant), then commentaire générique de repli (jamais de formule à trous)', () => {
+    expect(buildMaterialComment(null, 1.3, 0.25, 0.923, true)).toBe(
+      'base du paquet lié — ε₆/σ₆ référence catalogue AGEROUTE',
+    );
+  });
+
+  it('given kc manquant, then commentaire générique de repli', () => {
+    expect(buildMaterialComment(5, null, 0.25, 0.923, true)).toBe(
+      'base du paquet lié — ε₆/σ₆ référence catalogue AGEROUTE',
+    );
+  });
+
+  it('given SN manquant, then commentaire générique de repli', () => {
+    expect(buildMaterialComment(5, 1.3, null, 0.923, true)).toBe(
+      'base du paquet lié — ε₆/σ₆ référence catalogue AGEROUTE',
+    );
+  });
+
+  it('given souple=true mais kθ manquant (ancien calcul partiel), then kθ omis sans faire planter le reste du commentaire', () => {
+    expect(buildMaterialComment(5, 1.3, 0.25, null, true)).toBe(
+      'base du paquet lié · 1/b=5 kc=1,3 SN=0,25',
+    );
+  });
+});
+
+describe('buildAdmissibleAvecKrComment — commentaire « avec kr=... » (admissible au risque effectif)', () => {
+  it('given kr connu, then le commentaire reprend la valeur (fidèle à la définitive)', () => {
+    expect(buildAdmissibleAvecKrComment(0.7452)).toBe('avec kr=0,7452');
+  });
+
+  it('given kr absent (ancien calcul), then undefined', () => {
+    expect(buildAdmissibleAvecKrComment(null)).toBeUndefined();
   });
 });

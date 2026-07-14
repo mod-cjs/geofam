@@ -1224,6 +1224,52 @@ export function reportRowValue(
   });
 }
 
+/**
+ * Commentaire du coefficient « kr risque » (section 7) — composé avec les VALEURS
+ * réelles, fidèle à la définitive (`"10^(-"+f(u_r,3)+"×"+f(dlt,4)+"/"+d.ub+")"`).
+ * `null` si un intermédiaire manque (ancien calcul persisté sans ces champs) —
+ * jamais de formule à trous affichée. EXPORTÉ pour tests DoD §9.
+ */
+export function buildKrComment(
+  uR: number | null,
+  delta: number | null,
+  ub: number | null,
+): string | undefined {
+  if (uR == null || delta == null || ub == null) return undefined;
+  return `10^(-${fmtNum(uR, 3)}×${fmtNum(delta, 4)}/${fmtNum(ub, 0)})`;
+}
+
+/**
+ * Commentaire du « Matériau dimensionnant » (section 6) — composé comme la
+ * définitive : `"base du paquet lié · 1/b="+d.ub+"  kc="+d.ukc+"  SN="+d.usn+
+ * (d.sig?"":"  kθ="+f(d.ukth,3))"` — kθ seulement pour une structure SOUPLE
+ * (les structures rigides utilisent σt_adm, qui ne fait pas intervenir kθ).
+ * Fallback générique si un intermédiaire manque (ancien calcul persisté).
+ * EXPORTÉ pour tests DoD §9.
+ */
+export function buildMaterialComment(
+  ub: number | null,
+  kc: number | null,
+  sn: number | null,
+  ktheta: number | null,
+  souple: boolean,
+): string {
+  if (ub == null || kc == null || sn == null) {
+    return 'base du paquet lié — ε₆/σ₆ référence catalogue AGEROUTE';
+  }
+  const kth = souple && ktheta != null ? ` kθ=${fmtNum(ktheta, 3)}` : '';
+  return `base du paquet lié · 1/b=${fmtNum(ub, 0)} kc=${fmtNum(kc, 2)} SN=${fmtNum(sn, 2)}${kth}`;
+}
+
+/**
+ * Commentaire de la ligne « εt / σt admissible » (au risque EFFECTIF, section 7)
+ * — fidèle à la définitive (`"avec kr="+f(d.kr,4)`). `null` sans kr connu (ancien
+ * calcul). EXPORTÉ pour tests DoD §9.
+ */
+export function buildAdmissibleAvecKrComment(kr: number | null): string | undefined {
+  return kr != null ? `avec kr=${fmtNum(kr, 4)}` : undefined;
+}
+
 /** Garde de l'onglet Détails : la définitive n'édite JAMAIS de rapport pour un
  * calcul en échec — un statut ≠ DONE affiche le message d'échec, pas les 9
  * sections (sinon rapport « NON CONFORME » factice à zéros). EXPORTÉ pour tests. */
@@ -4725,34 +4771,6 @@ function DetailRow({
   );
 }
 
-/** Ligne « non exposé » — grandeur intermédiaire connue de la définitive mais PAS
- * whitelistée côté client (DoD §8). N'INVENTE jamais de valeur : l'affiche
- * explicitement comme absente + le motif (par défaut : coefficient de calage
- * propriétaire ; `reason` pour un motif honnête différent, ex. intermédiaire
- * simplement non whitelisté). */
-function NotExposedRow({
-  label,
-  symbols,
-  reason,
-}: {
-  label: React.ReactNode;
-  symbols: string;
-  reason?: string;
-}) {
-  return (
-    <DetailRow
-      label={label}
-      value={
-        <span style={{ color: '#999', fontWeight: 400 }}>non exposé côté client</span>
-      }
-      comment={
-        reason ??
-        `Coefficient de calage propriétaire (${symbols}) — reste côté serveur, DoD §8`
-      }
-    />
-  );
-}
-
 interface TabDetailsProps {
   result: CalcResult | null;
   layers: Layer[];
@@ -4875,6 +4893,28 @@ function TabDetails({ result, layers, pf, load, traffic }: TabDetailsProps) {
   const couchesTraiteesAdm = findAllOutputRows(details, 'σ_t admissible couche');
   const phase2Row = findAllOutputRows(rows, 'Fatigue phase 2');
   const inverseRow = findAllOutputRows(rows, 'Structure inverse');
+  // Structure rigide (σt, MPa) vs souple (εt, μdef) — kθ n'intervient que côté
+  // souple (formule σt_adm n'a pas de terme kθ). Même patron que l'adaptateur.
+  const fatigueRigide = fatigueRow?.label.startsWith('Contrainte') ?? false;
+
+  // ── Coefficients de méthode (kθ, SN, Sh, δ, kr, kc, ks, 1/b) — exposés
+  // (décision titulaire 13/07, zéro écart d'affichage) : ce sont des résultats
+  // de méthode PUBLICS, pas le code du moteur (DoD §8 protège l'algorithme).
+  const kthetaRow = findOutputRow(details, 'kθ température');
+  const snRow = findOutputRow(details, 'SN');
+  const shRow = findOutputRow(details, 'Sh');
+  const deltaRow = findOutputRow(details, 'δ');
+  const krRow = findOutputRow(details, 'kr risque');
+  const kcRow = findOutputRow(details, 'kc calage');
+  const ksRow = findOutputRow(details, 'ks support');
+  const ubRow = findOutputRow(details, '1/b');
+  const admR50Row = findOutputRow(details, 'Adm. fatigue r=50 %');
+  const kthetaNum = rowNumber(kthetaRow);
+  const snNum = rowNumber(snRow);
+  const deltaNum = rowNumber(deltaRow);
+  const krNum = rowNumber(krRow);
+  const kcNum = rowNumber(kcRow);
+  const ubNum = rowNumber(ubRow);
 
   // ── Section 7 — Déformation admissible ──────────────────────────────────
   const risqueEffRow = findOutputRow(details, 'Risque effectif');
@@ -4888,6 +4928,8 @@ function TabDetails({ result, layers, pf, load, traffic }: TabDetailsProps) {
   const ezCouchesGranulaires = findAllOutputRows(details, 'ε_z sommet couche granulaire');
   const ornieRow = findOutputRow(rows, 'Déformation ε_z sollicitante (PSC)');
   const ornieAdmRow = findOutputRow(rows, 'Déformation ε_z admissible');
+  const sigZpscRow = findOutputRow(details, 'σ_z PSC');
+  const sigRpscRow = findOutputRow(details, 'σ_r PSC');
 
   // ── Section 9 — Synthèse ─────────────────────────────────────────────────
   const fatigueVal = rowNumber(fatigueRow);
@@ -4963,10 +5005,13 @@ function TabDetails({ result, layers, pf, load, traffic }: TabDetailsProps) {
       </div>
 
       <Note>
-        Résultats de la méthode Transfer Matrix (Burmister exact, n couches). Les
-        intermédiaires de la méthode (contraintes σ, déformations ε, modules pondérés,
-        référence catalogue ε₆/σ₆) sont exposés ci-dessous ; seuls les coefficients de
-        calage propriétaires (b, kc, kr, ks, SN, Sh, kθ) restent côté serveur (DoD §8).
+        Résultats de la méthode Transfer Matrix (Burmister exact, n couches). Tous les
+        intermédiaires affichés par l&#39;outil de référence du client sont reproduits
+        ci-dessous (contraintes σ, déformations ε, modules pondérés, référence catalogue
+        ε₆/σ₆, coefficients kθ/SN/Sh/δ/kr/kc/ks/1÷b) — décision titulaire du 13/07/2026
+        (zéro écart d&#39;affichage). Seul le CODE du moteur (son implémentation) reste
+        exclusivement côté serveur (DoD §8) : ce sont des résultats de méthode, jamais
+        l&#39;algorithme.
       </Note>
 
       {/* ── Rapport structuré — 9 sections numérotées (fidèle à renderDetails()) ── */}
@@ -5152,14 +5197,20 @@ function TabDetails({ result, layers, pf, load, traffic }: TabDetailsProps) {
               comment={`critère ε_t ${fatigueRow?.status != null ? 'EXIGÉ' : 'informatif/non exigé'} (§4.2-4.5)`}
             />
             {/* ε₆/σ₆ = grandeur PUBLIQUE du catalogue (déjà affichée dans la saisie
-                fatigue) ; seuls les coefficients de calage restent masqués (§8). */}
+                fatigue) ; commentaire composé avec 1/b, kc, SN (et kθ si souple),
+                fidèle à la définitive (décision titulaire 13/07, zéro écart). */}
             <DetailRow
               label="Matériau dimensionnant"
               value={reportRowValue(refCatRow, refCatRow?.unit === 'MPa' ? 2 : 0)}
               unit={refCatRow?.unit}
-              comment="base du paquet lié — ε₆/σ₆ référence catalogue AGEROUTE"
+              comment={buildMaterialComment(
+                ubNum,
+                kcNum,
+                snNum,
+                kthetaNum,
+                !fatigueRigide,
+              )}
             />
-            <NotExposedRow label="Coefficients de fatigue" symbols="1/b, kc, SN, kθ" />
             {couchesTraitees.map((r, i) => (
               <DetailRow
                 key={`ct-${i}`}
@@ -5248,9 +5299,10 @@ function TabDetails({ result, layers, pf, load, traffic }: TabDetailsProps) {
               kθ = √(E(10°C)/E(θeq)) &nbsp; kr = 10^(-u·b·δ) &nbsp; δ = √(SN² +
               (c²/b²)·Sh²) &nbsp; c = 0,02 cm⁻¹
             </DetailFormula>
-            <NotExposedRow
-              label="kθ, kr, kc, ks, SN, Sh, δ"
-              symbols="kθ/kr/kc/ks/SN/Sh/δ"
+            <DetailRow
+              label="kθ température"
+              value={reportRowValue(kthetaRow, 3)}
+              comment="√(E(10°C)/E(θeq)) — θ_éq=34°C (AGEROUTE)"
             />
             <DetailRow
               label="Risque r"
@@ -5263,9 +5315,51 @@ function TabDetails({ result, layers, pf, load, traffic }: TabDetailsProps) {
               }
             />
             <DetailRow
+              label="SN"
+              value={reportRowValue(snRow, 2)}
+              comment="écart-type essais fatigue"
+            />
+            <DetailRow
+              label="Sh"
+              value={reportRowValue(shRow, 2)}
+              unit="cm"
+              comment={load.sh !== 'auto' ? 'manuel' : 'auto — Tab. VI.2.4 / 3 cm MTLH'}
+            />
+            <DetailRow
+              label="δ"
+              value={reportRowValue(deltaRow, 4)}
+              comment="√(SN² + (0,02·Sh/|b|)²)"
+            />
+            <DetailRow
+              label="kr risque"
+              value={reportRowValue(krRow, 4)}
+              comment={buildKrComment(uR, deltaNum, ubNum)}
+            />
+            <DetailRow
+              label="kc calage"
+              value={reportRowValue(kcRow, 2)}
+              comment="VI.4.2 : GB=1,3 · BB=1,1 · EME=1,0 · MTLH=1,4-1,5"
+            />
+            <DetailRow
+              label="ks support"
+              value={reportRowValue(ksRow, 4)}
+              comment={
+                load.ks !== 'auto'
+                  ? 'manuel'
+                  : 'auto — Tab. 69 : <50→1/1,2 · 50-80→1/1,1 · 80-120→1/1,065 · ≥120→1'
+              }
+            />
+            <DetailRow
+              label={fatigueRigide ? 'st_adm r=50%' : 'et_adm r=50%'}
+              value={reportRowValue(admR50Row, fatigueRigide ? 3 : 2)}
+              unit={fatigueRigide ? 'MPa' : 'µdef'}
+              comment="kr=1 (u=0)"
+            />
+            <DetailRow
               label="εt / σt admissible"
               value={reportRowValue(etAdmRow ?? fatigueAdmRow, 2)}
               unit={(etAdmRow ?? fatigueAdmRow)?.unit}
+              comment={buildAdmissibleAvecKrComment(krNum)}
             />
 
             <DetailSectionBanner>
@@ -5281,11 +5375,13 @@ function TabDetails({ result, layers, pf, load, traffic }: TabDetailsProps) {
               unit="cm"
               comment="épaisseur réelle (sans Odemark)"
             />
-            <NotExposedRow
-              label="σ_z / σ_r PSC (brut)"
-              symbols="σz_PSC, σr_PSC"
-              reason="Intermédiaire non whitelisté côté client (σz_PSC, σr_PSC) — reste côté serveur, DoD §8"
+            <DetailRow
+              label="σ_z PSC"
+              value={reportRowValue(sigZpscRow, 2)}
+              unit="kPa"
+              comment="sommet PSC — Burmister exact"
             />
+            <DetailRow label="σ_r PSC" value={reportRowValue(sigRpscRow, 2)} unit="kPa" />
             <DetailRow label="εz axe roue" value={reportRowValue(ezAxe, 2)} unit="µdef" />
             <DetailRow
               label="εz entre-jumelage"
