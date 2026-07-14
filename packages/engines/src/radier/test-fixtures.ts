@@ -220,6 +220,28 @@ export const RADIER_FIXTURES: readonly RadierFixture[] = [
       opts: { mesh: 1.0, qLim: 120, decol: true },
     }),
   },
+  {
+    id: 'qlim-overcap-poinconnement',
+    description:
+      'Radier 6×6, charge 5000 kN concentrée + qLim=20 kPa insuffisant + décollement → ' +
+      'poinçonnement (overCap : plus aucun nœud actif, résultats NON VALIDES)',
+    input: base({
+      pointLoads: [{ x: 3, y: 3, Fz: 5000 }],
+      opts: { mesh: 1.0, qLim: 20, decol: true },
+    }),
+  },
+  {
+    id: 'ressorts-ponctuels-seuls',
+    description:
+      'Radier 6×6, charge centrée + ressorts PONCTUELS seuls (branche sprOn sans ressort linéique)',
+    input: base({
+      pointLoads: [{ x: 3, y: 3, Fz: 900 }],
+      pointSprings: [
+        { x: 1.5, y: 1.5, k: 25000 },
+        { x: 4.5, y: 4.5, k: 25000 },
+      ],
+    }),
+  },
   // --- DEGENERES -----------------------------------------------------------------
   {
     id: 'degenere-couches-E-identiques',

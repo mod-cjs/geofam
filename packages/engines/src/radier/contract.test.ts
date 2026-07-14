@@ -56,11 +56,12 @@ const FUITES_INTERDITES = [
   'N',
   'elements',
   // Sommes / etats internes du solveur.
-  'sumReact',
-  'sumWink',
-  'sumSpr',
+  // NB (ADR 0014 / #54) : `sumReact`, `sumWink`, `sumSpr` et `totalLoad` sont des BILANS
+  // GLOBAUX que le panneau « Synthese » de l'outil client affiche a ses utilisateurs ->
+  // desormais EXPOSES (whitelist de sortie). Ils NE figurent donc plus ici. Restent
+  // interdits `sumSprPt` (detail par ressort, non affiche), `N`/`iters` (nombre de nœuds
+  // et d'iterations = methode EF) et les intermediaires ci-dessous.
   'sumSprPt',
-  'totalLoad',
   'iters',
   'Acell',
   'C',
@@ -142,6 +143,19 @@ describe('radier — contrat de sortie (whitelist stricte, anti-fuite)', () => {
       interDiff: 0,
       betaGov: 0.0015,
       nRafts: 1,
+      // Synthese globale (ADR 0014) — champs requis de la whitelist.
+      totalLoad: 1000,
+      sumReact: 1000,
+      txMax: 0.001,
+      tyMax: 0.001,
+      pMin: -5,
+      pMax: 42,
+      mxMax: 12,
+      myMax: 10,
+      mxyMax: 3,
+      sumWink: null,
+      sumSpr: null,
+      decolNodes: null,
       worstLoadPair: null,
     };
     // Sanity : la forme exacte de la whitelist passe.
@@ -251,6 +265,16 @@ describe('radier — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     // Le radier est effectivement rendu (pas entierement masque).
     expect(cd.vals.some((v) => v != null)).toBe(true);
     // Cles STRICTEMENT d'affichage : aucune valeur nodale / indice / topologie.
-    expect(Object.keys(cd).sort()).toEqual(['cols', 'rows', 'vMax', 'vMin', 'vals', 'x0', 'x1', 'y0', 'y1']);
+    expect(Object.keys(cd).sort()).toEqual([
+      'cols',
+      'rows',
+      'vMax',
+      'vMin',
+      'vals',
+      'x0',
+      'x1',
+      'y0',
+      'y1',
+    ]);
   });
 });

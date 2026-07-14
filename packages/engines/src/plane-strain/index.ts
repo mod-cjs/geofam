@@ -15,7 +15,7 @@
  * --- ANTI-FUITE (DoD §8) ---
  * On CONSTRUIT champ a champ un objet propre ne portant QUE les diagnostics globaux
  * (tassements en mm, moments/reactions, bilans, cote d'assise, nb de nœuds decolles) ;
- * TOUS les champs NODAUX (`X`/`w`/`p`/`M`/`V`) et la TOPOLOGIE (`nn`/`dx`/`EI`/`iters`)
+ * TOUS les champs NODAUX (`X`/`w`/`p`/`M`/`V`) et la TOPOLOGIE (`nn`/`dx`/`iters`)
  * sont ECARTES ici, puis re-strippes par projectEngineOutput a travers le schema
  * `.strict()` (defense en profondeur — un champ interdit qui aurait survecu FAIT LEVER).
  */
@@ -136,6 +136,74 @@ export function redactConfidentialWarnings(warnings: readonly string[]): string[
   return warnings.map((w) => redactConfidentialWarning(w));
 }
 
+/** Garde : tableau numerique dense ou typed array (les champs nodaux sont des Float64Array). */
+function isNumArr(a: unknown): a is ArrayLike<number> {
+  return Array.isArray(a) || ArrayBuffer.isView(a);
+}
+
+/** Nombre de points d'affichage FIXE des profils (DECOUPLE du pas de maillage `dx`). */
+const PROFILE_POINTS = 97;
+
+/**
+ * RE-ECHANTILLONNE un champ nodal (`values` aligne sur les abscisses `xs`) en un PROFIL de
+ * `PROFILE_POINTS` points REGULIERS DECOUPLES du pas `dx` (interpolation lineaire). On lit
+ * les tableaux nodaux EN INTERNE mais on N'EXPOSE QUE le profil re-echantillonne : le
+ * RESULTAT (l'allure du champ), jamais la DISCRETISATION. `undefined` si donnees
+ * insuffisantes / etendue nulle.
+ */
+export function resampleProfile(
+  xs: unknown,
+  values: unknown,
+  label: string,
+  unit: string,
+): { x: number[]; v: number[]; unit: string; label: string } | undefined {
+  if (!isNumArr(xs) || !isNumArr(values)) return undefined;
+  const m = Math.min(xs.length, values.length);
+  const pairs: Array<[number, number]> = [];
+  for (let i = 0; i < m; i++) {
+    const x = xs[i];
+    const v = values[i];
+    if (x !== undefined && v !== undefined && fin(x) && fin(v)) pairs.push([x, v]);
+  }
+  if (pairs.length < 2) return undefined;
+  // Tri stable par abscisse (les nœuds sont deja ordonnes ; securise un ordre non garanti).
+  pairs.sort((a, b) => a[0] - b[0]);
+  const x0 = pairs[0]![0];
+  const x1 = pairs[pairs.length - 1]![0];
+  if (!(x1 > x0)) return undefined;
+  const X: number[] = new Array(PROFILE_POINTS);
+  const V: number[] = new Array(PROFILE_POINTS);
+  let j = 0;
+  for (let k = 0; k < PROFILE_POINTS; k++) {
+    const xk = x0 + ((x1 - x0) * k) / (PROFILE_POINTS - 1);
+    while (j < pairs.length - 2 && pairs[j + 1]![0] < xk) j++;
+    const [xa, va] = pairs[j]!;
+    const [xb, vb] = pairs[j + 1]!;
+    const t = xb > xa ? Math.min(1, Math.max(0, (xk - xa) / (xb - xa))) : 0;
+    X[k] = xk;
+    V[k] = va + t * (vb - va);
+  }
+  return { x: X, v: V, unit, label };
+}
+
+/**
+ * Profils de champs (deflexion/moment/reaction) — libelles repris du trace `psPlot` du
+ * client. On lit R.X/R.w/R.M/R.p EN INTERNE ; on n'expose que les profils re-echantillonnes.
+ */
+function buildProfils(R: Record<string, unknown>): Record<string, unknown> | undefined {
+  const specs: ReadonlyArray<readonly [string, unknown, string, string]> = [
+    ['deflexion', R.w, 'tassement w', 'mm'],
+    ['moment', R.M, 'moment M', 'kN·m/m'],
+    ['reaction', R.p, 'réaction p', 'kPa'],
+  ];
+  const profils: Record<string, unknown> = {};
+  for (const [key, field, label, unit] of specs) {
+    const prof = resampleProfile(R.X, field, label, unit);
+    if (prof) profils[key] = prof;
+  }
+  return Object.keys(profils).length > 0 ? profils : undefined;
+}
+
 /** Sortie vide (tous diagnostics a zero) — cas d'erreur de garde du moteur. */
 const EMPTY_OUTPUT = {
   wMax: 0,
@@ -148,12 +216,13 @@ const EMPTY_OUTPUT = {
   sumReact: 0,
   z0: 0,
   decolN: 0,
+  EI: 0,
 } as const;
 
 /**
  * Re-FORME le resultat brut `R` en la SORTIE whitelistee : VALEURS de DIAGNOSTIC GLOBAL
  * uniquement. On CONSTRUIT un objet propre champ a champ (jamais de copie brute) : tous
- * les champs NODAUX (`X`/`w`/`p`/`M`/`V`) et la TOPOLOGIE (`nn`/`dx`/`EI`/`iters`) sont
+ * les champs NODAUX (`X`/`w`/`p`/`M`/`V`) et la TOPOLOGIE (`nn`/`dx`/`iters`) sont
  * ECARTES ici (non lus). `diff` est recalcule (wMax - wMin) — grandeur derivee benigne.
  */
 function shapeOutput(R: Record<string, unknown>): unknown {
@@ -165,6 +234,7 @@ function shapeOutput(R: Record<string, unknown>): unknown {
   );
   const wMax = fin(R.wMax) ? R.wMax : 0;
   const wMin = fin(R.wMin) ? R.wMin : 0;
+  const profils = buildProfils(R);
   return {
     erreur: null,
     warnings,
@@ -178,6 +248,12 @@ function shapeOutput(R: Record<string, unknown>): unknown {
     sumReact: fin(R.sumReact) ? R.sumReact : 0,
     z0: fin(R.z0) ? R.z0 : 0,
     decolN: fin(R.decolN) ? R.decolN : 0,
+    // Rigidite de flexion D = EI (forme fermee des entrees E/e/ν) — ADR 0014, affichee en
+    // permanence par le client. Grandeur benigne (aucune info de maillage), a distinguer
+    // du pas `dx` qui reste SERVEUR.
+    EI: fin(R.EI) ? R.EI : 0,
+    // Profils de champs re-echantillonnes (deflexion/moment/reaction) — le RESULTAT.
+    ...(profils ? { profils } : {}),
   };
 }
 

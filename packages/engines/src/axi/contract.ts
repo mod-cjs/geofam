@@ -40,10 +40,11 @@
  * Exposer ces tableaux par nœud reviendrait a publier le solveur EF (maillage annulaire +
  * champ complet). On ne whiteliste donc QUE les VALEURS de DIAGNOSTIC d'ingenierie
  * (scalaires) destinees au PV : tassements centre/bord/max/min, moments radial et
- * tangentiel max, reaction de sol max, charge totale, cote d'assise. Le tableau `r[]` (pas
- * de maillage radial) est ECARTE au meme titre que la topologie du radier (fail-closed).
- * Le perimetre exact des diagnostics client-safe (ex. `sumReact`) est une decision
- * titulaire + expert, harmonisee au cablage (dispatch/index) — non tranchee ici.
+ * tangentiel max, reaction de sol max, charge totale, cote d'assise, ET (ADR 0014) le
+ * tassement DIFFERENTIEL `diff` (wMax−wMin) et la RESULTANTE de reaction `sumReact` — deux
+ * grandeurs GLOBALES que l'outil client affiche (« Tassement differentiel », « Charge /
+ * reaction Σ »). Le tableau `r[]` (pas de maillage radial), `nn`, la rigidite `EI`/`D`
+ * restent ECARTES (fail-closed) : ce sont la methode EF, pas des diagnostics.
  *
  * AUCUN symbole de calcul ici : pur Zod/TS, mais ce fichier appartient a @roadsen/engines
  * (importe par l'API seule, jamais le front).
@@ -116,6 +117,36 @@ export type AxiInput = z.infer<typeof AxiInputSchema>;
  * (`r`/`w`/`p`/`Mr`/`Mt`), aucune discretisation (`nn`), aucune matrice interne.
  * Voir la NOTE UNITÉS dans l'en-tete (mm/‰ effectifs — pas de `×1000` d'affichage).
  */
+/**
+ * PROFIL RADIAL d'un champ — RE-ECHANTILLONNE sur un nombre FIXE de points (97) DECOUPLE
+ * du maillage annulaire reel (interpolation lineaire en fonction du rayon `r`). Montre le
+ * RESULTAT (l'allure radiale), PAS la DISCRETISATION. Meme logique design-sur que la
+ * heatmap radier (decision titulaire 14/07, ADR 0014). `unit`/`label` repris du trace
+ * `axiPlot` du client.
+ */
+const ProfileSchema = z
+  .object({
+    x: z.array(z.number().finite()).min(2).max(97),
+    v: z.array(z.number().finite()).min(2).max(97),
+    unit: z.string().max(20),
+    label: z.string().max(60),
+  })
+  .strict();
+
+/**
+ * Profils radiaux exposes (chacun optionnel) — cles NOMMEES (fail-closed §8) : `deflexion`
+ * (w), `momentR` (Mr), `momentT` (Mt), `reaction` (p). Chacun re-echantillonne (97 points
+ * fixes) : aucun tableau nodal radial `r[]` brut ne franchit ici.
+ */
+const AxiProfilsSchema = z
+  .object({
+    deflexion: ProfileSchema.optional(),
+    momentR: ProfileSchema.optional(),
+    momentT: ProfileSchema.optional(),
+    reaction: ProfileSchema.optional(),
+  })
+  .strict();
+
 export const AxiOutputSchema = z
   .object({
     /** Tassement au centre (r=0). */
@@ -126,6 +157,8 @@ export const AxiOutputSchema = z
     wMax: z.number().finite(),
     /** Tassement minimal. */
     wMin: z.number().finite(),
+    /** Tassement differentiel (wMax − wMin) — grandeur derivee benigne, affichee par le client. */
+    diff: z.number().finite(),
     /** Moment radial maximal (en valeur absolue) — kN·m/m. */
     mrMax: z.number().finite(),
     /** Moment tangentiel maximal (en valeur absolue) — kN·m/m. */
@@ -134,8 +167,20 @@ export const AxiOutputSchema = z
     pMax: z.number().finite(),
     /** Charge totale appliquee (q·πR² + Pc) — kN. */
     totalLoad: z.number().finite(),
+    /**
+     * Resultante de la reaction de sol integree Σ (kN) — EXPOSEE (ADR 0014). Le perimetre
+     * « non tranche » de l'ancien en-tete est ici TRANCHE : l'outil client l'affiche
+     * (« Charge / reaction Σ » du handler `#ax-run`), c'est un BILAN GLOBAL (equilibre
+     * ≈ totalLoad), aucun champ nodal -> exposable.
+     */
+    sumReact: z.number().finite(),
     /** Cote d'assise retenue D (m) — garde du moteur si assise proche du substratum. */
     z0: z.number().finite(),
+    /**
+     * Profils radiaux de champs (deflexion/momentR/momentT/reaction), re-echantillonnes sur
+     * 97 points fixes en fonction du rayon — le RESULTAT, pas la discretisation annulaire.
+     */
+    profils: AxiProfilsSchema.optional(),
   })
   .strict();
 export type AxiOutput = z.infer<typeof AxiOutputSchema>;

@@ -23,12 +23,13 @@
  * CONSTITUE la methode :
  *   - les CHAMPS NODAUX : `X[]` (abscisses de nœuds), deplacements `w[]`, reactions
  *     `p[]`, moments `M[]`, efforts tranchants `V[]` ;
- *   - la TOPOLOGIE : `nn` (nb de nœuds), `dx` (pas), `EI` (rigidite), `iters`.
+ *   - la TOPOLOGIE : `nn` (nb de nœuds), `dx` (pas), `iters` (iterations de contact).
  * Exposer ces tableaux par nœud reviendrait a publier le solveur EF (maillage +
  * champ complet). On ne whiteliste donc QUE les VALEURS de DIAGNOSTIC d'ingenierie
  * destinees au PV : tassements extremes, moments extremes, reaction maximale de sol,
  * charge totale, resultante de reaction, profondeur d'assise retenue, nombre de nœuds
- * decolles.
+ * decolles, ET la rigidite de flexion `D = EI` (forme fermee des entrees E/e/ν, affichee
+ * en permanence par l'outil client — ADR 0014 ; a distinguer du pas `dx` qui reste SERVEUR).
  *
  * ⚠️ NOTE UNITÉS (piège du solveur — même décision que le radier, cf. mémoire
  * roadsen-radier-units). La sortie NUMÉRIQUE des tassements (wMax/wMin/diff) est en
@@ -104,13 +105,10 @@ export const PlaneStrainInputSchema = z
     opts: OptsSchema,
   })
   .strict()
-  .refine(
-    (m) => (m.opts.q ?? 0) !== 0 || (m.opts.loads ?? []).some((l) => l.P !== 0),
-    {
-      message:
-        'Aucune charge appliquee : la coupe doit comporter au moins une charge non nulle (repartie q ou lineique P).',
-    },
-  );
+  .refine((m) => (m.opts.q ?? 0) !== 0 || (m.opts.loads ?? []).some((l) => l.P !== 0), {
+    message:
+      'Aucune charge appliquee : la coupe doit comporter au moins une charge non nulle (repartie q ou lineique P).',
+  });
 export type PlaneStrainInput = z.infer<typeof PlaneStrainInputSchema>;
 
 // ---------------------------------------------------------------------------
@@ -118,8 +116,38 @@ export type PlaneStrainInput = z.infer<typeof PlaneStrainInputSchema>;
 // ---------------------------------------------------------------------------
 
 /**
+ * PROFIL D'UN CHAMP le long de la coupe — RE-ECHANTILLONNE sur un nombre FIXE de points
+ * (97) DECOUPLE du pas de maillage `dx` reel (interpolation lineaire sur les nœuds). Montre
+ * le RESULTAT (l'allure du champ), PAS la DISCRETISATION : `x` est une abscisse d'affichage
+ * reguliere, `v` la valeur interpolee. Meme logique design-sur que la heatmap radier
+ * (decision titulaire 14/07, ADR 0014). `unit`/`label` repris du trace de l'outil client.
+ */
+const ProfileSchema = z
+  .object({
+    x: z.array(z.number().finite()).min(2).max(97),
+    v: z.array(z.number().finite()).min(2).max(97),
+    unit: z.string().max(20),
+    label: z.string().max(60),
+  })
+  .strict();
+
+/**
+ * Profils de champs exposes (chacun optionnel) — cles NOMMEES (fail-closed §8) : `deflexion`
+ * (w), `moment` (M), `reaction` (p). Chaque profil est re-echantillonne (97 points fixes,
+ * decouple de `dx`) : aucun tableau nodal brut ni le pas de maillage ne franchit ici.
+ */
+const PlaneStrainProfilsSchema = z
+  .object({
+    deflexion: ProfileSchema.optional(),
+    moment: ProfileSchema.optional(),
+    reaction: ProfileSchema.optional(),
+  })
+  .strict();
+
+/**
  * Sortie client-safe : DIAGNOSTICS d'ingenierie uniquement. Aucun champ nodal
- * (X/w/p/M/V), aucune topologie (nn/dx/EI/iters).
+ * (X/w/p/M/V), aucune topologie (nn/dx/iters). `EI` (rigidite D) et les `profils`
+ * re-echantillonnes sont des RESULTATS exposes (ADR 0014), pas la methode.
  */
 export const PlaneStrainOutputSchema = z
   .object({
@@ -147,6 +175,19 @@ export const PlaneStrainOutputSchema = z
     z0: z.number().finite(),
     /** Nombre de nœuds decolles (contact unilateral). */
     decolN: z.number().int(),
+    /**
+     * Rigidite de flexion de la poutre D = E·e³/12(1−ν²) (kN·m) — EXPOSEE (ADR 0014) :
+     * l'outil client l'affiche EN PERMANENCE (« Rigidite D (E·e³/12(1−ν²)) »). C'est une
+     * forme fermee des SEULES entrees publiques (E, e, ν), PAS un intermediaire de
+     * maillage : sa divulgation ne revele rien de la methode EF (a distinguer du champ
+     * nodal / du pas `dx` qui, eux, restent SERVEUR).
+     */
+    EI: z.number().finite(),
+    /**
+     * Profils de champs le long de la coupe (deflexion/moment/reaction), re-echantillonnes
+     * sur 97 points fixes decouples du pas `dx` — le RESULTAT, pas la discretisation.
+     */
+    profils: PlaneStrainProfilsSchema.optional(),
   })
   .strict();
 export type PlaneStrainOutput = z.infer<typeof PlaneStrainOutputSchema>;

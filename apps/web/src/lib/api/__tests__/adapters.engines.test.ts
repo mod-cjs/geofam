@@ -148,6 +148,19 @@ const REAL_RADIER = {
   interDiff: 0,
   betaGov: 0.933,
   nRafts: 1,
+  // Synthèse globale (ADR 0014). Conditionnels null = options inactives (lignes omises).
+  totalLoad: 1000,
+  sumReact: 1000.0000000001,
+  txMax: 0.512,
+  tyMax: 0.487,
+  pMin: -3.2,
+  pMax: 41.9,
+  mxMax: 27.4,
+  myMax: 25.1,
+  mxyMax: 6.3,
+  sumWink: null,
+  sumSpr: null,
+  decolNodes: null,
   worstLoadPair: null,
 };
 
@@ -290,8 +303,13 @@ describe('adaptCalcResult — terzaghi : portance complémentaire c–φ (MAJEUR
         },
       ],
     });
-    const cphiRow = (norm.rows as CalcOutputRow[]).find((r) => /c–φ|annexe F/i.test(r.label));
-    expect(cphiRow, 'la portance c–φ doit apparaître quand le bloc cphi est présent').toBeDefined();
+    const cphiRow = (norm.rows as CalcOutputRow[]).find((r) =>
+      /c–φ|annexe F/i.test(r.label),
+    );
+    expect(
+      cphiRow,
+      'la portance c–φ doit apparaître quand le bloc cphi est présent',
+    ).toBeDefined();
   });
 });
 
@@ -372,6 +390,307 @@ describe('adaptCalcResult — radier (plaque/sol multicouche)', () => {
     expect(l).toMatch(/différentiel inter-plaques/);
     expect(l).toMatch(/entre charges voisines/);
   });
+
+  it('synthèse (ADR 0014) : bilans + extrêmes globaux affichés (rotations, p, moments, Σ)', () => {
+    const l = labels(normalizedOf('radier-plaque', REAL_RADIER));
+    expect(l).toMatch(/Rotation θx max/);
+    expect(l).toMatch(/Rotation θy max/);
+    expect(l).toMatch(/Réaction de sol min/);
+    expect(l).toMatch(/Réaction de sol max/);
+    expect(l).toMatch(/\|Mx\| max/);
+    expect(l).toMatch(/\|My\| max/);
+    expect(l).toMatch(/\|Mxy\| max/);
+    expect(l).toMatch(/Charge appliquée Σ/);
+    expect(l).toMatch(/Σ réactions sol/);
+  });
+
+  it('conditionnels null (aucune option) : Winkler / ressorts / décollés NON affichés', () => {
+    const l = labels(normalizedOf('radier-plaque', REAL_RADIER));
+    expect(l).not.toMatch(/réaction Winkler/);
+    expect(l).not.toMatch(/réaction ressorts/);
+    expect(l).not.toMatch(/Nœuds décollés/);
+  });
+
+  it('conditionnels actifs : Winkler / ressorts / décollés affichés (compte inclus 0)', () => {
+    const avecOptions = {
+      ...REAL_RADIER,
+      sumWink: 2325.26,
+      sumSpr: 774.27,
+      decolNodes: 0, // option décol active mais 0 nœud décollé → ligne présente (« 0 »)
+    };
+    const norm = normalizedOf('radier-plaque', avecOptions);
+    const l = labels(norm);
+    expect(l).toMatch(/Σ réaction Winkler/);
+    expect(l).toMatch(/Σ réaction ressorts/);
+    expect(l).toMatch(/Nœuds décollés/);
+    const decol = (norm.rows as CalcOutputRow[]).find(
+      (r) => r.label === 'Nœuds décollés',
+    );
+    expect(decol?.value).toBe(0);
+  });
+
+  it('§8 : aucune valeur de tableau nodal ne fuit dans la sortie normalisée', () => {
+    const norm = normalizedOf('radier-plaque', REAL_RADIER);
+    // Les libellés de synthèse sont des SCALAIRES ; aucune clé nodale/topologie.
+    expectNoLeak(norm, [
+      '"p":',
+      '"Mx":',
+      '"nodeX":',
+      '"blocks":',
+      '"sumSprPt"',
+      '"iters"',
+      '"N":',
+    ]);
+  });
+});
+
+describe('adaptCalcResult — plane-strain (déformations planes)', () => {
+  const REAL_PLANE = {
+    erreur: null,
+    warnings: [],
+    wMax: 4.21,
+    wMin: 1.02,
+    diff: 3.19,
+    mMax: 118.5,
+    mMin: -74.2,
+    pMax: 46.3,
+    totalLoad: 300,
+    sumReact: 300.0000000002,
+    z0: 0,
+    decolN: 0,
+    EI: 1.7066e6,
+  };
+
+  it('given EI, when adapté, then « Rigidité de flexion D » affichée (kN·m)', () => {
+    const norm = normalizedOf('plane-strain', REAL_PLANE);
+    expect(norm.verdict).toBe('NA');
+    const rig = (norm.rows as CalcOutputRow[]).find(
+      (r) => r.label === 'Rigidité de flexion D',
+    );
+    expect(rig).toBeDefined();
+    expect(rig?.unit).toBe('kN·m');
+    expect(rig?.value).toBe(1.7066e6);
+  });
+
+  it('§8 : aucune clé nodale/topologie (X/w/p/M/V/nn/dx/iters) ne fuit', () => {
+    const norm = normalizedOf('plane-strain', REAL_PLANE);
+    expectNoLeak(norm, ['"X":', '"nn"', '"dx"', '"iters"', '"V":']);
+  });
+});
+
+describe('adaptCalcResult — axi (radier circulaire axisymétrique)', () => {
+  const REAL_AXI = {
+    wc: 6.12,
+    wEdge: 2.03,
+    wMax: 6.12,
+    wMin: 2.03,
+    diff: 4.09,
+    mrMax: 88.4,
+    mtMax: 61.2,
+    pMax: 52.7,
+    totalLoad: 1357,
+    sumReact: 1357.0000000003,
+    z0: 0,
+  };
+
+  it('given diff + sumReact, when adapté, then différentiel + résultante Σ affichés', () => {
+    const norm = normalizedOf('axi-plaque', REAL_AXI);
+    expect(norm.verdict).toBe('NA');
+    const l = labels(norm);
+    expect(l).toMatch(/Tassement différentiel/);
+    expect(l).toMatch(/Résultante de réaction Σ/);
+    const diff = (norm.rows as CalcOutputRow[]).find(
+      (r) => r.label === 'Tassement différentiel',
+    );
+    expect(diff?.value).toBe(4.09);
+    expect(diff?.unit).toBe('mm');
+  });
+});
+
+// ── CARTES ÉTENDUES & PROFILS (décision titulaire 14/07) ───────────────────────────
+function grid(unit: string, label: string): Record<string, unknown> {
+  return {
+    x0: 0,
+    y0: 0,
+    x1: 6,
+    y1: 6,
+    cols: 2,
+    rows: 2,
+    vals: [1, 2, 3, 4],
+    vMin: 1,
+    vMax: 4,
+    unit,
+    label,
+  };
+}
+function profil(unit: string, label: string): Record<string, unknown> {
+  return { x: [0, 1, 2], v: [0.1, 0.2, 0.15], unit, label };
+}
+
+describe('adaptCalcResult — radier : cartes étendues (output.champs → heatmaps)', () => {
+  const CHAMPS = {
+    deflexion: grid('mm', 'Tassement'),
+    reaction: grid('kPa', 'Réaction'),
+    momentX: grid('kN·m/ml', 'Moment Mx'),
+    momentY: grid('kN·m/ml', 'Moment My'),
+    momentXY: grid('kN·m/ml', 'Moment Mxy'),
+    raideur: grid('kPa/mm', 'Coef. réaction'),
+    pente: grid('‰', 'Distorsion |∇w|'),
+    rotationX: grid('‰', 'Rotation θx'),
+    rotationY: grid('‰', 'Rotation θy'),
+  };
+
+  it('given output.champs (9 cartes), when adapté, then heatmaps porte les 9 clés étiquetées', () => {
+    const norm = normalizedOf('radier-plaque', {
+      ...REAL_RADIER,
+      champDeflexion: grid('mm', 'Tassement'),
+      champs: CHAMPS,
+    });
+    const hm = norm.heatmaps;
+    expect(hm, 'heatmaps présent').toBeDefined();
+    if (!hm) return;
+    for (const key of Object.keys(CHAMPS)) {
+      expect(hm[key], `carte ${key}`).toBeDefined();
+      expect(hm[key]?.unit).toBe(
+        (CHAMPS as Record<string, Record<string, unknown>>)[key]!.unit,
+      );
+      expect(hm[key]?.label).toBe(
+        (CHAMPS as Record<string, Record<string, unknown>>)[key]!.label,
+      );
+      expect(hm[key]?.vals.length).toBe(4);
+    }
+    // Legacy `heatmap` (compat) toujours alimenté par la déflexion.
+    expect(norm.heatmap).toBeDefined();
+  });
+
+  it('fail-closed : une clé de carte INCONNUE est ignorée (jamais copiée brute)', () => {
+    const norm = normalizedOf('radier-plaque', {
+      ...REAL_RADIER,
+      champs: { deflexion: grid('mm', 'Tassement'), secretField: grid('x', 'Fuite') },
+    });
+    expect(norm.heatmaps?.deflexion).toBeDefined();
+    expect((norm.heatmaps as Record<string, unknown>).secretField).toBeUndefined();
+    expectNoLeak(norm, ['secretField', '"Fuite"']);
+  });
+
+  it('§8 : une carte MALFORMÉE (vals de mauvaise taille) est rejetée', () => {
+    const bad = { ...grid('mm', 'Tassement'), vals: [1, 2, 3] }; // 3 ≠ cols*rows=4
+    const norm = normalizedOf('radier-plaque', {
+      ...REAL_RADIER,
+      champs: { deflexion: grid('mm', 'Tassement'), reaction: bad },
+    });
+    expect(norm.heatmaps?.deflexion).toBeDefined();
+    expect(norm.heatmaps?.reaction).toBeUndefined();
+  });
+});
+
+describe('adaptCalcResult — profils (plane-strain & axi → output.profils)', () => {
+  it('plane-strain : profils deflexion/moment/reaction normalisés (x/v/unit/label)', () => {
+    const REAL_PLANE = {
+      erreur: null,
+      warnings: [],
+      wMax: 4.21,
+      wMin: 1.02,
+      diff: 3.19,
+      mMax: 118.5,
+      mMin: -74.2,
+      pMax: 46.3,
+      totalLoad: 300,
+      sumReact: 300,
+      z0: 0,
+      decolN: 0,
+      EI: 1.7e6,
+      profils: {
+        deflexion: profil('mm', 'tassement w'),
+        moment: profil('kN·m/m', 'moment M'),
+        reaction: profil('kPa', 'réaction p'),
+      },
+    };
+    const norm = normalizedOf('plane-strain', REAL_PLANE);
+    expect(norm.profils?.deflexion?.label).toBe('tassement w');
+    expect(norm.profils?.moment?.unit).toBe('kN·m/m');
+    expect(norm.profils?.reaction?.x.length).toBe(3);
+    expect(norm.profils?.reaction?.v.length).toBe(3);
+  });
+
+  it('axi : profils deflexion/momentR/momentT/reaction normalisés', () => {
+    const REAL_AXI = {
+      wc: 6.12,
+      wEdge: 2.03,
+      wMax: 6.12,
+      wMin: 2.03,
+      diff: 4.09,
+      mrMax: 88.4,
+      mtMax: 61.2,
+      pMax: 52.7,
+      totalLoad: 1357,
+      sumReact: 1357,
+      z0: 0,
+      profils: {
+        deflexion: profil('mm', 'tassement w'),
+        momentR: profil('kN·m/m', 'moment M_r'),
+        momentT: profil('kN·m/m', 'moment M_t'),
+        reaction: profil('kPa', 'réaction p'),
+      },
+    };
+    const norm = normalizedOf('axi-plaque', REAL_AXI);
+    expect(Object.keys(norm.profils ?? {}).sort()).toEqual([
+      'deflexion',
+      'momentR',
+      'momentT',
+      'reaction',
+    ]);
+  });
+
+  it('fail-closed : un profil de longueurs x/v incohérentes est rejeté', () => {
+    const REAL_PLANE = {
+      erreur: null,
+      warnings: [],
+      wMax: 1,
+      wMin: 0,
+      diff: 1,
+      mMax: 1,
+      mMin: 0,
+      pMax: 1,
+      totalLoad: 1,
+      sumReact: 1,
+      z0: 0,
+      decolN: 0,
+      EI: 1,
+      profils: {
+        deflexion: profil('mm', 'tassement w'),
+        moment: { x: [0, 1, 2], v: [0.1, 0.2], unit: 'kN·m/m', label: 'moment M' }, // v plus court
+      },
+    };
+    const norm = normalizedOf('plane-strain', REAL_PLANE);
+    expect(norm.profils?.deflexion).toBeDefined();
+    expect(norm.profils?.moment).toBeUndefined();
+  });
+});
+
+describe('adaptCalcResult — tri-raft : heatmap de déflexion (output.champDeflexion)', () => {
+  const REAL_TRI = {
+    erreur: null,
+    warnings: [],
+    wMax: 5.2,
+    wMin: 1.1,
+    diff: 4.1,
+    reactionMax: 88.0,
+    totalLoad: 1000,
+    sumReact: 1000,
+    nRaft: 1,
+    z0: 0,
+    champDeflexion: grid('mm', 'Tassement'),
+  };
+
+  it('given champDeflexion, when adapté, then heatmap legacy + heatmaps.deflexion', () => {
+    const norm = normalizedOf('radier-tri', REAL_TRI);
+    expect(norm.verdict).toBe('NA');
+    expect(norm.heatmap, 'heatmap legacy').toBeDefined();
+    expect(norm.heatmaps?.deflexion, 'heatmaps.deflexion').toBeDefined();
+    expect(norm.heatmaps?.deflexion?.label).toBe('Tassement');
+    expectNoLeak(norm, ['"P":', '"tris":', '"nt"', '"nodeX"']);
+  });
 });
 
 describe('adaptCalcResult — labo (classification GTR)', () => {
@@ -449,7 +768,17 @@ describe('adaptCalcResult — labo (classification GTR)', () => {
       qu: 2.5,
       cu_uu: 45,
       k: 1.2e-7,
-      classe: { fam: 'B', code: 'B5', full: 'B5', desc: 'x', path: ['y'], warn: [], etat: null, stApplies: false, rNote: null },
+      classe: {
+        fam: 'B',
+        code: 'B5',
+        full: 'B5',
+        desc: 'x',
+        path: ['y'],
+        warn: [],
+        etat: null,
+        stApplies: false,
+        rNote: null,
+      },
     };
     const norm = normalizedOf('labo-classification-gtr', LABO_FULL);
     const l = labels(norm);
@@ -747,7 +1076,13 @@ describe('adaptCalcResult — PressioPro étalonnage (Vs/Pe/a)', () => {
   });
 
   it('ne fuite aucun intermédiaire de régression même s’il survivait au strip serveur', () => {
-    const leaky = { ...REAL_ETAL, pts: [{ p: 0, v: 520 }], residuals: [{ p: 0, res: 0 }], V_pe: 624, Vs_reel: 520 };
+    const leaky = {
+      ...REAL_ETAL,
+      pts: [{ p: 0, v: 520 }],
+      residuals: [{ p: 0, res: 0 }],
+      V_pe: 624,
+      Vs_reel: 520,
+    };
     const norm = normalizedOf('pressio-etalonnage', leaky);
     expectNoLeak(norm, ['"pts"', '"residuals"', '"V_pe"', '"Vs_reel"']);
   });
@@ -768,7 +1103,14 @@ describe('adaptCalcResult — PressioPro calibrage (a)', () => {
   });
 
   it('ne fuite jamais les coefficients polynomiaux c0/c1/c2 (méthode)', () => {
-    const leaky = { ...REAL_CALIB, c0: 0.1, c1: 0.4, c2: -0.002, pts: [{ p: 1, v: 1 }], residuals: [] };
+    const leaky = {
+      ...REAL_CALIB,
+      c0: 0.1,
+      c1: 0.4,
+      c2: -0.002,
+      pts: [{ p: 1, v: 1 }],
+      residuals: [],
+    };
     const norm = normalizedOf('pressio-calibrage', leaky);
     expectNoLeak(norm, ['"c0"', '"c1"', '"c2"', '"pts"', '"residuals"']);
   });

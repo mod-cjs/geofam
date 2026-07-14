@@ -183,6 +183,27 @@ export type TriRaftInput = z.infer<typeof TriRaftInputSchema>;
  * ⚠️ NOTE UNITES : `wMax`/`wMin`/`diff` sont numeriquement en **mm** (cf. en-tete —
  * meme piege que le radier ACM). L'affichage/PV les rend SANS ×1000.
  */
+/**
+ * HEATMAP D'AFFICHAGE — grille FIXE ≤48×48 RE-ECHANTILLONNEE depuis le champ de deflexion
+ * (aux nœuds du MAILLAGE TRIANGULAIRE), DECOUPLEE de ce maillage (IDW + masque contour).
+ * Expose le MOTIF de deflexion (le RESULTAT), JAMAIS les coordonnees des nœuds `P`, la
+ * connectivite `tris`, ni la densite `N`/`nt` (la METHODE — rendu triangule EXCLU, cf.
+ * decision design-sur 04/07 + titulaire 14/07). Meme forme que la heatmap radier ACM.
+ */
+const HeatmapSchema = z
+  .object({
+    x0: z.number().finite(),
+    y0: z.number().finite(),
+    x1: z.number().finite(),
+    y1: z.number().finite(),
+    cols: z.number().int().min(2).max(64),
+    rows: z.number().int().min(2).max(64),
+    vals: z.array(z.number().finite().nullable()).max(4096),
+    vMin: z.number().finite(),
+    vMax: z.number().finite(),
+  })
+  .strict();
+
 export const TriRaftOutputSchema = z
   .object({
     /** Erreur de calcul (garde du moteur / science levee) : message borne. */
@@ -205,6 +226,12 @@ export const TriRaftOutputSchema = z
     nRaft: z.number().int(),
     /** Cote d'assise D effective (m). */
     z0: z.number().finite(),
+    /**
+     * Champ de deflexion RE-ECHANTILLONNE pour affichage (grille ≤48×48 decouplee du
+     * maillage triangulaire) — le MOTIF, jamais le rendu triangule ni la topologie
+     * (decision titulaire 14/07, ADR 0014).
+     */
+    champDeflexion: HeatmapSchema.optional(),
   })
   .strict();
 export type TriRaftOutput = z.infer<typeof TriRaftOutputSchema>;

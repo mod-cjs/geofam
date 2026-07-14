@@ -188,6 +188,56 @@ export function redactConfidentialWarnings(warnings: readonly string[]): string[
   return warnings.map((w) => redactConfidentialWarning(w));
 }
 
+/**
+ * Message CLIENT-SAFE de DEPASSEMENT DE CAPACITE D'INTERFACE (poinconnement) — fidele a
+ * l'encadre rouge de l'outil client (`refreshResults`, `R.overCap`) : la reaction requise
+ * excede le seuil de plastification q_lim sans qu'un equilibre admissible soit atteint,
+ * donc les resultats ne sont PAS valides. AUCUN intermediaire EF ni valeur numerique n'y
+ * figure (pas de motif `token = nombre`) -> traverse la redaction sans etre altere.
+ */
+export const OVER_CAP_WARNING =
+  "Capacite de l'interface depassee (poinconnement) : la reaction requise excede le " +
+  "seuil de plastification q_lim sans qu'un equilibre admissible soit atteint — " +
+  'resultats a considerer comme NON VALIDES. Augmenter q_lim, elargir la fondation ou ' +
+  'reduire la charge.';
+
+/**
+ * Reduit un champ NODAL (tableau ou typed array) en un SCALAIRE via `reduce` sur les
+ * seules valeurs finies. Le tableau nodal lui-meme n'est JAMAIS expose (meme patron que
+ * buildHeatmap) : on ne franchit la projection qu'avec le scalaire. `undefined` si aucune
+ * valeur finie (garde-fou anti-NaN a l'affichage).
+ */
+function reduceNodal(
+  arr: unknown,
+  fn: (acc: number, v: number) => number,
+  map: (v: number) => number = (v) => v,
+): number | undefined {
+  const isNumArr = (a: unknown): a is ArrayLike<number> =>
+    Array.isArray(a) || ArrayBuffer.isView(a);
+  if (!isNumArr(arr)) return undefined;
+  const a = arr as ArrayLike<number>;
+  let acc: number | undefined;
+  for (let i = 0; i < a.length; i++) {
+    const v = a[i];
+    if (v === undefined || !fin(v)) continue;
+    const m = map(v);
+    acc = acc === undefined ? m : fn(acc, m);
+  }
+  return acc;
+}
+
+/** min de R.p ; max de R.p (reactions de sol, kPa). */
+function reactionMinMax(R: Record<string, unknown>): { pMin: number; pMax: number } {
+  const pMin = reduceNodal(R.p, Math.min);
+  const pMax = reduceNodal(R.p, Math.max);
+  return { pMin: pMin ?? 0, pMax: pMax ?? 0 };
+}
+
+/** max de |M| pour un champ nodal de moments (kN·m/ml). */
+function absMax(arr: unknown): number {
+  return reduceNodal(arr, Math.max, Math.abs) ?? 0;
+}
+
 /** Localisation (x,y) exposable, ou null. Construit champ a champ (jamais de copie brute). */
 function loc(o: unknown): { x: number; y: number } | null {
   if (o === null || typeof o !== 'object') return null;
@@ -217,15 +267,19 @@ function loc(o: unknown): { x: number; y: number } | null {
  * du radier (entree utilisateur) et non par distance au nœud : le bord du rendu devient
  * alors INDEPENDANT du maillage (revue de verification : l'ancien masque `nd` epousait
  * les positions des nœuds -> un balayage de `mesh` revelait leur placement). */
-function pointInAnyRaft(px: number, py: number, polys: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>): boolean {
+function pointInAnyRaft(
+  px: number,
+  py: number,
+  polys: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>,
+): boolean {
   for (const pts of polys) {
     let inside = false;
     for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-      const a = pts[i], b = pts[j];
+      const a = pts[i],
+        b = pts[j];
       if (!a || !b) continue;
       const intersect =
-        a.y > py !== b.y > py &&
-        px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x;
+        a.y > py !== b.y > py && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x;
       if (intersect) inside = !inside;
     }
     if (inside) return true;
@@ -233,20 +287,32 @@ function pointInAnyRaft(px: number, py: number, polys: ReadonlyArray<ReadonlyArr
   return false;
 }
 
-function buildHeatmap(
-  R: Record<string, unknown>,
+/**
+ * CŒUR de RE-ECHANTILLONNAGE d'un champ NODAL (`values` aligne sur `xs`/`ys`) en une grille
+ * d'affichage FIXE ≤48×48 DECOUPLEE du maillage (IDW lissee + masque contour). Extrait de
+ * buildHeatmap pour servir TOUTES les cartes de champs (deflexion/reaction/moments/raideur/
+ * pente/rotations). On lit les tableaux nodaux EN INTERNE mais on N'EXPOSE QUE la grille.
+ * Meme algorithme (donc memes garde-fous §8) quel que soit le champ.
+ */
+export function resampleField(
+  xs: ArrayLike<number>,
+  ys: ArrayLike<number>,
+  values: ArrayLike<number>,
   polys?: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>,
-): unknown {
-  const nodeX = R.nodeX,
-    nodeY = R.nodeY,
-    wv = R.w;
-  // Accepte tableaux ET tableaux TYPÉS : le champ nodal `w` (sol.w) est un Float64Array,
-  // pour lequel Array.isArray() renvoie false. ArrayBuffer.isView couvre les typed arrays.
-  const isNumArr = (a: unknown): a is ArrayLike<number> => Array.isArray(a) || ArrayBuffer.isView(a);
-  if (!isNumArr(nodeX) || !isNumArr(nodeY) || !isNumArr(wv)) return undefined;
-  const xs = nodeX as ArrayLike<number>,
-    ys = nodeY as ArrayLike<number>,
-    ws = wv as ArrayLike<number>;
+):
+  | {
+      x0: number;
+      y0: number;
+      x1: number;
+      y1: number;
+      cols: number;
+      rows: number;
+      vals: (number | null)[];
+      vMin: number;
+      vMax: number;
+    }
+  | undefined {
+  const ws = values;
   const N = Math.min(xs.length, ys.length, ws.length);
   if (N < 3) return undefined;
   let x0 = Infinity,
@@ -313,9 +379,58 @@ function buildHeatmap(
   return { x0, y0, x1, y1, cols: G, rows: G, vals, vMin, vMax };
 }
 
+/** Garde : tableau numerique dense ou typed array (les champs nodaux sont des Float64Array). */
+function isNumArr(a: unknown): a is ArrayLike<number> {
+  return Array.isArray(a) || ArrayBuffer.isView(a);
+}
+
+/** Carte de deflexion (compat) — re-echantillonnage du champ `R.w`. */
+function buildHeatmap(
+  R: Record<string, unknown>,
+  polys?: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>,
+): unknown {
+  if (!isNumArr(R.nodeX) || !isNumArr(R.nodeY) || !isNumArr(R.w)) return undefined;
+  return resampleField(R.nodeX, R.nodeY, R.w, polys);
+}
+
+/**
+ * CARTES ETENDUES — re-echantillonne CHAQUE champ nodal cartographie par l'outil client
+ * (decision titulaire 14/07). Cles/label/unit repris des boutons de cartes (`fields` de
+ * refreshResults). On lit les tableaux nodaux (R.w/R.p/R.Mx/…) EN INTERNE ; on n'expose
+ * QUE la grille re-echantillonnee etiquetee. Aucune valeur nodale/indice/topologie ne sort.
+ */
+function buildChamps(
+  R: Record<string, unknown>,
+  polys?: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>,
+): Record<string, unknown> | undefined {
+  const nodeX = R.nodeX,
+    nodeY = R.nodeY;
+  if (!isNumArr(nodeX) || !isNumArr(nodeY)) return undefined;
+  // [cle exposee, champ nodal source, libelle bouton client, unite d'affichage]
+  const specs: ReadonlyArray<readonly [string, unknown, string, string]> = [
+    ['deflexion', R.w, 'Tassement', 'mm'],
+    ['reaction', R.p, 'Réaction', 'kPa'],
+    ['momentX', R.Mx, 'Moment Mx', 'kN·m/ml'],
+    ['momentY', R.My, 'Moment My', 'kN·m/ml'],
+    ['momentXY', R.Mxy, 'Moment Mxy', 'kN·m/ml'],
+    ['raideur', R.kr, 'Coef. réaction', 'kPa/mm'],
+    ['pente', R.slope, 'Distorsion |∇w|', '‰'],
+    ['rotationX', R.tx, 'Rotation θx', '‰'],
+    ['rotationY', R.ty, 'Rotation θy', '‰'],
+  ];
+  const champs: Record<string, unknown> = {};
+  for (const [key, field, label, unit] of specs) {
+    if (!isNumArr(field)) continue;
+    const grid = resampleField(nodeX, nodeY, field, polys);
+    if (grid) champs[key] = { ...grid, unit, label };
+  }
+  return Object.keys(champs).length > 0 ? champs : undefined;
+}
+
 function shapeOutput(
   R: Record<string, unknown>,
   polys?: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>,
+  decolActive = false,
 ): unknown {
   const empty = {
     wMax: 0,
@@ -328,6 +443,18 @@ function shapeOutput(
     interDiff: 0,
     betaGov: 0,
     nRafts: 0,
+    totalLoad: 0,
+    sumReact: 0,
+    txMax: 0,
+    tyMax: 0,
+    pMin: 0,
+    pMax: 0,
+    mxMax: 0,
+    myMax: 0,
+    mxyMax: 0,
+    sumWink: null,
+    sumSpr: null,
+    decolNodes: null,
     worstLoadPair: null,
   };
 
@@ -336,9 +463,32 @@ function shapeOutput(
     return { erreur: redactConfidentialWarning(R.err), warnings: [], ...empty };
   }
 
-  const warnings = redactConfidentialWarnings(
-    Array.isArray(R.warn) ? R.warn.filter((w): w is string => typeof w === 'string') : [],
-  );
+  // Assemble les warnings AVANT redaction, y compris l'alerte de poinconnement (overCap :
+  // INTEGRITE — le client marque le resultat NON VALIDE). La redaction fail-closed passe
+  // sur TOUT (l'alerte overCap ne contient aucune valeur -> inchangee).
+  const rawWarnings = Array.isArray(R.warn)
+    ? R.warn.filter((w): w is string => typeof w === 'string')
+    : [];
+  if (R.overCap === true) rawWarnings.push(OVER_CAP_WARNING);
+  const warnings = redactConfidentialWarnings(rawWarnings);
+
+  // Bilans/extremes globaux (SCALAIRES) — panneau « Synthese » du client (ADR 0014).
+  const { pMin, pMax } = reactionMinMax(R);
+  const synthese = {
+    totalLoad: fin(R.totalLoad) ? R.totalLoad : 0,
+    sumReact: fin(R.sumReact) ? R.sumReact : 0,
+    // txMax/tyMax proviennent du `diag` (renseignes dans le retour principal ci-dessous).
+    pMin,
+    pMax,
+    mxMax: absMax(R.Mx),
+    myMax: absMax(R.My),
+    mxyMax: absMax(R.Mxy),
+    // Conditionnels : `null` quand l'option n'est pas active -> ligne OMISE a l'affichage
+    // (pushRow ignore null), fidele au client (rangs affiches seulement si applicables).
+    sumWink: R.winkOn === true ? (fin(R.sumWink) ? R.sumWink : 0) : null,
+    sumSpr: R.sprOn === true ? (fin(R.sumSpr) ? R.sumSpr : 0) : null,
+    decolNodes: decolActive ? (fin(R.decolNodes) ? R.decolNodes : 0) : null,
+  };
 
   const diag = (R.diag ?? null) as Record<string, unknown> | null;
   if (!diag) {
@@ -365,6 +515,7 @@ function shapeOutput(
   // NB : on NE lit MEME PAS diag.wMaxAt / diag.tiltAt / diag.betaGovAt : ces
   // localisations derivees du maillage ne franchissent jamais la projection.
   const hm = buildHeatmap(R, polys);
+  const champs = buildChamps(R, polys);
   return {
     erreur: null,
     warnings,
@@ -378,9 +529,16 @@ function shapeOutput(
     interDiff: fin(diag.interDiff) ? diag.interDiff : 0,
     betaGov: fin(diag.betaGov) ? diag.betaGov : 0,
     nRafts: fin(diag.nRafts) ? diag.nRafts : 0,
+    // Synthese globale (bilans/extremes scalaires) — ADR 0014. txMax/tyMax proviennent du
+    // `diag` (deja des scalaires cote moteur) ; le reste des bilans a ete assemble ci-dessus.
+    ...synthese,
+    txMax: fin(diag.txMax) ? diag.txMax : 0,
+    tyMax: fin(diag.tyMax) ? diag.tyMax : 0,
     worstLoadPair,
     // Heatmap RE-ECHANTILLONNEE (decouplee du maillage) — le motif, pas la methode.
     ...(hm ? { champDeflexion: hm } : {}),
+    // Cartes ETENDUES etiquetees (tous les champs cartographies par l'outil client).
+    ...(champs ? { champs } : {}),
   };
 }
 
@@ -416,7 +574,11 @@ export function runRadier(rawInput: unknown): EngineResultEnvelope<RadierOutput>
   // Contour SAISI des radiers -> masque heatmap point-dans-polygone (bord independant
   // du maillage). L'input est deja valide/simple (RaftSchema refuse l'auto-intersection).
   const polys = input.rafts.map((r) => r.pts.map((p) => ({ x: p.x, y: p.y })));
-  const shaped = shapeOutput(rawResult, polys);
+  // `decolActive` = option de decollement demandee (echo de l'entree, comme la case
+  // « opt-decol » du client) : conditionne l'AFFICHAGE de la ligne « Nœuds decolles »
+  // (le compte peut valoir 0 tout en etant applicable). Aucun intermediaire moteur.
+  const decolActive = input.opts.decol === true;
+  const shaped = shapeOutput(rawResult, polys, decolActive);
   // Re-strip a travers le schema declare : tout champ non whiteliste qui aurait
   // survecu a shapeOutput est retire ici (defense en profondeur, anti-fuite).
   const output = projectEngineOutput(RadierOutputSchema, shaped);

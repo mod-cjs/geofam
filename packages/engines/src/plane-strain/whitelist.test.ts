@@ -33,10 +33,15 @@ const ALLOWED = new Set([
   'sumReact',
   'z0',
   'decolN',
+  // Rigidite de flexion D = EI (forme fermee des entrees E/e/ν) — EXPOSEE (ADR 0014).
+  'EI',
+  // Profils de champs re-echantillonnes (deflexion/moment/reaction) — ADR 0014.
+  'profils',
 ]);
 
-/** Cles NODALES / de TOPOLOGIE qui NE doivent JAMAIS sortir. */
-const FORBIDDEN = ['X', 'w', 'p', 'M', 'V', 'nn', 'dx', 'EI', 'iters'];
+/** Cles NODALES / de TOPOLOGIE qui NE doivent JAMAIS sortir. `EI` n'y est PLUS (exposee,
+ * ADR 0014) ; le pas `dx` et le nombre de nœuds `nn` restent SERVEUR. */
+const FORBIDDEN = ['X', 'w', 'p', 'M', 'V', 'nn', 'dx', 'iters'];
 
 describe('plane-strain — whitelist de sortie (aucun champ nodal/maillage ne fuit)', () => {
   afterEach(() => {
@@ -53,7 +58,10 @@ describe('plane-strain — whitelist de sortie (aucun champ nodal/maillage ne fu
       // servent l'equivalence (computeX -> {err}). Au contrat, runX doit les REJETER
       // (fail-closed). On l'ASSERTE (jamais un skip silencieux, DoD §9).
       if (!PlaneStrainInputSchema.safeParse(fx.input).success) {
-        expect(() => runPlaneStrain(fx.input), `${fx.id} (invalide) doit etre rejete`).toThrow();
+        expect(
+          () => runPlaneStrain(fx.input),
+          `${fx.id} (invalide) doit etre rejete`,
+        ).toThrow();
         continue;
       }
       const env = runPlaneStrain(fx.input);
@@ -117,6 +125,8 @@ describe('plane-strain — whitelist de sortie (aucun champ nodal/maillage ne fu
     expect(env.output.wMax).toBe(3);
     expect(env.output.diff).toBe(2);
     expect(env.output.decolN).toBe(0);
+    // EI (rigidite D) est desormais EXPOSEE (ADR 0014) — pas strippee.
+    expect(env.output.EI).toBe(4200);
   });
 
   it('canal texte : un warning confidentiel est redacte fail-closed par runPlaneStrain', async () => {
@@ -149,7 +159,10 @@ describe('plane-strain — whitelist de sortie (aucun champ nodal/maillage ne fu
     const joined = env.output.warnings.join(' || ');
     // Anti faux-vert : le brut fuit bien une valeur nue.
     expect(FUITE).toMatch(/=\s*-?[0-9]/);
-    // Mais nettoye : EI et w[7] masques (inconnus de l'allowlist).
+    // Mais nettoye : w[7] (champ nodal) masque. EI reste masque DANS LE TEXTE LIBRE bien
+    // qu'expose comme CHAMP STRUCTURE (ADR 0014) : les deux canaux sont independants et
+    // l'allowlist de redaction demeure fail-closed (conservatrice) — une VALEUR nue dans
+    // un message d'erreur n'est jamais garantie benigne, on ne l'y whiteliste pas.
     expect(joined).toMatch(/valeur confidentielle masquee/);
     expect(joined).not.toMatch(/EI\s*=\s*4200/);
     expect(joined).not.toMatch(/w\[7\]\s*=\s*0,031/);

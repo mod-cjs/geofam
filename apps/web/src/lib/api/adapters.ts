@@ -14,6 +14,7 @@ import type {
   CalcOutputRow,
   NormalizedCalcOutput,
   HeatmapData,
+  ProfilData,
   OfficialPv,
   EntitlementsResponse,
   Project,
@@ -932,6 +933,23 @@ function buildRadierRows(o: Record<string, unknown>): CalcOutputRow[] {
     );
   }
   pushRow(rows, 'Nombre de radiers', o.nRafts, '');
+  // SYNTHÈSE (bilans + extrêmes globaux) — panneau « Synthèse » de l'outil client
+  // GEOPLAQUE_V10 (ADR 0014). Ordre et libellés repris du HTML. Rotations/pentes en ‰
+  // (même convention que tiltMax/slopeMax ci-dessus). Les rangs conditionnels (Winkler,
+  // ressorts, décollement) ne s'affichent que si l'option est active : le contrat rend
+  // `null` sinon → pushRow OMET la ligne (comme l'outil d'origine).
+  pushRow(rows, 'Rotation θx max', o.txMax, '‰');
+  pushRow(rows, 'Rotation θy max', o.tyMax, '‰');
+  pushRow(rows, 'Réaction de sol min p_min', o.pMin, 'kPa');
+  pushRow(rows, 'Réaction de sol max p_max', o.pMax, 'kPa');
+  pushRow(rows, '|Mx| max', o.mxMax, 'kN·m/ml');
+  pushRow(rows, '|My| max', o.myMax, 'kN·m/ml');
+  pushRow(rows, '|Mxy| max (torsion)', o.mxyMax, 'kN·m/ml');
+  pushRow(rows, 'Charge appliquée Σ', o.totalLoad, 'kN');
+  pushRow(rows, 'Σ réactions sol', o.sumReact, 'kN');
+  pushRow(rows, 'Σ réaction Winkler', o.sumWink, 'kN');
+  pushRow(rows, 'Σ réaction ressorts', o.sumSpr, 'kN');
+  pushRow(rows, 'Nœuds décollés', o.decolNodes, '');
   return rows;
 }
 
@@ -941,7 +959,16 @@ function buildRadierRows(o: Record<string, unknown>): CalcOutputRow[] {
  * §8) ; jamais de valeurs nodales/indices/topologie. Garde-fous de cohérence.
  */
 function buildRadierHeatmap(o: Record<string, unknown>): HeatmapData | undefined {
-  const h = o.champDeflexion;
+  return parseHeatmapGrid(o.champDeflexion);
+}
+
+/**
+ * Parse UNE grille de champ (heatmap) fail-closed (§8) : ne lit QUE les clés nommées d'une
+ * grille d'affichage ≤48×48 découplée du maillage. Optionnellement `unit`/`label` (cartes
+ * étendues étiquetées). Jamais de valeur nodale/indice/topologie. `undefined` si la forme
+ * n'est pas exactement celle attendue.
+ */
+function parseHeatmapGrid(h: unknown): HeatmapData | undefined {
   if (h == null || typeof h !== 'object') return undefined;
   const g = h as Record<string, unknown>;
   const num = (v: unknown): number | null =>
@@ -971,7 +998,80 @@ function buildRadierHeatmap(o: Record<string, unknown>): HeatmapData | undefined
     typeof v === 'number' && Number.isFinite(v) ? v : null,
   );
   if (vals.length !== cols * rows) return undefined;
-  return { x0, y0, x1, y1, cols, rows, vals, vMin, vMax };
+  const base: HeatmapData = { x0, y0, x1, y1, cols, rows, vals, vMin, vMax };
+  // Étiquettes optionnelles (cartes étendues) : reprises telles quelles si présentes.
+  if (typeof g.unit === 'string') base.unit = g.unit;
+  if (typeof g.label === 'string') base.label = g.label;
+  return base;
+}
+
+/** Clés de cartes étendues autorisées (fail-closed §8) — reprises des boutons du client. */
+const CHAMP_KEYS = [
+  'deflexion',
+  'reaction',
+  'momentX',
+  'momentY',
+  'momentXY',
+  'raideur',
+  'pente',
+  'rotationX',
+  'rotationY',
+] as const;
+
+/**
+ * Normalise `output.champs` (cartes étendues) en `Record<string, HeatmapData>` — clés
+ * NOMMÉES fail-closed (§8), jamais de copie brute. `undefined` si aucune carte valide.
+ */
+function buildFieldMaps(champs: unknown): Record<string, HeatmapData> | undefined {
+  if (champs == null || typeof champs !== 'object') return undefined;
+  const src = champs as Record<string, unknown>;
+  const out: Record<string, HeatmapData> = {};
+  for (const key of CHAMP_KEYS) {
+    const g = parseHeatmapGrid(src[key]);
+    if (g) out[key] = g;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Clés de profils autorisées (fail-closed §8) — union plane-strain (deflexion/moment/
+ * reaction) et axi (deflexion/momentR/momentT/reaction). */
+const PROFIL_KEYS = ['deflexion', 'moment', 'reaction', 'momentR', 'momentT'] as const;
+
+/** Parse UN profil (97 points) fail-closed : x/v denses finis de même longueur + unit/label. */
+function parseProfile(p: unknown): ProfilData | undefined {
+  if (p == null || typeof p !== 'object') return undefined;
+  const g = p as Record<string, unknown>;
+  if (!Array.isArray(g.x) || !Array.isArray(g.v)) return undefined;
+  const n = g.x.length;
+  if (n < 2 || n > 97 || g.v.length !== n) return undefined;
+  const finiteNums = (a: unknown[]): number[] | undefined => {
+    const r: number[] = [];
+    for (const v of a) {
+      if (typeof v !== 'number' || !Number.isFinite(v)) return undefined;
+      r.push(v);
+    }
+    return r;
+  };
+  const x = finiteNums(g.x);
+  const v = finiteNums(g.v);
+  if (!x || !v) return undefined;
+  if (typeof g.unit !== 'string' || typeof g.label !== 'string') return undefined;
+  return { x, v, unit: g.unit, label: g.label };
+}
+
+/**
+ * Normalise `output.profils` en `Record<string, ProfilData>` — clés NOMMÉES fail-closed
+ * (§8), jamais de copie brute. `undefined` si aucun profil valide.
+ */
+function buildProfils(profils: unknown): Record<string, ProfilData> | undefined {
+  if (profils == null || typeof profils !== 'object') return undefined;
+  const src = profils as Record<string, unknown>;
+  const out: Record<string, ProfilData> = {};
+  for (const key of PROFIL_KEYS) {
+    const p = parseProfile(src[key]);
+    if (p) out[key] = p;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -995,6 +1095,9 @@ function buildPlaneStrainRows(o: Record<string, unknown>): CalcOutputRow[] {
   pushRow(rows, 'Résultante de réaction', o.sumReact, 'kN');
   pushRow(rows, "Profondeur d'assise retenue z_0", o.z0, 'm');
   pushRow(rows, 'Nœuds décollés', o.decolN, '');
+  // Rigidité de flexion D = E·e³/12(1−ν²) — affichée en permanence par l'outil client
+  // (ADR 0014). Forme fermée des entrées E/e/ν, pas un intermédiaire de maillage.
+  pushRow(rows, 'Rigidité de flexion D', o.EI, 'kN·m');
   return rows;
 }
 
@@ -1009,10 +1112,14 @@ function buildAxiRows(o: Record<string, unknown>): CalcOutputRow[] {
   pushRow(rows, 'Tassement au bord w_bord', o.wEdge, 'mm');
   pushRow(rows, 'Tassement maximal w_max', o.wMax, 'mm');
   pushRow(rows, 'Tassement minimal w_min', o.wMin, 'mm');
+  // Tassement différentiel (wMax−wMin) — affiché par l'outil client (ADR 0014).
+  pushRow(rows, 'Tassement différentiel', o.diff, 'mm');
   pushRow(rows, 'Moment radial maximal M_r', o.mrMax, 'kN·m/m');
   pushRow(rows, 'Moment tangentiel maximal M_t', o.mtMax, 'kN·m/m');
   pushRow(rows, 'Réaction de sol maximale p_max', o.pMax, 'kPa');
   pushRow(rows, 'Charge totale appliquée', o.totalLoad, 'kN');
+  // Résultante de la réaction de sol Σ (bilan d'équilibre) — affichée par le client.
+  pushRow(rows, 'Résultante de réaction Σ', o.sumReact, 'kN');
   pushRow(rows, "Côte d'assise retenue z_0", o.z0, 'm');
   return rows;
 }
@@ -1317,9 +1424,15 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
       details: buildPieuxDetails(o),
     };
   }
-  // radier (plaque/sol multicouche) : déflexions/distorsions — pas de verdict (NA)
+  // radier (plaque/sol multicouche) : déflexions/distorsions — pas de verdict (NA).
+  // `heatmap` legacy = carte de déflexion (compat) ; `heatmaps` = cartes étendues étiquetées.
   if (typeof o.betaGov === 'number' || 'nRafts' in o) {
-    return { verdict: 'NA', rows: buildRadierRows(o), heatmap: buildRadierHeatmap(o) };
+    return {
+      verdict: 'NA',
+      rows: buildRadierRows(o),
+      heatmap: buildRadierHeatmap(o),
+      heatmaps: buildFieldMaps(o.champs),
+    };
   }
   // labo (classification GTR) : classe + paramètres — pas de verdict (NA)
   if (o.classe != null && typeof o.classe === 'object') {
@@ -1343,13 +1456,25 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
   // axisymétrique (wc/wEdge), déformations planes (decolN+mMax), triangulaire (reactionMax+
   // nRaft — singulier, distinct de `nRafts` du radier ACM). Analyses → verdict NA.
   if ('wc' in o && 'wEdge' in o) {
-    return { verdict: 'NA', rows: buildAxiRows(o) };
+    return { verdict: 'NA', rows: buildAxiRows(o), profils: buildProfils(o.profils) };
   }
   if ('decolN' in o && 'mMax' in o) {
-    return { verdict: 'NA', rows: buildPlaneStrainRows(o) };
+    return {
+      verdict: 'NA',
+      rows: buildPlaneStrainRows(o),
+      profils: buildProfils(o.profils),
+    };
   }
   if ('reactionMax' in o && 'nRaft' in o) {
-    return { verdict: 'NA', rows: buildTriRaftRows(o) };
+    // tri-raft : heatmap de déflexion (grille découplée du maillage triangulaire).
+    return {
+      verdict: 'NA',
+      rows: buildTriRaftRows(o),
+      heatmap: buildRadierHeatmap(o),
+      heatmaps: buildFieldMaps({
+        deflexion: { ...(o.champDeflexion as object), unit: 'mm', label: 'Tassement' },
+      }),
+    };
   }
   // Moteur non reconnu : fail-closed, aucune sortie brute ne traverse vers le navigateur.
   return null;

@@ -115,20 +115,29 @@ function polygonAireOk(p: ReadonlyArray<{ x: number; y: number }>): boolean {
 }
 
 /** Orientation du triplet (a,b,c) : >0 gauche, <0 droite, 0 aligne. */
-function orient(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }): number {
+function orient(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  c: { x: number; y: number },
+): number {
   return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 }
 
 /** Deux segments [p1,p2] et [p3,p4] se croisent-ils (intersection propre) ? */
 function segmentsCroisent(
-  p1: { x: number; y: number }, p2: { x: number; y: number },
-  p3: { x: number; y: number }, p4: { x: number; y: number },
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  p3: { x: number; y: number },
+  p4: { x: number; y: number },
 ): boolean {
   const d1 = orient(p3, p4, p1);
   const d2 = orient(p3, p4, p2);
   const d3 = orient(p1, p2, p3);
   const d4 = orient(p1, p2, p4);
-  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+  return (
+    ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+    ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+  );
 }
 
 /** Polygone SIMPLE : aucune paire d'aretes NON adjacentes ne se croise (O(n²), n<=200). */
@@ -352,6 +361,42 @@ const HeatmapSchema = z
   })
   .strict();
 
+/**
+ * CARTE D'UN CHAMP (grille d'affichage) — meme forme que `champDeflexion`, ETENDUE d'un
+ * `unit` et d'un `label` (libelles des boutons de cartes de l'outil client, cf. `fields`
+ * de refreshResults). Grille FIXE ≤48×48 RE-ECHANTILLONNEE (IDW + masque contour),
+ * DECOUPLEE du maillage EF : montre le MOTIF du champ (le RESULTAT), JAMAIS les valeurs
+ * nodales brutes, les indices ni la topologie (la METHODE). Extension du patron
+ * design-sur 48×48 valide STARFIRE a TOUS les champs cartographies par l'outil (decision
+ * titulaire 14/07 ; ADR 0014 : ce que l'outil affiche est exposable, le confidentiel est
+ * le CODE moteur).
+ */
+const MapFieldSchema = HeatmapSchema.extend({
+  unit: z.string().max(20),
+  label: z.string().max(60),
+}).strict();
+
+/**
+ * Ensemble des CARTES de champs exposees (chacune optionnelle : presente si le champ
+ * source est disponible). Cles NOMMEES (fail-closed §8) reprises des boutons de cartes du
+ * client : `deflexion` (w), `reaction` (p), `momentX/Y/XY` (Mx/My/Mxy), `raideur` (coef.
+ * de reaction local kr), `pente` (|∇w|), `rotationX/Y` (θx/θy). Chaque grille est
+ * re-echantillonnee et DECOUPLEE du maillage (aucun champ nodal brut ne franchit ici).
+ */
+const RadierChampsSchema = z
+  .object({
+    deflexion: MapFieldSchema.optional(),
+    reaction: MapFieldSchema.optional(),
+    momentX: MapFieldSchema.optional(),
+    momentY: MapFieldSchema.optional(),
+    momentXY: MapFieldSchema.optional(),
+    raideur: MapFieldSchema.optional(),
+    pente: MapFieldSchema.optional(),
+    rotationX: MapFieldSchema.optional(),
+    rotationY: MapFieldSchema.optional(),
+  })
+  .strict();
+
 export const RadierOutputSchema = z
   .object({
     /** Erreur de calcul (garde du moteur / science levee) : message borne. */
@@ -378,10 +423,55 @@ export const RadierOutputSchema = z
     betaGov: z.number().finite(),
     /** Nombre de plaques modelisees. */
     nRafts: z.number().int(),
+    // --- SYNTHESE (scalaires globaux affiches par l'outil client, ADR 0014) ----------
+    // Grandeurs que le panneau « Synthese » de GEOPLAQUE_V10 (refreshResults) affiche a
+    // ses utilisateurs : bilans de charge/reaction, rotations et reactions/moments
+    // EXTREMES (min/max SCALAIRES). Ce sont des DIAGNOSTICS globaux, PAS des champs
+    // nodaux : `pMin/pMax` = min/max de `R.p[]`, `mxMax/myMax/mxyMax` = max des |moments|
+    // nodaux — REDUITS en un scalaire cote projection (jamais le tableau nodal, meme
+    // patron que buildHeatmap qui lit `R.w[]` sans l'exposer). Le CODE moteur reste
+    // confidentiel ; ces VALEURS de resultat sont exposables (principe #54 « zero ecart »
+    // / ADR 0014). Le nombre de nœuds `N`, les localisations `*At` et `iters` restent
+    // SERVEUR (methode EF).
+    /** Charge verticale totale appliquee Σ (kN) — « Charge appliquee Σ » du client. */
+    totalLoad: z.number().finite(),
+    /** Resultante de la reaction de sol integree Σ (kN) — « Σ reactions sol ». */
+    sumReact: z.number().finite(),
+    /** Rotation θx max (‰) — max de |θx| nodal (scalaire). */
+    txMax: z.number().finite(),
+    /** Rotation θy max (‰) — max de |θy| nodal (scalaire). */
+    tyMax: z.number().finite(),
+    /** Reaction de sol minimale p_min (kPa) — min de R.p (scalaire). */
+    pMin: z.number().finite(),
+    /** Reaction de sol maximale p_max (kPa) — max de R.p (scalaire). */
+    pMax: z.number().finite(),
+    /** Moment |Mx| max (kN·m/ml) — max de |Mx| nodal (scalaire). */
+    mxMax: z.number().finite(),
+    /** Moment |My| max (kN·m/ml) — max de |My| nodal (scalaire). */
+    myMax: z.number().finite(),
+    /** Moment de torsion |Mxy| max (kN·m/ml) — max de |Mxy| nodal (scalaire). */
+    mxyMax: z.number().finite(),
+    /** Σ reaction Winkler (kN) ; `null` si l'appui Winkler n'est pas active (option off). */
+    sumWink: z.number().finite().nullable(),
+    /** Σ reaction ressorts (kN) ; `null` si aucun ressort (option off). */
+    sumSpr: z.number().finite().nullable(),
+    /**
+     * Nombre de nœuds decolles (COMPTE seul) ; `null` si le decollement n'est pas active.
+     * `iters` (nombre d'iterations du schema de contact) reste SERVEUR (methode).
+     */
+    decolNodes: z.number().int().nullable(),
     /** Pire distorsion entre charges voisines (null si < 2 charges ponctuelles). */
     worstLoadPair: WorstPairSchema,
     /** Champ de deflexion RE-ECHANTILLONNE pour affichage (grille decouplee du maillage). */
     champDeflexion: HeatmapSchema.optional(),
+    /**
+     * CARTES ETENDUES (decision titulaire 14/07) : toutes les grilles de champs que l'outil
+     * client cartographie (deflexion/reaction/moments/raideur/pente/rotations), chacune
+     * re-echantillonnee ≤48×48 et DECOUPLEE du maillage. `champDeflexion` reste emis a part
+     * (compat calculs persistes + carte actuelle) ; `champs.deflexion` en est l'equivalent
+     * ETIQUETE (unit/label).
+     */
+    champs: RadierChampsSchema.optional(),
   })
   .strict();
 export type RadierOutput = z.infer<typeof RadierOutputSchema>;
