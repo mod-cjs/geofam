@@ -110,6 +110,16 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
 
     const hash = await hashPassword(PASSWORD);
 
+    // Seed IDEMPOTENT contre une cible d'email FIXE : le test #1 renomme
+    // normalUser en 'um-renamed@roadsen.test'. Le teardown supprime normalUser
+    // par son ID (aleatoire) — correct en run nominal — mais un run FORCE-KILL
+    // laisserait une ligne orpheline portant cet email fixe, qui ferait echouer
+    // le rename du run suivant en 409. On purge donc toute orpheline residuelle
+    // avant de seeder (aucune autre suite n'emploie cet email).
+    await admin.query(
+      `DELETE FROM users WHERE email = 'um-renamed@roadsen.test'`,
+    );
+
     await admin.query(
       `INSERT INTO users (id, email, password_hash, full_name, platform_role, updated_at) VALUES
         ($1,$2,$11,'UM Super','SUPERADMIN',now()),
