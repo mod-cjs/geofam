@@ -58,6 +58,111 @@ function fin(x: unknown): x is number {
   return typeof x === 'number' && Number.isFinite(x);
 }
 
+/** Point-dans-polygone (ray casting) — masque la heatmap sur le CONTOUR SAISI (bord
+ * INDEPENDANT du maillage triangulaire, cf. patron radier §8). */
+function pointInAnyRaft(
+  px: number,
+  py: number,
+  polys: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>,
+): boolean {
+  for (const pts of polys) {
+    let inside = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const a = pts[i],
+        b = pts[j];
+      if (!a || !b) continue;
+      const intersect =
+        a.y > py !== b.y > py && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x;
+      if (intersect) inside = !inside;
+    }
+    if (inside) return true;
+  }
+  return false;
+}
+
+/**
+ * RE-ECHANTILLONNE le champ de deflexion `R.w` (aux nœuds du maillage TRIANGULAIRE, dont
+ * les coordonnees sont dans `R.P = [[x,y],…]`) en une grille FIXE ≤48×48 DECOUPLEE de ce
+ * maillage (IDW lissee + masque contour) — MEME algorithme design-sur que la heatmap radier
+ * ACM. On lit `R.P`/`R.w` EN INTERNE ; on n'expose QUE la grille (jamais les coordonnees des
+ * nœuds, la connectivite `tris`, ni la densite `N`/`nt`). Le rendu triangule est EXCLU.
+ */
+function buildTriHeatmap(
+  R: Record<string, unknown>,
+  polys?: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>,
+): unknown {
+  const P = R.P,
+    wv = R.w;
+  if (!Array.isArray(P) || !(Array.isArray(wv) || ArrayBuffer.isView(wv)))
+    return undefined;
+  const ws = wv as ArrayLike<number>;
+  const N = Math.min(P.length, ws.length);
+  if (N < 3) return undefined;
+  // Coordonnees des nœuds extraites EN INTERNE (jamais exposees) depuis P=[[x,y],…].
+  const xs: number[] = new Array(N);
+  const ys: number[] = new Array(N);
+  for (let i = 0; i < N; i++) {
+    const p = P[i] as ArrayLike<number> | undefined;
+    xs[i] = p && fin(p[0]) ? (p[0] as number) : NaN;
+    ys[i] = p && fin(p[1]) ? (p[1] as number) : NaN;
+  }
+  let x0 = Infinity,
+    y0 = Infinity,
+    x1 = -Infinity,
+    y1 = -Infinity;
+  for (let i = 0; i < N; i++) {
+    const xi = xs[i]!,
+      yi = ys[i]!;
+    if (!fin(xi) || !fin(yi)) continue;
+    if (xi < x0) x0 = xi;
+    if (xi > x1) x1 = xi;
+    if (yi < y0) y0 = yi;
+    if (yi > y1) y1 = yi;
+  }
+  if (!fin(x0) || x1 <= x0 || y1 <= y0) return undefined;
+  const G = 48; // resolution FIXE, DECOUPLEE du maillage
+  const cw = (x1 - x0) / (G - 1),
+    ch = (y1 - y0) / (G - 1);
+  // Memes garde-fous §8 que le radier : lissage plancher (cellule ET espacement nodal) +
+  // masque point-dans-polygone (bord independant du maillage) sinon repli distance-au-nœud.
+  const cell = Math.max(cw, ch);
+  const nodeSpacing = Math.sqrt(((x1 - x0) * (y1 - y0)) / Math.max(1, N));
+  const eps2 = Math.pow(Math.max(cell * 1.5, nodeSpacing * 1.2), 2);
+  const maxD2 = Math.pow(cell * 3, 2);
+  const hasPolys = Array.isArray(polys) && polys.length > 0;
+  const vals: (number | null)[] = new Array(G * G).fill(null);
+  let vMin = Infinity,
+    vMax = -Infinity;
+  for (let gy = 0; gy < G; gy++) {
+    for (let gx = 0; gx < G; gx++) {
+      const px = x0 + gx * cw,
+        py = y0 + gy * ch;
+      let sw = 0,
+        swv = 0,
+        nd = Infinity;
+      for (let i = 0; i < N; i++) {
+        const xi = xs[i]!,
+          yi = ys[i]!,
+          wi = ws[i];
+        if (!fin(xi) || !fin(yi)) continue;
+        const d2 = (px - xi) ** 2 + (py - yi) ** 2;
+        if (d2 < nd) nd = d2;
+        const wgt = 1 / (d2 + eps2);
+        sw += wgt;
+        swv += wgt * (wi !== undefined && fin(wi) ? wi : 0);
+      }
+      const dehors = hasPolys ? !pointInAnyRaft(px, py, polys) : nd > maxD2;
+      if (dehors || sw === 0) continue;
+      const val = swv / sw;
+      vals[gy * G + gx] = val;
+      if (val < vMin) vMin = val;
+      if (val > vMax) vMax = val;
+    }
+  }
+  if (!fin(vMin) || !fin(vMax)) return undefined;
+  return { x0, y0, x1, y1, cols: G, rows: G, vals, vMin, vMax };
+}
+
 /**
  * ALLOWLIST des etiquettes dont la valeur `= <nombre>` est BENIGNE (jamais redactee) —
  * FAIL-CLOSED (inconnu => masque). Diagnostics exposes + libelles geometriques/de saisie.
@@ -153,7 +258,10 @@ const EMPTY_OUTPUT = {
  * champs NODAUX (`w`/`p`) et la TOPOLOGIE (`P`/`tris`/`N`/`nt`) sont ECARTES ici (non
  * lus). `diff` est recalcule (wMax - wMin) ; `reactionMax` = `pMax` (renomme).
  */
-function shapeOutput(R: Record<string, unknown>): unknown {
+function shapeOutput(
+  R: Record<string, unknown>,
+  polys?: ReadonlyArray<ReadonlyArray<{ x: number; y: number }>>,
+): unknown {
   if (typeof R.err === 'string') {
     return { erreur: redactConfidentialWarning(R.err), warnings: [], ...EMPTY_OUTPUT };
   }
@@ -162,6 +270,7 @@ function shapeOutput(R: Record<string, unknown>): unknown {
   );
   const wMax = fin(R.wMax) ? R.wMax : 0;
   const wMin = fin(R.wMin) ? R.wMin : 0;
+  const hm = buildTriHeatmap(R, polys);
   return {
     erreur: null,
     warnings,
@@ -173,6 +282,8 @@ function shapeOutput(R: Record<string, unknown>): unknown {
     sumReact: fin(R.sumReact) ? R.sumReact : 0,
     nRaft: fin(R.nRaft) ? R.nRaft : 0,
     z0: fin(R.z0) ? R.z0 : 0,
+    // Heatmap RE-ECHANTILLONNEE (decouplee du maillage triangulaire) — le motif, pas la methode.
+    ...(hm ? { champDeflexion: hm } : {}),
   };
 }
 
@@ -201,7 +312,10 @@ function resolveMeta(): {
 export function runTriRaft(rawInput: unknown): EngineResultEnvelope<TriRaftOutput> {
   const input: TriRaftInput = TriRaftInputSchema.parse(rawInput);
   const rawResult = computeTriRaft(input, input.opts) as Record<string, unknown>;
-  const shaped = shapeOutput(rawResult);
+  // Contour SAISI des plaques -> masque heatmap point-dans-polygone (bord independant du
+  // maillage triangulaire). Meme patron que le radier ACM.
+  const polys = input.rafts.map((r) => r.pts.map((p) => ({ x: p.x, y: p.y })));
+  const shaped = shapeOutput(rawResult, polys);
   const output = projectEngineOutput(TriRaftOutputSchema, shaped);
   return { ok: true, meta: resolveMeta(), output };
 }

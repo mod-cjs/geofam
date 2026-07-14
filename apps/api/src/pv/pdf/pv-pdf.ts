@@ -254,8 +254,47 @@ function buildBody(sealed: SealedContent): Content[] {
     // MAJ-2 (frontière de confidentialité) : `output` a déjà été WHITELISTÉ en
     // amont — projectEngineOutput(contract.outputSchema) au moment du calcul puis
     // figé dans input_canonical au scellement. Le PDF NE RE-RÉDIGE PAS.
-    buildKeyValueTable(sealed.output, 'Aucun résultat enregistré.'),
+    // CRITIQUE-1 : les modes 2D GEOPLAQUE (plane-strain/axi/tri-raft) tombent
+    // dans ce fallback et portent des CHAMPS D'AFFICHAGE volumineux (profils 97
+    // points, champDeflexion 48×48). On les STRIP AVANT flatten pour ne rendre
+    // que les scalaires métier (wMax, mMax, sumReact, EI, diff…) — sinon le PV
+    // devient un mur de nombres imprésentable (DoD §5).
+    buildKeyValueTable(
+      stripDisplayOnlyFields(sealed.output),
+      'Aucun résultat enregistré.',
+    ),
   ];
+}
+
+/**
+ * Clés de PURE VISUALISATION rendues par l'APP (cartographies / profils
+ * ré-échantillonnés « design-sûrs », cf. mémoire geoplaque-heatmap-design-sur),
+ * PAS par le tableau clé-valeur du PV. Aplaties récursivement, elles feraient un
+ * mur de nombres (des centaines à des milliers de lignes).
+ */
+const PV_DISPLAY_ONLY_KEYS = new Set([
+  'profils', // plane-strain / axi : profils de champs (x[97] + v[97] par courbe)
+  'champs', // variante éventuelle de profils groupés
+  'champDeflexion', // radier-tri : grille de déflexion (jusqu'à 48×48 = 2304 vals)
+  'heatmap', // carto brute éventuelle
+  'heatmaps',
+]);
+
+/**
+ * Retire au RENDU les champs de pure visualisation d'un output (copie de surface ;
+ * l'original scellé n'est jamais touché). L'INTÉGRITÉ est préservée : ces champs
+ * restent DANS l'output scellé (input_canonical) — seul le rendu clé-valeur les
+ * omet, car ils sont dessinés par l'app, pas listés dans le PV. Non-objet : rendu
+ * tel quel (aucun champ à retirer).
+ */
+function stripDisplayOnlyFields(value: unknown): unknown {
+  if (!isPlainObject(value)) return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (PV_DISPLAY_ONLY_KEYS.has(k)) continue;
+    out[k] = v;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -1012,10 +1051,60 @@ function fdnKvRow(rows: TableCell[][], label: string, value: string): void {
   ]);
 }
 
+/**
+ * Encadré d'ALERTE proéminent (résultats NON VALIDES). Miroir de l'encadré ROUGE de
+ * l'outil client GEOPLAQUE (`R.overCap` : capacité d'interface dépassée / poinçonnement)
+ * — pleine largeur, fond bordeaux, texte blanc gras. Le message est déjà CLIENT-SAFE
+ * (whitelisté/rédigé côté moteur) : rendu verbatim, sans intermédiaire de calcul.
+ */
+function buildRadierAlertBox(message: string): Content {
+  return {
+    margin: [0, 10, 0, 6],
+    table: {
+      widths: ['*'],
+      body: [
+        [
+          {
+            stack: [
+              {
+                text: 'ALERTE — RÉSULTATS À CONSIDÉRER COMME NON VALIDES',
+                bold: true,
+                fontSize: 11,
+                color: COLORS.white,
+              },
+              {
+                text: message,
+                fontSize: 8.5,
+                color: COLORS.white,
+                margin: [0, 3, 0, 0],
+              },
+            ],
+            fillColor: COLORS.alert,
+            margin: [12, 8, 12, 8],
+          },
+        ],
+      ],
+    },
+    layout: { hLineWidth: () => 0, vLineWidth: () => 0 },
+  };
+}
+
 function buildRadierBody(sealed: SealedContent): Content[] {
   const o = (sealed.output ?? {}) as Record<string, unknown>;
   const body: Content[] = [];
   body.push(buildAnalyseBanner());
+
+  // AVERTISSEMENTS — le poinçonnement (résultats NON VALIDES) est PROÉMINENT : encadré
+  // rouge EN TÊTE des résultats, comme l'outil client. Les warnings sont déjà rédigés/
+  // whitelistés côté moteur ; ici on les CLASSE (critique vs. informatif) et on rend le
+  // critique en alerte. `warnings` est une whitelist du RadierOutputSchema.
+  const warnings = (Array.isArray(o.warnings) ? o.warnings : []).filter(
+    (w): w is string => typeof w === 'string',
+  );
+  const critiques = warnings.filter((w) => /non valides/i.test(w));
+  const autres = warnings.filter((w) => !/non valides/i.test(w));
+  for (const w of critiques) body.push(buildRadierAlertBox(w));
+
   body.push(sectionTitle('Déflexions & distorsions'));
   const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
   // Moteur radier : tassements en mm, distorsion en ‰ — TRANCHÉ (physique + solveModel
@@ -1056,6 +1145,48 @@ function buildRadierBody(sealed: SealedContent): Content[] {
       margin: [0, 2, 0, 4],
     });
   }
+
+  // SYNTHÈSE — bilan global (panneau « Synthèse » de GEOPLAQUE_V10, ADR 0014). Diagnostics
+  // GLOBAUX (scalaires) : bilans de charge/réaction, rotations et réactions/moments
+  // EXTREMES. Ordre de l'outil d'origine. Les lignes CONDITIONNELLES (Winkler/ressorts/
+  // décollement) valent `null` quand l'option est inactive -> fdnNum -> « — » -> fdnKvRow
+  // les OMET (jamais de ligne parasite). `decolNodes = 0` (décollement actif, aucun nœud
+  // décollé) est FINI -> RENDU « 0 » (distinct de l'option inactive). Aucune localisation
+  // ni champ nodal (méthode EF) : ces VALEURS scalaires sont client-safe (whitelist #54).
+  const s: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
+  fdnKvRow(s, 'Charge appliquée Σ', fdnNum(o.totalLoad, 1, 'kN'));
+  fdnKvRow(s, 'Σ réactions du sol', fdnNum(o.sumReact, 1, 'kN'));
+  fdnKvRow(s, 'Σ réaction de Winkler', fdnNum(o.sumWink, 1, 'kN'));
+  fdnKvRow(s, 'Σ réaction des ressorts', fdnNum(o.sumSpr, 1, 'kN'));
+  fdnKvRow(s, 'Rotation θx max', fdnNum(o.txMax, 2, '‰'));
+  fdnKvRow(s, 'Rotation θy max', fdnNum(o.tyMax, 2, '‰'));
+  fdnKvRow(s, 'Réaction de sol minimale', fdnNum(o.pMin, 1, 'kPa'));
+  fdnKvRow(s, 'Réaction de sol maximale', fdnNum(o.pMax, 1, 'kPa'));
+  fdnKvRow(s, 'Moment |Mx| max', fdnNum(o.mxMax, 1, 'kN·m/ml'));
+  fdnKvRow(s, 'Moment |My| max', fdnNum(o.myMax, 1, 'kN·m/ml'));
+  fdnKvRow(s, 'Moment de torsion |Mxy| max', fdnNum(o.mxyMax, 1, 'kN·m/ml'));
+  fdnKvRow(s, 'Nœuds décollés (contact unilatéral)', fdnNum(o.decolNodes, 0));
+  if (s.length > 1) {
+    body.push(sectionTitle('Synthèse — bilan global'));
+    body.push({
+      table: { headerRows: 1, widths: ['*', 'auto'], body: s },
+      layout: FINE_TABLE_LAYOUT,
+      margin: [0, 2, 0, 4],
+    });
+  }
+
+  // Autres avertissements (non critiques) — ligne sobre (l'alerte de poinçonnement, elle,
+  // est déjà rendue en encadré rouge en tête). Déjà rédigés/whitelistés côté moteur.
+  if (autres.length > 0) {
+    body.push(fdnSubTitle('Avertissements'));
+    body.push({
+      text: autres.map((w) => String(w)).join(' · '),
+      style: 'cellMuted',
+      color: COLORS.accent,
+      margin: [0, 2, 0, 4],
+    });
+  }
+
   return body;
 }
 

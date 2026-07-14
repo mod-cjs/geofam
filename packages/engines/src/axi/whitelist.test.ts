@@ -23,15 +23,20 @@ const ALLOWED = new Set([
   'wEdge',
   'wMax',
   'wMin',
+  'diff',
   'mrMax',
   'mtMax',
   'pMax',
   'totalLoad',
+  'sumReact',
   'z0',
+  // Profils radiaux re-echantillonnes (deflexion/momentR/momentT/reaction) — ADR 0014.
+  'profils',
 ]);
 
-/** Cles NODALES / de METHODE qui NE doivent JAMAIS sortir (sumReact hors whitelist axi). */
-const FORBIDDEN = ['r', 'w', 'p', 'Mr', 'Mt', 'nn', 'D', 'EI', 'sumReact'];
+/** Cles NODALES / de METHODE qui NE doivent JAMAIS sortir. `sumReact` (bilan global) est
+ * desormais EXPOSE (ADR 0014) ; `EI`/`D` (rigidite) et `nn` restent la methode EF. */
+const FORBIDDEN = ['r', 'w', 'p', 'Mr', 'Mt', 'nn', 'D', 'EI'];
 
 describe('axi — whitelist de sortie (aucun champ nodal radial / methode ne fuit)', () => {
   afterEach(() => {
@@ -106,6 +111,9 @@ describe('axi — whitelist de sortie (aucun champ nodal radial / methode ne fui
     }
     expect(env.output.wc).toBe(5);
     expect(env.output.wEdge).toBe(2);
+    // sumReact (bilan global) EXPOSE (ADR 0014) ; diff derive (wMax−wMin = 5−2).
+    expect(env.output.sumReact).toBe(1000);
+    expect(env.output.diff).toBe(3);
   });
 
   it('FAIL-CLOSED : sur R.err le pipeline renvoie { ok:false } (aucun objet de zeros scellable)', async () => {

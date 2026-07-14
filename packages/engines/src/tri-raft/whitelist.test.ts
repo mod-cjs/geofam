@@ -29,6 +29,8 @@ const ALLOWED = new Set([
   'sumReact',
   'nRaft',
   'z0',
+  // Heatmap RE-ECHANTILLONNEE (grille ≤48×48 decouplee du maillage triangulaire) — ADR 0014.
+  'champDeflexion',
 ]);
 
 /** Cles NODALES / de TOPOLOGIE (et la cle brute `pMax` renommee) qui NE doivent JAMAIS sortir. */
@@ -47,7 +49,10 @@ describe('tri-raft — whitelist de sortie (aucun champ nodal/maillage triangula
     for (const fx of TRI_RAFT_FIXTURES) {
       // Fixtures INVALIDES par conception (garde du contrat) -> runX doit REJETER.
       if (!TriRaftInputSchema.safeParse(fx.input).success) {
-        expect(() => runTriRaft(fx.input), `${fx.id} (invalide) doit etre rejete`).toThrow();
+        expect(
+          () => runTriRaft(fx.input),
+          `${fx.id} (invalide) doit etre rejete`,
+        ).toThrow();
         continue;
       }
       const env = runTriRaft(fx.input);

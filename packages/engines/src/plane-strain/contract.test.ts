@@ -5,8 +5,9 @@
  *
  * On verifie :
  *   - l'ENTREE valide les fixtures nominales et REFUSE un modele sans charge ;
- *   - la SORTIE `.strict()` STRIPPE tout intermediaire EF (X/w/p/M/V/nn/dx/EI/iters),
- *     a tout niveau, en ne gardant que les diagnostics declares.
+ *   - la SORTIE `.strict()` STRIPPE tout intermediaire EF (X/w/p/M/V/nn/dx/iters),
+ *     a tout niveau, en ne gardant que les diagnostics declares (dont `EI` = rigidite D,
+ *     desormais EXPOSEE — ADR 0014).
  */
 import { describe, expect, it } from 'vitest';
 
@@ -18,8 +19,9 @@ import {
 } from './contract.js';
 import { PLANE_STRAIN_FIXTURES } from './test-fixtures.js';
 
-/** Cles d'INTERMEDIAIRES EF qui ne doivent JAMAIS apparaitre dans la sortie client. */
-const FUITES_INTERDITES = ['X', 'w', 'p', 'M', 'V', 'nn', 'dx', 'EI', 'iters'];
+/** Cles d'INTERMEDIAIRES EF qui ne doivent JAMAIS apparaitre dans la sortie client.
+ * `EI` (rigidite D) n'y est PLUS : exposee (ADR 0014). `dx`/`nn`/`iters` restent SERVEUR. */
+const FUITES_INTERDITES = ['X', 'w', 'p', 'M', 'V', 'nn', 'dx', 'iters'];
 
 function collectKeys(value: unknown, acc: Set<string>): void {
   if (Array.isArray(value)) {
@@ -41,9 +43,10 @@ describe('contrat deformations planes — ENTREE bornee/fail-closed', () => {
   for (const fx of PLANE_STRAIN_FIXTURES.filter((f) => !f.horsDomaine)) {
     it(`[${fx.id}] entree valide accepte`, () => {
       const parsed = PlaneStrainInputSchema.safeParse(fx.input);
-      expect(parsed.success, parsed.success ? '' : JSON.stringify(parsed.error.issues)).toBe(
-        true,
-      );
+      expect(
+        parsed.success,
+        parsed.success ? '' : JSON.stringify(parsed.error.issues),
+      ).toBe(true);
     });
   }
 
@@ -79,9 +82,13 @@ describe('contrat deformations planes — SORTIE whitelist (aucun champ nodal ne
     sumReact: 300,
     z0: 0,
     decolN: 0,
+    // Rigidite de flexion D = EI — champ EXPOSE (ADR 0014), requis par la whitelist.
+    EI: 1.7e7,
   };
 
-  /** La MEME sortie mais porteuse d'intermediaires EF (topologie de maillage). */
+  /** La MEME sortie mais porteuse d'intermediaires EF (topologie de maillage). `EI` n'y
+   * figure PLUS comme fuite : c'est un diagnostic expose (le pas `dx`/le maillage `nn`
+   * restent, eux, interdits). */
   const rawWithLeaks = {
     ...cleanDiag,
     X: [0, 1, 2, 3],
@@ -91,7 +98,6 @@ describe('contrat deformations planes — SORTIE whitelist (aucun champ nodal ne
     V: { 0: 3 },
     nn: 61,
     dx: 0.1,
-    EI: 1.7e7,
     iters: 1,
   };
 

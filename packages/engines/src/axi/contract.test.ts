@@ -22,8 +22,10 @@ import {
 import { computeAxi } from './engine.js';
 import { AXI_FIXTURES } from './test-fixtures.js';
 
-/** Cles d'INTERMEDIAIRES EF qui ne doivent JAMAIS apparaitre dans la sortie client. */
-const FUITES_INTERDITES = ['r', 'w', 'p', 'Mr', 'Mt', 'nn', 'sumReact', 'D', 'EI'];
+/** Cles d'INTERMEDIAIRES EF qui ne doivent JAMAIS apparaitre dans la sortie client.
+ * `sumReact` n'y est PLUS : bilan global expose (ADR 0014). `D`/`EI` (rigidite) et `nn`
+ * (nb de nœuds) restent la methode EF. */
+const FUITES_INTERDITES = ['r', 'w', 'p', 'Mr', 'Mt', 'nn', 'D', 'EI'];
 
 describe('axi — contrat : construction whitelist-safe', () => {
   it('AXI_CONTRACT est defini avec l id kebab-case attendu', () => {
@@ -80,10 +82,12 @@ describe('axi — contrat : SORTIE whitelist stricte (anti-fuite)', () => {
       wEdge: 0.5,
       wMax: 1,
       wMin: 0.5,
+      diff: 0.5,
       mrMax: 10,
       mtMax: 8,
       pMax: 120,
       totalLoad: 1000,
+      sumReact: 1000,
       z0: 0,
     };
     expect(() => AxiOutputSchema.parse(clean)).not.toThrow();
@@ -96,10 +100,12 @@ describe('axi — contrat : SORTIE whitelist stricte (anti-fuite)', () => {
         wEdge: 0.5,
         wMax: 1,
         wMin: 0.5,
+        diff: 0.5,
         mrMax: 10,
         mtMax: 8,
         pMax: 120,
         totalLoad: 1000,
+        sumReact: 1000,
         z0: 0,
         [cle]: cle === 'r' || cle === 'w' ? [0, 1, 2] : 3.14,
       };
@@ -121,15 +127,18 @@ describe('axi — contrat : SORTIE whitelist stricte (anti-fuite)', () => {
       wEdge: R.wEdge,
       wMax: R.wMax,
       wMin: R.wMin,
+      diff: (R.wMax as number) - (R.wMin as number),
       mrMax: R.mrMax,
       mtMax: R.mtMax,
       pMax: R.pMax,
       totalLoad: R.totalLoad,
+      sumReact: R.sumReact,
       z0: R.z0,
     });
     const serial = JSON.stringify(projected);
-    // Aucune cle nodale / de methode ne subsiste.
-    for (const cle of ['"r"', '"w"', '"p"', '"Mr"', '"Mt"', '"nn"', '"sumReact"']) {
+    // Aucune cle nodale / de methode ne subsiste (sumReact est desormais un diagnostic
+    // EXPOSE, ADR 0014 — on ne l'attend donc plus dans cette liste d'interdits).
+    for (const cle of ['"r"', '"w"', '"p"', '"Mr"', '"Mt"', '"nn"', '"D"', '"EI"']) {
       expect(serial.includes(cle)).toBe(false);
     }
     // Le brut, lui, PORTE bien ces intermediaires (preuve que le strip est necessaire).

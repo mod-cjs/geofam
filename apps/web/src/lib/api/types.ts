@@ -46,15 +46,15 @@ export interface LoginResponse {
 export interface EntitlementsResponse {
   orgId: string;
   pack: 'ROUTES' | 'FONDATIONS' | 'COMPLETE';
-  modules: string[];          // engineId autorisés
-  expiresAt: string;          // ISO
-  expired: boolean;           // now_serveur > date_fin
+  modules: string[]; // engineId autorisés
+  expiresAt: string; // ISO
+  expired: boolean; // now_serveur > date_fin
   quota: {
     limit: number;
     used: number;
     remaining: number;
   };
-  serverTime: string;         // ancre de temps — NE PAS utiliser Date.now() local
+  serverTime: string; // ancre de temps — NE PAS utiliser Date.now() local
 }
 
 // ---------------------------------------------------------------------------
@@ -124,8 +124,27 @@ export interface NormalizedCalcOutput {
    * Champ de résultat RÉ-ÉCHANTILLONNÉ pour affichage (heatmap radier) — grille
    * FIXE découplée du maillage EF. Montre le MOTIF (résultat), jamais les valeurs
    * nodales/indices/topologie (méthode). Décision STARFIRE+expert (rescope §8).
+   *
+   * Legacy — conservé pour compatibilité descendante (calculs déjà persistés
+   * avant l'introduction du sélecteur multi-champs, cf. `heatmaps` ci-dessous) :
+   * un ancien CalcResult ne porte que ce champ (déflexion uniquement).
    */
   heatmap?: HeatmapData;
+  /**
+   * Contrat cartes 14/07 — sélecteur multi-champs (fidélité au panneau `res-field`
+   * du client GEOPLAQUE_V10.html) : une grille d'affichage par grandeur radier.
+   * Clés attendues : deflexion, reaction, momentX, momentY, momentXY, raideur,
+   * pente, rotationX, rotationY. Absent sur les anciens calculs → fallback `heatmap`.
+   */
+  heatmaps?: Record<string, HeatmapData>;
+  /**
+   * Contrat cartes 14/07 — profils 1D des solveurs plans (`plane-strain`, `axi`).
+   * `x` = abscisse (m, ou rayon r pour axi), `v` = valeurs échantillonnées (même
+   * longueur que `x`). Clés attendues : plane-strain → deflexion/moment/reaction
+   * (97 points) ; axi → deflexion/momentR/momentT/reaction. Absent → pas de tracé
+   * (pas de crash), ex. moteurs `radier`/`tri-raft` qui n'en produisent pas.
+   */
+  profils?: Record<string, ProfilData>;
 }
 
 /** Grille d'affichage d'un champ (heatmap) — découplée du maillage. */
@@ -140,6 +159,21 @@ export interface HeatmapData {
   vals: (number | null)[];
   vMin: number;
   vMax: number;
+  /** Contrat cartes 14/07 — unité d'affichage de la grandeur (ex. 'mm', 'kPa', 'rad'). */
+  unit?: string;
+  /** Contrat cartes 14/07 — libellé métier de la grandeur (ex. 'Tassement'). */
+  label?: string;
+}
+
+/**
+ * Contrat cartes 14/07 — profil 1D échantillonné (bande de tracé plane-strain/axi).
+ * `x`/`v` de même longueur ; `unit`/`label` portent l'affichage (axe, légende).
+ */
+export interface ProfilData {
+  x: number[];
+  v: number[];
+  unit: string;
+  label: string;
 }
 
 export interface CalcResult {
@@ -154,7 +188,7 @@ export interface CalcResult {
   output: unknown | null;
   createdAt: string;
   updatedAt: string;
-  pvId?: string;   // défini si un PV a été émis
+  pvId?: string; // défini si un PV a été émis
 }
 
 export interface CalcRequest {
@@ -171,7 +205,7 @@ export type PvStatus = 'SEALED';
 
 export interface OfficialPv {
   id: string;
-  number: string;        // ex. "PV-2026-0001"
+  number: string; // ex. "PV-2026-0001"
   orgId: string;
   projectId: string;
   calcResultId: string;
@@ -198,7 +232,7 @@ export interface EmitPvRequest {
 
 export interface VerifyPvResponse {
   pvId: string;
-  intact: boolean;   // true = sceau vérifié côté serveur
+  intact: boolean; // true = sceau vérifié côté serveur
   verifiedAt: string;
 }
 

@@ -26,11 +26,10 @@
  *      identité pour les grandeurs finales, ×1000 (MPa→kPa) pour les contraintes,
  *      strip du discriminant Kmix pour la famille. Écart attendu : 0 (rel ≤ 1e-9).
  *
- * SENTINELLE PASSE-2 (test.fail() documenté) : le serveur estampille ENCORE
- * `engineSourceHash` = 259a (moderne) alors que la production calcule selon 42bb
- * (définitive). Le test « meta serveur scelle la même référence » reste donc ROUGE
- * (marqué `test.fail()`) tant que la passe 2 (bascule du registre vers 42bb) n'est
- * pas faite ET déployée sur Render. Cf. sentinelle vitest jumelle
+ * ANCRAGE DE SCELLEMENT : depuis la bascule du registre (ADR 0013) et son
+ * déploiement Render (14/07), la meta serveur `engineSourceHash` estampille 42bb
+ * (définitive) — vérifié par le test « meta serveur scelle la même référence »
+ * (ex-sentinelle passe-2, test.fail() retiré). Cf. ancrage vitest jumeau
  * `packages/engines/src/registry/registry.burmister-seal.sentinel.test.ts`.
  *
  * SKIP BRUYANT (jamais un faux-vert) : si la référence est absente, le test ÉCHOUE
@@ -62,11 +61,9 @@ const FROZEN_HTML = path.resolve(
   '../../packages/engines/reference/roadsens_burmister_definitive.html',
 );
 /**
- * SHA-256 GELÉ de la référence définitive. NB : à ce jour, la meta serveur
- * `engineSourceHash` estampille encore l'ANCIEN sceau (259a, moderne) : le test
- * « meta serveur scelle la même référence » est donc marqué `test.fail()`
- * (sentinelle passe-2, ROUGE tant que le registre n'est pas basculé sur 42bb et
- * déployé). L'ancrage `beforeAll` ci-dessous vérifie que le FICHIER piloté vaut 42bb.
+ * SHA-256 GELÉ de la référence définitive — scellé au registre (v2.0.0, ADR 0013)
+ * et estampillé par la meta serveur depuis le déploiement du 14/07. L'ancrage
+ * `beforeAll` ci-dessous vérifie que le FICHIER piloté vaut 42bb.
  */
 const SEALED_SHA = '42bb46aa5da085cd5605664ce125e361392c77fbc717f9abc4b8d5910f1546f2';
 
@@ -655,20 +652,12 @@ test.describe('ÉQUIVALENCE burmister — HTML client (navigateur) ↔ plateform
     ).toBe('function');
   });
 
-  // SENTINELLE PASSE-2 (échec ATTENDU, jamais un faux-vert) : le serveur estampille
-  // ENCORE l'ancien sceau (259a, moderne) alors que la production calcule selon la
-  // DÉFINITIVE (42bb). Ce test RESTE ROUGE tant que la passe 2 (bascule du registre
-  // + déploiement Render) n'est pas faite. `test.fail()` l'exprime comme « échec
-  // attendu » : Playwright le compte VERT tant qu'il échoue, et le fera virer ROUGE
-  // (forçant le retrait de test.fail()) le jour où la meta renverra 42bb.
-  test('SENTINELLE passe-2 : la meta serveur scelle la même référence que le fichier piloté (engineSourceHash == 42bb)', async ({
+  // ANCRAGE DE SCELLEMENT (ex-sentinelle passe-2, test.fail() retiré le 14/07 après
+  // bascule du registre + déploiement Render) : la meta serveur scelle la référence
+  // DÉFINITIVE (42bb) — celle qui reproduit les calculs de production (ADR 0013).
+  test('la meta serveur scelle la même référence que le fichier piloté (engineSourceHash == 42bb)', async ({
     request,
   }) => {
-    test.fail(
-      true,
-      'Le serveur estampille encore 259a (moderne). Deviendra vert à la bascule du ' +
-        'registre vers 42bb (passe 2) + déploiement — retirer alors test.fail().',
-    );
     const { meta } = await computeServer(request, CAS[0].input);
     expect(
       meta.engineSourceHash,
