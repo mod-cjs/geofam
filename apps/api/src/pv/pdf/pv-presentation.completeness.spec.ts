@@ -47,11 +47,37 @@ const OUTPUT = {
   ornierage: { valeur: 891.49, admissible: 511.5, ok: false },
   // Critères SECONDAIRES peuplés (représentatifs) : la sentinelle fail-closed doit
   // décider CHAQUE feuille -> chacune est mappée (critère/table) ou masquée.
-  fatiguePhase2: { valeur: 509.37, admissible: 201.54, ok: false, requis: false, couche: 1 },
-  fatigueInverse: { valeur: 0.469, admissible: 0.384, ok: false, requis: true, couche: 4 },
+  fatiguePhase2: {
+    valeur: 509.37,
+    admissible: 201.54,
+    ok: false,
+    requis: false,
+    couche: 1,
+  },
+  fatigueInverse: {
+    valeur: 0.469,
+    admissible: 0.384,
+    ok: false,
+    requis: true,
+    couche: 4,
+  },
   couchesTraitees: [
-    { couche: 2, mode: 'semi-collée', valeur: 0.27, admissible: 0.42, ok: true, requis: true },
-    { couche: 3, mode: 'semi-collée', valeur: 0.33, admissible: 0.38, ok: true, requis: true },
+    {
+      couche: 2,
+      mode: 'semi-collée',
+      valeur: 0.27,
+      admissible: 0.42,
+      ok: true,
+      requis: true,
+    },
+    {
+      couche: 3,
+      mode: 'semi-collée',
+      valeur: 0.33,
+      admissible: 0.38,
+      ok: true,
+      requis: true,
+    },
   ],
   couchesGranulaires: [
     { couche: 2, valeur: 686.12, admissible: 511.5, ok: false, requis: true },

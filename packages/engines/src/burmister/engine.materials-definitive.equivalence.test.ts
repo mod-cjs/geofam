@@ -14,14 +14,15 @@
  * pilotee via jsdom (`gnt-auto-harness.ts`, reutilise). Module sous test :
  * `computeBurmister` (engine.ts) avec `load.materialsRev`.
  *
- * DEUX PREUVES :
+ * DEUX PREUVES (ADR 0013 — TABLE UNIQUE, mode historique RETIRE) :
  *   1. AVEC `materialsRev='definitive'` : module == reference definitive
  *      (rel 1e-9), sur GLc2/BQc/BC5g.
- *   2. SANS `materialsRev` (absent) : module == ANCIENNE table (s6 0.37/0.30,
- *      pas de BC5g) — comportement HISTORIQUE preserve, verifie en isolant
- *      `AGEROUTE_MATERIALS` (s6 inchanges) et en prouvant que BC5g reste absent
- *      de la table par defaut (le moteur leve une erreur si on lui soumet BC5g
- *      sans le flag, comme la reference historique avant l'ajout de ce materiau).
+ *   2. SANS `materialsRev` (absent) : module == MEME resultat definitive (le flag
+ *      n'a PLUS d'effet — une seule table). On le prouve : sans flag, GLc2 utilise
+ *      s6=0,3705 (pas 0,37) et BC5g est RECONNU (e6=2,15, plus jamais Infinity).
+ *      Les CONSTANTES `AGEROUTE_MATERIALS` (base structurelle, s6=0,37/0,30) et
+ *      `AGEROUTE_MATERIALS_DEFINITIVE` restent testees isolement (la definitive
+ *      derive de la base par spread), mais SEULE la definitive est utilisee au calcul.
  *
  * GATE LOCAL : la reference definitive est copiee dans le depot ; si elle
  * venait a manquer, SKIP BRUYANT (jamais un faux-vert).
@@ -30,7 +31,11 @@ import type { GoldenCase } from '@roadsen/shared/testing/golden-case.js';
 import { runGoldenCase } from '@roadsen/shared/testing/golden-runner.js';
 import { describe, expect, it } from 'vitest';
 
-import { AGEROUTE_MATERIALS, AGEROUTE_MATERIALS_DEFINITIVE, computeBurmister } from './engine.js';
+import {
+  AGEROUTE_MATERIALS,
+  AGEROUTE_MATERIALS_DEFINITIVE,
+  computeBurmister,
+} from './engine.js';
 import { jsonRoundTrip, sanitizeResult } from './equivalence-harness.js';
 import {
   burmisterDefinitiveSourceAvailable,
@@ -42,8 +47,10 @@ const MODULE_UNDER_TEST = 'chaussee-burmister-materiaux-definitive';
 /** Tolerance de PORTAGE serree : module et reference executent la MEME science. */
 const PORTAGE_TOLERANCE = { rel: 1e-9, abs: 1e-12 } as const;
 
-describe('burmister — tables materiaux : HISTORIQUE vs DEFINITIVE isolees (#93 sous-port 3c)', () => {
-  it('table HISTORIQUE (defaut) : GLc2.s6=0,37, BQc.s6=0,30, pas de BC5g', () => {
+describe('burmister — tables materiaux : BASE vs DEFINITIVE (constantes, ADR 0013)', () => {
+  it('table de BASE `AGEROUTE_MATERIALS` (structurelle, non utilisee seule) : GLc2.s6=0,37, BQc.s6=0,30, pas de BC5g', () => {
+    // NB : ces valeurs restent celles de la BASE dont derive la definitive (spread).
+    // Elles ne sont PLUS utilisees au calcul depuis le retrait du mode historique.
     expect(AGEROUTE_MATERIALS.GLc2.s6).toBe(0.37);
     expect(AGEROUTE_MATERIALS.BQc.s6).toBe(0.3);
     expect((AGEROUTE_MATERIALS as Record<string, unknown>)['BC5g']).toBeUndefined();
@@ -60,7 +67,7 @@ describe('burmister — tables materiaux : HISTORIQUE vs DEFINITIVE isolees (#93
   });
 });
 
-describe('burmister — gate materialsRev : comportement HISTORIQUE preserve quand absent', () => {
+describe('burmister — materialsRev SANS effet : SANS flag == AVEC flag == definitive (ADR 0013)', () => {
   const LAYERS_GLC2 = [
     { mat: 'BBSG1', h: 0.08, E: 1512, nu: 0.45 },
     { mat: 'GLc2', h: 0.2, E: 3000, nu: 0.25 },
@@ -68,58 +75,78 @@ describe('burmister — gate materialsRev : comportement HISTORIQUE preserve qua
   ];
   const SUBGRADE = { cls: 'PF3', E: 120, nu: 0.35 };
   const TRAFFIC = { T: 150, C: 0.9, N: 20, tau: 4.0, dir: 1.0, tv: 1.0 };
-  const CP_BASE = { p: 0.662, a: 0.125, d: 0.375, r: 'auto', sh: 'auto', ks: 'auto' } as const;
+  const CP_BASE = {
+    p: 0.662,
+    a: 0.125,
+    d: 0.375,
+    r: 'auto',
+    sh: 'auto',
+    ks: 'auto',
+  } as const;
 
-  it('materialsRev absent -> resultat IDENTIQUE a materialsRev absent explicitement omis (defaut stable)', () => {
-    const state = { layers: LAYERS_GLC2, subgrade: SUBGRADE, traffic: TRAFFIC, load: CP_BASE };
+  it('materialsRev absent -> resultat stable (idempotent, defaut reproductible)', () => {
+    const state = {
+      layers: LAYERS_GLC2,
+      subgrade: SUBGRADE,
+      traffic: TRAFFIC,
+      load: CP_BASE,
+    };
     const a = computeBurmister(state) as Record<string, unknown>;
-    const b = computeBurmister({ ...state, load: { ...CP_BASE } }) as Record<string, unknown>;
+    const b = computeBurmister({ ...state, load: { ...CP_BASE } }) as Record<
+      string,
+      unknown
+    >;
     expect(a).toEqual(b);
   });
 
-  it("materialsRev='definitive' -> resultat DIFFERE du defaut (s6 GLc2 recalibre 0,37->0,3705)", () => {
-    const state = { layers: LAYERS_GLC2, subgrade: SUBGRADE, traffic: TRAFFIC, load: CP_BASE };
-    const historique = computeBurmister(state) as { e6: number | null; etA: number | null };
-    const definitive = computeBurmister({
+  it("materialsRev='definitive' == absent : le flag n'a PLUS d'effet (table unique, mode historique retire)", () => {
+    const state = {
+      layers: LAYERS_GLC2,
+      subgrade: SUBGRADE,
+      traffic: TRAFFIC,
+      load: CP_BASE,
+    };
+    const sansFlag = computeBurmister(state) as Record<string, unknown>;
+    const avecFlag = computeBurmister({
       ...state,
       load: { ...CP_BASE, materialsRev: 'definitive' },
-    }) as { e6: number | null; etA: number | null };
-    // `e6` (raw : coefficient s6 minimal retenu pour la structure MTLH) DOIT
-    // refleter directement le recalage 0,37 -> 0,3705 ; la valeur ADMISSIBLE
-    // (`etA`) qui en depend DOIT donc egalement differer.
-    expect(historique.e6).toBe(0.37);
-    expect(definitive.e6).toBe(0.3705);
-    expect(definitive.etA).not.toBe(historique.etA);
+    }) as Record<string, unknown>;
+    // MORD si quelqu un reintroduisait le gate historique : les DEUX doivent etre
+    // strictement identiques (meme table definitive appliquee des deux cotes).
+    expect(sansFlag).toEqual(avecFlag);
   });
 
-  it(
-    "BC5g soumis SANS materialsRev='definitive' -> materiau NON reconnu (absent de la table " +
-      'historique) : les coefficients de calage effectivement retenus DIFFERENT de ceux de la ' +
-      'table definitive (BC5g.s6=2,15, kd=1/1,47) — preuve indirecte que M ne contient PAS BC5g ' +
-      'quand le flag est absent (le moteur ne LEVE pas sur ce cas, contrairement au materiau ' +
-      "totalement inconnu en position influant sur `bitEnd` — cf. 'hors-domaine-materiau-inconnu')",
-    () => {
-      // BC5g place en couche la PLUS PROFONDE du paquet lie (`mD`, le materiau
-      // DIMENSIONNANT du critere de fatigue rigide — cf. engine.ts l.998-1006) :
-      // c'est le SEUL positionnement ou son coefficient s6 pilote directement `e6`.
-      const layers = [
-        { mat: 'BC2', h: 0.15, E: 20000, nu: 0.25 },
-        { mat: 'BC5g', h: 0.22, E: 35000, nu: 0.25 },
-      ];
-      const state = { layers, subgrade: SUBGRADE, traffic: TRAFFIC, load: CP_BASE };
-      const sansFlag = computeBurmister(state) as { e6: number | null };
-      const avecFlag = computeBurmister({
-        ...state,
-        load: { ...CP_BASE, materialsRev: 'definitive' },
-      }) as { e6: number | null };
-      // Sans le flag, BC5g est absent de M (table historique) : `mD = M['BC5g']
-      // || {}` est un objet VIDE (ni `.bit` ni `.rig`) -> minE6 (`e6`) = Infinity
-      // (aucun coefficient de calage disponible), jamais 2,15 (BC5g reel).
-      expect(sansFlag.e6).toBe(Infinity);
-      // Avec le flag, BC5g (s6=2,15) est reconnu : le coefficient retenu differe.
-      expect(avecFlag.e6).toBe(2.15);
-    },
-  );
+  it('SANS flag, GLc2 utilise s6=0,3705 (definitive), PAS 0,37 (historique retire)', () => {
+    const state = {
+      layers: LAYERS_GLC2,
+      subgrade: SUBGRADE,
+      traffic: TRAFFIC,
+      load: CP_BASE,
+    };
+    const sansFlag = computeBurmister(state) as { e6: number | null };
+    // `e6` (raw : coefficient s6 minimal retenu pour la structure MTLH) == 0,3705 :
+    // preuve DIRECTE que la table DEFINITIVE est utilisee meme sans flag.
+    expect(sansFlag.e6).toBe(0.3705);
+  });
+
+  it('SANS flag, BC5g est RECONNU (materiau definitive, e6=2,15) — plus jamais Infinity', () => {
+    // BC5g place en couche la PLUS PROFONDE du paquet lie (`mD`, le materiau
+    // DIMENSIONNANT du critere de fatigue rigide) : son coefficient s6 pilote `e6`.
+    // Avant ADR 0013, sans flag BC5g etait absent -> e6=Infinity ; il est desormais
+    // TOUJOURS reconnu (table definitive unique). MORD si le gate revenait.
+    const layers = [
+      { mat: 'BC2', h: 0.15, E: 20000, nu: 0.25 },
+      { mat: 'BC5g', h: 0.22, E: 35000, nu: 0.25 },
+    ];
+    const state = { layers, subgrade: SUBGRADE, traffic: TRAFFIC, load: CP_BASE };
+    const sansFlag = computeBurmister(state) as { e6: number | null };
+    const avecFlag = computeBurmister({
+      ...state,
+      load: { ...CP_BASE, materialsRev: 'definitive' },
+    }) as { e6: number | null };
+    expect(sansFlag.e6).toBe(2.15);
+    expect(avecFlag.e6).toBe(2.15);
+  });
 });
 
 const SOURCE_OK = burmisterDefinitiveSourceAvailable();
@@ -129,7 +156,7 @@ describe('burmister — revision materiaux definitive : module TS <-> reference 
     const msg =
       '[#93] AVERTISSEMENT : reference definitive ABSENTE ' +
       '(packages/engines/reference/roadsens_burmister_definitive.html). ' +
-      "L equivalence de la revision materiaux N A PAS ete verifiee. Ce skip n est PAS un succes.";
+      'L equivalence de la revision materiaux N A PAS ete verifiee. Ce skip n est PAS un succes.';
     // eslint-disable-next-line no-console -- avertissement volontaire (gate local absent)
     console.warn(msg);
     it.skip(`equivalence revision materiaux NON verifiee (reference absente) — ${msg}`, () => {

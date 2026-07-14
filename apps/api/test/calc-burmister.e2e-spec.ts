@@ -64,9 +64,24 @@ describe('POST /calc/burmister (e2e)', () => {
     expect(body.meta.engineVersion).toMatch(/^\d+\.\d+\.\d+$/);
     // Egalite stricte de la sortie (recalcul deterministe identique).
     expect(body).toEqual(expected);
-    // Aucun intermediaire (contrainte brute, coefficient de fatigue) dans la reponse.
-    expect(JSON.stringify(res.body)).not.toMatch(
+    // ADR 0014 : `output.details` expose desormais 11 intermediaires NOMMES
+    // (ktheta, sn, sh_cm, delta, kr, kc, ks, ub, adm_r50, sigmaZ_psc_kpa,
+    // sigmaR_psc_kpa) — whitelist nominative fail-closed, verifiee champ a champ
+    // par les tests moteur/adaptateur. On retire donc `output.details` de la
+    // chaine testee, PUIS on applique le motif anti-fuite COMPLET (kr/ks/kc
+    // inclus) au RESTE de la reponse : la garde continue de mordre sur toute
+    // fuite d'un intermediaire (ex. RAW `_D`) HORS de la whitelist nominative.
+    const sansDetails = JSON.parse(JSON.stringify(res.body)) as {
+      output?: Record<string, unknown>;
+    };
+    if (sansDetails.output) delete sansDetails.output.details;
+    expect(JSON.stringify(sansDetails)).not.toMatch(
       /"(sz|sr|sth|kr|ks|kc|s0|sd2|bz|et0|etM|lys)"\s*:/,
+    );
+    // Les symboles BRUTS internes restent interdits PARTOUT, `details` compris :
+    // aucun ne coincide avec une cle whitelistee (motif ancre sur la cle exacte).
+    expect(JSON.stringify(res.body)).not.toMatch(
+      /"(sz|sr|sth|s0|sd2|bz|et0|etM|lys)"\s*:/,
     );
   });
 
@@ -103,9 +118,19 @@ describe('POST /calc/burmister (e2e)', () => {
       .expect(201);
     const body = res.body as EngineResultEnvelope<BurmisterOutput>;
     expect(body.ok).toBe(true);
-    // Aucun intermediaire de calcul ne doit apparaitre dans la reponse.
-    expect(JSON.stringify(res.body)).not.toMatch(
+    // ADR 0014 (cf. cas nominal) : `output.details` porte des intermediaires
+    // NOMMES et whitelistes ; on l'ecarte de la chaine testee, puis on applique
+    // le motif anti-fuite COMPLET (kr/ks/kc inclus) au RESTE de la reponse.
+    const sansDetails = JSON.parse(JSON.stringify(res.body)) as {
+      output?: Record<string, unknown>;
+    };
+    if (sansDetails.output) delete sansDetails.output.details;
+    expect(JSON.stringify(sansDetails)).not.toMatch(
       /"(sz|sr|sth|kr|ks|kc|s0|sd2|bz|lys|rigL|ezL)"\s*:/,
+    );
+    // Symboles BRUTS internes : interdits PARTOUT, `details` compris.
+    expect(JSON.stringify(res.body)).not.toMatch(
+      /"(sz|sr|sth|s0|sd2|bz|lys|rigL|ezL)"\s*:/,
     );
   });
 });

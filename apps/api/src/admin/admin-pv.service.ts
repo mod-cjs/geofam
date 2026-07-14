@@ -72,7 +72,11 @@ interface PvGetRow {
 export class AdminPvService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listPvs(args: { limit: number; offset: number; q?: string }): Promise<PvListItem[]> {
+  async listPvs(args: {
+    limit: number;
+    offset: number;
+    q?: string;
+  }): Promise<PvListItem[]> {
     const rows = await this.prisma.asAppRole(
       (tx) => tx.$queryRaw<PvListRow[]>`
         SELECT pv_id, pv_number, org_id, org_name, org_slug, project_name,

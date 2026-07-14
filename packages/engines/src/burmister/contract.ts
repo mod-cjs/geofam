@@ -15,13 +15,16 @@
  * --- CALIBRATION VERROUILLEE (integrite PV — faille fermee) ---
  * Le REFERENTIEL MATERIAUX AGEROUTE (coefficients de calage des lois de fatigue :
  * e6/σ6, b, kc, sn, Sh, kd, E10, et les drapeaux bit/rig) N'EST PAS accepte en
- * entree. Il est FIGE cote moteur a la table de REFERENCE `AGEROUTE_MATERIALS`
- * (θ=34 °C). Motif : l'entree valide sert aussi de forme PERSISTEE et SCELLEE dans
- * le PV ; une requete forgee portant `materials:{...}` aurait pu substituer une
- * calibration de fatigue puis la faire sceller SOUS l'identite methode STARFIRE.
- * Le schema etant `.strict()`, toute entree portant une cle `materials` est
- * desormais REJETEE (400, fail-closed). Les couches portent deja E/ν/h (saisis) ;
- * aucune propriete de calage n'a donc a transiter par l'entree client.
+ * entree. Il est FIGE cote moteur a la table de REFERENCE DEFINITIVE
+ * `AGEROUTE_MATERIALS_DEFINITIVE` (θ=34 °C, unique table depuis ADR 0013 — le mode
+ * materiaux historique a ete retire). Motif : l'entree valide sert aussi de forme
+ * PERSISTEE et SCELLEE dans le PV ; une requete forgee portant `materials:{...}`
+ * aurait pu substituer une calibration de fatigue puis la faire sceller SOUS
+ * l'identite methode STARFIRE. Le schema etant `.strict()`, toute entree portant
+ * une cle `materials` est desormais REJETEE (400, fail-closed). Les couches portent
+ * deja E/ν/h (saisis) ; aucune propriete de calage n'a donc a transiter par
+ * l'entree client. Seule EXCEPTION bornee : `load.fatigueOverrides` (ε₆/σ₆ publics
+ * du catalogue, tracee en sortie — cf. LoadSchema).
  *
  * --- POURQUOI une sortie tres reduite (anti-fuite, DoD §8) ---
  * Le calcul produit, en interne (objet `_D`), une foule d'intermediaires
@@ -280,14 +283,15 @@ const LoadSchema = z
      */
     neForce: z.number().finite().positive().max(1e9).optional(),
     /**
-     * Revision du referentiel MATERIAUX (#93 sous-port 3c, GATE SCIENCE) :
-     * absent -> table HISTORIQUE `AGEROUTE_MATERIALS` (GLc2 s6=0.37, BQc s6=0.30,
-     * pas de BC5g) ; `'definitive'` -> table CORRIGEE `AGEROUTE_MATERIALS_DEFINITIVE`
-     * (GLc2 s6=0.3705, BQc s6=0.304, materiau BC5g ajoute — dalle beton goujonnee,
-     * Tab. 68). Recalage de CALAGE scientifique STARFIRE, pas un simple port :
-     * l'activation produit necessite une validation `expert-genie-civil`/STARFIRE
-     * prealable. Ne SUBSTITUE jamais un coefficient arbitraire — seule une des
-     * DEUX tables figees serveur est selectionnee (aucune cle `materials` libre).
+     * Revision du referentiel MATERIAUX — HERITAGE de compatibilite (ADR 0013).
+     * Depuis la bascule du 2026-07-13, le moteur utilise TOUJOURS la table
+     * DEFINITIVE (`AGEROUTE_MATERIALS_DEFINITIVE` : GLc2 s6=0.3705, BQc s6=0.304,
+     * materiau BC5g — dalle beton goujonnee, Tab. 68 ; science SIGNEE STARFIRE).
+     * Le mode materiaux HISTORIQUE a ete RETIRE : ce champ reste ACCEPTE en entree
+     * (compatibilite de contrat / forme persistee) mais N'A PLUS AUCUN EFFET
+     * (`'definitive'` == absent == table definitive). Aucune cle `materials` libre :
+     * une seule table figee serveur existe. Conserve pour ne pas rejeter (400) les
+     * entrees de production qui l'envoient encore.
      */
     materialsRev: z.enum(['definitive']).optional(),
     /**
@@ -333,8 +337,9 @@ const LoadSchema = z
  * Entree complete du moteur burmister. Bornee.
  *
  * PAS de champ `materials` : le referentiel/la calibration de fatigue est FIGE
- * cote moteur a `AGEROUTE_MATERIALS` (reference θ=34 °C), jamais fourni par le
- * client (cf. en-tete « CALIBRATION VERROUILLEE »). Le schema etant `.strict()`,
+ * cote moteur a `AGEROUTE_MATERIALS_DEFINITIVE` (reference θ=34 °C, table unique —
+ * ADR 0013), jamais fourni par le client (cf. en-tete « CALIBRATION VERROUILLEE »).
+ * Le schema etant `.strict()`,
  * une entree portant `materials` (ou tout autre coefficient de calage kc/b/kr/…)
  * est REJETEE (400) — aucune science substituee ne peut atteindre le calcul ni
  * etre scellee dans le PV. Les couches portent E/ν/h (les seules grandeurs
@@ -446,9 +451,12 @@ const CoucheTraiteeSchema = z
     /** N° de couche (1-based). */
     couche: z.number().int().min(1),
     /** Mode d'interface (allowlist Tab. 68 ; fail-closed). */
-    mode: z.string().max(40).refine((v) => MODES_INTERFACE_AUTORISES.has(v), {
-      message: 'mode d’interface hors allowlist (fail-closed)',
-    }),
+    mode: z
+      .string()
+      .max(40)
+      .refine((v) => MODES_INTERFACE_AUTORISES.has(v), {
+        message: 'mode d’interface hors allowlist (fail-closed)',
+      }),
     /** σ_t sollicitant a la base de la couche (MPa). */
     valeur: z.number().finite(),
     /** σ_t admissible (MPa). */
@@ -498,9 +506,19 @@ const CoucheGranulaireSchema = z
  * DETAILS DE CALCUL — intermediaires de la METHODE PUBLIEE (rescope §8
  * « methode transparente », decision titulaire). On expose les grandeurs
  * calculees de la methode Burmister/LCPC (contraintes sigma, deformations
- * epsilon intermediaires, modules ponderes) ; on n'expose JAMAIS les
- * coefficients de CALAGE proprietaires (e6, b, kc, kr, ks, Sh, ktheta, delta),
- * qui restent serveur. Objet FACULTATIF (absent en cas d'erreur de calcul).
+ * epsilon intermediaires, modules ponderes).
+ *
+ * ALIGNEMENT OUTIL CLIENT (decision titulaire 13/07 — « zero ecart d'affichage,
+ * le code moteur reste serveur ») : l'outil client (renderDetails du HTML
+ * definitif, l.1519-1573) AFFICHE en clair les coefficients LCPC de la formule de
+ * fatigue et les contraintes au sommet PSC. Pour ne laisser AUCUN ecart entre
+ * l'app et l'outil de reference, on expose desormais ces grandeurs comme VALEURS
+ * DE SORTIE (kθ, SN, Sh, δ, kr, kc, ks, 1/b, admissible a r=50 %, σ_z/σ_r PSC).
+ * Ce sont des VALEURS produites par la methode publiee, pas la methode elle-meme :
+ * le CALAGE (tables e6/σ6/b par materiau, θ_eq...) et le CODE du propagateur
+ * restent SERVEUR (jamais exposes). Les intermediaires bruts NON affiches par
+ * l'outil client (tenseur sz/sr/sth par interface, et0/etM, discriminant Kmix...)
+ * restent non whitelistes. Objet FACULTATIF (absent en cas d'erreur de calcul).
  */
 const DetailsSchema = z
   .object({
@@ -521,6 +539,30 @@ const DetailsSchema = z
     epsilonZ_mid: z.number().finite().nullable(),
     epsilonZ: z.number().finite(),
     epsilonZ_adm: z.number().finite(),
+    // --- Alignement outil client (decision titulaire 13/07) — grandeurs de la
+    // formule LCPC 1994 (VI.4.2) telles qu'AFFICHEES par renderDetails ---
+    /** kθ temperature (d.ukth) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    ktheta: z.number().finite().nullable(),
+    /** SN, ecart-type des essais de fatigue (d.usn) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    sn: z.number().finite().nullable(),
+    /** Sh (cm), ecart-type de construction (d.sh) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    sh_cm: z.number().finite().nullable(),
+    /** δ = √(SN² + (0,02·|b|·Sh)²) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    delta: z.number().finite().nullable(),
+    /** kr, coefficient de risque (d.kr) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    kr: z.number().finite().nullable(),
+    /** kc, coefficient de calage (d.ukc) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    kc: z.number().finite().nullable(),
+    /** ks, coefficient de discontinuite/support (d.ks) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    ks: z.number().finite().nullable(),
+    /** 1/b, inverse de la pente de la loi de fatigue (d.ub) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    ub: z.number().finite().nullable(),
+    /** et_adm / st_adm a r=50 % (e50 = e6·kθ·(1e6/NE)^(1/b)·kc·ks, kr=1) — meme unite que fatigue.admissible (µdef bitumineux / MPa rigide) ; null si aucune couche dimensionnante — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    adm_r50: z.number().finite().nullable(),
+    /** σ_z au sommet PSC en kPa (d.bz.sz·1000) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    sigmaZ_psc_kpa: z.number().finite().nullable(),
+    /** σ_r au sommet PSC en kPa (d.bz.sr·1000) — exposé par décision titulaire 13/07 (alignement outil client) — valeur de sortie, le calage/code reste serveur. */
+    sigmaR_psc_kpa: z.number().finite().nullable(),
   })
   .strict();
 

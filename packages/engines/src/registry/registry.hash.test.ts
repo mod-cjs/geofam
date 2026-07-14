@@ -38,8 +38,17 @@ function sha256File(absPath: string): string {
   return createHash('sha256').update(readFileSync(absPath)).digest('hex');
 }
 
-// Les sources sont-elles presentes ? (absentes en CI : dossier hors dépôt git)
-const SOURCES_PRESENTES = ENGINE_REGISTRY.every((e) =>
+// Une entree est INTRA-depot (source VERSIONNEE, presente PARTOUT — y compris en
+// CI) si son cheminSource ne remonte pas hors de 05-Plateforme. Les moteurs GeoSuite
+// sont HORS depot git (`../03-Moteurs-client/...`) -> absents en CI. Depuis ADR 0013,
+// `chaussee-burmister` pointe la reference definitive versionnee dans le depot
+// (`packages/engines/reference/...`) : sa coherence hash est un GATE PERMANENT.
+const isIntraRepo = (e: { cheminSource: string }): boolean =>
+  !e.cheminSource.startsWith('../');
+const INTRA_ENTRIES = ENGINE_REGISTRY.filter(isIntraRepo);
+const GEOSUITE_ENTRIES = ENGINE_REGISTRY.filter((e) => !isIntraRepo(e));
+// Les sources GeoSuite sont-elles presentes ? (absentes en CI : dossier hors dépôt).
+const GEOSUITE_PRESENTES = GEOSUITE_ENTRIES.every((e) =>
   existsSync(resolveSource(e.cheminSource)),
 );
 
@@ -113,24 +122,50 @@ describe('Registre des moteurs — structure (toujours testable, sans source)', 
   });
 });
 
-describe('Registre des moteurs — coherence hash (GATE LOCAL)', () => {
-  if (!SOURCES_PRESENTES) {
+describe('Registre des moteurs — coherence hash INTRA-depot (GATE PERMANENT, CI incluse)', () => {
+  // Source VERSIONNEE dans le depot -> presente PARTOUT : la coherence DOIT etre
+  // verifiee en CI (pas de skip). C est le pendant de la sentinelle
+  // registry.burmister-seal.sentinel.test.ts (ancrage registre <-> fichier).
+  it('au moins une source est versionnee intra-depot (chaussee-burmister definitive, ADR 0013)', () => {
+    expect(INTRA_ENTRIES.length).toBeGreaterThanOrEqual(1);
+  });
+
+  for (const e of INTRA_ENTRIES) {
+    it(`[${e.id}] SHA-256 recalcule == registre (source versionnee ${e.fichierSource})`, () => {
+      const abs = resolveSource(e.cheminSource);
+      expect(
+        existsSync(abs),
+        `Source intra-depot ABSENTE (${e.cheminSource}) — elle DOIT etre versionnee dans le depot.`,
+      ).toBe(true);
+      expect(
+        sha256File(abs),
+        `Hash divergent pour "${e.id}" (${e.fichierSource}). ` +
+          `Le moteur a evolue OU le registre est obsolète : re-extraire, bumper la version, rejouer le golden.`,
+      ).toBe(e.sha256);
+    });
+  }
+});
+
+describe('Registre des moteurs — coherence hash GeoSuite (GATE LOCAL, sources hors dépôt)', () => {
+  if (!GEOSUITE_PRESENTES) {
     // AVERTISSEMENT BRUYANT : honnete, jamais vert. On veut le voir passer dans
-    // les logs CI sans qu il soit pris pour une verification reussie.
+    // les logs CI sans qu il soit pris pour une verification reussie. NB : ne
+    // concerne PLUS burmister (source versionnee, verifiee ci-dessus), seulement
+    // les 10 modules GeoSuite hors dépôt.
     const msg =
-      '[#37] AVERTISSEMENT : sources moteur ABSENTES (03-Moteurs-client/ hors dépôt git). ' +
-      'La coherence hash N A PAS ete verifiee — gate LOCAL uniquement. ' +
-      'Ce skip n est PAS un succes.';
+      '[#37] AVERTISSEMENT : sources moteur GeoSuite ABSENTES (03-Moteurs-client/ hors dépôt git). ' +
+      'La coherence hash des 10 modules GeoSuite N A PAS ete verifiee — gate LOCAL uniquement. ' +
+      'Ce skip n est PAS un succes (burmister, lui, est verifie en CI).';
     // eslint-disable-next-line no-console -- avertissement volontaire (gate local absent)
     console.warn(msg);
-    it.skip(`coherence hash NON verifiee (sources absentes) — ${msg}`, () => {
-      /* volontairement skip : sources hors dépôt */
+    it.skip(`coherence hash GeoSuite NON verifiee (sources absentes) — ${msg}`, () => {
+      /* volontairement skip : sources GeoSuite hors dépôt */
     });
     return;
   }
 
-  it('le SHA-256 recalcule de chaque source == valeur du registre', () => {
-    for (const e of ENGINE_REGISTRY) {
+  it('le SHA-256 recalcule de chaque source GeoSuite == valeur du registre', () => {
+    for (const e of GEOSUITE_ENTRIES) {
       const abs = resolveSource(e.cheminSource);
       const calcule = sha256File(abs);
       expect(

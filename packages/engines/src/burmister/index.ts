@@ -100,7 +100,11 @@ function fin(x: unknown): x is number {
 // = K...) est masquee par DEFAUT, sans avoir a l'enumerer. Benins = geometrie/exposes
 // susceptibles d'apparaitre en `= <nombre>` (epaisseurs, NE). Kmix (K) n'y est PAS.
 const BENIGN_VALUE_LABELS: ReadonlySet<string> = new Set<string>([
-  'ne', 'he', 'epaisseurliee', 'epaisseurtotale', 'nrafts',
+  'ne',
+  'he',
+  'epaisseurliee',
+  'epaisseurtotale',
+  'nrafts',
 ]);
 
 /** Normalise une etiquette : minuscule + non-alphanumeriques retires (fail-closed). */
@@ -337,14 +341,49 @@ function shapeOutput(D: Record<string, unknown>): unknown {
         )
       : [];
 
-  // --- DETAILS DE CALCUL — intermediaires de METHODE PUBLICS (rescope §8) ---
-  // Grandeurs calculees de la methode Burmister/LCPC. On n'y met JAMAIS de
-  // coefficient de calage (e6/kr/ks/kc/sh/ukth) : ceux-ci restent serveur.
+  // --- DETAILS DE CALCUL — grandeurs de la METHODE PUBLIEE (rescope §8) ---
+  // Grandeurs calculees de la methode Burmister/LCPC.
+  //
+  // ALIGNEMENT OUTIL CLIENT (decision titulaire 13/07 — « zero ecart d'affichage,
+  // le code moteur reste serveur ») : on emet aussi les coefficients de la formule
+  // de fatigue LCPC 1994 (kθ/SN/Sh/δ/kr/kc/ks/1-b), l'admissible a r=50 % et les
+  // contraintes au sommet PSC — EXACTEMENT les grandeurs qu'AFFICHE renderDetails
+  // (HTML definitif, l.1519-1573). Ce sont des VALEURS de sortie de la methode
+  // publiee ; le CALAGE (tables e6/σ6/b par materiau, θ_eq) et le CODE du
+  // propagateur restent serveur. Les intermediaires bruts NON affiches par l'outil
+  // client (tenseur sz/sr/sth par interface, et0/etM, discriminant Kmix) ne sont
+  // PAS whitelistes. On lit les grandeurs BRUTES aux MEMES noms internes que _D
+  // (ukth/usn/sh/kr/ukc/ks/ub/bz), sans reordonner ni recalculer la science.
   {
     const kpa = (v: unknown): number | null => (fin(v) ? v * 1000 : null); // MPa -> kPa
     const mdef = (v: unknown): number | null => (fin(v) ? v : null);
+    const num = (v: unknown): number | null => (fin(v) ? v : null);
     const s0 = (D.s0 ?? {}) as Record<string, unknown>;
     const sd2 = (D.sd2 ?? {}) as Record<string, unknown>;
+    const bz = (D.bz ?? {}) as Record<string, unknown>;
+    // δ = √(SN² + (0,02·|b|·Sh)²) — renderDetails l.1553 (formule LCPC VI.4.2),
+    // recalculee a l'IDENTIQUE depuis les grandeurs BRUTES (aucune science nouvelle).
+    const delta =
+      fin(D.usn) && fin(D.ub) && fin(D.sh)
+        ? Math.sqrt(D.usn * D.usn + Math.pow(0.02 * D.ub * D.sh, 2))
+        : null;
+    // et_adm/st_adm a r=50 % (kr=1) — renderDetails l.1558 :
+    // e50 = e6·kθ·(1e6/NE)^(1/b)·kc·ks, N/A (null) si aucune couche dimensionnante
+    // (D.e6 = minE6 = Infinity -> non fini). Reproduit la ligne « r=50% » de l'outil.
+    const adm_r50 =
+      fin(D.e6) &&
+      fin(D.ukth) &&
+      fin(D.NE) &&
+      D.NE > 0 &&
+      fin(D.ub) &&
+      fin(D.ukc) &&
+      fin(D.ks)
+        ? (D.e6 as number) *
+          (D.ukth as number) *
+          Math.pow(1e6 / (D.NE as number), 1 / (D.ub as number)) *
+          (D.ukc as number) *
+          (D.ks as number)
+        : null;
     out.details = {
       E1_pond: fin(D.E1) ? D.E1 : 0,
       nu1_pond: fin(D.nu1) ? D.nu1 : 0,
@@ -363,6 +402,18 @@ function shapeOutput(D: Record<string, unknown>): unknown {
       epsilonZ_mid: mdef(D.ezM),
       epsilonZ: fin(D.ez) ? D.ez : 0,
       epsilonZ_adm: fin(D.ezA) ? D.ezA : 0,
+      // Alignement outil client (decision titulaire 13/07) — cf. commentaire ci-dessus.
+      ktheta: num(D.ukth),
+      sn: num(D.usn),
+      sh_cm: num(D.sh),
+      delta,
+      kr: num(D.kr),
+      kc: num(D.ukc),
+      ks: num(D.ks),
+      ub: num(D.ub),
+      adm_r50,
+      sigmaZ_psc_kpa: kpa(bz.sz),
+      sigmaR_psc_kpa: kpa(bz.sr),
     };
   }
 

@@ -81,14 +81,27 @@ const SOURCE_OK = burmisterDefinitiveSourceAvailable();
 
 describe('burmister — gate fatigueOverrides : comportement HISTORIQUE preserve quand absent/vide', () => {
   it('fatigueOverrides absent -> resultat IDENTIQUE a fatigueOverrides omis explicitement', () => {
-    const state = { layers: LAYERS_BITUMINEUX, subgrade: PF3, traffic: TRAFIC_REF, load: CP_BASE };
+    const state = {
+      layers: LAYERS_BITUMINEUX,
+      subgrade: PF3,
+      traffic: TRAFIC_REF,
+      load: CP_BASE,
+    };
     const a = computeBurmister(state) as Record<string, unknown>;
-    const b = computeBurmister({ ...state, load: { ...CP_BASE } }) as Record<string, unknown>;
+    const b = computeBurmister({ ...state, load: { ...CP_BASE } }) as Record<
+      string,
+      unknown
+    >;
     expect(a).toEqual(b);
   });
 
   it('fatigueOverrides=[] (vide) -> resultat IDENTIQUE a fatigueOverrides absent', () => {
-    const state = { layers: LAYERS_BITUMINEUX, subgrade: PF3, traffic: TRAFIC_REF, load: CP_BASE };
+    const state = {
+      layers: LAYERS_BITUMINEUX,
+      subgrade: PF3,
+      traffic: TRAFIC_REF,
+      load: CP_BASE,
+    };
     const sansFlag = computeBurmister(state) as Record<string, unknown>;
     const flagVide = computeBurmister({
       ...state,
@@ -98,7 +111,12 @@ describe('burmister — gate fatigueOverrides : comportement HISTORIQUE preserve
   });
 
   it("fatigueOverrides sur un materiau HORS structure (n'affecte pas le materiau dimensionnant reel) -> resultat IDENTIQUE", () => {
-    const state = { layers: LAYERS_BITUMINEUX, subgrade: PF3, traffic: TRAFIC_REF, load: CP_BASE };
+    const state = {
+      layers: LAYERS_BITUMINEUX,
+      subgrade: PF3,
+      traffic: TRAFIC_REF,
+      load: CP_BASE,
+    };
     const sansFlag = computeBurmister(state) as Record<string, unknown>;
     // GLc2 n'apparait pas dans LAYERS_BITUMINEUX : la surcharge est sans effet.
     const avecFlagInoffensif = computeBurmister({
@@ -111,7 +129,12 @@ describe('burmister — gate fatigueOverrides : comportement HISTORIQUE preserve
 
 describe('burmister — surcharge ε₆ (bitumineux, BBSG1) pilote directement la deformation admissible', () => {
   it("BBSG1 e6 100->120 -> l'admissible et le coefficient de reference EFFECTIF (sortie) refletent 120, pas le defaut catalogue", () => {
-    const state = { layers: LAYERS_BITUMINEUX, subgrade: PF3, traffic: TRAFIC_REF, load: CP_BASE };
+    const state = {
+      layers: LAYERS_BITUMINEUX,
+      subgrade: PF3,
+      traffic: TRAFIC_REF,
+      load: CP_BASE,
+    };
     const defaut = computeBurmister(state) as { e6: number | null; etA: number | null };
     const surcharge = computeBurmister({
       ...state,
@@ -124,34 +147,54 @@ describe('burmister — surcharge ε₆ (bitumineux, BBSG1) pilote directement l
 });
 
 describe('burmister — surcharge σ₆ (MTLH, GLc2) pilote directement la contrainte admissible', () => {
-  it('GLc2 s6 0,37->0,40 -> le coefficient de reference EFFECTIF (sortie) reflete 0,40, pas le defaut catalogue', () => {
-    const state = { layers: LAYERS_MTLH, subgrade: PF3, traffic: TRAFIC_REF, load: CP_BASE };
+  it('GLc2 s6 0,3705(definitive)->0,40 -> le coefficient de reference EFFECTIF (sortie) reflete 0,40, pas le defaut catalogue', () => {
+    const state = {
+      layers: LAYERS_MTLH,
+      subgrade: PF3,
+      traffic: TRAFIC_REF,
+      load: CP_BASE,
+    };
     const defaut = computeBurmister(state) as { e6: number | null; etA: number | null };
     const surcharge = computeBurmister({
       ...state,
       load: { ...CP_BASE, fatigueOverrides: [{ mat: 'GLc2', s6: 0.4 }] },
     }) as { e6: number | null; etA: number | null };
-    expect(defaut.e6).toBe(0.37);
+    // ADR 0013 : sans flag, la table est deja la DEFINITIVE -> defaut GLc2 = 0,3705.
+    expect(defaut.e6).toBe(0.3705);
     expect(surcharge.e6).toBe(0.4);
     expect(surcharge.etA).not.toBe(defaut.etA);
   });
 
   it("materialsRev='definitive' (base 0,3705) COMBINE avec une surcharge -> l'override PRIME sur la table selectionnee", () => {
-    const state = { layers: LAYERS_MTLH, subgrade: PF3, traffic: TRAFIC_REF, load: CP_BASE };
+    const state = {
+      layers: LAYERS_MTLH,
+      subgrade: PF3,
+      traffic: TRAFIC_REF,
+      load: CP_BASE,
+    };
     const definitiveSansSurcharge = computeBurmister({
       ...state,
       load: { ...CP_BASE, materialsRev: 'definitive' },
     }) as { e6: number | null };
     const definitiveAvecSurcharge = computeBurmister({
       ...state,
-      load: { ...CP_BASE, materialsRev: 'definitive', fatigueOverrides: [{ mat: 'GLc2', s6: 0.4 }] },
+      load: {
+        ...CP_BASE,
+        materialsRev: 'definitive',
+        fatigueOverrides: [{ mat: 'GLc2', s6: 0.4 }],
+      },
     }) as { e6: number | null };
     expect(definitiveSansSurcharge.e6).toBe(0.3705);
     expect(definitiveAvecSurcharge.e6).toBe(0.4);
   });
 
   it('doublon de materiau dans le tableau -> la DERNIERE entree gagne (deterministe)', () => {
-    const state = { layers: LAYERS_MTLH, subgrade: PF3, traffic: TRAFIC_REF, load: CP_BASE };
+    const state = {
+      layers: LAYERS_MTLH,
+      subgrade: PF3,
+      traffic: TRAFIC_REF,
+      load: CP_BASE,
+    };
     const doublon = computeBurmister({
       ...state,
       load: {
@@ -203,7 +246,7 @@ describe('burmister — surcharges fatigue : module TS <-> reference DEFINITIVE 
     const msg =
       '[#93] AVERTISSEMENT : reference definitive ABSENTE ' +
       '(packages/engines/reference/roadsens_burmister_definitive.html). ' +
-      "L equivalence des surcharges de fatigue N A PAS ete verifiee. Ce skip n est PAS un succes.";
+      'L equivalence des surcharges de fatigue N A PAS ete verifiee. Ce skip n est PAS un succes.';
     // eslint-disable-next-line no-console -- avertissement volontaire (gate local absent)
     console.warn(msg);
     it.skip(`equivalence surcharges fatigue NON verifiee (reference absente) — ${msg}`, () => {
@@ -223,7 +266,12 @@ describe('burmister — surcharges fatigue : module TS <-> reference DEFINITIVE 
     {
       id: 'fatigue-e6-bbsg-100-120',
       description: 'BBSG1 (bitumineux, materiau dimensionnant) : e6 edite 100 -> 120',
-      input: { layers: LAYERS_BITUMINEUX, subgrade: PF3, traffic: TRAFIC_REF, load: CP_BASE },
+      input: {
+        layers: LAYERS_BITUMINEUX,
+        subgrade: PF3,
+        traffic: TRAFIC_REF,
+        load: CP_BASE,
+      },
       overrides: [{ mat: 'BBSG1', e6: 120 }],
     },
     {
@@ -235,7 +283,12 @@ describe('burmister — surcharges fatigue : module TS <-> reference DEFINITIVE 
     {
       id: 'fatigue-e6-borne-basse-50',
       description: 'BBSG1 : e6 edite a la borne basse de saisie (50 μdef)',
-      input: { layers: LAYERS_BITUMINEUX, subgrade: PF3, traffic: TRAFIC_REF, load: CP_BASE },
+      input: {
+        layers: LAYERS_BITUMINEUX,
+        subgrade: PF3,
+        traffic: TRAFIC_REF,
+        load: CP_BASE,
+      },
       overrides: [{ mat: 'BBSG1', e6: 50 }],
     },
     {
@@ -252,8 +305,14 @@ describe('burmister — surcharges fatigue : module TS <-> reference DEFINITIVE 
       // 3c, materialsRev) ferait diverger le temoin pour une raison ETRANGERE aux
       // surcharges de fatigue. Ici, aucun coefficient ne differe entre les deux tables
       // -> le temoin isole strictement l'effet « pas d'override = inchange ».
-      description: 'AUCUNE surcharge : module == reference definitive SANS mutation de M (temoin)',
-      input: { layers: LAYERS_BITUMINEUX, subgrade: PF3, traffic: TRAFIC_REF, load: CP_BASE },
+      description:
+        'AUCUNE surcharge : module == reference definitive SANS mutation de M (temoin)',
+      input: {
+        layers: LAYERS_BITUMINEUX,
+        subgrade: PF3,
+        traffic: TRAFIC_REF,
+        load: CP_BASE,
+      },
       overrides: [],
     },
   ];
@@ -269,7 +328,10 @@ describe('burmister — surcharges fatigue : module TS <-> reference DEFINITIVE 
         );
         const moduleInput = {
           ...fx.input,
-          load: { ...fx.input.load, fatigueOverrides: fx.overrides.length ? fx.overrides : undefined },
+          load: {
+            ...fx.input.load,
+            fatigueOverrides: fx.overrides.length ? fx.overrides : undefined,
+          },
         };
         const testCase: GoldenCase = {
           id: fx.id,

@@ -355,6 +355,7 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
       admissible?: unknown;
       ok?: unknown;
       requis?: unknown;
+      referenceCatalogue?: unknown;
     };
     const rigide = fa.rigide === true;
     const unit = rigide ? 'MPa' : 'μdef';
@@ -376,6 +377,17 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
       fa.admissible,
       unit,
     );
+    // ε₆/σ₆ du matériau dimensionnant — grandeur PUBLIQUE du catalogue AGEROUTE,
+    // exposée délibérément par le moteur (fatigue.referenceCatalogue) ; la
+    // définitive l'édite en clair (« Matériau dimensionnant »). Les coefficients
+    // de calage (b, kc, SN, kθ…) restent, eux, côté serveur (DoD §8). null
+    // (e6 infini) ou champ absent (ancien calcul) → aucune ligne (pushRow).
+    pushRow(
+      rows,
+      rigide ? 'Référence catalogue σ₆' : 'Référence catalogue ε₆',
+      fa.referenceCatalogue,
+      unit,
+    );
   }
 
   const orn = o.ornierage;
@@ -391,11 +403,23 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
   // quand applicable (objet non-null) — sinon la structure n'est pas concernée.
   const p2 = o.fatiguePhase2;
   if (p2 != null && typeof p2 === 'object') {
-    const pa = p2 as { valeur?: unknown; admissible?: unknown; ok?: unknown; requis?: unknown; couche?: unknown };
+    const pa = p2 as {
+      valeur?: unknown;
+      admissible?: unknown;
+      ok?: unknown;
+      requis?: unknown;
+      couche?: unknown;
+    };
     const suffix = typeof pa.couche === 'number' ? ` (couche ${pa.couche})` : '';
     // MAJEUR-1 : phase 2 non requise (semi-rigide Kmix<0,5) -> informatif (pas de ✗).
     const pok = requisStatus(pa.requis, pa.ok);
-    pushRow(rows, `Fatigue phase 2 — base bitumineuse ε_t${suffix}`, pa.valeur, 'μdef', pok);
+    pushRow(
+      rows,
+      `Fatigue phase 2 — base bitumineuse ε_t${suffix}`,
+      pa.valeur,
+      'μdef',
+      pok,
+    );
     pushRow(rows, 'Fatigue phase 2 — ε_t admissible', pa.admissible, 'μdef');
   }
 
@@ -403,11 +427,23 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
   // segment MTLH profond. Affiché SEULEMENT quand applicable.
   const inv = o.fatigueInverse;
   if (inv != null && typeof inv === 'object') {
-    const ia = inv as { valeur?: unknown; admissible?: unknown; ok?: unknown; requis?: unknown; couche?: unknown };
+    const ia = inv as {
+      valeur?: unknown;
+      admissible?: unknown;
+      ok?: unknown;
+      requis?: unknown;
+      couche?: unknown;
+    };
     const suffix = typeof ia.couche === 'number' ? ` (couche ${ia.couche})` : '';
     // Inverse : toujours requis (okSt2 toujours plié) — chemin symétrique.
     const iok = requisStatus(ia.requis, ia.ok);
-    pushRow(rows, `Structure inverse — base MTLH profond σ_t${suffix}`, ia.valeur, 'MPa', iok);
+    pushRow(
+      rows,
+      `Structure inverse — base MTLH profond σ_t${suffix}`,
+      ia.valeur,
+      'MPa',
+      iok,
+    );
     pushRow(rows, 'Structure inverse — σ_t admissible', ia.admissible, 'MPa');
   }
 
@@ -418,10 +454,26 @@ function buildBurmisterRows(o: Record<string, unknown>): CalcOutputRow[] {
  * DÉTAILS DE CALCUL burmister — intermédiaires de MÉTHODE PUBLICS (rescope §8
  * « méthode transparente »). Lit UNIQUEMENT les champs NOMMÉS de `o.details`
  * (déjà whitelistés par `DetailsSchema` côté serveur) ; fail-closed : aucune
- * copie d'objet brut, JAMAIS de coefficient de calage (ε₆/b/kc/kr/ks/Sh/kθ).
+ * copie d'objet brut.
+ *
+ * Décision titulaire 13/07 (« zéro écart » avec la définitive du client) : les
+ * coefficients de méthode kθ/SN/Sh/δ/kr/kc/ks/1/b, l'admissible à r=50 % et
+ * σ_z/σ_r PSC sont désormais exposés eux aussi (ne sont plus masqués « non
+ * exposé côté client »). Ce sont des RÉSULTATS intermédiaires PUBLICS de la
+ * méthode LCPC 1994/AGEROUTE 2015 — le DoD §8 protège le CODE du moteur (son
+ * implémentation), pas ces nombres, déjà affichés en clair par l'outil de
+ * référence du client.
  */
 function buildBurmisterDetails(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
+  // Structure rigide (σt en MPa) vs souple (εt en μdef) — même dérivation que
+  // buildBurmisterRows ; nécessaire pour l'unité de « Adm. fatigue r=50 % ».
+  const fRaw = o.fatigue;
+  const fRigide =
+    fRaw != null &&
+    typeof fRaw === 'object' &&
+    (fRaw as { rigide?: unknown }).rigide === true;
+
   // Intermédiaires de méthode (o.details) — présents en fonctionnement normal,
   // absents sur le chemin d'erreur. Le détail PAR COUCHE (couchesTraitees /
   // couchesGranulaires) est INDÉPENDANT de cet objet (champs de sortie racine).
@@ -445,6 +497,22 @@ function buildBurmisterDetails(o: Record<string, unknown>): CalcOutputRow[] {
     pushRow(rows, 'ε_z entre-jumelage', g.epsilonZ_mid, 'μdef');
     pushRow(rows, 'ε_z retenue (max)', g.epsilonZ, 'μdef');
     pushRow(rows, 'ε_z admissible', g.epsilonZ_adm, 'μdef');
+
+    // Coefficients de MÉTHODE, désormais exposés (cf. docstring ci-dessus). Labels
+    // choisis pour n'être JAMAIS préfixe d'un autre label (garde-fou fail-closed de
+    // `findOutputRow`, qui matche par préfixe) — en particulier « Adm. fatigue
+    // r=50 % » ne doit jamais collisionner avec « ε_t admissible ».
+    pushRow(rows, 'kθ température', g.ktheta, '');
+    pushRow(rows, 'SN', g.sn, '');
+    pushRow(rows, 'Sh', g.sh_cm, 'cm');
+    pushRow(rows, 'δ', g.delta, '');
+    pushRow(rows, 'kr risque', g.kr, '');
+    pushRow(rows, 'kc calage', g.kc, '');
+    pushRow(rows, 'ks support', g.ks, '');
+    pushRow(rows, '1/b', g.ub, '');
+    pushRow(rows, 'Adm. fatigue r=50 %', g.adm_r50, fRigide ? 'MPa' : 'μdef');
+    pushRow(rows, 'σ_z PSC', g.sigmaZ_psc_kpa, 'kPa');
+    pushRow(rows, 'σ_r PSC', g.sigmaR_psc_kpa, 'kPa');
   }
 
   // σ_t PAR COUCHE traitée + mode d'interface (Tab. 68) — lecture de champs NOMMÉS
@@ -481,7 +549,12 @@ function buildBurmisterDetails(o: Record<string, unknown>): CalcOutputRow[] {
   if (Array.isArray(cg)) {
     for (const item of cg) {
       if (item == null || typeof item !== 'object') continue;
-      const c = item as { couche?: unknown; valeur?: unknown; ok?: unknown; requis?: unknown };
+      const c = item as {
+        couche?: unknown;
+        valeur?: unknown;
+        ok?: unknown;
+        requis?: unknown;
+      };
       const n = typeof c.couche === 'number' ? c.couche : '?';
       // MAJEUR-1 : ε_z granulaire exempté (§4.1.2, requis=false) -> informatif (pas
       // de ✗ sous un verdict PASS), même si la couche dépasse son seuil.
@@ -599,7 +672,12 @@ function buildTerzaghiRows(o: Record<string, unknown>): CalcOutputRow[] {
 function buildTerzaghiDetails(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
   if (typeof o.regime === 'string') {
-    const reg = o.regime === 'superficielle' ? 'Superficielle' : o.regime === 'semi-profonde' ? 'Semi-profonde' : null;
+    const reg =
+      o.regime === 'superficielle'
+        ? 'Superficielle'
+        : o.regime === 'semi-profonde'
+          ? 'Semi-profonde'
+          : null;
     if (reg) rows.push({ label: 'Régime de fondation', value: reg, unit: '' });
   }
   const ref = o.capaciteReference;
@@ -611,7 +689,8 @@ function buildTerzaghiDetails(o: Record<string, unknown>): CalcOutputRow[] {
     for (const s of states) {
       if (s == null || typeof s !== 'object') continue;
       const st = s as Record<string, unknown>;
-      const et = typeof st.etat === 'string' ? (TERZAGHI_ETAT_LABEL[st.etat] ?? '—') : '—';
+      const et =
+        typeof st.etat === 'string' ? (TERZAGHI_ETAT_LABEL[st.etat] ?? '—') : '—';
       pushRow(rows, `${et} — γ_Rv appliqué`, st.gRv, '');
       pushRow(rows, `${et} — Rᵥ;d de référence`, st.Rvd, 'kN');
       pushRow(rows, `${et} — q_Rv;d de référence`, st.qRvd, 'kPa');
@@ -779,7 +858,11 @@ function buildPieuxRows(o: Record<string, unknown>): CalcOutputRow[] {
   return rows;
 }
 
-const PIEUX_METH_LABEL: Record<string, string> = { pmt: 'Pressiomètre (pl*)', cpt: 'Pénétromètre (qc)', cphi: 'Laboratoire (c, φ)' };
+const PIEUX_METH_LABEL: Record<string, string> = {
+  pmt: 'Pressiomètre (pl*)',
+  cpt: 'Pénétromètre (qc)',
+  cphi: 'Laboratoire (c, φ)',
+};
 /**
  * DÉTAILS DE CALCUL pieux — contexte de dimensionnement PUBLIC déjà whitelisté
  * (géométrie B/D, catégorie de pieu, méthode). Clés nommées (fail-closed §8) ;
@@ -787,7 +870,12 @@ const PIEUX_METH_LABEL: Record<string, string> = { pmt: 'Pressiomètre (pl*)', c
  */
 function buildPieuxDetails(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
-  if (typeof o.categorie === 'number') rows.push({ label: 'Catégorie de pieu (NF P 94-262)', value: o.categorie, unit: 'n°' });
+  if (typeof o.categorie === 'number')
+    rows.push({
+      label: 'Catégorie de pieu (NF P 94-262)',
+      value: o.categorie,
+      unit: 'n°',
+    });
   if (typeof o.methode === 'string') {
     const m = PIEUX_METH_LABEL[o.methode];
     if (m) rows.push({ label: 'Méthode de dimensionnement', value: m, unit: '' });
@@ -856,12 +944,32 @@ function buildRadierHeatmap(o: Record<string, unknown>): HeatmapData | undefined
   const h = o.champDeflexion;
   if (h == null || typeof h !== 'object') return undefined;
   const g = h as Record<string, unknown>;
-  const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-  const x0 = num(g.x0), y0 = num(g.y0), x1 = num(g.x1), y1 = num(g.y1);
-  const cols = num(g.cols), rows = num(g.rows), vMin = num(g.vMin), vMax = num(g.vMax);
-  if (x0 === null || y0 === null || x1 === null || y1 === null || cols === null || rows === null || vMin === null || vMax === null) return undefined;
-  if (!Array.isArray(g.vals) || cols < 2 || rows < 2 || cols * rows > 4096) return undefined;
-  const vals = (g.vals as unknown[]).map((v) => (typeof v === 'number' && Number.isFinite(v) ? v : null));
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const x0 = num(g.x0),
+    y0 = num(g.y0),
+    x1 = num(g.x1),
+    y1 = num(g.y1);
+  const cols = num(g.cols),
+    rows = num(g.rows),
+    vMin = num(g.vMin),
+    vMax = num(g.vMax);
+  if (
+    x0 === null ||
+    y0 === null ||
+    x1 === null ||
+    y1 === null ||
+    cols === null ||
+    rows === null ||
+    vMin === null ||
+    vMax === null
+  )
+    return undefined;
+  if (!Array.isArray(g.vals) || cols < 2 || rows < 2 || cols * rows > 4096)
+    return undefined;
+  const vals = (g.vals as unknown[]).map((v) =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null,
+  );
   if (vals.length !== cols * rows) return undefined;
   return { x0, y0, x1, y1, cols, rows, vals, vMin, vMax };
 }
@@ -965,7 +1073,8 @@ const LABO_DESCS: ReadonlySet<string> = new Set([
   'Gros éléments — comportement régi par le squelette',
   'Gros éléments — comportement régi par la fraction 0/50',
 ]);
-const LABO_DESC_C = /^Gros éléments — comportement régi par (?:le squelette|la fraction 0\/50)(?: · 0\/50 type (?:D1|D2))?$/;
+const LABO_DESC_C =
+  /^Gros éléments — comportement régi par (?:le squelette|la fraction 0\/50)(?: · 0\/50 type (?:D1|D2))?$/;
 function safeLaboDesc(desc: unknown): string {
   if (typeof desc !== 'string') return '';
   const t = desc.trim();
@@ -973,16 +1082,26 @@ function safeLaboDesc(desc: unknown): string {
 }
 const LABO_PATH_PATTERNS: readonly RegExp[] = [
   new RegExp(`^Dmax = ${LABO_N} mm > ${LABO_N} mm → famille C\\.$`),
-  new RegExp(`^Fraction 0/50 reclassée → ${LABO_C} \\(essais à réaliser sur le 0/50\\)\\.$`),
-  new RegExp(`^Passant 80µm = ${LABO_N} % ≤ ${LABO_N} % et VBS = ${LABO_N} ≤ ${LABO_N} → insensible → famille D\\.$`),
+  new RegExp(
+    `^Fraction 0/50 reclassée → ${LABO_C} \\(essais à réaliser sur le 0/50\\)\\.$`,
+  ),
+  new RegExp(
+    `^Passant 80µm = ${LABO_N} % ≤ ${LABO_N} % et VBS = ${LABO_N} ≤ ${LABO_N} → insensible → famille D\\.$`,
+  ),
   new RegExp(`^Passant 2mm = ${LABO_N} % → ${LABO_C}\\.$`),
   new RegExp(`^Passant 80µm = ${LABO_N} % > ${LABO_N} % → sol fin → famille A\\.$`),
   new RegExp(`^Ip = ${LABO_N} \\(préférentiel\\) → ${LABO_C}\\.$`),
   new RegExp(`^Ip absent → VBS = ${LABO_N} → ${LABO_C}\\.$`),
   new RegExp(`^Passant 80µm = ${LABO_N} % ≤ ${LABO_N} % → famille B\\.$`),
-  new RegExp(`^Passant 2mm = ${LABO_N} % \\((?:sables|graves)\\), VBS = ${LABO_N} → ${LABO_C}\\.$`),
-  new RegExp(`^Passant 80µm entre ${LABO_N}–${LABO_N} %, VBS = ${LABO_N} → ${LABO_C}\\.$`),
-  new RegExp(`^État hydrique ${LABO_ST} \\((?:forcé|wn/wOPN = ${LABO_N})\\) → ${LABO_C}(?: ${LABO_ST})?\\.$`),
+  new RegExp(
+    `^Passant 2mm = ${LABO_N} % \\((?:sables|graves)\\), VBS = ${LABO_N} → ${LABO_C}\\.$`,
+  ),
+  new RegExp(
+    `^Passant 80µm entre ${LABO_N}–${LABO_N} %, VBS = ${LABO_N} → ${LABO_C}\\.$`,
+  ),
+  new RegExp(
+    `^État hydrique ${LABO_ST} \\((?:forcé|wn/wOPN = ${LABO_N})\\) → ${LABO_C}(?: ${LABO_ST})?\\.$`,
+  ),
   /^Famille D insensible : pas d'indice d'état\.$/,
 ];
 
@@ -1119,7 +1238,8 @@ function buildCalibrageRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
   pushRow(rows, 'Coefficient de calibrage a', o.a, 'cm³/bar');
   const aNum = finiteOrNull(o.a);
-  if (aNum !== null) pushRow(rows, 'Coefficient de calibrage a (indicatif)', aNum * 10, 'cm³/MPa');
+  if (aNum !== null)
+    pushRow(rows, 'Coefficient de calibrage a (indicatif)', aNum * 10, 'cm³/MPa');
   pushRow(rows, 'Coefficient de détermination R²', o.R2, '');
   pushRow(rows, 'RMS des résidus', o.rms, 'bar');
   return rows;
@@ -1183,11 +1303,19 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
   }
   // terzaghi (fondation superficielle) : sortie {cas:[…]} → whitelist par cas
   if (Array.isArray(o.cas)) {
-    return { verdict: terzaghiVerdict(o), rows: buildTerzaghiRows(o), details: buildTerzaghiDetails(o) };
+    return {
+      verdict: terzaghiVerdict(o),
+      rows: buildTerzaghiRows(o),
+      details: buildTerzaghiDetails(o),
+    };
   }
   // pieux (fondation profonde) : verdict global booléen `allOk` + résistances
   if (typeof o.allOk === 'boolean') {
-    return { verdict: o.allOk === true ? 'PASS' : 'FAIL', rows: buildPieuxRows(o), details: buildPieuxDetails(o) };
+    return {
+      verdict: o.allOk === true ? 'PASS' : 'FAIL',
+      rows: buildPieuxRows(o),
+      details: buildPieuxDetails(o),
+    };
   }
   // radier (plaque/sol multicouche) : déflexions/distorsions — pas de verdict (NA)
   if (typeof o.betaGov === 'number' || 'nRafts' in o) {

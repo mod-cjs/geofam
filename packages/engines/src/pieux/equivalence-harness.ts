@@ -275,7 +275,7 @@ export function loadOriginalDowndrag(): {
         var __captured = null;
         drawDowndrag = function(prof, m){
           var o = { prof: prof };
-          for (var k in m) { if (Object.prototype.hasOwnProperty.call(m, k)) o[k] = m[k]; }
+          for (var k in m) { if (Object.prototype.hasOwnProperty.call(m, k)) o[k] = m[k]; } // determinism-allow: harness jsdom de TEST (exclu du build prod, cf. 26c4907) — copie integrale d'objet ; les lectures se font ensuite par cles nommees, l'ordre d'enumeration n'influence aucun calcul
           __captured = o;
         };
 

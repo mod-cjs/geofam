@@ -22,6 +22,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { BURMISTER_FIXTURES } from './test-fixtures.js';
+
 import { runBurmister } from './index.js';
 
 function outputOf(fixtureId: string) {
@@ -57,7 +58,11 @@ describe('critères secondaires AGEROUTE — exposés en sortie projetée', () =
     for (const c of ct) expect(c.mode).toBe('semi-collée');
     // σ_t sollicitant en MPa (même unité que le critère rigide principal).
     expect(ct[0]!.valeur as number).toBeCloseTo(0.2697, 3);
-    expect(ct[0]!.admissible as number).toBeCloseTo(0.4225, 3);
+    // ADMISSIBLE recalé par la table DEFINITIVE (ADR 0013 — GLc2 s6 0,37->0,3705,
+    // seule table depuis la bascule) : 0,4225 (historique) -> 0,4230. Le sollicitant
+    // (0,2697, indépendant de s6) est inchangé. Valeur = celle de la référence
+    // définitive (équivalence module<->définitive prouvée).
+    expect(ct[0]!.admissible as number).toBeCloseTo(0.423, 3);
     expect(ct[0]!.ok).toBe(true);
     expect(ct[1]!.valeur as number).toBeCloseTo(0.3345, 3);
     expect(ct[1]!.ok).toBe(true);
@@ -80,8 +85,10 @@ describe('critères secondaires AGEROUTE — exposés en sortie projetée', () =
     const inv = o.fatigueInverse as Record<string, unknown> | null;
     expect(inv).not.toBeNull();
     expect(inv!.valeur as number).toBeCloseTo(0.4692, 3);
-    expect(inv!.admissible as number).toBeCloseTo(0.384, 3);
-    // 0,469 > 0,384 -> NON vérifié.
+    // ADMISSIBLE recalé par la table DEFINITIVE (ADR 0013 — GLc2 s6 0,37->0,3705) :
+    // 0,384 (historique) -> 0,3846. Le sollicitant (0,4692) est inchangé.
+    expect(inv!.admissible as number).toBeCloseTo(0.3846, 3);
+    // 0,469 > 0,385 -> NON vérifié.
     expect(inv!.ok).toBe(false);
     // MTLH profond = GLc2 (index 3) -> couche 4.
     expect(inv!.couche).toBe(4);

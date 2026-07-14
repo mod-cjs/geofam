@@ -123,6 +123,19 @@ describe('PDF du PV — surface tenant (e2e)', () => {
       `INSERT INTO projects (id, org_id, name, created_by_id, updated_at) VALUES ($1,$2,'P-A',$3,now()), ($4,$5,'P-B',$6,now())`,
       [projectA, orgA, engineerA, projectB, orgB, userB],
     );
+    // Abonnements (enforcement ADR 0011 : org sans souscription = 403 NoSubscription,
+    // meme pour un ENGINEER legitime). La suite teste le PDF du PV, pas l'enforcement
+    // d'abonnement : quota large + entitlements des moteurs employes ('burmister' pour
+    // le cas nominal, 'labo' pour le PV multi-pages du test #7). Les deux orgs sont
+    // dotees pour rester coherent avec le pattern pv-emission.
+    await admin.query(
+      `INSERT INTO subscriptions
+         (id, org_id, pack, entitlements, date_debut, date_fin, quota, consommation, created_at, updated_at)
+       VALUES
+         ($1,$2,'ROUTES', ARRAY['burmister','labo'], now() - interval '1 day', now() + interval '365 days', 1000, 0, now(), now()),
+         ($3,$4,'ROUTES', ARRAY['burmister','labo'], now() - interval '1 day', now() + interval '365 days', 1000, 0, now(), now())`,
+      [randomUUID(), orgA, randomUUID(), orgB],
+    );
 
     process.env.ROADSEN_DEV_HEADERS = '0';
     process.env.NODE_ENV = 'test';
@@ -147,6 +160,22 @@ describe('PDF du PV — surface tenant (e2e)', () => {
           orgB,
         ]);
         await admin.query(`DELETE FROM calc_results WHERE org_id IN ($1,$2)`, [
+          orgA,
+          orgB,
+        ]);
+        // usage_ledger est APPEND-ONLY (trigger) : un calcul reussi y a decompte
+        // le quota. On desactive le trigger le temps du nettoyage, sinon le DELETE
+        // des subscriptions (cascade) est refuse.
+        await admin.query(`ALTER TABLE usage_ledger DISABLE TRIGGER USER`);
+        try {
+          await admin.query(
+            `DELETE FROM usage_ledger WHERE org_id IN ($1,$2)`,
+            [orgA, orgB],
+          );
+        } finally {
+          await admin.query(`ALTER TABLE usage_ledger ENABLE TRIGGER USER`);
+        }
+        await admin.query(`DELETE FROM subscriptions WHERE org_id IN ($1,$2)`, [
           orgA,
           orgB,
         ]);
@@ -357,15 +386,22 @@ describe('PDF du PV — surface tenant (e2e)', () => {
     expect(text.includes('@science')).toBe(false);
   });
 
-  // --- 7) MULTI-PAGES : PV LABO (FASTLAB) à nombreux champs --------------------
+  // --- 7) RENDU LABO DÉDIÉ (FASTLAB) : gabarit métier riche, multi-pages -------
   //
-  //  Le moteur labo a ~180 champs d'entrée potentiels ; un profil réaliste
-  //  (granulo + Atterberg + Proctor + CBR…) fait DÉBORDER le tableau d'entrées
-  //  sur PLUSIEURS pages. On prouve que le gabarit « générique élégant » tient :
-  //  PDF généré sans erreur, Y>1 page, en-tête de tableau répété (headerRows:1),
-  //  bloc scellement insécable (unbreakable, jamais coupé), pagination « page X / Y »
-  //  avec Y>1, et contenu (numéro / hash / résultats) présent.
-  it('7) MULTI-PAGES : PV labo déborde sur plusieurs pages (gabarit générique)', async () => {
+  //  RE-SCOPE décidé le 14/07 : le PV labo n'utilise PLUS le gabarit GÉNÉRIQUE
+  //  (vidage input/output « Données d'entrée » / « Résultats ») mais un gabarit
+  //  MÉTIER DÉDIÉ (buildLaboBody) — classification GTR + table d'identification
+  //  COMPLÈTE — conforme à la décision produit du 02/07 avec STARFIRE (afficher
+  //  TOUS les diagnostics OutputSchema en EXCLUANT les paramètres de méthode ; PV
+  //  labo complété ; démo PV-000020), pas une régression. La complétude d'affichage
+  //  fait légitimement DÉBORDER ce profil riche sur PLUSIEURS pages : la propriété
+  //  multi-pages RESTE prouvée ici (Y>1), avec les sections MÉTIER attendues et non
+  //  les titres génériques. La correction du test #7 d'origine ne portait donc que
+  //  sur les LIBELLÉS de section (métier, plus génériques) ; le débordement était
+  //  déjà réel. La couverture du FALLBACK générique multi-pages (aucun moteur réel
+  //  ne l'atteint plus) est en plus assurée au niveau unitaire
+  //  (src/pv/pdf/pv-pdf.multipage.spec.ts).
+  it('7) RENDU LABO : gabarit métier dédié, complet, débordant sur plusieurs pages', async () => {
     if (!ready()) return;
     const token = await login(emailEng());
     const { pvId, pvNumber } = await emitPvInA('labo', laboInput);
@@ -374,12 +410,14 @@ describe('PDF du PV — surface tenant (e2e)', () => {
     expect(res.status).toBe(200);
     const buf = res.body as Buffer;
     expect(buf.slice(0, 5).toString()).toBe('%PDF-');
-    // DÉBORDEMENT prouvé : strictement plus d'une page.
+    // DÉBORDEMENT prouvé sur les OCTETS RÉELS : strictement plus d'une page.
+    // (NB : la « page 1 / 1 » vue via collectPvPdfText est un ARTEFACT — le footer
+    //  y est évalué en dur sur (1,1) ; seul pdfPageCount lit le vrai nombre.)
     const pages = pdfPageCount(buf);
     expect(pages).toBeGreaterThan(1);
 
     // Contenu rendu (via la docDefinition = ce que voit le lecteur) : on relit le
-    // PV persisté et on vérifie numéro / hash / sections / pagination Y>1.
+    // PV persisté et on vérifie numéro / hash / sections métier.
     const rows = await admin!.query(
       `SELECT * FROM official_pvs WHERE id = $1`,
       [pvId],
@@ -390,28 +428,34 @@ describe('PDF du PV — surface tenant (e2e)', () => {
     expect(text).toContain(pv.pvNumber); // en-tête répété (toutes pages)
     expect(text).toContain(pv.contentHash); // bloc scellement présent
     expect(text).toContain('SCELLEMENT');
-    expect(text).toContain('DONNÉES D’ENTRÉE'.toUpperCase());
-    expect(text).toContain('RÉSULTATS'.toUpperCase());
-    // En-tête de tableau « Paramètre » présent sur les tableaux entrée + résultats
-    // (≥2). headerRows:1 le fait répéter par page côté rendu (cf. docDef ci-dessous).
+    // Sections MÉTIER dédiées (buildLaboBody), PAS le gabarit générique.
+    expect(text).toContain('CLASSIFICATION GTR');
+    expect(text).toContain('PARAMÈTRES');
+    expect(text).toContain('IDENTIFICATION');
+    // Le gabarit générique (vidage) n'est PAS utilisé pour labo.
+    expect(text).not.toContain('DONNÉES D’ENTRÉE'.toUpperCase());
+    // Table d'identification présente : en-tête « Paramètre » (1 table métier).
     const paramHeaderCount = (text.match(/Paramètre/g) ?? []).length;
-    expect(paramHeaderCount).toBeGreaterThanOrEqual(2);
+    expect(paramHeaderCount).toBeGreaterThanOrEqual(1);
+    // ZÉRO fuite de science : aucun paramètre de méthode / marqueur interne.
+    expect(text.toLowerCase()).not.toContain('unsigned');
+    expect(text.toLowerCase()).not.toContain('science');
 
     // Le bloc SCELLEMENT (unbreakable) n'apparaît qu'UNE fois (jamais dupliqué).
     expect((text.match(/SCELLEMENT/g) ?? []).length).toBe(1);
 
-    // STRUCTURE prouvée déterministe (ce que pdfmake applique RÉELLEMENT par page) :
-    //  - headerRows:1 sur le tableau d'entrée -> en-tête répété à chaque page ;
+    // STRUCTURE déterministe (ce que pdfmake applique RÉELLEMENT par page) :
+    //  - headerRows:1 sur la table d'identification -> en-tête répété à chaque page ;
     //  - le bloc scellement porte unbreakable:true -> jamais coupé ;
-    //  - le footer (DynamicContent) émet « page X / Y » par page ; on l'évalue sur
-    //    la DERNIÈRE page avec Y = pages réelles -> « page N / N ».
+    //  - le footer émet « page X / Y » ; on l'évalue sur la DERNIÈRE page avec
+    //    Y = pages réelles (>1) -> « page N / N ».
     const def = buildPvDocDefinition(pv);
     const inputTable = findFirstTableWithHeader(def.content);
     expect(inputTable?.table.headerRows).toBe(1);
     expect(hasUnbreakableSeal(def.content)).toBe(true);
-    const footerLast = renderFooterText(def, pages, pages);
-    expect(footerLast).toContain(`page ${pages} / ${pages}`);
-    expect(footerLast).toContain(pv.pvNumber); // numéro répété en pied, toutes pages
+    const footer = renderFooterText(def, pages, pages);
+    expect(footer).toContain(`page ${pages} / ${pages}`);
+    expect(footer).toContain(pv.pvNumber); // numéro répété en pied, toutes pages
   });
 
   // --- 8) PREUVE SUR LES OCTETS RÉELS (CRIT-2) --------------------------------

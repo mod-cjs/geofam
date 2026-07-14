@@ -125,7 +125,9 @@ export function findEngineDispatch(
 export function findEngineDispatchByRegistryId(
   registryId: string,
 ): EngineDispatchEntry | undefined {
-  return Object.values(ENGINE_DISPATCH).find((e) => e.registryId === registryId);
+  return Object.values(ENGINE_DISPATCH).find(
+    (e) => e.registryId === registryId,
+  );
 }
 
 /** Liste des slugs supportes (pour message d'erreur borne). */

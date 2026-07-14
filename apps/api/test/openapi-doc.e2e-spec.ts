@@ -17,7 +17,14 @@ interface RequestBodyShape {
   content?: {
     'application/json'?: {
       schema?: unknown;
-      examples?: { demo?: { value?: Record<string, unknown> } };
+      // Chaque controleur nomme son exemple de facon DESCRIPTIVE et propre au
+      // moteur (« chaussee-cas-de-reference », « labo-cas-de-reference »…) pour
+      // la recette STARFIRE — jamais une cle generique « demo ». On indexe donc
+      // par nom d'exemple et on verifie qu'AU MOINS UN porte une valeur non vide.
+      examples?: Record<
+        string,
+        { value?: Record<string, unknown> } | undefined
+      >;
     };
   };
 }
@@ -115,8 +122,12 @@ describe('OpenAPI /docs-json (e2e)', () => {
       const media = requestBody?.content?.['application/json'];
       // Le corps doit referencer un schema (champs/bornes du contrat).
       expect(media?.schema).toBeDefined();
-      // Et fournir un exemple AVEC une valeur non vide (« Try it out » pre-rempli).
-      const value = media?.examples?.demo?.value;
+      // Et fournir AU MOINS UN exemple avec une valeur non vide (« Try it out »
+      // pre-rempli). La cle exacte est propre au moteur (cf. RequestBodyShape) :
+      // on prend le premier exemple documente et on prouve qu'il porte un corps.
+      const examples = media?.examples ?? {};
+      const first = Object.values(examples)[0];
+      const value = first?.value;
       expect(value).toBeDefined();
       expect(Object.keys(value ?? {}).length).toBeGreaterThan(0);
     },

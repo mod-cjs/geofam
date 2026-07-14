@@ -190,8 +190,20 @@ describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’af
             fatiguePhase2: { valeur: 509.37, admissible: 201.54, ok: false, couche: 1 },
             fatigueInverse: null,
             couchesTraitees: [
-              { couche: 2, mode: 'semi-collée', valeur: 0.2697, admissible: 0.4225, ok: true },
-              { couche: 3, mode: 'semi-collée', valeur: 0.3345, admissible: 0.384, ok: true },
+              {
+                couche: 2,
+                mode: 'semi-collée',
+                valeur: 0.2697,
+                admissible: 0.4225,
+                ok: true,
+              },
+              {
+                couche: 3,
+                mode: 'semi-collée',
+                valeur: 0.3345,
+                admissible: 0.384,
+                ok: true,
+              },
             ],
             couchesGranulaires: [],
           },
@@ -199,7 +211,9 @@ describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’af
       ).output,
     );
     // phase 2 -> ligne de résultat (rows), µdef, verdict fail, n° de couche baké.
-    const p2 = out.rows.find((r) => r.label === 'Fatigue phase 2 — base bitumineuse ε_t (couche 1)');
+    const p2 = out.rows.find(
+      (r) => r.label === 'Fatigue phase 2 — base bitumineuse ε_t (couche 1)',
+    );
     expect(p2).toBeDefined();
     expect(p2!.value).toBe(509.37);
     expect(p2!.unit).toBe('μdef');
@@ -236,9 +250,7 @@ describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’af
     expect(inv!.unit).toBe('MPa');
     expect(inv!.status).toBe('fail');
     // phase 2 null -> pas de ligne.
-    expect(
-      out.rows.some((r) => r.label.startsWith('Fatigue phase 2')),
-    ).toBe(false);
+    expect(out.rows.some((r) => r.label.startsWith('Fatigue phase 2'))).toBe(false);
   });
 
   it('MAJEUR-1 : structure CONFORME + phase 2 dépassée mais NON requise -> ligne SANS status fail (informatif)', () => {
@@ -249,14 +261,33 @@ describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’af
             ...LIVE_BURMISTER_OUTPUT,
             conforme: true,
             famille: 'semi-rigide',
-            fatigue: { ok: true, requis: true, rigide: true, valeur: 1.3, admissible: 1.6 },
+            fatigue: {
+              ok: true,
+              requis: true,
+              rigide: true,
+              valeur: 1.3,
+              admissible: 1.6,
+            },
             ornierage: { ok: true, valeur: 400, admissible: 511 },
             // phase 2 dépassée MAIS non requise -> ne doit pas porter status 'fail'
             // (sinon un ✗ rouge s'afficherait sous un verdict PASS = contradiction).
-            fatiguePhase2: { valeur: 509.37, admissible: 201.54, ok: false, requis: false, couche: 1 },
+            fatiguePhase2: {
+              valeur: 509.37,
+              admissible: 201.54,
+              ok: false,
+              requis: false,
+              couche: 1,
+            },
             fatigueInverse: null,
             couchesTraitees: [
-              { couche: 2, mode: 'semi-collée', valeur: 0.27, admissible: 0.42, ok: true, requis: true },
+              {
+                couche: 2,
+                mode: 'semi-collée',
+                valeur: 0.27,
+                admissible: 0.42,
+                ok: true,
+                requis: true,
+              },
             ],
             couchesGranulaires: [],
           },
@@ -278,17 +309,31 @@ describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’af
             ...LIVE_BURMISTER_OUTPUT,
             conforme: true,
             famille: 'souple à faible trafic',
-            fatigue: { ok: true, requis: false, rigide: false, valeur: 300, admissible: 450 },
+            fatigue: {
+              ok: true,
+              requis: false,
+              rigide: false,
+              valeur: 300,
+              admissible: 450,
+            },
             ornierage: { ok: true, valeur: 400, admissible: 511 },
             couchesGranulaires: [
-              { couche: 2, valeur: 2107.23, admissible: 1600.7, ok: false, requis: false },
+              {
+                couche: 2,
+                valeur: 2107.23,
+                admissible: 1600.7,
+                ok: false,
+                requis: false,
+              },
             ],
           },
         }),
       ).output,
     );
     expect(out.verdict).toBe('PASS');
-    const cg = (out.details ?? []).find((r) => r.label.startsWith('ε_z sommet couche granulaire'));
+    const cg = (out.details ?? []).find((r) =>
+      r.label.startsWith('ε_z sommet couche granulaire'),
+    );
     expect(cg).toBeDefined();
     expect(cg!.status).toBeUndefined();
     // le critère principal ε_t, non requis pour cette famille, n'est pas 'fail' non plus.
@@ -311,7 +356,9 @@ describe('adaptCalcResult — critères SECONDAIRES exposés (complétude d’af
     );
     expect(out.rows.some((r) => r.label.startsWith('Fatigue phase 2'))).toBe(false);
     expect(out.rows.some((r) => r.label.startsWith('Structure inverse'))).toBe(false);
-    expect((out.details ?? []).some((r) => r.label.startsWith('σ_t couche traitée'))).toBe(false);
+    expect(
+      (out.details ?? []).some((r) => r.label.startsWith('σ_t couche traitée')),
+    ).toBe(false);
   });
 });
 
@@ -482,5 +529,262 @@ describe('adaptCalcResult — passthrough des sorties déjà normalisées / autr
   it('given output null, then output reste null et ne crash pas', () => {
     const r = adaptCalcResult(makeRaw({ output: null }));
     expect(r.output).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M4 (revue fidélité) — ε₆/σ₆ « référence catalogue » : grandeur PUBLIQUE du
+// catalogue AGEROUTE, exposée délibérément par le moteur (fatigue.referenceCatalogue,
+// cf. engines/burmister index — « la référence définitive les édite en clair »).
+// L'adaptateur doit l'émettre comme ligne, pour que l'onglet Détails affiche le
+// « Matériau dimensionnant » comme la définitive (reference:1519) au lieu de le
+// masquer à tort comme coefficient de calage.
+// ---------------------------------------------------------------------------
+
+describe('adaptCalcResult — ε₆/σ₆ référence catalogue (grandeur publique, M4)', () => {
+  it('given fatigue bitumineuse (rigide=false) avec referenceCatalogue=100, then ligne « Référence catalogue ε₆ » 100 μdef, sans status', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            fatigue: { ...LIVE_BURMISTER_OUTPUT.fatigue, referenceCatalogue: 100 },
+          },
+        }),
+      ).output,
+    );
+    const ref = out.rows.find((r) => r.label === 'Référence catalogue ε₆');
+    expect(ref).toBeDefined();
+    expect(ref!.value).toBe(100);
+    expect(ref!.unit).toBe('μdef');
+    // Informatif (référence), pas un critère : jamais de ✓/✗.
+    expect(ref!.status).toBeUndefined();
+  });
+
+  it('given structure rigide (rigide=true) avec referenceCatalogue=0.75, then ligne « Référence catalogue σ₆ » 0.75 MPa', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            fatigue: {
+              ok: true,
+              requis: true,
+              rigide: true,
+              valeur: 0.61,
+              admissible: 0.7,
+              referenceCatalogue: 0.75,
+            },
+          },
+        }),
+      ).output,
+    );
+    const ref = out.rows.find((r) => r.label === 'Référence catalogue σ₆');
+    expect(ref).toBeDefined();
+    expect(ref!.value).toBe(0.75);
+    expect(ref!.unit).toBe('MPa');
+  });
+
+  it('given referenceCatalogue null (e6 infini — pas de matériau dimensionnant), then AUCUNE ligne référence (fail-closed, comme d.e6<Infinity)', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            fatigue: { ...LIVE_BURMISTER_OUTPUT.fatigue, referenceCatalogue: null },
+          },
+        }),
+      ).output,
+    );
+    expect(out.rows.some((r) => r.label.startsWith('Référence catalogue'))).toBe(false);
+  });
+
+  it('given fatigue SANS champ referenceCatalogue (ancien calcul persisté), then aucune ligne et pas de crash', () => {
+    const out = asNormalized(adaptCalcResult(makeRaw()).output);
+    expect(out.rows.some((r) => r.label.startsWith('Référence catalogue'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildBurmisterDetails — intermédiaires de méthode « détails transparents »
+// (décision titulaire 13/07, zéro écart d'affichage avec la définitive : kθ, SN,
+// Sh, δ, kr, kc, ks, 1/b, l'admissible à r=50 %, et σ_z/σ_r PSC ne sont plus
+// masqués « non exposé côté client » — ce sont des RÉSULTATS de méthode publics,
+// pas le code du moteur). Contrat moteur (chantier parallèle, mocké ici) :
+// details.{ktheta,sn,sh_cm,delta,kr,kc,ks,ub,adm_r50,sigmaZ_psc_kpa,sigmaR_psc_kpa}.
+// ---------------------------------------------------------------------------
+
+const METHODE_DETAILS = {
+  E1_pond: 2100,
+  nu1_pond: 0.4,
+  E_psc: 50,
+  nu_psc: 0.35,
+  risque_pct: 10,
+  sigmaZ_r0: -450.2,
+  sigmaR_r0: 210.5,
+  ktheta: 0.923,
+  sn: 0.25,
+  sh_cm: 1.5,
+  delta: 0.2734,
+  kr: 0.7452,
+  kc: 1.3,
+  ks: 1.065,
+  ub: 5,
+  adm_r50: 130.4,
+  sigmaZ_psc_kpa: -62.18,
+  sigmaR_psc_kpa: 12.03,
+};
+
+describe('buildBurmisterDetails — coefficients de méthode exposés (décision titulaire 13/07)', () => {
+  it('given details complets (structure souple), then kθ/SN/Sh/δ/kr/kc/ks/1/b et Adm. fatigue r=50 % (μdef) sont poussés en details', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            fatigue: { ...LIVE_BURMISTER_OUTPUT.fatigue, rigide: false },
+            details: METHODE_DETAILS,
+          },
+        }),
+      ).output,
+    );
+    const details = out.details ?? [];
+
+    const kth = details.find((r) => r.label === 'kθ température');
+    expect(kth?.value).toBe(0.923);
+    expect(kth?.unit).toBe('');
+
+    const sn = details.find((r) => r.label === 'SN');
+    expect(sn?.value).toBe(0.25);
+
+    const sh = details.find((r) => r.label === 'Sh');
+    expect(sh?.value).toBe(1.5);
+    expect(sh?.unit).toBe('cm');
+
+    const delta = details.find((r) => r.label === 'δ');
+    expect(delta?.value).toBe(0.2734);
+
+    const kr = details.find((r) => r.label === 'kr risque');
+    expect(kr?.value).toBe(0.7452);
+
+    const kc = details.find((r) => r.label === 'kc calage');
+    expect(kc?.value).toBe(1.3);
+
+    const ks = details.find((r) => r.label === 'ks support');
+    expect(ks?.value).toBe(1.065);
+
+    const ub = details.find((r) => r.label === '1/b');
+    expect(ub?.value).toBe(5);
+
+    // Souple : unité μdef (comme la ligne « ε_t admissible » existante).
+    const admR50 = details.find((r) => r.label === 'Adm. fatigue r=50 %');
+    expect(admR50?.value).toBe(130.4);
+    expect(admR50?.unit).toBe('μdef');
+
+    const sigZ = details.find((r) => r.label === 'σ_z PSC');
+    expect(sigZ?.value).toBe(-62.18);
+    expect(sigZ?.unit).toBe('kPa');
+
+    const sigR = details.find((r) => r.label === 'σ_r PSC');
+    expect(sigR?.value).toBe(12.03);
+    expect(sigR?.unit).toBe('kPa');
+  });
+
+  it('given structure rigide (fatigue.rigide=true), then « Adm. fatigue r=50 % » est en MPa (unité de la fatigue rigide)', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            fatigue: {
+              ok: true,
+              requis: true,
+              rigide: true,
+              valeur: 0.61,
+              admissible: 0.7,
+            },
+            details: METHODE_DETAILS,
+          },
+        }),
+      ).output,
+    );
+    const admR50 = (out.details ?? []).find((r) => r.label === 'Adm. fatigue r=50 %');
+    expect(admR50?.value).toBe(130.4);
+    expect(admR50?.unit).toBe('MPa');
+  });
+
+  it('SENTINELLE anti-collision : « Adm. fatigue r=50 % » et « ε_t admissible » sont deux lignes DISTINCTES (pas de préfixe commun, pas de collision findOutputRow)', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            details: { ...METHODE_DETAILS, epsilonT_adm: 96.4 },
+          },
+        }),
+      ).output,
+    );
+    const details = out.details ?? [];
+    const etAdm = details.find((r) => r.label === 'ε_t admissible');
+    const admR50 = details.find((r) => r.label === 'Adm. fatigue r=50 %');
+    expect(etAdm?.value).toBe(96.4);
+    expect(admR50?.value).toBe(130.4);
+    // Aucun des deux labels n'est un préfixe de l'autre (protège findOutputRow, qui
+    // fait une recherche par préfixe — cf. page.tsx `findOutputRow`).
+    expect(admR50!.label.startsWith(etAdm!.label)).toBe(false);
+    expect(etAdm!.label.startsWith(admR50!.label)).toBe(false);
+  });
+
+  it('given un ancien calcul persisté (details SANS les nouveaux champs), then aucune ligne kθ/SN/Sh/δ/kr/kc/ks/1/b/Adm. r=50%/σPSC — pas de crash, pas de NaN', () => {
+    const out = asNormalized(
+      adaptCalcResult(
+        makeRaw({
+          output: {
+            ...LIVE_BURMISTER_OUTPUT,
+            details: {
+              E1_pond: 2100,
+              nu1_pond: 0.4,
+              E_psc: 50,
+              nu_psc: 0.35,
+              risque_pct: 10,
+              sigmaZ_r0: -450.2,
+              sigmaR_r0: 210.5,
+            },
+          },
+        }),
+      ).output,
+    );
+    const details = out.details ?? [];
+    const NEW_LABELS = [
+      'kθ température',
+      'SN',
+      'Sh',
+      'δ',
+      'kr risque',
+      'kc calage',
+      'ks support',
+      'Adm. fatigue r=50 %',
+      'σ_z PSC',
+      'σ_r PSC',
+      '1/b',
+    ];
+    for (const label of NEW_LABELS) {
+      expect(details.some((r) => r.label === label)).toBe(false);
+    }
+    // Aucun NaN/valeur non finie n'a pu se glisser dans les lignes déjà présentes.
+    expect(
+      details.every((r) => typeof r.value !== 'number' || Number.isFinite(r.value)),
+    ).toBe(true);
+  });
+
+  it('given output.details ABSENT (calcul très ancien), then aucune ligne de méthode et pas de crash', () => {
+    const raw = makeRaw({
+      output: { ...LIVE_BURMISTER_OUTPUT, details: undefined },
+    });
+    expect(() => adaptCalcResult(raw)).not.toThrow();
+    const out = asNormalized(adaptCalcResult(raw).output);
+    expect(out.details ?? []).toEqual(
+      expect.not.arrayContaining([expect.objectContaining({ label: 'kr risque' })]),
+    );
   });
 });

@@ -389,7 +389,9 @@ describe('Durcissement des courses d appartenance — migration 0021 (e2e)', () 
     // Le retrait a ete REFUSE par l'anti-lockout (R0008), pas silencieusement passe.
     expect(removeErr).not.toBeNull();
     const err = removeErr as unknown as PgError;
-    expect(err.code === 'R0008' || /anti-lockout/i.test(err.message)).toBe(true);
+    expect(err.code === 'R0008' || /anti-lockout/i.test(err.message)).toBe(
+      true,
+    );
 
     // INVARIANT : l'org R conserve TOUJOURS >= 1 OWNER actif (jamais zero). Apres
     // le transfert, N est OWNER ; le retrait ayant echoue, N reste bien OWNER actif.

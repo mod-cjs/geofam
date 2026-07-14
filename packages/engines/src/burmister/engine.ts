@@ -249,18 +249,15 @@ export const AGEROUTE_MATERIALS = {
 // 0.30->0.304 — recalage de la loi de fatigue) et AJOUTE un materiau BC5g (Beton
 // BC5 dalle GOUJONNEE, meme E/nu/s6/b/kc/sn/Sh que BC5 mais kd=1/1,47 au lieu de
 // 1/1,7 — Tab. 68 AGEROUTE, joint goujonne). C'est un changement de CALAGE
-// scientifique, pas juste une extraction : GATE derriere `load.materialsRev`.
+// scientifique STARFIRE (science SIGNEE), pas juste une extraction.
 //
-// GATE STRICTE (meme discipline que gntAuto/ifaceAuto, #87) : absent/tout sauf
-// 'definitive' -> `AGEROUTE_MATERIALS` (table HISTORIQUE, s6 0.37/0.30, PAS de
-// BC5g) est utilisee, equivalence contre l'ANCIENNE reference + toutes les
-// fixtures existantes PRESERVEE au bit pres. `load.materialsRev==='definitive'`
-// -> cette table CORRIGEE (avec BC5g) est utilisee a la place.
-//
-// ⚠️ ACTIVATION EN PRODUCTION : ce recalage engage la SCIENCE (coefficients de
-// fatigue STARFIRE). L'activation du flag cote produit necessite une validation
-// explicite `expert-genie-civil`/STARFIRE avant tout usage hors verification
-// d'equivalence-portage — cf. tete de fichier #93.
+// ADR 0013 — TABLE UNIQUE : depuis la bascule du 2026-07-13, cette table DEFINITIVE
+// est la SEULE utilisee par `computeBurmister` (le mode materiaux HISTORIQUE a ete
+// retire). `AGEROUTE_MATERIALS` ci-dessus n'est plus qu'une BASE structurelle dont
+// on derive (spread) — jamais selectionnee seule au calcul. `load.materialsRev`
+// reste accepte au contrat (compatibilite) mais n'a plus d'effet. La production
+// tournait deja a 100 % en mode definitive : cette bascule met la table du calcul
+// en coherence avec la source scellee au registre (sha256 42bb).
 export const AGEROUTE_MATERIALS_DEFINITIVE = {
   ...AGEROUTE_MATERIALS,
   GLc2: { ...AGEROUTE_MATERIALS.GLc2, s6: 0.3705 },
@@ -356,20 +353,19 @@ function invNorm(p) {
   if (p <= 0) return -Infinity;
   if (p >= 1) return Infinity;
   var a = [
-    -3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2,
-    1.38357751867269e2, -3.066479806614716e1, 2.506628277459239e0,
+    -3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2,
+    -3.066479806614716e1, 2.506628277459239,
   ];
   var b = [
-    -5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2,
-    6.680131188771972e1, -1.328068155288572e1,
+    -5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1,
+    -1.328068155288572e1,
   ];
   var c = [
-    -7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838e0,
-    -2.549732539343734e0, 4.374664141464968e0, 2.938163982698783e0,
+    -7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838, -2.549732539343734,
+    4.374664141464968, 2.938163982698783,
   ];
   var d = [
-    7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996e0,
-    3.754408661907416e0,
+    7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996, 3.754408661907416,
   ];
   var pl = 0.02425,
     ph = 1 - pl,
@@ -385,7 +381,7 @@ function invNorm(p) {
     q = p - 0.5;
     r = q * q;
     x =
-      (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
+      ((((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q) /
       (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
   } else {
     q = Math.sqrt(-2 * Math.log(1 - p));
@@ -1320,13 +1316,12 @@ function doCalcPure(M, ly, pf, tr, cp) {
  * parametre (#46 : pas de codage en dur dans la science) ; ce sont les VALEURS
  * injectees qui sont figees, pas l'architecture.
  *
- * REVISION MATERIAUX (#93 sous-port 3c, GATE SCIENCE) : `load.materialsRev`
- * selectionne laquelle des deux tables FIGEES est utilisee — jamais un coefficient
- * arbitraire. Absent/tout sauf 'definitive' -> `AGEROUTE_MATERIALS` (table
- * HISTORIQUE, equivalence ANCIENNE reference preservee). `'definitive'` ->
- * `AGEROUTE_MATERIALS_DEFINITIVE` (s6 GLc2/BQc corriges + materiau BC5g). Ce
- * recalage engage la SCIENCE STARFIRE : son activation produit necessite une
- * validation `expert-genie-civil`/STARFIRE prealable (cf. tete de fichier #93).
+ * TABLE MATERIAUX (ADR 0013 — table UNIQUE) : le calcul utilise TOUJOURS
+ * `AGEROUTE_MATERIALS_DEFINITIVE` (s6 GLc2/BQc corriges + BC5g, science SIGNEE
+ * STARFIRE). `load.materialsRev` reste accepte au contrat (compatibilite) mais
+ * n'a plus d'effet — le mode materiaux HISTORIQUE a ete retire (100 % du trafic
+ * de production etait deja en definitive). Aucune cle `materials` libre : seule
+ * la table figee serveur est utilisee.
  *
  * FATIGUE OVERRIDES (#93 sous-port 3d, reference DEFINITIVE — table des lois de
  * fatigue editable) : `load.fatigueOverrides` (contract.ts, TABLEAU `{mat,e6?,
@@ -1366,11 +1361,16 @@ function mergeFatigueOverrides(baseTable, overrides) {
 
 export function computeBurmister(state) {
   const cpForMaterials = state && state.load ? state.load : {};
-  const baseTable =
-    cpForMaterials && cpForMaterials.materialsRev === 'definitive'
-      ? AGEROUTE_MATERIALS_DEFINITIVE
-      : AGEROUTE_MATERIALS;
-  const M = mergeFatigueOverrides(baseTable, cpForMaterials && cpForMaterials.fatigueOverrides);
+  // ADR 0013 — RETRAIT DU MODE HISTORIQUE : la table DEFINITIVE est la SEULE source
+  // de verite (recalage science GLc2/BQc + BC5g, signee STARFIRE). `load.materialsRev`
+  // reste ACCEPTE au contrat (compatibilite) mais n'a plus AUCUN effet : il n'existe
+  // qu'une table. `AGEROUTE_MATERIALS` demeure UNIQUEMENT comme base structurelle
+  // dont `AGEROUTE_MATERIALS_DEFINITIVE` derive (spread) — jamais utilisee seule.
+  const baseTable = AGEROUTE_MATERIALS_DEFINITIVE;
+  const M = mergeFatigueOverrides(
+    baseTable,
+    cpForMaterials && cpForMaterials.fatigueOverrides,
+  );
   const lyIn = state && Array.isArray(state.layers) ? state.layers : [];
   const pf = state && state.subgrade ? state.subgrade : {};
   const tr = state && state.traffic ? state.traffic : {};

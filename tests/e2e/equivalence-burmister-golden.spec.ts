@@ -1,14 +1,24 @@
 /**
  * ÉQUIVALENCE GOLDEN-MASTER — ROADSENS (burmister, AGEROUTE Sénégal 2015).
  *
- * Preuve NAVIGATEUR + bout-en-bout PLATEFORME que le portage reproduit le HTML
- * CLIENT d'origine à 0 % d'écart (tolérance rel 1e-9).
+ * RECIBLÉ SUR LA RÉFÉRENCE DÉFINITIVE (passe 1). La production calcule EXCLUSIVEMENT
+ * selon la définitive (retrait du mode historique — décision titulaire actée) : le
+ * front force toujours `materialsRev:'definitive'` + `ifaceAuto:true` ; `gntAuto`
+ * vaut true par défaut mais peut être false au chargement d'un preset. Les payloads
+ * ci-dessous reflètent donc ce MODE PRODUCTION, et le HTML piloté au navigateur est
+ * la RÉFÉRENCE DÉFINITIVE (pas l'ancien « moderne »).
  *
- *   1. HTML CLIENT gelé (référence, LECTURE seule)
- *        03-Moteurs-client/GeoSuite/source/tools/roadsens_burmister_LCPC_VF_moderne.html
- *      chargé dans un VRAI navigateur (chromium, file://). On pilote `doCalc()` et
+ * Preuve NAVIGATEUR + bout-en-bout PLATEFORME que le portage reproduit la référence
+ * DÉFINITIVE à 0 % d'écart (tolérance rel 1e-9).
+ *
+ *   1. RÉFÉRENCE DÉFINITIVE (versionnée dans le dépôt, LECTURE seule)
+ *        packages/engines/reference/roadsens_burmister_definitive.html
+ *      chargée dans un VRAI navigateur (chromium, file://). On pilote `doCalc()` et
  *      on capture l'objet BRUT `_D` (tous intermédiaires : contraintes, ε_t/ε_z,
- *      admissibles, coefficients de structure).
+ *      admissibles, coefficients de structure). La définitive applique TOUJOURS la
+ *      condition d'interface automatique (Tab. 68) dans son calcul principal et
+ *      recalcule les modules GNT quand `cp.gntAuto` — on aligne le serveur via les
+ *      flags de production.
  *   2. PLATEFORME : le MÊME jeu d'entrées est recalculé côté SERVEUR (POST
  *      /calc/burmister sur Render — le calcul confidentiel ne tourne jamais au
  *      navigateur, DoD §8). On capture la sortie whitelistée.
@@ -16,37 +26,49 @@
  *      identité pour les grandeurs finales, ×1000 (MPa→kPa) pour les contraintes,
  *      strip du discriminant Kmix pour la famille. Écart attendu : 0 (rel ≤ 1e-9).
  *
- * ANCRAGE À LA RÉFÉRENCE SCELLÉE : on vérifie que le SHA-256 du HTML testé ==
- * l'empreinte du registre (259a58a8…b8ba) == la meta `engineSourceHash` renvoyée
- * par le serveur. Le fichier piloté au navigateur est donc byte-identique à la
- * référence scellée au PV — la preuve porte sur la bonne science.
+ * SENTINELLE PASSE-2 (test.fail() documenté) : le serveur estampille ENCORE
+ * `engineSourceHash` = 259a (moderne) alors que la production calcule selon 42bb
+ * (définitive). Le test « meta serveur scelle la même référence » reste donc ROUGE
+ * (marqué `test.fail()`) tant que la passe 2 (bascule du registre vers 42bb) n'est
+ * pas faite ET déployée sur Render. Cf. sentinelle vitest jumelle
+ * `packages/engines/src/registry/registry.burmister-seal.sentinel.test.ts`.
  *
- * SKIP BRUYANT (jamais un faux-vert) : si le HTML source est absent (03-Moteurs-client
- * hors dépôt git en CI), le test ÉCHOUE explicitement plutôt que de passer à vide.
+ * SKIP BRUYANT (jamais un faux-vert) : si la référence est absente, le test ÉCHOUE
+ * explicitement plutôt que de passer à vide.
  *
  * PORTÉE HONNÊTE (@science-unsigned) : ceci prouve l'ÉQUIVALENCE DU PORTAGE
- * (plateforme == HTML client), PAS la JUSTESSE scientifique absolue (cas-tests
- * STARFIRE — hors périmètre). Un portage à 0 % d'un moteur faux resterait faux :
- * la justesse est la responsabilité science du client (split contractuel).
+ * (plateforme == référence définitive), PAS la JUSTESSE scientifique absolue
+ * (cas-tests STARFIRE — hors périmètre). Un portage à 0 % d'un moteur faux resterait
+ * faux : la justesse est la responsabilité science du client (split contractuel).
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 
 // --------------------------------------------------------------------------
 // Référence gelée + API
 // --------------------------------------------------------------------------
 
-/** HTML CLIENT gelé (hors 05-Plateforme, dans 03-Moteurs-client). LECTURE seule. */
+/**
+ * RÉFÉRENCE DÉFINITIVE (versionnée dans le dépôt, LECTURE seule). C'est la source
+ * qui reproduit les calculs de PRODUCTION (le mode historique a été retiré —
+ * décision titulaire actée). __dirname = tests/e2e -> racine 05-Plateforme (../../).
+ */
 const FROZEN_HTML = path.resolve(
   __dirname,
-  '../../../03-Moteurs-client/GeoSuite/source/tools/roadsens_burmister_LCPC_VF_moderne.html',
+  '../../packages/engines/reference/roadsens_burmister_definitive.html',
 );
-/** Empreinte scellée au registre (registry.ts) — doit égaler le SHA du fichier + la meta serveur. */
-const SEALED_SHA = '259a58a8ac0881b20657a34a119de6e603a0ed2895fb4fca21527f2d8cfeb8ba';
+/**
+ * SHA-256 GELÉ de la référence définitive. NB : à ce jour, la meta serveur
+ * `engineSourceHash` estampille encore l'ANCIEN sceau (259a, moderne) : le test
+ * « meta serveur scelle la même référence » est donc marqué `test.fail()`
+ * (sentinelle passe-2, ROUGE tant que le registre n'est pas basculé sur 42bb et
+ * déployé). L'ancrage `beforeAll` ci-dessous vérifie que le FICHIER piloté vaut 42bb.
+ */
+const SEALED_SHA = '42bb46aa5da085cd5605664ce125e361392c77fbc717f9abc4b8d5910f1546f2';
 
 const API_PUBLIC = 'https://roadsen.onrender.com/calc/burmister';
 const REL_TOL = 1e-9;
@@ -75,15 +97,45 @@ interface BurmisterInput {
     r?: 'auto' | number;
     sh?: 'auto' | number;
     ks?: 'auto' | number;
+    /** Mode PRODUCTION : table matériaux définitive (GLc2 s6=0,3705, BQc 0,304, BC5g). */
+    materialsRev?: 'definitive';
+    /** Mode PRODUCTION : conditions d'interface automatiques dans le calcul principal (toujours true côté front). */
+    ifaceAuto?: boolean;
+    /** Module GNT automatique (true par défaut ; false au chargement d'un preset). */
+    gntAuto?: boolean;
+    /** NE direct (court-circuite le calcul TMJA × CAM × croissance × durée). */
+    neForce?: number;
+    /** Surcharge ε₆/σ₆ par matériau (table de fatigue éditable de la définitive). */
+    fatigueOverrides?: Array<{ mat: string; e6?: number; s6?: number }>;
   };
 }
 
 const TR_REF = { T: 150, C: 0.9, N: 20, tau: 4.0, dir: 1.0, tv: 1.0 };
 const TR_FAIBLE = { T: 10, C: 0.5, N: 15, tau: 2.0, dir: 1.0, tv: 1.0 };
 const TR_FORT = { T: 800, C: 1.2, N: 20, tau: 4.0, dir: 1.0, tv: 1.0 };
-const CP = { p: 0.662, a: 0.125, d: 0.375, r: 'auto' as const, sh: 'auto' as const, ks: 'auto' as const };
+/**
+ * Charge de référence en MODE PRODUCTION : la définitive est TOUJOURS le référentiel
+ * (`materialsRev:'definitive'`), l'interface automatique est TOUJOURS active
+ * (`ifaceAuto:true` — jamais togglée côté front), et le module GNT auto est ON par
+ * défaut (`gntAuto:true`). Ces flags sont envoyés à l'API ET portés par le `cp` du
+ * navigateur (la définitive ignore materialsRev/ifaceAuto — sa table est déjà la
+ * définitive et son calcul principal applique toujours l'interface auto — mais lit
+ * bien `cp.gntAuto`). On aligne donc STRICTEMENT les deux côtés sur le même chemin.
+ */
+const CP = {
+  p: 0.662,
+  a: 0.125,
+  d: 0.375,
+  r: 'auto' as const,
+  sh: 'auto' as const,
+  ks: 'auto' as const,
+  materialsRev: 'definitive' as const,
+  ifaceAuto: true,
+  gntAuto: true,
+};
 const PF2 = { cls: 'PF2', E: 50, nu: 0.35 };
 const PF3 = { cls: 'PF3', E: 120, nu: 0.35 };
+const PF4 = { cls: 'PF4', E: 200, nu: 0.35 };
 
 interface Cas {
   id: string;
@@ -93,18 +145,176 @@ interface Cas {
 }
 
 const CAS: Cas[] = [
-  { id: 'bitumineuse-épaisse', familleAttendue: 'bitumineuse épaisse', input: { layers: [{ mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 }, { mat: 'GB3', h: 0.1, E: 2588, nu: 0.45 }, { mat: 'GL1', h: 0.25, E: 200, nu: 0.35 }], subgrade: PF2, traffic: TR_REF, load: CP } },
-  { id: 'souple-à-faible-trafic', familleAttendue: 'souple à faible trafic', input: { layers: [{ mat: 'BBSG1', h: 0.05, E: 1512, nu: 0.45 }, { mat: 'GNT1', h: 0.2, E: 200, nu: 0.35 }, { mat: 'GNT2', h: 0.2, E: 150, nu: 0.35 }], subgrade: PF2, traffic: TR_FAIBLE, load: CP } },
-  { id: 'bitumineuse-épaisse-fort-trafic', familleAttendue: 'bitumineuse épaisse', input: { layers: [{ mat: 'BBSG2', h: 0.06, E: 1896, nu: 0.45 }, { mat: 'GB3', h: 0.12, E: 2588, nu: 0.45 }, { mat: 'GB3', h: 0.12, E: 2588, nu: 0.45 }, { mat: 'GNT1', h: 0.2, E: 200, nu: 0.35 }], subgrade: PF3, traffic: TR_FORT, load: CP } },
-  { id: 'eme2-sur-pf3', familleAttendue: null, input: { layers: [{ mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 }, { mat: 'EME2', h: 0.13, E: 6151, nu: 0.45 }, { mat: 'GNT1', h: 0.15, E: 200, nu: 0.35 }], subgrade: PF3, traffic: TR_REF, load: CP } },
-  { id: 'semi-rigide', familleAttendue: 'semi-rigide', input: { layers: [{ mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 }, { mat: 'GLc2', h: 0.22, E: 3000, nu: 0.25 }, { mat: 'GLc2', h: 0.22, E: 3000, nu: 0.25 }], subgrade: PF2, traffic: TR_REF, load: CP } },
-  { id: 'mixte', familleAttendue: 'mixte', input: { layers: [{ mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 }, { mat: 'GB3', h: 0.12, E: 2588, nu: 0.45 }, { mat: 'GLc1', h: 0.18, E: 2500, nu: 0.25 }, { mat: 'GNT1', h: 0.15, E: 200, nu: 0.35 }], subgrade: PF2, traffic: TR_REF, load: CP } },
-  { id: 'béton-bc5', familleAttendue: null, input: { layers: [{ mat: 'BC5', h: 0.2, E: 35000, nu: 0.25 }, { mat: 'BC5', h: 0.18, E: 35000, nu: 0.25 }, { mat: 'GNT1', h: 0.2, E: 200, nu: 0.35 }], subgrade: PF2, traffic: TR_FORT, load: CP } },
-  { id: 'inverse', familleAttendue: 'inverse', input: { layers: [{ mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 }, { mat: 'GB3', h: 0.08, E: 2588, nu: 0.45 }, { mat: 'GNT1', h: 0.12, E: 200, nu: 0.35 }, { mat: 'GLc2', h: 0.2, E: 3000, nu: 0.25 }], subgrade: PF2, traffic: TR_REF, load: CP } },
-  { id: 'granulaire', familleAttendue: 'granulaire', input: { layers: [{ mat: 'GNT1', h: 0.2, E: 200, nu: 0.35 }, { mat: 'GL1', h: 0.25, E: 200, nu: 0.35 }], subgrade: PF2, traffic: TR_FAIBLE, load: CP } },
-  { id: 'override-risque-sh-ks', familleAttendue: null, input: { layers: [{ mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 }, { mat: 'GB3', h: 0.11, E: 2588, nu: 0.45 }, { mat: 'GL1', h: 0.25, E: 200, nu: 0.35 }], subgrade: PF2, traffic: TR_REF, load: { p: 0.662, a: 0.125, d: 0.375, r: 10, sh: 2.5, ks: 0.95 } } },
-  { id: 'borne-charge-centrée-d0', familleAttendue: null, input: { layers: [{ mat: 'BBSG1', h: 0.07, E: 1512, nu: 0.45 }, { mat: 'GB3', h: 0.12, E: 2588, nu: 0.45 }, { mat: 'GL1', h: 0.25, E: 200, nu: 0.35 }], subgrade: PF2, traffic: TR_REF, load: { p: 0.662, a: 0.125, d: 0, r: 'auto', sh: 'auto', ks: 'auto' } } },
-  { id: 'borne-pf-faible-pf1', familleAttendue: null, input: { layers: [{ mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 }, { mat: 'GB3', h: 0.1, E: 2588, nu: 0.45 }, { mat: 'GL1', h: 0.2, E: 200, nu: 0.35 }], subgrade: { cls: 'PF1', E: 20, nu: 0.35 }, traffic: TR_REF, load: CP } },
+  {
+    id: 'bitumineuse-épaisse',
+    familleAttendue: 'bitumineuse épaisse',
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
+        { mat: 'GB3', h: 0.1, E: 2588, nu: 0.45 },
+        { mat: 'GL1', h: 0.25, E: 200, nu: 0.35 },
+      ],
+      subgrade: PF2,
+      traffic: TR_REF,
+      load: CP,
+    },
+  },
+  {
+    id: 'souple-à-faible-trafic',
+    familleAttendue: 'souple à faible trafic',
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.05, E: 1512, nu: 0.45 },
+        { mat: 'GNT1', h: 0.2, E: 200, nu: 0.35 },
+        { mat: 'GNT2', h: 0.2, E: 150, nu: 0.35 },
+      ],
+      subgrade: PF2,
+      traffic: TR_FAIBLE,
+      load: CP,
+    },
+  },
+  {
+    id: 'bitumineuse-épaisse-fort-trafic',
+    familleAttendue: 'bitumineuse épaisse',
+    input: {
+      layers: [
+        { mat: 'BBSG2', h: 0.06, E: 1896, nu: 0.45 },
+        { mat: 'GB3', h: 0.12, E: 2588, nu: 0.45 },
+        { mat: 'GB3', h: 0.12, E: 2588, nu: 0.45 },
+        { mat: 'GNT1', h: 0.2, E: 200, nu: 0.35 },
+      ],
+      subgrade: PF3,
+      traffic: TR_FORT,
+      load: CP,
+    },
+  },
+  {
+    id: 'eme2-sur-pf3',
+    familleAttendue: null,
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
+        { mat: 'EME2', h: 0.13, E: 6151, nu: 0.45 },
+        { mat: 'GNT1', h: 0.15, E: 200, nu: 0.35 },
+      ],
+      subgrade: PF3,
+      traffic: TR_REF,
+      load: CP,
+    },
+  },
+  {
+    id: 'semi-rigide',
+    familleAttendue: 'semi-rigide',
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
+        { mat: 'GLc2', h: 0.22, E: 3000, nu: 0.25 },
+        { mat: 'GLc2', h: 0.22, E: 3000, nu: 0.25 },
+      ],
+      subgrade: PF2,
+      traffic: TR_REF,
+      load: CP,
+    },
+  },
+  {
+    id: 'mixte',
+    familleAttendue: 'mixte',
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
+        { mat: 'GB3', h: 0.12, E: 2588, nu: 0.45 },
+        { mat: 'GLc1', h: 0.18, E: 2500, nu: 0.25 },
+        { mat: 'GNT1', h: 0.15, E: 200, nu: 0.35 },
+      ],
+      subgrade: PF2,
+      traffic: TR_REF,
+      load: CP,
+    },
+  },
+  {
+    id: 'béton-bc5',
+    familleAttendue: null,
+    input: {
+      layers: [
+        { mat: 'BC5', h: 0.2, E: 35000, nu: 0.25 },
+        { mat: 'BC5', h: 0.18, E: 35000, nu: 0.25 },
+        { mat: 'GNT1', h: 0.2, E: 200, nu: 0.35 },
+      ],
+      subgrade: PF2,
+      traffic: TR_FORT,
+      load: CP,
+    },
+  },
+  {
+    id: 'inverse',
+    familleAttendue: 'inverse',
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
+        { mat: 'GB3', h: 0.08, E: 2588, nu: 0.45 },
+        { mat: 'GNT1', h: 0.12, E: 200, nu: 0.35 },
+        { mat: 'GLc2', h: 0.2, E: 3000, nu: 0.25 },
+      ],
+      subgrade: PF2,
+      traffic: TR_REF,
+      load: CP,
+    },
+  },
+  {
+    id: 'granulaire',
+    familleAttendue: 'granulaire',
+    input: {
+      layers: [
+        { mat: 'GNT1', h: 0.2, E: 200, nu: 0.35 },
+        { mat: 'GL1', h: 0.25, E: 200, nu: 0.35 },
+      ],
+      subgrade: PF2,
+      traffic: TR_FAIBLE,
+      load: CP,
+    },
+  },
+  {
+    id: 'override-risque-sh-ks',
+    familleAttendue: null,
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
+        { mat: 'GB3', h: 0.11, E: 2588, nu: 0.45 },
+        { mat: 'GL1', h: 0.25, E: 200, nu: 0.35 },
+      ],
+      subgrade: PF2,
+      traffic: TR_REF,
+      load: { ...CP, r: 10, sh: 2.5, ks: 0.95 },
+    },
+  },
+  {
+    id: 'borne-charge-centrée-d0',
+    familleAttendue: null,
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.07, E: 1512, nu: 0.45 },
+        { mat: 'GB3', h: 0.12, E: 2588, nu: 0.45 },
+        { mat: 'GL1', h: 0.25, E: 200, nu: 0.35 },
+      ],
+      subgrade: PF2,
+      traffic: TR_REF,
+      load: { ...CP, d: 0 },
+    },
+  },
+  {
+    id: 'borne-pf-faible-pf1',
+    familleAttendue: null,
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
+        { mat: 'GB3', h: 0.1, E: 2588, nu: 0.45 },
+        { mat: 'GL1', h: 0.2, E: 200, nu: 0.35 },
+      ],
+      subgrade: { cls: 'PF1', E: 20, nu: 0.35 },
+      traffic: TR_REF,
+      load: CP,
+    },
+  },
 ];
 
 /**
@@ -120,8 +330,122 @@ const CAS: Cas[] = [
 const CAS_MATERIAU_INCONNU: Cas = {
   id: 'matériau-inconnu-dégradation-identique',
   familleAttendue: null,
-  input: { layers: [{ mat: 'INCONNU_XYZ', h: 0.06, E: 1500, nu: 0.45 }, { mat: 'GL1', h: 0.25, E: 200, nu: 0.35 }], subgrade: PF2, traffic: TR_REF, load: CP },
+  input: {
+    layers: [
+      { mat: 'INCONNU_XYZ', h: 0.06, E: 1500, nu: 0.45 },
+      { mat: 'GL1', h: 0.25, E: 200, nu: 0.35 },
+    ],
+    subgrade: PF2,
+    traffic: TR_REF,
+    load: CP,
+  },
 };
+
+// --------------------------------------------------------------------------
+// FIXTURES QUI MORDENT (passe 1) — chacune exerce un chemin SPÉCIFIQUE de la
+// DÉFINITIVE que les fixtures historiques (toutes r:'auto'|10, gntAuto inerte)
+// ne touchaient pas. Objectif : qu'une régression sur ces chemins vire ROUGE.
+// Chaque fixture : navigateur définitive ↔ serveur, 0 écart rel ≤ 1e-9.
+// --------------------------------------------------------------------------
+const CAS_MORDANTES: Cas[] = [
+  // (1) RISQUE NON-STANDARD r=7,5 % (hors table {5,10,15,25,50}) — verrouille uRisk
+  //     (F3) : la définitive calcule le vrai quantile invNorm(0,925) ; l'ancien
+  //     moteur repliait tout risque hors table sur 1,282 (=10 %). Un retour au
+  //     repli casserait fatigue.admissible ici.
+  {
+    id: 'risque-non-standard-7.5',
+    familleAttendue: null,
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
+        { mat: 'GB3', h: 0.14, E: 2588, nu: 0.45 },
+        { mat: 'GNT1', h: 0.2, E: 200, nu: 0.35 },
+      ],
+      subgrade: PF2,
+      traffic: TR_REF,
+      load: { ...CP, r: 7.5 },
+    },
+  },
+  // (2a) SEMI-RIGIDE GLc2 (latérite ciment) — table DÉFINITIVE : s6 recalé 0,37→0,3705.
+  {
+    id: 'semi-rigide-glc2-definitive',
+    familleAttendue: 'semi-rigide',
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.08, E: 1512, nu: 0.45 },
+        { mat: 'GLc2', h: 0.2, E: 3000, nu: 0.25 },
+        { mat: 'GLc2', h: 0.18, E: 3000, nu: 0.25 },
+      ],
+      subgrade: PF3,
+      traffic: TR_REF,
+      load: CP,
+    },
+  },
+  // (2b) SEMI-RIGIDE BQc (banco-coquillage) — table DÉFINITIVE : s6 recalé 0,30→0,304.
+  {
+    id: 'semi-rigide-bqc-definitive',
+    familleAttendue: 'semi-rigide',
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.08, E: 1512, nu: 0.45 },
+        { mat: 'BQc', h: 0.29, E: 10000, nu: 0.25 },
+        { mat: 'BQc', h: 0.27, E: 10000, nu: 0.25 },
+      ],
+      subgrade: PF4,
+      traffic: TR_REF,
+      load: CP,
+    },
+  },
+  // (3) BÉTON BC5g GOUJONNÉ (matériau AJOUTÉ par la définitive, kd goujonné = 1/1,47,
+  //     vs 1/1,7 non goujonné) sur BC2 — structure S17 catalogue. Vérifie le kd goujonné.
+  {
+    id: 'beton-bc5g-goujonne',
+    familleAttendue: null,
+    input: {
+      layers: [
+        { mat: 'BC5g', h: 0.22, E: 35000, nu: 0.25 },
+        { mat: 'BC2', h: 0.15, E: 20000, nu: 0.25 },
+      ],
+      subgrade: PF3,
+      traffic: TR_FORT,
+      load: CP,
+    },
+  },
+  // (4) gntAuto=FALSE (chemin PRESET) avec modules GNT EXPLICITES : la définitive ne
+  //     recalcule PAS les E des GNT, elle prend ceux saisis. Verrouille le chemin
+  //     preset (`if(cp.gntAuto)` sauté des deux côtés).
+  {
+    id: 'gnt-auto-false-preset',
+    familleAttendue: null,
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
+        { mat: 'GB3', h: 0.1, E: 2588, nu: 0.45 },
+        { mat: 'GNT1', h: 0.2, E: 250, nu: 0.35 },
+        { mat: 'GNT2', h: 0.2, E: 180, nu: 0.35 },
+      ],
+      subgrade: PF2,
+      traffic: TR_REF,
+      load: { ...CP, gntAuto: false },
+    },
+  },
+  // (5) NE DIRECT (neForce) : court-circuite calcNE (TMJA×CAM×croissance×durée). La
+  //     définitive lit cp.neForce ; le serveur lit load.neForce. NE doit être imposé.
+  {
+    id: 'ne-direct-12e6',
+    familleAttendue: null,
+    input: {
+      layers: [
+        { mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
+        { mat: 'GB3', h: 0.12, E: 2588, nu: 0.45 },
+        { mat: 'GNT1', h: 0.2, E: 200, nu: 0.35 },
+      ],
+      subgrade: PF3,
+      traffic: TR_REF,
+      load: { ...CP, neForce: 1.2e7 },
+    },
+  },
+];
 
 // --------------------------------------------------------------------------
 // Pilotage du HTML CLIENT dans le navigateur : reassign des bindings + doCalc.
@@ -132,30 +456,58 @@ interface HtmlResult {
   d: Record<string, unknown> | null;
 }
 
-async function computeHtml(page: Page, input: BurmisterInput): Promise<HtmlResult> {
-  return page.evaluate((st) => {
-    // Réassigne les bindings lexicaux `let` du HTML (accessibles en écriture depuis
-    // une fonction), appelle `doCalc()`, capture l'objet global `_D` (var).
-    // @ts-expect-error — symboles globaux du HTML d'origine.
-    ly = st.layers.map((l, i) => ({ id: i + 1, ...l }));
-    // @ts-expect-error
-    pf = st.subgrade;
-    // @ts-expect-error
-    tr = st.traffic;
-    // @ts-expect-error
-    cp = st.load;
-    let err: string | null = null;
-    try {
-      // @ts-expect-error
-      doCalc();
-    } catch (e) {
-      err = String((e && (e as Error).message) || e);
-    }
-    // @ts-expect-error
-    const d = typeof _D !== 'undefined' ? _D : null;
-    const ok = d && Object.prototype.hasOwnProperty.call(d, 'PASS');
-    return { err: ok ? null : err || 'aucun _D calculé', d: ok ? d : null };
-  }, input as unknown as Record<string, unknown>);
+async function computeHtml(
+  page: Page,
+  input: BurmisterInput,
+  /**
+   * Surcharge ε₆/σ₆ par matériau, appliquée en MUTANT `M[mat].e6`/`.s6` AVANT
+   * `doCalc()` — reproduction EXACTE du `onchange="M['${k}'].e6=+this.value"` de la
+   * table de fatigue éditable de la définitive. MUTATION PERSISTANTE sur la page :
+   * à n'utiliser que sur une page DÉDIÉE (cf. test override fatigue), jamais la page
+   * partagée (sinon contamination des autres fixtures).
+   */
+  fatigueOverrides: ReadonlyArray<{ mat: string; e6?: number; s6?: number }> = [],
+): Promise<HtmlResult> {
+  return page.evaluate(
+    ({ st, ov }) => {
+      // Surcharge de fatigue : mute M en place (M est const, mais M[mat] est un
+      // objet mutable) — comme l'UI de la définitive.
+      for (const o of ov) {
+        // @ts-expect-error — M : référentiel matériaux global du HTML d'origine.
+        if (M && M[o.mat]) {
+          // @ts-expect-error — M[mat] : objet matériau global du HTML d'origine.
+          if (typeof o.e6 === 'number') M[o.mat].e6 = o.e6;
+          // @ts-expect-error — M[mat] : objet matériau global du HTML d'origine.
+          if (typeof o.s6 === 'number') M[o.mat].s6 = o.s6;
+        }
+      }
+      // Réassigne les bindings lexicaux `let` du HTML (accessibles en écriture depuis
+      // une fonction), appelle `doCalc()`, capture l'objet global `_D` (var).
+      // @ts-expect-error — symboles globaux du HTML d'origine.
+      ly = st.layers.map((l, i) => ({ id: i + 1, ...l }));
+      // @ts-expect-error — pf : binding global du HTML d'origine.
+      pf = st.subgrade;
+      // @ts-expect-error — tr : binding global du HTML d'origine.
+      tr = st.traffic;
+      // @ts-expect-error — cp : binding global du HTML d'origine.
+      cp = st.load;
+      let err: string | null = null;
+      try {
+        // @ts-expect-error — doCalc : fonction globale du HTML d'origine.
+        doCalc();
+      } catch (e) {
+        err = String((e && (e as Error).message) || e);
+      }
+      // @ts-expect-error — _D : objet résultat global du HTML d'origine.
+      const d = typeof _D !== 'undefined' ? _D : null;
+      const ok = d && Object.prototype.hasOwnProperty.call(d, 'PASS');
+      return { err: ok ? null : err || 'aucun _D calculé', d: ok ? d : null };
+    },
+    {
+      st: input as unknown as Record<string, unknown>,
+      ov: fatigueOverrides as Array<{ mat: string; e6?: number; s6?: number }>,
+    },
+  );
 }
 
 // --------------------------------------------------------------------------
@@ -165,7 +517,8 @@ async function computeHtml(page: Page, input: BurmisterInput): Promise<HtmlResul
 type Canon = Record<string, number | boolean | null>;
 const numOf = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) ? v : null;
-const x1000 = (v: unknown): number | null => (numOf(v) === null ? null : (v as number) * 1000);
+const x1000 = (v: unknown): number | null =>
+  numOf(v) === null ? null : (v as number) * 1000;
 
 function htmlCanon(D: Record<string, unknown>): Canon {
   const s0 = (D.s0 ?? {}) as Record<string, unknown>;
@@ -255,7 +608,7 @@ function relErr(a: number | boolean | null, b: number | boolean | null): number 
 
 /** POST entrée -> API publique -> sortie serveur (recalcul confidentiel côté serveur). */
 async function computeServer(
-  request: import('@playwright/test').APIRequestContext,
+  request: APIRequestContext,
   input: BurmisterInput,
 ): Promise<{ meta: Record<string, unknown>; output: Record<string, unknown> }> {
   const resp = await request.post(API_PUBLIC, {
@@ -297,29 +650,47 @@ test.describe('ÉQUIVALENCE burmister — HTML client (navigateur) ↔ plateform
     });
     await page.goto(pathToFileURL(FROZEN_HTML).href, { waitUntil: 'domcontentloaded' });
     // Sanity : le HTML expose bien la fonction de calcul.
-    expect(await page.evaluate(() => typeof (globalThis as { doCalc?: unknown }).doCalc)).toBe(
-      'function',
-    );
+    expect(
+      await page.evaluate(() => typeof (globalThis as { doCalc?: unknown }).doCalc),
+    ).toBe('function');
   });
 
-  test('la meta serveur scelle bien la même référence (engineSourceHash == SHA gelé)', async ({
+  // SENTINELLE PASSE-2 (échec ATTENDU, jamais un faux-vert) : le serveur estampille
+  // ENCORE l'ancien sceau (259a, moderne) alors que la production calcule selon la
+  // DÉFINITIVE (42bb). Ce test RESTE ROUGE tant que la passe 2 (bascule du registre
+  // + déploiement Render) n'est pas faite. `test.fail()` l'exprime comme « échec
+  // attendu » : Playwright le compte VERT tant qu'il échoue, et le fera virer ROUGE
+  // (forçant le retrait de test.fail()) le jour où la meta renverra 42bb.
+  test('SENTINELLE passe-2 : la meta serveur scelle la même référence que le fichier piloté (engineSourceHash == 42bb)', async ({
     request,
   }) => {
-    const { meta } = await computeServer(request, CAS[0].input);
-    expect(meta.engineSourceHash, 'la meta serveur doit sceller le HTML client gelé').toBe(
-      SEALED_SHA,
+    test.fail(
+      true,
+      'Le serveur estampille encore 259a (moderne). Deviendra vert à la bascule du ' +
+        'registre vers 42bb (passe 2) + déploiement — retirer alors test.fail().',
     );
+    const { meta } = await computeServer(request, CAS[0].input);
+    expect(
+      meta.engineSourceHash,
+      'la meta serveur doit sceller la référence DÉFINITIVE (42bb) qui reproduit la production',
+    ).toBe(SEALED_SHA);
   });
 
-  for (const cas of CAS) {
+  for (const cas of [...CAS, ...CAS_MORDANTES]) {
     test(`given ${cas.id}, when calculé des 2 côtés, then 0 écart (rel ≤ 1e-9) sur tous les champs`, async ({
       request,
     }) => {
       const html = await computeHtml(page, cas.input);
-      expect(html.d, `le HTML d'origine doit calculer un _D pour ${cas.id} (err=${html.err})`).not.toBeNull();
+      expect(
+        html.d,
+        `le HTML d'origine doit calculer un _D pour ${cas.id} (err=${html.err})`,
+      ).not.toBeNull();
 
       const { output } = await computeServer(request, cas.input);
-      expect(output.erreur, `le serveur ne doit pas être en erreur pour ${cas.id}`).toBeNull();
+      expect(
+        output.erreur,
+        `le serveur ne doit pas être en erreur pour ${cas.id}`,
+      ).toBeNull();
 
       const hc = htmlCanon(html.d as Record<string, unknown>);
       const sc = srvCanon(output);
@@ -330,14 +701,20 @@ test.describe('ÉQUIVALENCE burmister — HTML client (navigateur) ↔ plateform
       for (const k of keys) {
         const e = relErr(hc[k], sc[k]);
         if (e > worst) worst = e;
-        if (e > REL_TOL) ecarts.push(`${k}: HTML=${hc[k]} | serveur=${sc[k]} | rel=${e.toExponential(3)}`);
+        if (e > REL_TOL)
+          ecarts.push(
+            `${k}: HTML=${hc[k]} | serveur=${sc[k]} | rel=${e.toExponential(3)}`,
+          );
       }
 
       // Famille : le serveur strippe le discriminant Kmix ; le libellé NU doit
       // rester un préfixe du brut HTML (transform documenté, non un écart).
       const famRaw = String((html.d as Record<string, unknown>).fam ?? '');
       const famSrv = String(output.famille ?? '');
-      expect(famRaw.toLowerCase().startsWith(famSrv.toLowerCase()) && famSrv.length > 0, `famille: brut="${famRaw}" serveur="${famSrv}"`).toBe(true);
+      expect(
+        famRaw.toLowerCase().startsWith(famSrv.toLowerCase()) && famSrv.length > 0,
+        `famille: brut="${famRaw}" serveur="${famSrv}"`,
+      ).toBe(true);
       if (cas.familleAttendue) expect(famSrv).toBe(cas.familleAttendue);
 
       console.log(
@@ -353,9 +730,15 @@ test.describe('ÉQUIVALENCE burmister — HTML client (navigateur) ↔ plateform
     request,
   }) => {
     const html = await computeHtml(page, CAS_MATERIAU_INCONNU.input);
-    expect(html.d, 'le HTML dégrade (ne lève pas) sur un matériau inconnu').not.toBeNull();
+    expect(
+      html.d,
+      'le HTML dégrade (ne lève pas) sur un matériau inconnu',
+    ).not.toBeNull();
     const { output } = await computeServer(request, CAS_MATERIAU_INCONNU.input);
-    expect(output.erreur, 'le serveur dégrade lui aussi (pas d\'erreur), fidèle au HTML').toBeNull();
+    expect(
+      output.erreur,
+      "le serveur dégrade lui aussi (pas d'erreur), fidèle au HTML",
+    ).toBeNull();
 
     const hc = htmlCanon(html.d as Record<string, unknown>);
     const sc = srvCanon(output);
@@ -364,11 +747,77 @@ test.describe('ÉQUIVALENCE burmister — HTML client (navigateur) ↔ plateform
     for (const k of Array.from(new Set([...Object.keys(hc), ...Object.keys(sc)]))) {
       const e = relErr(hc[k], sc[k]);
       if (e > worst) worst = e;
-      if (e > REL_TOL) ecarts.push(`${k}: HTML=${hc[k]} | serveur=${sc[k]} | rel=${e.toExponential(3)}`);
+      if (e > REL_TOL)
+        ecarts.push(`${k}: HTML=${hc[k]} | serveur=${sc[k]} | rel=${e.toExponential(3)}`);
     }
-    console.log(`[matériau-inconnu] écart max rel=${worst.toExponential(3)} · dégradation identique · fatigue.adm=${sc['fatigue.admissible']}`);
+    console.log(
+      `[matériau-inconnu] écart max rel=${worst.toExponential(3)} · dégradation identique · fatigue.adm=${sc['fatigue.admissible']}`,
+    );
     expect(ecarts, `écarts hors tolérance:\n${ecarts.join('\n')}`).toHaveLength(0);
     expect(worst).toBeLessThanOrEqual(REL_TOL);
+  });
+
+  test('given une surcharge ε₆ du matériau dimensionnant, when calculé des 2 côtés, then override pris en compte ET 0 écart', async ({
+    browser,
+    request,
+  }) => {
+    // Structure bitumineuse : matériau DIMENSIONNANT = GB3 (base du paquet lié).
+    // Défaut catalogue GB3 : ε₆ = 90 µdef (cf. sortie serveur) → on surcharge à 130.
+    const OV = [{ mat: 'GB3', e6: 130 }];
+    const input: BurmisterInput = {
+      layers: [
+        { mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
+        { mat: 'GB3', h: 0.14, E: 2588, nu: 0.45 },
+        { mat: 'GNT1', h: 0.2, E: 200, nu: 0.35 },
+      ],
+      subgrade: PF2,
+      traffic: TR_REF,
+      load: { ...CP, fatigueOverrides: OV },
+    };
+
+    // Navigateur : page DÉDIÉE (mutation de M PERSISTANTE — jamais la page partagée,
+    // sinon les autres fixtures seraient contaminées).
+    const ovCtx = await browser.newContext();
+    const ovPage = await ovCtx.newPage();
+    ovPage.on('pageerror', () => {});
+    await ovPage.goto(pathToFileURL(FROZEN_HTML).href, { waitUntil: 'domcontentloaded' });
+    const html = await computeHtml(ovPage, input, OV);
+    expect(
+      html.d,
+      `le HTML définitive doit calculer un _D (err=${html.err})`,
+    ).not.toBeNull();
+    const D = html.d as Record<string, unknown>;
+    await ovCtx.close();
+
+    const { output } = await computeServer(request, input);
+    expect(output.erreur, 'le serveur ne doit pas être en erreur').toBeNull();
+
+    // BITE : l'override doit être EFFECTIVEMENT retenu des deux côtés. Navigateur :
+    // _D.e6 (= minE6 = ε₆ du matériau dimensionnant) == 130. Serveur :
+    // fatigue.referenceCatalogue (ε₆ effectivement utilisé, tracé pour le PV) == 130.
+    expect(numOf(D.e6), 'navigateur : ε₆ dimensionnant surchargé à 130').toBe(130);
+    const fat = output.fatigue as Record<string, unknown> | undefined;
+    expect(
+      fat?.referenceCatalogue,
+      'serveur : ε₆ effectivement retenu (referenceCatalogue) == 130',
+    ).toBe(130);
+
+    // ÉQUIVALENCE champ par champ (0 écart).
+    const hc = htmlCanon(D);
+    const sc = srvCanon(output);
+    let worst = 0;
+    const ecarts: string[] = [];
+    for (const k of Array.from(new Set([...Object.keys(hc), ...Object.keys(sc)]))) {
+      const e = relErr(hc[k], sc[k]);
+      if (e > worst) worst = e;
+      if (e > REL_TOL)
+        ecarts.push(`${k}: HTML=${hc[k]} | serveur=${sc[k]} | rel=${e.toExponential(3)}`);
+    }
+    console.log(
+      `[override-fatigue-e6] écart max rel=${worst.toExponential(3)} · ε₆=130 · fatigue.adm=${sc['fatigue.admissible']}`,
+    );
+    expect(ecarts, `écarts hors tolérance:\n${ecarts.join('\n')}`).toHaveLength(0);
+    expect(worst, `écart max rel doit être ≤ ${REL_TOL}`).toBeLessThanOrEqual(REL_TOL);
   });
 });
 
@@ -391,12 +840,13 @@ async function loginUi(page: Page) {
 test.describe('BOUT-EN-BOUT ROADSENS (UI réelle Vercel↔Render)', () => {
   test.skip(!RUN_LIVE, 'RUN_LIVE=1 requis pour cibler la plateforme en ligne.');
 
-  test('given la page ROADSENS (structure de référence), when je saisis le trafic et Calcule, then le recalcul serveur == HTML client et l\'affichage est fidèle', async ({
+  test("given la page ROADSENS (structure de référence), when je saisis le trafic et Calcule, then le recalcul serveur == HTML client et l'affichage est fidèle", async ({
     browser,
   }) => {
     // Le HTML client sur la structure PAR DÉFAUT de la page (BBSG1/GB3/GL1 sur PF2),
     // avec le trafic qu'on va saisir dans l'UI (T=150, reste = défauts du formulaire).
-    if (!existsSync(FROZEN_HTML)) throw new Error('HTML client absent — impossible de comparer.');
+    if (!existsSync(FROZEN_HTML))
+      throw new Error('HTML client absent — impossible de comparer.');
     const uiInput: BurmisterInput = {
       layers: [
         { mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
@@ -405,12 +855,25 @@ test.describe('BOUT-EN-BOUT ROADSENS (UI réelle Vercel↔Render)', () => {
       ],
       subgrade: { cls: 'PF2', E: 50, nu: 0.35 },
       traffic: { T: 150, C: 0.9, N: 20, tau: 4.0, dir: 1.0, tv: 1.0 },
-      load: { p: 0.662, a: 0.125, d: 0.375, r: 'auto', sh: 'auto', ks: 'auto' },
+      // Mode PRODUCTION (définitive) — cf. CP : materialsRev/ifaceAuto/gntAuto.
+      load: {
+        p: 0.662,
+        a: 0.125,
+        d: 0.375,
+        r: 'auto',
+        sh: 'auto',
+        ks: 'auto',
+        materialsRev: 'definitive',
+        ifaceAuto: true,
+        gntAuto: true,
+      },
     };
 
     const refCtx = await browser.newContext();
     const refPage = await refCtx.newPage();
-    await refPage.goto(pathToFileURL(FROZEN_HTML).href, { waitUntil: 'domcontentloaded' });
+    await refPage.goto(pathToFileURL(FROZEN_HTML).href, {
+      waitUntil: 'domcontentloaded',
+    });
     const html = await computeHtml(refPage, uiInput);
     expect(html.d, 'HTML client doit calculer la structure UI').not.toBeNull();
     const hc = htmlCanon(html.d as Record<string, unknown>);
@@ -442,7 +905,9 @@ test.describe('BOUT-EN-BOUT ROADSENS (UI réelle Vercel↔Render)', () => {
     // Calculer -> intercepter le recalcul SERVEUR persisté (/projects/:id/calc/burmister)
     const [resp] = await Promise.all([
       page.waitForResponse(
-        (r) => /\/projects\/[^/]+\/calc\/burmister/.test(r.url()) && r.request().method() === 'POST',
+        (r) =>
+          /\/projects\/[^/]+\/calc\/burmister/.test(r.url()) &&
+          r.request().method() === 'POST',
         { timeout: 90_000 },
       ),
       page.getByRole('button', { name: /^Calculer/i }).click(),
@@ -457,15 +922,30 @@ test.describe('BOUT-EN-BOUT ROADSENS (UI réelle Vercel↔Render)', () => {
     const sc = srvCanon(output);
     // Comparaison des grandeurs de dimensionnement clés (celles présentes dans la
     // sortie persistée) — le serveur de l'UI == le HTML client.
-    for (const k of ['NE', 'epaisseurLiee', 'epaisseurTotale', 'ornierage.valeur', 'ornierage.admissible'] as const) {
+    for (const k of [
+      'NE',
+      'epaisseurLiee',
+      'epaisseurTotale',
+      'ornierage.valeur',
+      'ornierage.admissible',
+    ] as const) {
       if (sc[k] !== null && hc[k] !== null) {
-        expect(relErr(hc[k], sc[k]), `UI/serveur ${k}: HTML=${hc[k]} serveur=${sc[k]}`).toBeLessThanOrEqual(REL_TOL);
+        expect(
+          relErr(hc[k], sc[k]),
+          `UI/serveur ${k}: HTML=${hc[k]} serveur=${sc[k]}`,
+        ).toBeLessThanOrEqual(REL_TOL);
       }
     }
 
     // Affichage : onglet Résultats visible + bandeau de verdict, capture de preuve.
-    await page.getByRole('tab', { name: 'Résultats' }).click().catch(() => {});
-    await page.screenshot({ path: 'test-results/equiv-burmister-artifacts/ui-resultats.png', fullPage: true });
+    await page
+      .getByRole('tab', { name: 'Résultats' })
+      .click()
+      .catch(() => {});
+    await page.screenshot({
+      path: 'test-results/equiv-burmister-artifacts/ui-resultats.png',
+      fullPage: true,
+    });
     console.log(`[UI bout-en-bout] NE serveur=${sc.NE} · HTML=${hc.NE}`);
 
     await ctx.close();

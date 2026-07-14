@@ -16,8 +16,12 @@ import { describe, it, expect } from 'vitest';
 
 import {
   computeNE,
+  computeCcum,
   neClass,
+  presetTrafficClass,
+  formatNeExponent,
   buildBurmisterPayload,
+  buildPresetConditions,
   extractBurmisterKpis,
   buildBurmisterDiagnostics,
   resolveRisk,
@@ -27,6 +31,11 @@ import {
   buildLayersFromPreset,
   catalogueMaterialAt,
   CAT,
+  reportRowValue,
+  tabDetailsMode,
+  buildKrComment,
+  buildMaterialComment,
+  buildAdmissibleAvecKrComment,
 } from '../page';
 
 import { adaptCalcResult } from '@/lib/api/adapters';
@@ -540,9 +549,9 @@ describe('catalogueMaterialAt', () => {
   });
 
   it('la 2e couche est le matériau "mid" quand défini', () => {
-    expect(
-      catalogueMaterialAt({ top: 'BBSG1', mid: 'GLc2', body: 'GL2' }, 1, 3),
-    ).toBe('GLc2');
+    expect(catalogueMaterialAt({ top: 'BBSG1', mid: 'GLc2', body: 'GL2' }, 1, 3)).toBe(
+      'GLc2',
+    );
   });
 
   it('sans mid/tail, les couches intermédiaires retombent sur "body"', () => {
@@ -552,7 +561,22 @@ describe('catalogueMaterialAt', () => {
 
 describe('CAT — catalogue AGEROUTE 2015 (14 familles)', () => {
   it('contient exactement les familles S1-S11, S13, S14, S15', () => {
-    const expected = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8', 'S9', 'S10', 'S11', 'S13', 'S14', 'S15'];
+    const expected = [
+      'S1',
+      'S2',
+      'S3',
+      'S4',
+      'S5',
+      'S6',
+      'S7',
+      'S8',
+      'S9',
+      'S10',
+      'S11',
+      'S13',
+      'S14',
+      'S15',
+    ];
     expect(Object.keys(CAT).sort()).toEqual(expected.sort());
   });
 
@@ -777,5 +801,472 @@ describe('DoD §8 — fail-closed : aucune fuite via extractBurmisterKpis', () =
     expect(kpiJson).not.toContain('"ks"');
     expect(kpiJson).not.toContain('999.99');
     expect(kpiJson).not.toContain('sigma_z_brut');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeCcum — coefficient cumulatif C = [(1+τ)^n − 1]/τ (AGEROUTE §3.2)
+// Équivalence portage : fidèle à `calcNE()` de la définitive (roadsens_burmister_
+// definitive.html:547) — `const t=tr.tau/100, C=Math.abs(t)<1e-4?tr.N:(Math.pow(
+// 1+t,tr.N)-1)/t`. Valeurs attendues DÉRIVÉES de cette formule publique, pas du TS.
+// ---------------------------------------------------------------------------
+
+describe('computeCcum (équivalence _calcNE définitive)', () => {
+  it('given τ≈0 (cas limite |t|<1e-4) then C = N (durée) — pas de division par ~0', () => {
+    // GIVEN : croissance nulle → branche N de la définitive (ligne 547)
+    // WHEN / THEN : C = N = 20 exactement
+    expect(computeCcum({ T: 150, C: 0.9, N: 20, tau: 0, dir: 1, tv: 1 })).toBe(20);
+  });
+
+  it('given τ=0,005 %/an (t=5e-5 < 1e-4) then reste sur la branche N (=durée)', () => {
+    // GIVEN : sous le seuil 1e-4 → branche N (pas la formule géométrique)
+    expect(computeCcum({ T: 150, C: 0.9, N: 20, tau: 0.005, dir: 1, tv: 1 })).toBe(20);
+  });
+
+  it('given τ=0,01 %/an (t=1e-4, PAS < 1e-4) then bascule sur la formule géométrique', () => {
+    // GIVEN : au seuil exact, |t|<1e-4 est FAUX → formule (1+t)^n géométrique
+    const c = computeCcum({ T: 150, C: 0.9, N: 20, tau: 0.01, dir: 1, tv: 1 });
+    // THEN : strictement > N (preuve que la branche formule est prise, pas N)…
+    expect(c).toBeGreaterThan(20);
+    // …et = (1,0001^20 − 1)/1e-4 = 20,019011… (valeur dérivée de la formule publique)
+    expect(c).toBeCloseTo(20.019011, 5);
+  });
+
+  it('given τ=4 %/an et N=20 then C = (1,04^20 − 1)/0,04 = 29,778078…', () => {
+    // Valeur attendue calculée depuis la formule publique AGEROUTE (pas depuis le TS)
+    const c = computeCcum({ T: 150, C: 0.9, N: 20, tau: 4, dir: 1, tv: 1 });
+    expect(c).toBeCloseTo(29.77807857583552, 8);
+  });
+
+  it('cohérence : computeNE = 365 × T × Ccum × CAM × f_dir × f_tv', () => {
+    // GIVEN : mêmes paramètres que la fiche définitive
+    const traffic = { T: 150, C: 0.9, N: 20, tau: 4, dir: 1, tv: 1 };
+    const ccum = computeCcum(traffic);
+    // WHEN : recomposition indépendante depuis Ccum
+    const recomposed = 365 * traffic.T * ccum * traffic.C * traffic.dir * traffic.tv;
+    // THEN : computeNE reste synchronisé avec computeCcum (mutation de l'un → ROUGE)
+    expect(computeNE(traffic)).toBeCloseTo(recomposed, 6);
+    // …et vaut la valeur dérivée 1 467 314,82 (365·150·29,778…·0,9)
+    expect(computeNE(traffic)).toBeCloseTo(1467314.8218242952, 4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatNeExponent — notation « m,d×10ᵉ » (fidèle à `_neFmt()` définitive:604)
+// `var e=Math.floor(Math.log10(ne)+1e-9); m=ne/10^e; …m.toFixed(1).replace('.',',')`
+// Valeurs attendues dérivées de _neFmt (répliqué sur les mêmes entrées).
+// ---------------------------------------------------------------------------
+
+describe('formatNeExponent (équivalence _neFmt définitive)', () => {
+  const cases: Array<[number, string]> = [
+    [3e7, '3,0×10⁷'],
+    [1e7, '1,0×10⁷'],
+    [1e5, '1,0×10⁵'],
+    [1e6, '1,0×10⁶'], // frontière de puissance : le +1e-9 évite floor(5,999…)=5
+    [3.5e7, '3,5×10⁷'],
+  ];
+  cases.forEach(([ne, expected]) => {
+    it(`given NE=${ne} then « ${expected} » (virgule décimale + exposant Unicode)`, () => {
+      expect(formatNeExponent(ne)).toBe(expected);
+    });
+  });
+
+  it('given 9,99×10⁶ (frontière de mantisse) then arrondit à « 10,0×10⁶ »', () => {
+    // 9,99e6/1e6 = 9,99 → toFixed(1) = 10,0 (report d'arrondi, exposant inchangé)
+    expect(formatNeExponent(9.99e6)).toBe('10,0×10⁶');
+  });
+
+  it("given 9,99×10⁷ then « 10,0×10⁷ » (même report d'arrondi une décade plus haut)", () => {
+    expect(formatNeExponent(9.99e7)).toBe('10,0×10⁷');
+  });
+
+  it('given un exposant NÉGATIF (5×10⁻³) then signe moins Unicode « ⁻ »', () => {
+    // Chemin durci du TS (le _matLbl/_neFmt d\'origine casse sur le « - », cf. rapport) :
+    // jamais atteint en pratique (NE ≥ 1) mais spécifié → « 5,0×10⁻³ »
+    expect(formatNeExponent(5e-3)).toBe('5,0×10⁻³');
+  });
+
+  it("given NE = 0 then « — » (garde ajoutée au portage, _neFmt d'origine ne la fait pas)", () => {
+    expect(formatNeExponent(0)).toBe('—');
+  });
+
+  it('given NE négatif then « — » (fail-closed)', () => {
+    expect(formatNeExponent(-3e7)).toBe('—');
+  });
+
+  it('given NaN then « — »', () => {
+    expect(formatNeExponent(Number.NaN)).toBe('—');
+  });
+
+  it('given Infinity then « — » (non fini)', () => {
+    expect(formatNeExponent(Number.POSITIVE_INFINITY)).toBe('—');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// presetTrafficClass — classe de trafic AVEC marge ×1,7 (fidèle à `_trClass()`
+// définitive:603) : seuils t[i]*1,7, borne « ne <= t*1,7 » INCLUSIVE.
+// Attendus dérivés de _trClass (répliqué), DISTINCTS de neClass (sans marge).
+// ---------------------------------------------------------------------------
+
+describe('presetTrafficClass (équivalence _trClass définitive, marge ×1,7)', () => {
+  const cases: Array<[number, string]> = [
+    [1e5, 'C1'],
+    [1.7e5, 'C1'], // frontière exacte 1e5×1,7 : INCLUSE (ne <= t*1,7)
+    [170000.01, 'C2'], // juste au-dessus → classe suivante
+    [3e5, 'C2'],
+    [5.1e5, 'C2'], // 3e5×1,7 inclus
+    [510000.01, 'C3'],
+    [3e7, 'C6'],
+    [1e7, 'C5'],
+    [1.7e8, 'C7'], // 1e8×1,7 : dernier seuil inclus
+    [170000001, 'C8'], // au-delà de 1,7e8 → fourre-tout C8
+  ];
+  cases.forEach(([ne, expected]) => {
+    it(`given NE=${ne} then ${expected} (borne ×1,7 incluse)`, () => {
+      expect(presetTrafficClass(ne)).toBe(expected);
+    });
+  });
+
+  // La DIFFÉRENCE assumée avec neClass (sans marge) — les deux coexistent dans la
+  // définitive pour des usages distincts (saisie TMJA vs note de cas de validation).
+  it('given les NE des presets (3e7, 1e7, 1e5), presetTrafficClass ≠ neClass (marge ×1,7)', () => {
+    // 3e7 : neClass = C7 (30e6 < 50e6) ; presetTrafficClass = C6 (3e7 <= 3e7×1,7)
+    expect(neClass(3e7)).toBe('C7');
+    expect(presetTrafficClass(3e7)).toBe('C6');
+    // 1e7 : neClass = C6 (10e6 < 30e6) ; presetTrafficClass = C5
+    expect(neClass(1e7)).toBe('C6');
+    expect(presetTrafficClass(1e7)).toBe('C5');
+    // 1e5 : neClass = C2 (0,1e6 non < 0,1e6) ; presetTrafficClass = C1
+    expect(neClass(1e5)).toBe('C2');
+    expect(presetTrafficClass(1e5)).toBe('C1');
+    // Systématique : la marge ×1,7 rétrograde d'une classe pile sur ces valeurs
+    for (const ne of [3e7, 1e7, 1e5]) {
+      expect(presetTrafficClass(ne)).not.toBe(neClass(ne));
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// matShortLabel (non exporté) — testé via buildPresetConditions.layerLines, qui
+// formate `${matShortLabel(mat)} — ${h_cm} cm · E = ${E} MPa`. Équivalence à
+// `_matLbl()` définitive:605 : `({BBSG1:'BBSG',BBSG2:'BBSG 2/3',GNT1:'GNT',
+// GNT2:'GNT',BC5g:'BC5 (goujonnée)'})[k] || k` (fallback IDENTITÉ).
+// ---------------------------------------------------------------------------
+
+/** Layer minimal (id non lu par buildPresetConditions) — iface littérale 'auto'. */
+const mkLayer = (mat: string, h: number, E: number, nu = 0.35) => ({
+  id: 1,
+  mat,
+  h,
+  E,
+  nu,
+  iface: 'auto' as const,
+});
+const PF3 = { cls: 'PF3', E: 120, nu: 0.35 };
+/** Preset générique (ne/pfCls sans effet sur layerLines) pour probing de libellé. */
+const ANY_PRESET = ROADSENS_PRESETS.find((p) => p.id === 's1')!;
+
+/** Extrait le libellé court affiché pour une couche donnée (avant le « — »). */
+function shortLabelOf(mat: string, hM: number, E: number): string {
+  const cond = buildPresetConditions(ANY_PRESET, [mkLayer(mat, hM, E)], PF3, null);
+  return cond.layerLines[0];
+}
+
+describe('matShortLabel (équivalence _matLbl définitive, via layerLines)', () => {
+  it('given BBSG1 then « BBSG » (mapping T.54)', () => {
+    expect(shortLabelOf('BBSG1', 0.08, 1512)).toBe('BBSG — 8 cm · E = 1512 MPa');
+  });
+
+  it('given BBSG2 then « BBSG 2/3 »', () => {
+    expect(shortLabelOf('BBSG2', 0.06, 1896)).toBe('BBSG 2/3 — 6 cm · E = 1896 MPa');
+  });
+
+  it('given GNT1 then « GNT »', () => {
+    expect(shortLabelOf('GNT1', 0.15, 400)).toBe('GNT — 15 cm · E = 400 MPa');
+  });
+
+  it('given GNT2 then « GNT » (même libellé court que GNT1)', () => {
+    expect(shortLabelOf('GNT2', 0.15, 150)).toBe('GNT — 15 cm · E = 150 MPa');
+  });
+
+  it('given BC5g then « BC5 (goujonnée) »', () => {
+    expect(shortLabelOf('BC5g', 0.22, 35000)).toBe(
+      'BC5 (goujonnée) — 22 cm · E = 35000 MPa',
+    );
+  });
+
+  it('given une clé HORS catalogue (inconnue) then fallback IDENTITÉ (comme _matLbl)', () => {
+    // _matLbl('ZZZ') === 'ZZZ' ; matShortLabel idem (MATERIALS['ZZZ'] absent → mat)
+    expect(shortLabelOf('ZZZ', 0.1, 300)).toBe('ZZZ — 10 cm · E = 300 MPa');
+  });
+
+  // Divergence M2 corrigée (revue fidélité) : pour une clé PRÉSENTE dans MATERIALS
+  // mais ABSENTE du mapping court, le fallback est l'IDENTITÉ comme `_matLbl` —
+  // jamais le libellé catalogue long (qui dupliquait E dans la note de preset).
+  it('given GB2 (dans MATERIALS, hors mapping court) then fallback IDENTITÉ « GB2 » (comme _matLbl)', () => {
+    expect(shortLabelOf('GB2', 0.35, 2588)).toBe('GB2 — 35 cm · E = 2588 MPa');
+  });
+
+  it('given EME2 (matériau d’assise hors mapping court) then fallback IDENTITÉ « EME2 »', () => {
+    expect(shortLabelOf('EME2', 0.12, 14000)).toBe('EME2 — 12 cm · E = 14000 MPa');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildPresetConditions — note de cas de validation (équivalent `buildPresetNote()`
+// / `#presetNote` définitive:607). Structure PresetConditions ; famille & risque
+// viennent du RÉSULTAT serveur (null tant qu'absent → « en attente »).
+// ---------------------------------------------------------------------------
+
+describe('buildPresetConditions', () => {
+  const preset = ROADSENS_PRESETS.find((p) => p.id === 's1')!; // ne=3e7, pfCls=PF3
+  const layers = buildLayersFromPreset(preset); // [BBSG1 8cm/1512, GB2 35cm/2588]
+
+  it('given output null (calcul non lancé) then famille & risque « en attente » sans crash', () => {
+    // GIVEN : aucun résultat serveur
+    const cond = buildPresetConditions(preset, layers, PF3, null);
+    // THEN : famille null, risqueLine '—' (pas d'exception)
+    expect(cond.famille).toBeNull();
+    expect(cond.risqueLine).toBe('—');
+  });
+
+  it('given output null then pfLine/trafficLine/detail restent connus (saisie + catalogue public)', () => {
+    const cond = buildPresetConditions(preset, layers, PF3, null);
+    // pfLine depuis pfNext (E=120, ν=0,35) et preset.pfCls
+    expect(cond.pfLine).toBe('PF3 — E = 120 MPa, ν = 0,35');
+    // trafficLine : presetTrafficClass(3e7)=C6 + formatNeExponent(3e7)=3,0×10⁷
+    expect(cond.trafficLine).toBe('C6 — NE = 3,0×10⁷ essieux équivalents');
+    // detail = preset.desc (texte de référence catalogue)
+    expect(cond.detail).toBe(preset.desc);
+  });
+
+  it('given output null then layerLines reflète chaque couche (surface → support)', () => {
+    const cond = buildPresetConditions(preset, layers, PF3, null);
+    expect(cond.layerLines).toHaveLength(2);
+    expect(cond.layerLines[0]).toBe('BBSG — 8 cm · E = 1512 MPa');
+  });
+
+  it('given output absent (undefined) then aucun crash, comme null', () => {
+    const cond = buildPresetConditions(preset, layers, PF3, undefined);
+    expect(cond.famille).toBeNull();
+    expect(cond.risqueLine).toBe('—');
+  });
+
+  it('given output non-objet (ex. chaîne) then traité comme absent (fail-closed)', () => {
+    const cond = buildPresetConditions(preset, layers, PF3, 'PASS');
+    expect(cond.famille).toBeNull();
+    expect(cond.risqueLine).toBe('—');
+  });
+
+  it('given output objet SANS rows then famille null (rows non-tableau ignorées)', () => {
+    const cond = buildPresetConditions(preset, layers, PF3, { verdict: 'PASS' });
+    expect(cond.famille).toBeNull();
+  });
+
+  it('given output nominal (rows Famille + details Risque) then famille & risque renseignés', () => {
+    // GIVEN : sortie NORMALISÉE serveur (rows/details whitelistés, DoD §8)
+    const output = {
+      verdict: 'PASS',
+      rows: [
+        { label: 'Famille de structure', value: 'bitumineuse épaisse', unit: '' },
+        { label: 'Trafic cumulé (NE)', value: 3e7, unit: '' },
+      ],
+      details: [{ label: 'Risque effectif', value: 3.09, unit: '%' }],
+    };
+    // WHEN
+    const cond = buildPresetConditions(preset, layers, PF3, output);
+    // THEN : famille prise sur la row exacte, risque formaté FR 2 décimales
+    expect(cond.famille).toBe('bitumineuse épaisse');
+    expect(cond.risqueLine).toBe('3,09 % (auto, Tableau 70)');
+  });
+
+  it('given une row Famille vide (chaîne "") then famille reste null (fail-closed)', () => {
+    const output = {
+      rows: [{ label: 'Famille de structure', value: '', unit: '' }],
+      details: [],
+    };
+    expect(buildPresetConditions(preset, layers, PF3, output).famille).toBeNull();
+  });
+
+  it('given un Risque effectif NON numérique then risqueLine « — » (rowNumber fail-closed)', () => {
+    const output = {
+      rows: [],
+      details: [{ label: 'Risque effectif', value: 'auto', unit: '' }],
+    };
+    expect(buildPresetConditions(preset, layers, PF3, output).risqueLine).toBe('—');
+  });
+
+  it('interfaces AUTO — bitumineux/bitumineux → « collée »', () => {
+    // s1 : BBSG1 / GB2 (deux bitumineux) → collée ; dernière couche → null
+    const cond = buildPresetConditions(preset, layers, PF3, null);
+    expect(cond.interfaceLines).toEqual(['collée', null]);
+  });
+
+  it('interfaces AUTO — deux MTLH traitées (non-béton) → « semi-collée »', () => {
+    // s6 : BBSG1 / GC3 / GC3 → [collée (bit/mtlh), semi-collée (mtlh/mtlh), null]
+    const s6 = ROADSENS_PRESETS.find((p) => p.id === 's6')!;
+    const cond = buildPresetConditions(s6, buildLayersFromPreset(s6), PF3, null);
+    expect(cond.interfaceLines).toEqual(['collée', 'semi-collée', null]);
+  });
+
+  it('interfaces AUTO — deux dalles béton « BC » → « glissante »', () => {
+    // s16 : BC5 / BC2 (deux béton) → glissante ; dernière → null
+    const s16 = ROADSENS_PRESETS.find((p) => p.id === 's16')!;
+    const cond = buildPresetConditions(s16, buildLayersFromPreset(s16), PF3, null);
+    expect(cond.interfaceLines).toEqual(['glissante', null]);
+  });
+
+  it("la note ignore une interface IMPOSÉE et affiche toujours l'AUTO (fidèle à buildPresetNote → ifaceAuto)", () => {
+    // GIVEN : couches BBSG1/GB2 avec une interface imposée 'glissante'…
+    const imposed = [
+      { ...mkLayer('BBSG1', 0.08, 1512, 0.45), iface: 'glissante' as const },
+      mkLayer('GB2', 0.35, 2588, 0.45),
+    ];
+    // WHEN
+    const cond = buildPresetConditions(preset, imposed, PF3, null);
+    // THEN : la note reste sur l'AUTO (collée), pas 'glissante' imposée
+    expect(cond.interfaceLines).toEqual(['collée', null]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reportRowValue — formatage d'une ligne de rapport (onglet Détails), avec
+// facteur d'échelle d'affichage. Corrige M1 (revue fidélité) : l'adaptateur émet
+// les épaisseurs en MÈTRES (`Épaisseur totale`, unit 'm') ; les lignes « h … »
+// du rapport les affichent en CM (définitive : `f(d.H_tot*100,2)`) → scale=100.
+// ---------------------------------------------------------------------------
+
+describe("reportRowValue — échelle d'affichage m→cm (M1)", () => {
+  const rowM = { label: 'Épaisseur totale', value: 0.68, unit: 'm' };
+
+  it('given une épaisseur adaptateur en mètres, when scale=100, then affiche la valeur cm de la définitive (« 68,00 »)', () => {
+    expect(reportRowValue(rowM, 2, 100)).toBe('68,00');
+  });
+
+  it('given h paquet lié 0,43 m, when scale=100, then « 43,00 » (référence : f(d.H_bit*100,2))', () => {
+    expect(
+      reportRowValue(
+        { label: 'Épaisseur de couches liées', value: 0.43, unit: 'm' },
+        2,
+        100,
+      ),
+    ).toBe('43,00');
+  });
+
+  it('given scale omis, then défaut 1 (aucune conversion implicite)', () => {
+    expect(reportRowValue(rowM, 2)).toBe('0,68');
+  });
+
+  it('given une valeur TEXTE, then le facteur est ignoré (texte rendu tel quel)', () => {
+    expect(
+      reportRowValue(
+        { label: 'Famille de structure', value: 'bitumineuse épaisse', unit: '' },
+        2,
+        100,
+      ),
+    ).toBe('bitumineuse épaisse');
+  });
+
+  it('given une ligne absente, then « — » (fail-closed, jamais NaN)', () => {
+    expect(reportRowValue(undefined, 2, 100)).toBe('—');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// tabDetailsMode — garde de l'onglet Détails (M3, revue fidélité) : un calcul en
+// ERREUR n'affiche JAMAIS le rapport 9 sections (la définitive n'édite pas de
+// rapport en erreur) ; il affiche le message d'échec, comme l'onglet Résultats.
+// ---------------------------------------------------------------------------
+
+describe("tabDetailsMode — garde erreur de l'onglet Détails (M3)", () => {
+  it('given result null, then mode « placeholder » (pas encore de calcul)', () => {
+    expect(tabDetailsMode(null)).toBe('placeholder');
+  });
+
+  it('given status ERROR, then mode « error » — jamais de rapport « NON CONFORME » factice', () => {
+    expect(tabDetailsMode({ status: 'ERROR' })).toBe('error');
+  });
+
+  it('given status DONE, then mode « report »', () => {
+    expect(tabDetailsMode({ status: 'DONE' })).toBe('report');
+  });
+
+  it("given status PENDING (calcul non abouti, sans sortie), then mode « error » plutôt qu'un rapport vide", () => {
+    expect(tabDetailsMode({ status: 'PENDING' })).toBe('error');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildKrComment / buildMaterialComment / buildAdmissibleAvecKrComment —
+// commentaires composés section 6/7 du rapport détaillé (décision titulaire
+// 13/07, zéro écart d'affichage : les coefficients de méthode kθ/kr/kc/ks/SN/Sh/δ
+// sont désormais exposés). Fidèles aux formules de la définitive
+// (packages/engines/reference/roadsens_burmister_definitive.html:1519,1555,1560).
+// ---------------------------------------------------------------------------
+
+describe('buildKrComment — commentaire « kr risque » (formule composée avec les valeurs réelles)', () => {
+  it('given u_r/δ/1÷b connus, then la formule est composée fidèlement à la définitive', () => {
+    expect(buildKrComment(1.282, 0.2734, 5)).toBe('10^(-1,282×0,2734/5)');
+  });
+
+  it('given u_r manquant (ancien calcul), then undefined (jamais de formule à trous)', () => {
+    expect(buildKrComment(null, 0.2734, 5)).toBeUndefined();
+  });
+
+  it('given δ manquant, then undefined', () => {
+    expect(buildKrComment(1.282, null, 5)).toBeUndefined();
+  });
+
+  it('given 1/b manquant, then undefined', () => {
+    expect(buildKrComment(1.282, 0.2734, null)).toBeUndefined();
+  });
+});
+
+describe('buildMaterialComment — commentaire « Matériau dimensionnant » (section 6)', () => {
+  it('given structure SOUPLE (kθ pertinent) avec tous les intermédiaires, then kθ apparaît dans le commentaire', () => {
+    expect(buildMaterialComment(5, 1.3, 0.25, 0.923, true)).toBe(
+      'base du paquet lié · 1/b=5 kc=1,3 SN=0,25 kθ=0,923',
+    );
+  });
+
+  it('given structure RIGIDE (souple=false), then kθ est OMIS du commentaire (formule σt_adm sans kθ)', () => {
+    expect(buildMaterialComment(16, 1.5, 0.2, 0.923, false)).toBe(
+      'base du paquet lié · 1/b=16 kc=1,5 SN=0,2',
+    );
+  });
+
+  it('given un ancien calcul persisté (1/b manquant), then commentaire générique de repli (jamais de formule à trous)', () => {
+    expect(buildMaterialComment(null, 1.3, 0.25, 0.923, true)).toBe(
+      'base du paquet lié — ε₆/σ₆ référence catalogue AGEROUTE',
+    );
+  });
+
+  it('given kc manquant, then commentaire générique de repli', () => {
+    expect(buildMaterialComment(5, null, 0.25, 0.923, true)).toBe(
+      'base du paquet lié — ε₆/σ₆ référence catalogue AGEROUTE',
+    );
+  });
+
+  it('given SN manquant, then commentaire générique de repli', () => {
+    expect(buildMaterialComment(5, 1.3, null, 0.923, true)).toBe(
+      'base du paquet lié — ε₆/σ₆ référence catalogue AGEROUTE',
+    );
+  });
+
+  it('given souple=true mais kθ manquant (ancien calcul partiel), then kθ omis sans faire planter le reste du commentaire', () => {
+    expect(buildMaterialComment(5, 1.3, 0.25, null, true)).toBe(
+      'base du paquet lié · 1/b=5 kc=1,3 SN=0,25',
+    );
+  });
+});
+
+describe('buildAdmissibleAvecKrComment — commentaire « avec kr=... » (admissible au risque effectif)', () => {
+  it('given kr connu, then le commentaire reprend la valeur (fidèle à la définitive)', () => {
+    expect(buildAdmissibleAvecKrComment(0.7452)).toBe('avec kr=0,7452');
+  });
+
+  it('given kr absent (ancien calcul), then undefined', () => {
+    expect(buildAdmissibleAvecKrComment(null)).toBeUndefined();
   });
 });

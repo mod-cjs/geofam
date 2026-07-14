@@ -85,6 +85,11 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
   const userA = randomUUID();
   const userB = randomUUID();
   const emailA = `fc-a-${userA.slice(0, 8)}@roadsen.test`;
+  // Users SANS appartenance pour les tests provision_org : depuis la migration
+  // 0020 (« un utilisateur = une org », decision titulaire 07/07), provisionner
+  // une org pour un user DEJA membre est refuse — chaque test prend le sien.
+  const userFreeP = randomUUID(); // #42.PIEGE
+  const userFreeL = randomUUID(); // CRITIQUE-1 (transactions rollback)
 
   beforeAll(async () => {
     try {
@@ -106,6 +111,16 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
       `INSERT INTO users (id, email, password_hash, full_name, updated_at)
        VALUES ($1,$2,'hash-B','User B',now())`,
       [userB, `fc-b-${userB.slice(0, 8)}@roadsen.test`],
+    );
+    await admin.query(
+      `INSERT INTO users (id, email, password_hash, full_name, updated_at)
+       VALUES ($1,$2,'hash-P','User Free P',now()), ($3,$4,'hash-L','User Free L',now())`,
+      [
+        userFreeP,
+        `fc-p-${userFreeP.slice(0, 8)}@roadsen.test`,
+        userFreeL,
+        `fc-l-${userFreeL.slice(0, 8)}@roadsen.test`,
+      ],
     );
     await admin.query(
       `INSERT INTO organizations (id, name, slug, "updatedAt") VALUES ($1,'Org A',$2,now())`,
@@ -148,9 +163,11 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
           orgA,
           orgB,
         ]);
-        await admin.query(`DELETE FROM users WHERE id IN ($1,$2)`, [
+        await admin.query(`DELETE FROM users WHERE id IN ($1,$2,$3,$4)`, [
           userA,
           userB,
+          userFreeP,
+          userFreeL,
         ]);
       } finally {
         await admin.end();
@@ -429,7 +446,7 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
       const slug = `fc-prov-${randomUUID().slice(0, 8)}`;
       const { rows } = await app!.query<{ provision_org: string }>(
         `SELECT provision_org('Org Provisionnee', $1, $2::uuid, $3::uuid) AS provision_org`,
-        [slug, userA, userA],
+        [slug, userFreeP, userFreeP],
       );
       expect(rows).toHaveLength(1);
       const newOrg = rows[0].provision_org;
@@ -478,7 +495,7 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
       const slug = `fc-leak-${randomUUID().slice(0, 8)}`;
       const created = await app!.query<{ provision_org: string }>(
         `SELECT provision_org('Org Leak', $1, $2::uuid, $3::uuid) AS provision_org`,
-        [slug, userA, userA],
+        [slug, userFreeL, userFreeL],
       );
       const newOrg = created.rows[0].provision_org;
       // Le contexte ne doit PAS avoir fui : app_current_org() RAISE (restaure vide).
@@ -495,7 +512,7 @@ describe('Durcissement isolation #42 — fail-closed bruyant + non-fuite pool', 
       const slugB = `fc-leak-b-${randomUUID().slice(0, 8)}`;
       await app!.query(
         `SELECT provision_org('Org Leak B', $1, $2::uuid, $3::uuid)`,
-        [slugB, userA, userA],
+        [slugB, userFreeL, userFreeL],
       );
       // Contexte restaure a orgA : app_current_org() == orgA, pas la nouvelle org.
       const ctx = await app!.query<{ app_current_org: string }>(

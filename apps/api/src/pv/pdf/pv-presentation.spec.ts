@@ -314,8 +314,20 @@ describe('#71 — critères SECONDAIRES au PV (complétude d’affichage)', () =
     fatiguePhase2: { valeur: 509.37, admissible: 201.54, ok: false, couche: 1 },
     fatigueInverse: null,
     couchesTraitees: [
-      { couche: 2, mode: 'semi-collée', valeur: 0.2697, admissible: 0.4225, ok: true },
-      { couche: 3, mode: 'semi-collée', valeur: 0.3345, admissible: 0.384, ok: true },
+      {
+        couche: 2,
+        mode: 'semi-collée',
+        valeur: 0.2697,
+        admissible: 0.4225,
+        ok: true,
+      },
+      {
+        couche: 3,
+        mode: 'semi-collée',
+        valeur: 0.3345,
+        admissible: 0.384,
+        ok: true,
+      },
     ],
     couchesGranulaires: [],
   } as SealableValue;
@@ -327,11 +339,15 @@ describe('#71 — critères SECONDAIRES au PV (complétude d’affichage)', () =
     fatiguePhase2: null,
     fatigueInverse: { valeur: 0.4692, admissible: 0.384, ok: false, couche: 4 },
     couchesTraitees: [],
-    couchesGranulaires: [{ couche: 3, valeur: 879.86, admissible: 511.5, ok: false }],
+    couchesGranulaires: [
+      { couche: 3, valeur: 879.86, admissible: 511.5, ok: false },
+    ],
   } as SealableValue;
 
   it('MIXTE/SEMI-RIGIDE : le critère « Fatigue phase 2 » + la table σt par couche (mode Tab. 68) sont rendus', () => {
-    const text = collectPvPdfText(makeChausseePv({ output: SEMI_RIGIDE_OUTPUT }));
+    const text = collectPvPdfText(
+      makeChausseePv({ output: SEMI_RIGIDE_OUTPUT }),
+    );
     expect(text).toContain('Fatigue phase 2');
     // table σt par couche traitée + mode d'interface (Tab. 68) :
     expect(text).toContain('par couche traitée');
@@ -381,23 +397,57 @@ describe('#71 MAJEUR-1 — un critère secondaire NON requis ne contredit JAMAIS
     conforme: true,
     famille: 'semi-rigide',
     // critère PRINCIPAL rigide (σ_t) requis + vérifié -> coche navy légitime.
-    fatigue: { rigide: true, valeur: 0.3345, admissible: 0.384, ok: true, requis: true },
+    fatigue: {
+      rigide: true,
+      valeur: 0.3345,
+      admissible: 0.384,
+      ok: true,
+      requis: true,
+    },
     ornierage: { valeur: 400, admissible: 511, ok: true },
     // PHASE 2 dépassée mais NON requise (etReq=false) -> informatif, pas de croix.
-    fatiguePhase2: { valeur: 509.37, admissible: 201.54, ok: false, requis: false, couche: 1 },
+    fatiguePhase2: {
+      valeur: 509.37,
+      admissible: 201.54,
+      ok: false,
+      requis: false,
+      couche: 1,
+    },
     fatigueInverse: null,
     couchesTraitees: [
-      { couche: 2, mode: 'semi-collée', valeur: 0.2697, admissible: 0.4225, ok: true, requis: true },
-      { couche: 3, mode: 'semi-collée', valeur: 0.3345, admissible: 0.384, ok: true, requis: true },
+      {
+        couche: 2,
+        mode: 'semi-collée',
+        valeur: 0.2697,
+        admissible: 0.4225,
+        ok: true,
+        requis: true,
+      },
+      {
+        couche: 3,
+        mode: 'semi-collée',
+        valeur: 0.3345,
+        admissible: 0.384,
+        ok: true,
+        requis: true,
+      },
     ],
     // ε_z granulaire exempté (§4.1.2) qui dépasse : requis=false -> informatif.
     couchesGranulaires: [
-      { couche: 2, valeur: 2107.23, admissible: 1600.7, ok: false, requis: false },
+      {
+        couche: 2,
+        valeur: 2107.23,
+        admissible: 1600.7,
+        ok: false,
+        requis: false,
+      },
     ],
   } as SealableValue;
 
   it('CONFORME + secondaire non requis dépassé -> AUCUNE croix bordeaux (pas de ✗ contradictoire)', () => {
-    const def = buildPvDocDefinition(makeChausseePv({ output: SEMI_RIGIDE_CONFORME }));
+    const def = buildPvDocDefinition(
+      makeChausseePv({ output: SEMI_RIGIDE_CONFORME }),
+    );
     const marks = collectCanvasLines(def.content);
     // Un critère secondaire non requis à 253 % ne doit produire AUCUN picto ✗ (croix
     // = 2 lignes toutes en COLORS.alert). Sous un bandeau CONFORME, il n'y a aucun
@@ -407,7 +457,9 @@ describe('#71 MAJEUR-1 — un critère secondaire NON requis ne contredit JAMAIS
     );
     expect(croix.length).toBe(0);
     // le bandeau reste CONFORME.
-    const text = collectPvPdfText(makeChausseePv({ output: SEMI_RIGIDE_CONFORME }));
+    const text = collectPvPdfText(
+      makeChausseePv({ output: SEMI_RIGIDE_CONFORME }),
+    );
     expect(text).toContain('CONFORME');
     expect(text).not.toContain('NON CONFORME');
   });
@@ -427,12 +479,16 @@ describe('#71 MAJEUR-1 — un critère secondaire NON requis ne contredit JAMAIS
       couchesTraitees: [],
       couchesGranulaires: [],
     } as SealableValue;
-    const def = buildPvDocDefinition(makeChausseePv({ output: GRANULAIRE_CONFORME }));
+    const def = buildPvDocDefinition(
+      makeChausseePv({ output: GRANULAIRE_CONFORME }),
+    );
     const croix = collectCanvasLines(def.content).filter(
       (m) => m.length >= 2 && m.every((l) => l.lineColor === COLORS.alert),
     );
     expect(croix.length).toBe(0);
-    const text = collectPvPdfText(makeChausseePv({ output: GRANULAIRE_CONFORME }));
+    const text = collectPvPdfText(
+      makeChausseePv({ output: GRANULAIRE_CONFORME }),
+    );
     expect(text).toContain('CONFORME');
     expect(text).not.toContain('NON CONFORME');
     // le critère « Fatigue des couches liées » est OMIS (pas de ligne trompeuse), aligné sur le web.
@@ -440,7 +496,9 @@ describe('#71 MAJEUR-1 — un critère secondaire NON requis ne contredit JAMAIS
   });
 
   it('le critère non requis reste AFFICHÉ mais marqué informatif (jamais omis silencieusement)', () => {
-    const text = collectPvPdfText(makeChausseePv({ output: SEMI_RIGIDE_CONFORME }));
+    const text = collectPvPdfText(
+      makeChausseePv({ output: SEMI_RIGIDE_CONFORME }),
+    );
     // phase 2 toujours visible (complétude) …
     expect(text).toContain('Fatigue phase 2');
     // … mais présentée en informatif (pas de verdict ✗). Le nom de flag « requis »
@@ -466,7 +524,13 @@ describe('#71 MAJEUR-2 — critère de fatigue PRINCIPAL des familles RIGIDES : 
     conforme: true,
     famille: 'semi-rigide',
     // fatigue.rigide=true -> valeur = σ_t en MPa (pas ε_t en µdef).
-    fatigue: { rigide: true, valeur: 1.301, admissible: 1.6, ok: true, requis: true },
+    fatigue: {
+      rigide: true,
+      valeur: 1.301,
+      admissible: 1.6,
+      ok: true,
+      requis: true,
+    },
     ornierage: { valeur: 400, admissible: 511, ok: true },
   } as SealableValue;
 
@@ -763,7 +827,10 @@ function findRowValue(
  * et renvoie le texte de la 2e cellule (colonne « Calculé » de la table de
  * vérifications, 5 colonnes). null si introuvable.
  */
-function findVerifCalcCell(content: unknown, labelPrefix: string): string | null {
+function findVerifCalcCell(
+  content: unknown,
+  labelPrefix: string,
+): string | null {
   let found: string | null = null;
   const cellText = (c: unknown): string => {
     if (

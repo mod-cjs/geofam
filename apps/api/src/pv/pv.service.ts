@@ -20,6 +20,7 @@ import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { requireOrgId } from '../tenant/tenant-context';
 
 import { findEngineDispatchByRegistryId } from './engine-dispatch';
+import { outputsEquivalent } from './output-equivalence';
 import { renderPvPdf } from './pdf/pv-pdf';
 import { resolveVerdict } from './verdict';
 
@@ -181,7 +182,7 @@ export class PvService {
             'Le calcul ne peut plus etre reproduit par le moteur : emission du PV refusee (integrite).',
           );
         }
-        const recomputedOutput = projectEngineOutput(
+        const recomputedOutput: unknown = projectEngineOutput(
           dispatch.contract.outputSchema,
           recomputed.output,
         );
@@ -198,20 +199,30 @@ export class PvService {
             'Ce calcul est en erreur : emission du PV refusee (aucun livrable scelle sur un calcul echoue).',
           );
         }
-        if (canonicalize(recomputedOutput) !== canonicalize(calc.output)) {
-          // On DISTINGUE une derive de version (le moteur a ete mis a jour depuis le calcul
-          // -> divergence LEGITIME) d'une ALTERATION en base. Message non alarmant dans le
-          // 1er cas : l'utilisateur relance le calcul, il n'y a pas de falsification.
-          const versionDrift =
-            recomputed.meta.engineVersion !== calc.engineVersion ||
-            (calc.engineSourceHash != null &&
-              recomputed.meta.engineSourceHash != null &&
-              recomputed.meta.engineSourceHash !== calc.engineSourceHash);
-          if (versionDrift) {
-            throw new ConflictException(
-              'Ce calcul a ete produit par une version anterieure du moteur : relancez le calcul avant d emettre le PV.',
-            );
-          }
+        // TRACABILITE (ADR 0013, revue adverse CRITIQUE-1) : la meta scellee est prise
+        // sur la ligne STOCKEE (engineVersion/engineSourceHash du calcul). Si le
+        // registre a change depuis (bascule de source moteur), une sortie
+        // numeriquement identique passerait la garde d'alteration ci-dessous et
+        // re-scellerait l'ancien hash — un PV neuf designant une source incapable
+        // de reproduire le calcul. Refus INCONDITIONNEL, meme a sortie identique :
+        // relancer le calcul regenere une ligne portant la meta courante.
+        const sourceDrift =
+          recomputed.meta.engineVersion !== calc.engineVersion ||
+          (calc.engineSourceHash != null &&
+            recomputed.meta.engineSourceHash != null &&
+            recomputed.meta.engineSourceHash !== calc.engineSourceHash);
+        if (sourceDrift) {
+          throw new ConflictException(
+            'Ce calcul a ete produit par une version anterieure du moteur : relancez le calcul avant d emettre le PV.',
+          );
+        }
+        // GARDE D'ALTERATION : equivalence NUMERIQUE stricte (rel <= 1e-12), pas
+        // egalite canonique de chaines — Prisma perd le 17e chiffre significatif
+        // a l'ecriture JSONB (constate e2e : NE 1467314.8218242952 -> stocke
+        // 1467314.821824295), ce qui faisait refuser des calculs legitimes.
+        // Structure/textes/booleens restent compares EXACTEMENT ; une alteration
+        // reelle (valeur metier changee) reste detectee (cf. output-equivalence.spec).
+        if (!outputsEquivalent(recomputedOutput, calc.output)) {
           throw new ConflictException(
             'La sortie stockee ne correspond pas au recalcul serveur (alteration detectee) : emission du PV refusee.',
           );

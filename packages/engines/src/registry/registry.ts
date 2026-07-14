@@ -90,18 +90,27 @@ export const ENGINE_REGISTRY: readonly EngineRegistryEntry[] = [
     fonction:
       'Dimensionnement rationnel des chaussées (Burmister / AGEROUTE Sénégal 2015)',
     normes: ['AGEROUTE Sénégal 2015', 'Méthode rationnelle (Burmister)'],
-    fichierSource: 'roadsens_burmister_LCPC_VF_moderne.html',
-    cheminSource: `${ENGINE_SOURCES_CANONICAL_DIR}/roadsens_burmister_LCPC_VF_moderne.html`,
-    sha256: '259a58a8ac0881b20657a34a119de6e603a0ed2895fb4fca21527f2d8cfeb8ba',
-    // 1.0.0 : 1ere extraction equivalente (module TS, #46). engineSourceHash =
-    // ce sha256, lie a chaque sortie via meta (@roadsen/shared) -> un PV reste
-    // re-verifiable contre la version source EXACTE qui l a produit, meme apres
-    // evolution du moteur. Equivalence-PORTAGE prouvee (rel 1e-9) ; justesse
-    // scientifique NON validee tant que le kit cas-tests STARFIRE manque
-    // (@science-unsigned, MJ-6 : pas de prod sans conformite).
-    version: '1.0.0',
+    // SOURCE = la REFERENCE DEFINITIVE, versionnee INTRA-depot (packages/engines/
+    // reference/), pas un HTML hors depot GeoSuite. cheminSource est donc relatif a
+    // 05-Plateforme SANS remonter d un niveau : le fichier est present partout (y
+    // compris en CI) -> le test de coherence hash MORD partout (GATE PERMANENT).
+    fichierSource: 'roadsens_burmister_definitive.html',
+    cheminSource: 'packages/engines/reference/roadsens_burmister_definitive.html',
+    sha256: '42bb46aa5da085cd5605664ce125e361392c77fbc717f9abc4b8d5910f1546f2',
+    // 2.0.0 : BASCULE vers la reference DEFINITIVE (ADR 0013). MAJEUR (rupture de
+    // sortie vs 1.0.0) : recalage de SCIENCE des lois de fatigue (GLc2 s6 0,37->
+    // 0,3705, BQc 0,30->0,304) + AJOUT du materiau BC5g (dalle beton goujonnee,
+    // kd=1/1,47). La production tourne a 100 % en mode definitive (front :
+    // materialsRev=definitive + ifaceAuto=true) : ce sha256 est desormais la source
+    // qui REPRODUIT tout calcul de production, scellee dans meta.engineSourceHash
+    // (@roadsen/shared) -> un PV reste re-verifiable contre la version EXACTE qui l a
+    // produit. La v1.0.0 (moderne, 259a) est archivee dans ENGINE_SOURCE_DUPLICATES
+    // (source des PV anterieurs, re-emis apres bascule — cf. ADR 0013 §4).
+    // Equivalence-PORTAGE prouvee (rel 1e-9, golden navigateur + jsdom). Science
+    // SIGNEE STARFIRE (cf. memoire roadsen-science-signed-decision).
+    version: '2.0.0',
     confirmePar:
-      'title="ROADSENS — Dimensionnement rationnel des chaussées · AGEROUTE Sénégal 2015"',
+      'title="ROADSENS — Dimensionnement rationnel des chaussées · AGEROUTE Sénégal 2015" (référence définitive, sha256 42bb46aa…)',
   },
   {
     id: 'radier-plaque',
@@ -333,7 +342,22 @@ export const ENGINE_SOURCE_DUPLICATES: readonly EngineSourceDuplicate[] = [
     sha256: '64d1297bbd9f98aca1c3edc9e9a8a8e907f91e064a8b8f66a9495bfe35c313f6',
     remplacePar: 'chaussee-burmister',
     recommandation:
-      'Version anterieure (non « moderne ») du moteur chaussées ; la canonique est roadsens_burmister_LCPC_VF_moderne. Archiver vers _archive/ ou marquer « ne pas extraire ».',
+      'Version anterieure (non « moderne ») du moteur chaussées ; la canonique est la reference definitive. Archiver vers _archive/ ou marquer « ne pas extraire ».',
+  },
+  {
+    // MODERNE (259a) : ANCIENNE source canonique de `chaussee-burmister` (module
+    // v1.0.0), REMPLACEE par la reference definitive le 2026-07-13 (ADR 0013). C est
+    // la source qui a SCELLE les PV emis AVANT la bascule (leur meta.engineSourceHash
+    // = 259a) : conservee ICI pour la TRACABILITE (un PV anterieur reste re-verifiable
+    // contre 259a). Les calculs de production tournaient deja en mode definitive :
+    // ces PV sont RE-EMIS au bon hash apres bascule (ADR 0013 §4), les originaux ne
+    // sont jamais reecrits. NE PAS extraire (version depassee).
+    fichier: 'roadsens_burmister_LCPC_VF_moderne.html',
+    cheminSource: `${ENGINE_SOURCES_CANONICAL_DIR}/roadsens_burmister_LCPC_VF_moderne.html`,
+    sha256: '259a58a8ac0881b20657a34a119de6e603a0ed2895fb4fca21527f2d8cfeb8ba',
+    remplacePar: 'chaussee-burmister',
+    recommandation:
+      'Source v1.0.0 (moderne) du moteur chaussées, remplacee par la reference definitive (module 2.0.0, ADR 0013). Conservee pour re-verifier les PV anterieurs scelles sous 259a ; ne pas extraire.',
   },
 ];
 

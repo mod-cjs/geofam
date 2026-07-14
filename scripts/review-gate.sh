@@ -104,7 +104,10 @@ fi
 # Next -> gate COMPLET uniquement (trop coûteux au pre-push). fail-closed si non bâti.
 if [ "$FAST" = false ]; then
   if [ -d "$WEB/.next/static" ]; then
-    if grep -rIl -e "@roadsen/engines" -e "__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__" "$WEB/.next/static" >/dev/null 2>&1; then
+    # 3e motif "burIntegrateMLWithPSC" : chaine stable du HTML client de reference
+    # versionne (packages/engines/reference/) — un asset copie fortuitement dans le
+    # bundle echapperait aux deux motifs import/marqueur (revue adverse ADR 0013).
+    if grep -rIl -e "@roadsen/engines" -e "__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__" -e "burIntegrateMLWithPSC" "$WEB/.next/static" >/dev/null 2>&1; then
       echo "<<< [confidentialité-bundle] FAIL"; record "confidentialité-bundle (DoD8)" FAIL
     else echo "<<< [confidentialité-bundle] PASS"; record "confidentialité-bundle (DoD8)" PASS; fi
   else echo "<<< [confidentialité-bundle] FAIL — .next/static non bâti : la confidentialité §8 ne peut PAS être vérifiée (fail-closed). Lancer 'pnpm --filter @roadsen/web build' avant le gate complet."; record "confidentialité-bundle (DoD8)" FAIL; fi

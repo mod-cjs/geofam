@@ -138,7 +138,12 @@ describe('SubscriptionsService', () => {
 
       const subId = await service.reserveUnit(
         tx as unknown as Prisma.TransactionClient,
-        { orgId: 'o1', kind: 'CALC', refId: 'calc-1', userId: 'u1' },
+        {
+          orgId: 'o1',
+          kind: 'CALC',
+          refId: 'calc-1',
+          userId: 'u1',
+        },
       );
 
       expect(subId).toBe('sub-1');
