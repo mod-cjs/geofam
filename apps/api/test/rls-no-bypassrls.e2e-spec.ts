@@ -211,12 +211,17 @@ function ddl(): string {
     -- NOTE : on n'accorde A render_app AUCUN droit sur users/memberships/
     -- organizations -> meme drapeau pose, il bute sur le manque de privilege.
 
+    RESET ROLE;
+
     -- SCENARIO MONO-UTILISATEUR (#42 runtime) : render_owner (= la connexion qui
     -- POSSEDE les tables) est rendu MEMBRE de render_app pour pouvoir SET ROLE
     -- render_app au runtime (comme le user managed Render bascule en roadsen_app).
+    -- PG16 : CREATEROLE ne confere plus l'ADMIN OPTION implicite -> ce GRANT de
+    -- MEMBERSHIP doit s'executer sous la connexion d'AMORCAGE (qui a cree
+    -- render_app et en detient l'admin : superuser local / owner Render), donc
+    -- APRES RESET ROLE — sous SET ROLE render_owner il echoue en "permission
+    -- denied to grant role" depuis postgres:16.
     GRANT ${APP} TO ${OWNER};
-
-    RESET ROLE;
   `;
 }
 
@@ -645,17 +650,28 @@ describe('Modele SANS BYPASSRLS — 2 barrieres prouvees sous owner+runtime NON-
         expect(ctx.rows[0].org_slug).toBe('org-mono');
 
         // 2c) isolation donnees sous render_app : ne voit que l'org courante.
-        await setup!.query(`SELECT set_config('app.current_org',$1,true)`, [
-          org,
-        ]);
-        await setup!.query(
-          `INSERT INTO projects(org_id,name) VALUES ($1,'P-MONO')`,
-          [org],
-        );
-        const sel = await setup!.query<{ name: string }>(
-          `SELECT name FROM projects`,
-        );
-        expect(sel.rows.every((r) => r.name === 'P-MONO')).toBe(true);
+        // set_config(..., is_local=TRUE) est LOCAL A LA TRANSACTION — hors
+        // transaction explicite il meurt avec l'auto-commit du statement et
+        // l'INSERT suivant leve « app.current_org non defini ». Le runtime reel
+        // (withTenant) pose ce drapeau DANS une transaction : on reproduit.
+        await setup!.query(`BEGIN`);
+        try {
+          await setup!.query(`SELECT set_config('app.current_org',$1,true)`, [
+            org,
+          ]);
+          await setup!.query(
+            `INSERT INTO projects(org_id,name) VALUES ($1,'P-MONO')`,
+            [org],
+          );
+          const sel = await setup!.query<{ name: string }>(
+            `SELECT name FROM projects`,
+          );
+          expect(sel.rows.every((r) => r.name === 'P-MONO')).toBe(true);
+          await setup!.query(`COMMIT`);
+        } catch (err) {
+          await setup!.query(`ROLLBACK`);
+          throw err;
+        }
       } finally {
         await setup!.query(`RESET ROLE`);
         await setup!.query(`RESET app.current_org`);
