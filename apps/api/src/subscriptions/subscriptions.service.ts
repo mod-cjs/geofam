@@ -59,8 +59,23 @@ export class SubscriptionsService {
   ): Promise<SubscriptionState | null> {
     // now() EN BASE pour l'expiration (jamais l'horloge app/cliente). RLS scope
     // deja a l'org courante -> au plus 1 ligne (org_id UNIQUE).
+    // ALIAS camelCase EXPLICITES : $queryRaw ne renomme JAMAIS les colonnes —
+    // `SELECT s.*` renvoyait `date_fin` (snake) et le code lisait `sub.dateFin`
+    // (undefined -> toISOString() explosait en 500 sur /me/entitlements, incident
+    // prod 15/07 ; assertAccess survivait car il ne lit que des colonnes d'un
+    // seul mot + `expired` calcule en SQL). Cf. test/entitlements.e2e-spec.ts.
     const rows = await tx.$queryRaw<Array<Subscription & { expired: boolean }>>`
-      SELECT s.*, (now() > s.date_fin) AS expired
+      SELECT s.id,
+             s.org_id       AS "orgId",
+             s.pack,
+             s.entitlements,
+             s.date_debut   AS "dateDebut",
+             s.date_fin     AS "dateFin",
+             s.quota,
+             s.consommation,
+             s.created_at   AS "createdAt",
+             s.updated_at   AS "updatedAt",
+             (now() > s.date_fin) AS expired
       FROM subscriptions s
       LIMIT 1
     `;
