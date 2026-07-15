@@ -64,9 +64,30 @@ describe('POST /calc/pressiometre (e2e)', () => {
     expect(body.meta.engineVersion).toMatch(/^\d+\.\d+\.\d+$/);
     // Egalite stricte de la sortie (recalcul deterministe identique).
     expect(body).toEqual(expected);
-    // Aucun intermediaire (courbe corrigee, contrainte au repos, regression) dans la reponse.
+    // GARDE ANTI-FUITE recadree ADR 0014 (14/07) : les STRUCTURES d'affichage
+    // whitelistees (courbe corrigee, volumes, extrapolation A/B, synthese beta/mE)
+    // et les scalaires normatifs (p0/pf/pE/sigmaH0) sont desormais EXPOSES —
+    // l'outil client les affiche a ses utilisateurs. On retire ces blocs deja
+    // verifies champ a champ (projection-equivalence.test.ts), puis on applique
+    // le motif COMPLET au RESTE : toute fuite du RAW `_res` (C, ext, recip,
+    // sigV0/u0 en decomposition, _slopes, iE, VsP2V1, cles brutes Pf/VE) hors de
+    // la whitelist nominative reste detectee.
+    const out = { ...(res.body as { output: Record<string, unknown> }).output };
+    delete out.courbe;
+    delete out.volumes;
+    delete out.extrapolation;
+    delete out.synthese;
+    delete out.p0;
+    delete out.pf;
+    delete out.pE;
+    delete out.sigmaH0;
+    const reste = JSON.stringify({ ...(res.body as object), output: out });
+    expect(reste).not.toMatch(
+      /"(C|ext|recip|sigH0|sigV0|u0|mE|beta|fluage|pL_direct|p0|Pf|VsP2V1|_slopes|iE|VE|V0c|Vf)"\s*:/,
+    );
+    // Et les vrais internes restent absents PARTOUT, structures comprises.
     expect(JSON.stringify(res.body)).not.toMatch(
-      /"(C|ext|recip|sigH0|sigV0|u0|mE|beta|fluage|pL_direct|p0|Pf|VsP2V1)"\s*:/,
+      /"(sigV0|sigVp|u0|_slopes|iE|VsP2V1|recip|ext)"\s*:/,
     );
   });
 
@@ -112,8 +133,22 @@ describe('POST /calc/pressiometre (e2e)', () => {
     if (!body.ok) return;
     // Erreur bornee, message sans intermediaire.
     expect(body.output.erreur).toBeTruthy();
-    expect(JSON.stringify(res.body)).not.toMatch(
-      /"(C|ext|recip|sigH0|sigV0|u0|mE|beta|fluage)"\s*:/,
-    );
+    // Chemin d'erreur : les structures d'affichage ne sont pas emises -> le motif
+    // complet s'applique a la reponse entiere, sauf cles desormais whitelistees
+    // si presentes (aucune ici : erreur = sortie bornee sans details).
+    const outErr = {
+      ...(res.body as { output: Record<string, unknown> }).output,
+    };
+    delete outErr.courbe;
+    delete outErr.volumes;
+    delete outErr.extrapolation;
+    delete outErr.synthese;
+    delete outErr.p0;
+    delete outErr.pf;
+    delete outErr.pE;
+    delete outErr.sigmaH0;
+    expect(
+      JSON.stringify({ ...(res.body as object), output: outErr }),
+    ).not.toMatch(/"(C|ext|recip|sigH0|sigV0|u0|mE|beta|fluage)"\s*:/);
   });
 });
