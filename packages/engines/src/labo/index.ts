@@ -204,6 +204,7 @@ function shapeOutput(R: Record<string, unknown>): unknown {
     full: null,
     desc: '',
     path: [] as string[],
+    caveats: [] as string[],
     etat: null,
     stApplies: false,
     rNote: null,
@@ -252,17 +253,17 @@ function shapeOutput(R: Record<string, unknown>): unknown {
       Cc_oedo: null,
       Cs_oedo: null,
       k: null,
+      natureLigneA: null,
       classe: emptyClasse,
     };
   }
 
-  // NB : `classe.path`/`rNote` sont des LIBELLES NORMATIFS d'explication du classement
-  // GTR — le LIVRABLE meme de l'outil (ex. « Passant 80µm = 52 % > 35 % → famille A »),
-  // CLIENT-SAFE (les etiquettes portent des valeurs deja exposees) ; l'AFFICHAGE les
-  // passe par une allowlist fail-closed. En revanche `classe.warn` (caveats de maturite,
-  // ex. « distinction C1/C2 heuristique provisoire ») est INTERNE : il n'est PAS reporte
-  // dans la sortie client-facing (decision confidentialite/credibilite — avis
-  // ingenieur-securite + titulaire) → jamais scelle ni envoye au navigateur.
+  // NB : `classe.path`/`rNote`/`caveats` sont des LIBELLES NORMATIFS d'explication du
+  // classement GTR — le LIVRABLE meme de l'outil (ex. « Passant 80µm = 52 % > 35 % →
+  // famille A »), CLIENT-SAFE (les etiquettes portent des valeurs deja exposees).
+  // `caveats` (= classify().warn) est l'encart « Points a verifier » du client, VERBATIM
+  // (y compris la ligne C1/C2) : decision titulaire 14/07 « reprendre comme le client »
+  // (« zero ecart ») — auparavant masque, desormais expose (aucune valeur confidentielle).
   const strArr = (a: unknown): string[] =>
     Array.isArray(a) ? a.filter((s): s is string => typeof s === 'string') : [];
   const classe = cls
@@ -272,6 +273,7 @@ function shapeOutput(R: Record<string, unknown>): unknown {
         full: sn(cls.full),
         desc: typeof cls.desc === 'string' ? cls.desc : '',
         path: strArr(cls.path),
+        caveats: strArr(cls.warn),
         etat: sn(cls.etat),
         stApplies: cls.stApplies === true,
         rNote: Array.isArray(cls.rNote) ? strArr(cls.rNote) : null,
@@ -319,8 +321,25 @@ function shapeOutput(R: Record<string, unknown>): unknown {
     Cc_oedo: nn(D.Cc_oedo),
     Cs_oedo: nn(D.Cs_oedo),
     k: nn(D.k),
+    natureLigneA: natureLigneA(D.wl, D.ip),
     classe,
   };
+}
+
+/**
+ * Nature vis-a-vis de la LIGNE A du diagramme de plasticite — readout « Nature » de
+ * l'onglet Atterberg, DERIVE VERBATIM de wL et Ip (calcAtt L.1058) :
+ *   aline = 0,73·(wL−20) ; Ip > aline -> « Argile (au-dessus ligne A) », sinon
+ *   « Limon / sol organique (sous ligne A) ». null si wL/Ip absent (parite HTML
+ *   `if(ip!=null&&wL!=null)`). Ce n'est PAS une correction du moteur : la meme regle
+ *   d'affichage que le client, appliquee a des resultats DEJA exposes (wL, Ip).
+ */
+function natureLigneA(wl: unknown, ip: unknown): string | null {
+  if (!fin(wl) || !fin(ip)) return null;
+  const aline = 0.73 * (wl - 20);
+  return ip > aline
+    ? 'Argile (au-dessus ligne A)'
+    : 'Limon / sol organique (sous ligne A)';
 }
 
 /** Resolution une fois pour toutes de la meta de version (depuis le registre). */

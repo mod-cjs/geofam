@@ -65,6 +65,30 @@ export {
 function fin(x: unknown): x is number {
   return typeof x === 'number' && Number.isFinite(x);
 }
+/** Valeur finie sinon 0. */
+function n0(x: unknown): number {
+  return fin(x) ? x : 0;
+}
+
+/**
+ * Table des residus client-safe (colonnes EXACTES du client L.1973-1977). Chaque
+ * residu du moteur `{v, pc, phat, res}` (v=pression, pc=V60 mesure, phat=V60 ajuste)
+ * est relu en `{p, v60Mesure, v60Ajuste, residu}` — construction champ a champ.
+ */
+function buildResidus(
+  residuals: unknown,
+): { p: number; v60Mesure: number; v60Ajuste: number; residu: number }[] {
+  if (!Array.isArray(residuals)) return [];
+  return residuals.map((r) => {
+    const o = (r ?? {}) as Record<string, unknown>;
+    return {
+      p: n0(o.v),
+      v60Mesure: n0(o.pc),
+      v60Ajuste: n0(o.phat),
+      residu: n0(o.res),
+    };
+  });
+}
 
 /** Resolution de la meta de version (depuis le registre). */
 function resolveMeta(): {
@@ -94,8 +118,7 @@ function resolveMeta(): {
 export function runPressioCalibrage(
   rawInput: unknown,
 ): EngineResultEnvelope<PressioCalibrageOutput> {
-  const input: PressioCalibrageInput =
-    PressioCalibrageInputSchema.parse(rawInput);
+  const input: PressioCalibrageInput = PressioCalibrageInputSchema.parse(rawInput);
   const R = computeCalibrage(input) as Record<string, unknown>;
   const meta = resolveMeta();
 
@@ -103,11 +126,17 @@ export function runPressioCalibrage(
     return { ok: false, meta, error: toSafeEngineError(R.err) };
   }
 
-  // Construction champ a champ : UNIQUEMENT coefficient metier + verdicts (aucun c0/c1/c2).
+  // Construction champ a champ : coefficient metier + verdicts + coefficients c0/c1/c2
+  // et table des residus (AFFICHES par renderCalibResult). La liste brute `pts`
+  // n'est PAS lue.
   const shaped = {
     a: fin(R.a_calib) ? R.a_calib : 0,
     R2: fin(R.R2) ? R.R2 : 0,
     rms: fin(R.rms) ? R.rms : 0,
+    c0: fin(R.c0) ? R.c0 : 0,
+    c1: fin(R.c1) ? R.c1 : 0,
+    c2: fin(R.c2) ? R.c2 : 0,
+    residus: buildResidus(R.residuals),
   };
   const output = projectEngineOutput(PressioCalibrageOutputSchema, shaped);
   return { ok: true, meta, output };

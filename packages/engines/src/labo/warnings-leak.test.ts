@@ -59,17 +59,21 @@ describe('labo — fail-closed : redaction des messages (defense en profondeur)'
     for (const fx of LABO_FIXTURES) {
       const env = runLabo(fx.input);
       if (!env.ok) continue;
-      // `classe.warn` n'est PLUS projeté dans la sortie client-facing (retiré du schéma) :
-      // le scan couvre les canaux réellement exposés (erreur, warnings, path, rNote).
+      // `classify().warn` est desormais projeté sous `classe.caveats` (décision « zéro
+      // écart » 14/07 — encart « Points à vérifier », verbatim client). Le scan couvre
+      // TOUS les canaux texte exposés (erreur, warnings, path, caveats, rNote) et prouve
+      // qu'aucun n'y porte une étiquette INTERNE/secrète = nombre.
       const joined = [
         env.output.erreur ?? '',
         ...env.output.warnings,
         ...env.output.classe.path,
+        ...env.output.classe.caveats,
         ...(env.output.classe.rNote ?? []),
       ].join(' || ');
       expect(joined, `fuite suspecte sur fixture ${fx.id}`).not.toMatch(SUSPECT);
-      // Garde-fou : warn est bien ABSENT de la sortie (jamais sur le fil).
+      // Garde-fou : la cle BRUTE `warn` n'est jamais sur le fil (on expose `caveats`).
       expect('warn' in env.output.classe).toBe(false);
+      expect(Array.isArray(env.output.classe.caveats)).toBe(true);
     }
   });
 });

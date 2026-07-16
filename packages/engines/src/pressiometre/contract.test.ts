@@ -17,19 +17,19 @@ import { runPressiometre } from './index.js';
 
 /**
  * Cles d'INTERMEDIAIRES qui ne doivent JAMAIS apparaitre dans la sortie client.
- * Couvre : courbe corrigee, decomposition de contrainte au repos, pressions/volumes
- * de calage, analyse de pente, coefficients de regression, et les champs internes
- * de l'objet `_res`.
+ *
+ * --- MISE A JOUR « zero ecart » (decision titulaire 14/07) ---
+ * La sortie expose desormais TOUT ce que renderResults AFFICHE (pf/pE/p0/sigmaH0/z,
+ * volumes, extrapolation, synthese beta/mE, courbe corrigee). Les cles CORRESPONDANTES
+ * ont donc quitte cette liste (elles sont legitimes). Ce qui RESTE interdit = ce que le
+ * client N'AFFICHE PAS : les cles BRUTES de `_res` non projetees (C/ext/recip/`gen`, les
+ * raw VE/V0c/Vf/Pf/sigH0/auto_*), la decomposition sigV0/sig'v0/u0, la pression nette
+ * par palier pS, l'analyse de pente brute _slopes, l'indice iE. Le moteur `_res` PORTE
+ * REELLEMENT sigV0/sigVp/u0/iE : ce test MORD donc sur donnees reelles (ces cles sont
+ * dans le brut mais jamais dans la sortie projetee).
  */
 const FUITES_INTERDITES = [
-  // Courbe corrigee + fluage + extrapolation (methode).
-  // NB (MINEUR-2) : ce test ne verifie QUE l'absence de ces CLES dans la sortie
-  // (collectKeys parcourt les cles d'objet). Les coefficients de regression 'A'/'B'
-  // y sont listes au titre de CLE — leur valeur en TEXTE LIBRE n'est PAS couverte
-  // par la redaction (on ne redacte pas `A=`/`B=` : faux positifs sur les libelles
-  // « cat. A »/« cat. B »). En pratique 'A'/'B' ne sont jamais des cles de la sortie
-  // (la whitelist .strict() les rejetterait) ; ils ne transitent pas non plus en
-  // texte (le moteur ne pose aucun warn). La whitelist de cles est donc la barriere.
+  // Courbe/fluage/extrapolation BRUTS (on expose 'courbe'/'extrapolation', pas ces cles).
   'C',
   'fluage',
   'ext',
@@ -38,31 +38,27 @@ const FUITES_INTERDITES = [
   'A',
   'B',
   'gen',
-  // Decomposition de la contrainte au repos
-  'sigH0',
+  // Decomposition de la contrainte au repos (le client n'affiche QUE le total sigmaH0).
+  'sigH0', // cle BRUTE (_res.sigH0) — la sortie expose 'sigmaH0', jamais 'sigH0'
   'sigV0',
   'sigVp',
   'u0',
-  'z',
   'gamma',
-  // Pressions/volumes de calage bruts
-  'pE',
-  'p0',
-  'Pf',
+  // Pressions/volumes de calage BRUTS (_res) — la sortie expose pE/p0/pf + volumes.{…}.
+  'Pf', // _res.Pf (majuscule) — la sortie expose 'pf'
   'VE',
   'V0c',
   'Vf',
   'VsP2V1',
   'pL_direct',
-  // Analyse de pente de la plage pseudo-elastique
-  'mE',
-  'beta',
+  // Analyse de pente : indice de pente minimale + slopes bruts (NON affiches).
   'iE',
-  'auto_p0I',
+  '_slopes',
+  'auto_p0I', // cles BRUTES — la sortie expose synthese.plageAutoDebut/Fin
   'auto_pfI',
   'pfI',
   'plmI',
-  // Indices/parametres internes
+  // Indices/parametres internes + pression nette PAR PALIER (non affichee).
   'aUsed',
   'aForced',
   'pS',
@@ -132,7 +128,18 @@ describe('pressiometre — contrat de sortie (whitelist stricte, anti-fuite)', (
       categorie: 'C',
       categorieLibelle: 'Sol ferme (cat. C)',
       consolidation: 'Sol normalement consolidé',
-      sigH0: 0.42 /* intermediaire interdit */,
+      // Sortie elargie « zero ecart » — champs requis (objet complet, seul sigH0 pollue).
+      pf: 3.2,
+      pE: 0.3,
+      p0: 1.1,
+      sigmaH0: 0.42,
+      z: 4,
+      categorieDescription: 'Argile raide, sable.',
+      volumes: { vE: 24, v0: 69, vf: 129, vLim: 673 },
+      extrapolation: { a: 0.014, b: -0.003, plmVLim: 4.4, plmAsymptote: 4.9, errV: 0.13 },
+      synthese: { beta: 1.5, mE: 49.5, plageAutoDebut: 0, plageAutoFin: 6 },
+      courbe: [],
+      sigH0: 0.42 /* cle BRUTE interdite : la sortie n'expose que 'sigmaH0' */,
     };
     expect(() => PressiometreOutputSchema.parse(pollue)).toThrow(/[Uu]nrecognized/);
   });

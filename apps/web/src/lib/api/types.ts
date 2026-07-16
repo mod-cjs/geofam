@@ -145,6 +145,96 @@ export interface NormalizedCalcOutput {
    * (pas de crash), ex. moteurs `radier`/`tri-raft` qui n'en produisent pas.
    */
   profils?: Record<string, ProfilData>;
+  /**
+   * PressioPro (14/07, « zéro écart ») — STRUCTURES d'affichage du dépouillement /
+   * étalonnage / calibrage pressiométriques, en UNITÉS D'AFFICHAGE CLIENT (déjà
+   * converties : bar→MPa, mE×10 en cm³/MPa, indices de plage en n° de ligne « L… »).
+   * Le front rend ces structures 1:1 comme le HTML d'origine. Un seul des trois
+   * sous-objets est présent selon le moteur. Confidentialité DoD §8 : chaque valeur
+   * ici provient de la whitelist du moteur (aucun intermédiaire non affiché — cf.
+   * `packages/engines/src/pressiometre|pressio-*`).
+   */
+  pressio?: PressioNormalized;
+}
+
+/** Un point de la courbe corrigée pressiométrique (table « Mesures corrigées »). */
+export interface PressioCourbePoint {
+  /** P brut (bar). */
+  p: number;
+  /** P corrigé = P + Ph − Pe (bar). */
+  pCorr: number;
+  /** V60 corrigé (cm³). */
+  v60: number;
+  /** Δ60/30 (cm³). */
+  d6030: number;
+  /** Phase (verbatim client). */
+  phase: 'Recompression' | 'Pseudo-élast.' | 'Plastique';
+}
+
+/**
+ * Dépouillement pressiométrique — grandeurs AFFICHÉES par renderResults, en unités
+ * d'affichage client (pressions en MPa, volumes en cm³, mE en cm³/MPa).
+ */
+export interface PressioDepouillement {
+  /** Pression de fluage brute p_f (MPa). */
+  pf: number;
+  /** Pression pE de restitution (MPa). */
+  pE: number;
+  /** Pression p0 début pseudo-élastique (MPa). */
+  p0: number;
+  /** Contrainte horizontale totale au repos σ_h0 (MPa). */
+  sigmaH0: number;
+  /** Profondeur de l'essai z (m) — annotation client. */
+  z: number;
+  /** Description de la catégorie de sol (phrase). */
+  categorieDescription: string;
+  /** Volumes de référence (cm³). */
+  volumes: { vE: number; v0: number; vf: number; vLim: number };
+  /**
+   * Extrapolation par courbe inverse §D.4.3.2 : coefficients A/B (bruts, notation exp),
+   * pLM au volume conventionnel (MPa), pLM asymptote (MPa), écart d'ajustement errV
+   * (cm³, ou null si non défini → « — » côté client).
+   */
+  extrapolation: {
+    a: number;
+    b: number;
+    plmVLim: number;
+    plmAsymptote: number;
+    errV: number | null;
+  };
+  /**
+   * Synthèse de plage : coefficient d'extension β, pente mE (cm³/MPa), plage auto en
+   * numéros de ligne (déjà `L{indice+1}` — 1-based, prêts à afficher « L1→L7 »).
+   */
+  synthese: { beta: number; mE: number; plageAutoDebutL: number; plageAutoFinL: number };
+  /** Courbe corrigée (colonnes exactes de la table client). */
+  courbe: PressioCourbePoint[];
+}
+
+/** Un résidu d'étalonnage (table client : P, V mesuré, V ajusté, résidu — cm³). */
+export interface PressioEtalonnageResidu {
+  p: number;
+  vMesure: number;
+  vAjuste: number;
+  residu: number;
+}
+
+/** Un résidu de calibrage (table client : P, V60 mesuré, V60 ajusté, résidu). */
+export interface PressioCalibrageResidu {
+  p: number;
+  v60Mesure: number;
+  v60Ajuste: number;
+  residu: number;
+}
+
+/**
+ * Structures pressiométriques normalisées pour l'UI (un seul sous-objet présent selon
+ * le moteur : dépouillement / étalonnage / calibrage). Cf. `NormalizedCalcOutput.pressio`.
+ */
+export interface PressioNormalized {
+  depouillement?: PressioDepouillement;
+  etalonnage?: { vsReel: number; vPe: number; residus: PressioEtalonnageResidu[] };
+  calibrage?: { c0: number; c1: number; c2: number; residus: PressioCalibrageResidu[] };
 }
 
 /** Grille d'affichage d'un champ (heatmap) — découplée du maillage. */

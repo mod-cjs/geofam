@@ -312,10 +312,14 @@ const ClassSchema = z
     /** Chemin de decision (libelles) — client-safe, affiche via allowlist. */
     path: z.array(z.string().max(300)).max(20),
     /**
-     * NB : `warn` (caveats de maturite de classification) est VOLONTAIREMENT ABSENT de
-     * la sortie client-facing (avis ingenieur-securite + titulaire) : le moteur le
-     * calcule mais la projection ne le reporte pas → jamais scelle ni envoye au client.
+     * `caveats` = contenu de `classify().warn` TEL QUE le client l'affiche dans l'encart
+     * « Points a verifier » (recalc L.1552), VERBATIM — y compris la ligne C1/C2
+     * (« Distinction C1/C2 : heuristique provisoire… »). Decision titulaire 14/07
+     * (« reprendre comme le client ») : ce sont des CAVEATS NORMATIFS d'explication du
+     * classement (aucune valeur confidentielle), donc client-safe et exposes. (Auparavant
+     * volontairement masques ; la regle « zero ecart » les rend affichables.)
      */
+    caveats: z.array(z.string().max(300)).max(20),
     /** Etat hydrique retenu (ts/s/m/h/th) ou null. */
     etat: z.string().max(4).nullable(),
     /** L'etat hydrique s'applique-t-il a cette famille ? */
@@ -413,6 +417,13 @@ export const LaboOutputSchema = z
     Cs_oedo: NumOrNull,
     /** Permeabilite k (cm/s). */
     k: NumOrNull,
+    /**
+     * Nature vis-a-vis de la LIGNE A (diagramme de plasticite) — readout « Nature » de
+     * l'onglet Atterberg (calcAtt L.1058), AFFICHE par le client. Derive verbatim de wL
+     * et Ip : Ip > 0,73·(wL−20) -> « Argile (au-dessus ligne A) », sinon « Limon / sol
+     * organique (sous ligne A) ». null si wL ou Ip absent (parite `if(ip!=null&&wL!=null)`).
+     */
+    natureLigneA: z.string().max(60).nullable(),
     // --- Classification GTR ---
     classe: ClassSchema,
   })

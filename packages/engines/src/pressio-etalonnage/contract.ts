@@ -12,13 +12,14 @@
  * sont acceptes pour fidelite de la ligne de saisie mais IGNORES par la science
  * (comme dans le HTML).
  *
- * --- POURQUOI une sortie reduite (anti-fuite, DoD §8) ---
- * Le calcul produit, en interne (objet `e`), les INTERMEDIAIRES DE REGRESSION qui
- * constituent la methode : la liste `pts`, le tableau `residuals` (V ajuste + residu
- * par palier), `V_pe` et `Vs_reel`. On ne whiteliste QUE les COEFFICIENTS
- * D'APPAREILLAGE reutilisables (Vs, Pe, la pente d'air a) et les VERDICTS de qualite
- * (R², RMS). `projectEngineOutput` re-parse la sortie a travers ce schema `.strict()`
- * et STRIPPE tout champ non whiteliste, a tout niveau (defense en profondeur).
+ * --- SORTIE « zero ecart » (decision titulaire 14/07, extension ADR 0014) ---
+ * Regle actee : « tout ce que l'outil client AFFICHE est exposable ». `renderEtalResult`
+ * affiche, en plus des coefficients Vs/Pe/a/R²/RMS : le Vs REEL (1er palier mesure), le
+ * volume cible V_pe = 1,2·Vs, et la TABLE DES RESIDUS (P, V mesure, V ajuste, residu).
+ * On whiteliste donc ces grandeurs. Reste SERVEUR le seul intermediaire NON affiche : la
+ * liste brute `pts` (points reechantillonnes de travail). `projectEngineOutput` re-parse
+ * la sortie a travers ce schema `.strict()` et STRIPPE tout champ non whiteliste, a tout
+ * niveau (defense en profondeur).
  *
  * --- UNITES ---
  * P en bar, V60 en cm³. Vs en cm³, Pe en bar, a (pente d'air) en cm³/bar (valeur BRUTE ;
@@ -65,9 +66,24 @@ export type PressioEtalonnageInput = z.infer<typeof PressioEtalonnageInputSchema
 // Sortie : WHITELIST stricte des COEFFICIENTS + VERDICTS (aucun intermediaire)
 // ---------------------------------------------------------------------------
 
+/** Un residu d'etalonnage — colonnes EXACTES de la table client (HTML L.2162-2167). */
+const EtalResiduSchema = z
+  .object({
+    /** P (bar) — colonne « P (bar) ». */
+    p: z.number().finite(),
+    /** V mesure (cm³) — colonne « V mesure ». */
+    vMesure: z.number().finite(),
+    /** V ajuste (cm³) — colonne « V ajuste ». */
+    vAjuste: z.number().finite(),
+    /** Residu = V mesure − V ajuste (cm³) — colonne « Residu ». */
+    residu: z.number().finite(),
+  })
+  .strict();
+
 /**
- * Sortie client-safe : coefficients d'appareillage + qualite d'ajustement. Aucun
- * intermediaire de regression (pts / residuals / V_pe / Vs_reel).
+ * Sortie client-safe : coefficients d'appareillage + qualite d'ajustement + tout ce
+ * que `renderEtalResult` affiche (Vs reel, V_pe, table des residus). Reste hors sortie
+ * le seul intermediaire non affiche : la liste brute `pts`.
  */
 export const PressioEtalonnageOutputSchema = z
   .object({
@@ -81,6 +97,13 @@ export const PressioEtalonnageOutputSchema = z
     R2: z.number().finite(),
     /** RMS des residus (cm³) — verdict de qualite. */
     rms: z.number().finite(),
+    // --- SORTIE « zero ecart » : grandeurs AFFICHEES par renderEtalResult ---
+    /** Vs REEL = volume au 1er palier mesure (cm³) — affiche « Vs reel=… ». */
+    vsReel: z.number().finite(),
+    /** V_pe = 1,2 × Vs reel (cm³) — volume cible de lecture de Pe. */
+    vPe: z.number().finite(),
+    /** Table des residus (P, V mesure, V ajuste, residu) — colonnes du client. */
+    residus: z.array(EtalResiduSchema).max(500),
   })
   .strict();
 export type PressioEtalonnageOutput = z.infer<typeof PressioEtalonnageOutputSchema>;

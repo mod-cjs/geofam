@@ -353,6 +353,23 @@ function fdnNum(v: unknown, decimals: number, unit?: string): string {
   return unit ? `${s} ${unit}` : s;
 }
 
+/**
+ * Nombre → notation SCIENTIFIQUE fr-FR (toExponential(2), séparateur décimal « , »),
+ * sinon « — ». Miroir du dépouillement client FASTLAB (`k.toExponential(2)`) : une
+ * perméabilité ~1e-9 cm/s rendue en notation fixe donnerait « 0,00000000 » (illisible).
+ */
+function fdnExp(v: unknown, unit?: string): string {
+  const n =
+    typeof v === 'number'
+      ? v
+      : typeof v === 'string' && v.trim() !== ''
+        ? Number(v)
+        : NaN;
+  if (!Number.isFinite(n)) return '—';
+  const s = n.toExponential(2).replace('.', ',');
+  return unit ? `${s} ${unit}` : s;
+}
+
 function fdnFirstFinite(...vals: unknown[]): number | null {
   for (const v of vals)
     if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -1262,6 +1279,53 @@ function safeLaboPathPv(path: unknown): string[] {
   return out;
 }
 
+// Qualificatif du module de finesse (SABLES, NF P 18-540) — ensemble FERMÉ produit
+// par l'outil client (`mf<=2.2?'très fin':mf<=2.8?'idéal':'grossier'`). Fail-closed :
+// tout autre contenu est écarté (pas de texte arbitraire dans un livrable scellé).
+const LABO_MFQ_ALLOWED: ReadonlySet<string> = new Set([
+  'très fin',
+  'idéal',
+  'grossier',
+]);
+function safeLaboMfqPv(mfq: unknown): string {
+  if (typeof mfq !== 'string') return '';
+  const t = mfq.trim();
+  return LABO_MFQ_ALLOWED.has(t) ? t : '';
+}
+
+// Assistant famille R (rocheux) — `classe.rNote` de l'outil client : famille géologique
+// R1–R6 + éventuels LA/MDE (résultats client-safe). Fail-closed : chaque entrée doit
+// coller au gabarit, sinon écartée. Ordre d'origine préservé, rendu joint par « · ».
+const LABO_RNOTE_PATTERNS: readonly RegExp[] = [
+  /^Famille géologique : R[1-6]$/,
+  /^LA=\d+(?:[.,]\d+)?$/,
+  /^MDE=\d+(?:[.,]\d+)?$/,
+];
+function safeLaboRNotePv(rNote: unknown): string {
+  if (!Array.isArray(rNote)) return '';
+  const out: string[] = [];
+  for (const s of rNote) {
+    if (typeof s !== 'string') continue;
+    const t = s.trim();
+    if (t && LABO_RNOTE_PATTERNS.some((re) => re.test(t))) out.push(t);
+  }
+  return out.join(' · ');
+}
+
+// Anticipation TOLÉRANTE : futur champ `caveats: string[]` (chantier moteur parallèle).
+// Points à vérifier client-safe (produits par le moteur, whitelistés au sceau). On rend
+// les chaînes non vides ; toute entrée non-chaîne / vide est ignorée. Absent si champ absent.
+function safeCaveatsPv(caveats: unknown): string[] {
+  if (!Array.isArray(caveats)) return [];
+  const out: string[] = [];
+  for (const s of caveats) {
+    if (typeof s !== 'string') continue;
+    const t = s.trim();
+    if (t) out.push(t);
+  }
+  return out;
+}
+
 function buildLaboBody(sealed: SealedContent): Content[] {
   const o = (sealed.output ?? {}) as Record<string, unknown>;
   const body: Content[] = [];
@@ -1273,6 +1337,7 @@ function buildLaboBody(sealed: SealedContent): Content[] {
   let classe = '';
   let laboDesc = '';
   let laboPath: string[] = [];
+  let laboRNote = '';
   if (cl != null && typeof cl === 'object') {
     const c = cl as Record<string, unknown>;
     // `code`/`full` incluent DÉJÀ la lettre de famille (code='A2', full='A2 h') :
@@ -1286,6 +1351,8 @@ function buildLaboBody(sealed: SealedContent): Content[] {
     // desc (allowlisté sur l'ensemble NF P 11-300) + path (allowlisté) = client-safe.
     laboDesc = safeLaboDescPv(c.desc);
     laboPath = safeLaboPathPv(c.path);
+    // rNote (assistant famille R rocheuse, allowlisté) = client-safe.
+    laboRNote = safeLaboRNotePv(c.rNote);
   }
   body.push({
     text: classe ? `Classe : ${classe}` : 'Classe non déterminée.',
@@ -1307,6 +1374,23 @@ function buildLaboBody(sealed: SealedContent): Content[] {
       });
     });
   }
+  // Assistant famille R (rocheux) — miroir de l'encadré info de l'outil client.
+  if (laboRNote) {
+    body.push(fdnSubTitle('Assistant famille R (rocheux)'));
+    body.push({ text: laboRNote, style: 'cellMuted', margin: [0, 0, 0, 6] });
+  }
+  // Points à vérifier (caveats, si le moteur en fournit) — encart sobre, absent sinon.
+  const caveats = safeCaveatsPv(o.caveats);
+  if (caveats.length > 0) {
+    body.push(fdnSubTitle('Points à vérifier'));
+    caveats.forEach((line, i) => {
+      body.push({
+        text: `· ${line}`,
+        style: 'cellMuted',
+        margin: [0, 0, 0, i === caveats.length - 1 ? 6 : 2],
+      });
+    });
+  }
 
   // Paramètres d'identification
   const t: TableCell[][] = [[fdnHead('Paramètre'), fdnHead('Valeur', 'right')]];
@@ -1317,7 +1401,14 @@ function buildLaboBody(sealed: SealedContent): Content[] {
   fdnKvRow(t, 'Passant à 2 mm', fdnNum(o.p2, 0, '%'));
   fdnKvRow(t, "Coefficient d'uniformité Cu", fdnNum(o.Cu, 1));
   fdnKvRow(t, 'Coefficient de courbure Cc', fdnNum(o.Cc, 2));
-  fdnKvRow(t, 'Module de finesse', fdnNum(o.mf, 2));
+  // Module de finesse + qualificatif SABLES (mfq) : « 2,41 (idéal) », comme l'outil client.
+  const mfVal = fdnNum(o.mf, 2);
+  const mfq = safeLaboMfqPv(o.mfq);
+  fdnKvRow(
+    t,
+    'Module de finesse',
+    mfVal !== '—' && mfq ? `${mfVal} (${mfq})` : mfVal,
+  );
   fdnKvRow(t, 'Teneur en eau naturelle w_n', fdnNum(o.wn, 1, '%'));
   fdnKvRow(t, 'Limite de liquidité w_L', fdnNum(o.wl, 0, '%'));
   fdnKvRow(t, 'Limite de plasticité w_P', fdnNum(o.wp, 0, '%'));
@@ -1333,7 +1424,13 @@ function buildLaboBody(sealed: SealedContent): Content[] {
   );
   fdnKvRow(t, 'Teneur en eau optimale w_OPN', fdnNum(o.wopn, 1, '%'));
   fdnKvRow(t, 'Densité sèche max ρ_d;max', fdnNum(o.rdmax, 2, 't/m³'));
-  fdnKvRow(t, 'Indice CBR', fdnNum(o.cbr, 0));
+  // Le libellé reflète le type d'essai (CBR après immersion / IPI immédiat) — cbrType
+  // est client-safe (résultat, pas méthode) : les deux alimentent la même valeur `cbr`.
+  fdnKvRow(
+    t,
+    o.cbrType === 'ipi' ? 'IPI (Indice Portant Immédiat)' : 'Indice CBR',
+    fdnNum(o.cbr, 0),
+  );
   fdnKvRow(t, 'Gonflement', fdnNum(o.gonfl, 1, '%'));
   fdnKvRow(t, 'Équivalent de sable ES', fdnNum(o.es, 0, '%'));
   fdnKvRow(t, 'Los Angeles LA', fdnNum(o.la, 0));
@@ -1355,7 +1452,9 @@ function buildLaboBody(sealed: SealedContent): Content[] {
   fdnKvRow(t, "Cohésion c' (triaxial)", fdnNum(o.c, 1, 'kPa'));
   fdnKvRow(t, "Angle de frottement φ' (triaxial)", fdnNum(o.phi, 1, '°'));
   fdnKvRow(t, 'Cohésion non drainée c_u (UU)', fdnNum(o.cu_uu, 1, 'kPa'));
-  fdnKvRow(t, 'Perméabilité k', fdnNum(o.k, 8, 'cm/s'));
+  // Perméabilité en notation scientifique (fdnExp) : ~1e-9 cm/s en notation fixe
+  // rendrait « 0,00000000 » (illisible). Miroir du dépouillement client.
+  fdnKvRow(t, 'Perméabilité k', fdnExp(o.k, 'cm/s'));
   if (t.length > 1) {
     body.push(sectionTitle('Paramètres d’identification'));
     body.push({
@@ -1374,9 +1473,23 @@ function buildPressiometreBody(sealed: SealedContent): Content[] {
 
   body.push(sectionTitle('Résultats de dépouillement'));
   const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
-  fdnKvRow(t, 'Pression limite p_L', fdnNum(o.pL, 2, 'bar'));
-  fdnKvRow(t, 'Pression limite nette p_L*', fdnNum(o.pLNette, 2, 'bar'));
-  fdnKvRow(t, 'Pression de fluage nette p_f*', fdnNum(o.pfNette, 2, 'bar'));
+  // Unités alignées sur l'app ET l'outil client (revue adverse 15/07, MAJEUR-1) :
+  // pL/pLNette/pfNette sont stockés en bar (contrat interne) mais AFFICHÉS en MPa
+  // (÷10) partout — un PV en bar contredisait l'écran d'un facteur 10. Conversion
+  // d'affichage seule : le sceau porte sur l'output canonique (bar), inchangé.
+  const bar2mpa = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v / 10 : null;
+  fdnKvRow(t, 'Pression limite p_L', fdnNum(bar2mpa(o.pL), 2, 'MPa'));
+  fdnKvRow(
+    t,
+    'Pression limite nette p_L*',
+    fdnNum(bar2mpa(o.pLNette), 2, 'MPa'),
+  );
+  fdnKvRow(
+    t,
+    'Pression de fluage nette p_f*',
+    fdnNum(bar2mpa(o.pfNette), 2, 'MPa'),
+  );
   fdnKvRow(t, 'Module pressiométrique E_M', fdnNum(o.EM, 1, 'MPa'));
   fdnKvRow(t, 'Rapport E_M / p_L*', fdnNum(o.ratioEMpL, 1));
   if (t.length > 1) {
