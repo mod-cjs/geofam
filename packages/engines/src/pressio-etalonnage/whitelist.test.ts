@@ -18,10 +18,15 @@ import { PRESSIO_ETALONNAGE_FIXTURES } from './test-fixtures.js';
 
 import { PressioEtalonnageInputSchema, runPressioEtalonnage } from './index.js';
 
-/** Cles AUTORISEES en sortie (coefficients d'appareillage + verdicts). */
-const ALLOWED = new Set(['Vs', 'Pe', 'a', 'R2', 'rms']);
+/** Cles AUTORISEES en sortie (coefficients + verdicts + grandeurs affichees « zero ecart »). */
+const ALLOWED = new Set(['Vs', 'Pe', 'a', 'R2', 'rms', 'vsReel', 'vPe', 'residus']);
 
-/** Intermediaires de regression qui NE doivent JAMAIS sortir. */
+/**
+ * Cles BRUTES du moteur qui NE doivent JAMAIS sortir telles quelles. La sortie
+ * elargie expose vsReel/vPe/residus (RENOMMES) : les cles SOURCE `V_pe`/`Vs_reel`/
+ * `residuals` restent donc absentes (renommage = preuve de projection champ a champ),
+ * tout comme `pts` (non affiche) et `rmsError` (expose sous `rms`).
+ */
 const FORBIDDEN = ['pts', 'residuals', 'V_pe', 'Vs_reel', 'rmsError'];
 
 describe('pressio-etalonnage — whitelist de sortie (aucun intermediaire ne fuit)', () => {
@@ -95,5 +100,9 @@ describe('pressio-etalonnage — whitelist de sortie (aucun intermediaire ne fui
     expect(env.output.Pe).toBe(1.5);
     expect(env.output.a).toBe(30);
     expect(env.output.rms).toBe(0.12);
+    // Grandeurs AFFICHEES « zero ecart » : Vs reel, V_pe, table des residus renommee.
+    expect(env.output.vsReel).toBe(200);
+    expect(env.output.vPe).toBe(240);
+    expect(env.output.residus).toEqual([{ p: 0, vMesure: 200, vAjuste: 200, residu: 0 }]);
   });
 });

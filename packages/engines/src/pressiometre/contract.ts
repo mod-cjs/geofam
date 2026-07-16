@@ -26,29 +26,31 @@
  * Contrairement au HTML qui lit des CHAMPS DE SAISIE, on declare ici des NOMBRES
  * finis bornes (l'appelant a deja converti `+value`).
  *
- * --- POURQUOI une sortie reduite (anti-fuite, DoD §8) ---
- * Le calcul produit, en interne (objet `_res`), une foule d'intermediaires
- * CONFIDENTIELS qui CONSTITUENT la methode :
- *   - la COURBE CORRIGEE complete `C` (par palier : p corrige, pression nette pS,
- *     volumes corriges v15/v30/v60) ;
- *   - la decomposition de la contrainte au repos (sigH0/sigV0/sigVp/u0) ;
- *   - l'analyse de pente de la plage pseudo-elastique (mE, beta, iE, indices
- *     auto_p0I/auto_pfI) ;
- *   - les COEFFICIENTS A/B de la regression de la courbe inverse (extrapolation
- *     §D.4.3.2) et la courbe de fluage ;
- *   - les pressions/volumes de calage intermediaires (pE, p0, Pf bruts, VE/V0c/Vf).
- * Exposer cet objet reviendrait a publier la methode par ses intermediaires. On
- * ne whiteliste donc QUE les grandeurs de RESULTAT du depouillement, celles qui
- * vont au PV et alimentent le dimensionnement de fondation :
- *   - pression limite pL et pression limite NETTE pL* (pLS) ;
- *   - pression de fluage NETTE pf* (PfS) ;
- *   - module pressiometrique EM ;
- *   - rapport EM/pL* (ratio) et coefficient rheologique alpha (Menard) ;
- *   - categorie de sol + consolidation (libelles).
- * Ce sont les ANALOGUES de Rtot/taux pour terzaghi (resultat d'ingenierie final).
+ * --- SORTIE ELARGIE « ZERO ECART » (decision titulaire 14/07, extension ADR 0014) ---
+ * Regle actee : « tout ce que l'outil client AFFICHE est exposable ; reprendre
+ * comme le client ». Le seul secret est le CODE moteur, pas les valeurs rendues a
+ * l'ecran. On whiteliste donc, en plus des grandeurs de resultat historiques
+ * (pL, pL* net, pf* net, EM, ratio, alpha, Ey, categorie, consolidation), TOUT ce que
+ * renderResults du HTML met sous les yeux de l'operateur :
+ *   - les pressions de calage AFFICHEES : pf brut (KPI de tete), pE, p0 ;
+ *   - la contrainte au repos AFFICHEE sigH0 (avec la profondeur z annotee) ;
+ *   - les volumes de reference {VE, V(p0), V(pf), VLim} ;
+ *   - l'extrapolation par courbe inverse {A, B, pLM au V conventionnel, pLM
+ *     asymptote, ecart d'ajustement errV} ;
+ *   - la synthese de plage {beta, mE, plage auto L..→L..} ;
+ *   - la COURBE CORRIGEE telle que la table « Mesures corrigees » l'affiche
+ *     (colonnes exactes : P brut, P corr., V60 corr., Δ60/30, Phase).
  *
- * Tout le reste reste SERVEUR. `projectEngineOutput` re-parse la sortie a travers
- * ce schema et STRIPPE tout champ non whiteliste, a tout niveau (cf. index.ts).
+ * --- CE QUI RESTE SERVEUR (jamais affiche par le client -> jamais expose) ---
+ * La whitelist continue de STRIPPER les intermediaires que l'outil ne montre PAS :
+ *   - la decomposition de la contrainte au repos sigV0/sig'v0/u0 (le client
+ *     n'affiche QUE le total sigH0) ;
+ *   - la pression nette PAR PALIER pS et les volumes corriges v15/v30 (la table ne
+ *     montre que P brut/P corr./V60/Δ60-30) ;
+ *   - l'analyse de pente brute _slopes, l'indice iE de pente minimale, la courbe de
+ *     fluage complete, la fonction `gen` (closure de regression) de `ext`.
+ * `projectEngineOutput` re-parse la sortie a travers ce schema `.strict()` et STRIPPE
+ * tout champ non whiteliste, a tout niveau (cf. index.ts) — defense en profondeur.
  *
  * AUCUN symbole de calcul ici : pur Zod/TS, mais ce fichier appartient a
  * @roadsen/engines (importe par l'API seule, jamais le front).
@@ -125,10 +127,28 @@ export type PressiometreInput = z.infer<typeof PressiometreInputSchema>;
 // Sortie : WHITELIST stricte des resultats affichables (aucun intermediaire)
 // ---------------------------------------------------------------------------
 
+/** Un point de la COURBE CORRIGEE, colonnes EXACTES de la table client (L.1247-1262).
+ * Aucune valeur non affichee (pas de pS net, pas de v15/v30 corriges). */
+const CourbePointSchema = z
+  .object({
+    /** P brut (bar) — colonne « P brut ». */
+    p: z.number().finite(),
+    /** P corrige = P + Ph - Pe (bar) — colonne « P corr. ». */
+    pCorr: z.number().finite(),
+    /** V60 corrige (cm³) — colonne « V60 corr. ». */
+    v60: z.number().finite(),
+    /** Δ60/30 brut (cm³) — colonne « Δ60/30 ». */
+    d6030: z.number().finite(),
+    /** Phase (verbatim client) — colonne « Phase ». */
+    phase: z.enum(['Recompression', 'Pseudo-élast.', 'Plastique']),
+  })
+  .strict();
+
 /**
- * Sortie client-safe du moteur pressiometre. Les grandeurs FINALES du
- * depouillement + la classification. Aucune courbe corrigee, aucun coefficient
- * de regression, aucun intermediaire de plage pseudo-elastique.
+ * Sortie client-safe du moteur pressiometre. Les grandeurs FINALES du depouillement
+ * + la classification + TOUT ce que renderResults affiche (decision « zero ecart »
+ * 14/07). Les intermediaires NON affiches (sigV0/sig'v0/u0, pS/v15/v30 par palier,
+ * _slopes/iE, `gen`) restent strippes (cf. en-tete).
  */
 export const PressiometreOutputSchema = z
   .object({
@@ -168,6 +188,65 @@ export const PressiometreOutputSchema = z
     categorieLibelle: z.string().max(80),
     /** Etat de consolidation (libelle). */
     consolidation: z.string().max(80),
+    // --- SORTIE ELARGIE « zero ecart » (decision titulaire 14/07) : valeurs AFFICHEES
+    //     par renderResults, en UNITES INTERNES (bar/cm³/coeff bruts). La conversion
+    //     d'AFFICHAGE (bar->MPa ×0.1, mE ×10 cm³/MPa...) est faite par l'adaptateur
+    //     client-facing, verbatim comme le HTML. ---
+    /** Pression de fluage BRUTE pf (bar) — KPI de tete « P_f » du client (affiche en MPa). */
+    pf: z.number().finite(),
+    /** Pression pE de restitution (bar) — table « Parametres normalises » (affiche en MPa). */
+    pE: z.number().finite(),
+    /** Pression p0 debut pseudo-elastique (bar) — table (affiche en MPa). */
+    p0: z.number().finite(),
+    /** Contrainte horizontale totale au repos sigH0 (bar) — table (affiche en MPa). */
+    sigmaH0: z.number().finite(),
+    /** Profondeur de l'essai z (m) — annotation « (z=… m) » du client. */
+    z: z.number().finite(),
+    /** Description de la categorie de sol (phrase, ex. « Argile molle, limon… »). */
+    categorieDescription: z.string().max(200),
+    /** Volumes de reference AFFICHES (cm³) — table « Volume ». */
+    volumes: z
+      .object({
+        /** V_E restitution (cm³) = _res.VE. */
+        vE: z.number().finite(),
+        /** V(p0) debut pseudo-elastique (cm³) = _res.V0c. */
+        v0: z.number().finite(),
+        /** V(pf) fluage (cm³) = _res.Vf. */
+        vf: z.number().finite(),
+        /** V_Lim = Vs+2·V(p0) (cm³) = _res.VsP2V1. */
+        vLim: z.number().finite(),
+      })
+      .strict(),
+    /** Extrapolation par courbe inverse §D.4.3.2 (encart client). */
+    extrapolation: z
+      .object({
+        /** Coefficient A de 1/(V−Vs) = A + B·p (brut, affiche en notation exp). */
+        a: z.number().finite(),
+        /** Coefficient B (brut). */
+        b: z.number().finite(),
+        /** pLM extrapolee au volume conventionnel Vs+2·V(p0) (bar) — affiche en MPa. */
+        plmVLim: z.number().finite(),
+        /** pLM asymptote de reference −A/B (bar) — affiche en MPa. */
+        plmAsymptote: z.number().finite(),
+        /** Ecart d'ajustement moyen (cm³) ; null si non fini (client affiche « — »). */
+        errV: z.number().finite().nullable(),
+      })
+      .strict(),
+    /** Synthese de la plage pseudo-elastique (bandeau « Synthese » du client). */
+    synthese: z
+      .object({
+        /** Coefficient d'extension β (borne 1,5..4). */
+        beta: z.number().finite(),
+        /** Pente minimale mE (cm³/bar interne ; affichee ×10 en cm³/MPa). */
+        mE: z.number().finite(),
+        /** Debut de plage auto (indice 0-base ; affiche « L{+1} »). */
+        plageAutoDebut: z.number().int().min(0),
+        /** Fin de plage auto (indice 0-base ; affiche « L{+1} »). */
+        plageAutoFin: z.number().int().min(0),
+      })
+      .strict(),
+    /** Courbe corrigee (table « Mesures corrigees ») — colonnes exactes du client. */
+    courbe: z.array(CourbePointSchema).max(60),
   })
   .strict();
 export type PressiometreOutput = z.infer<typeof PressiometreOutputSchema>;

@@ -11,13 +11,14 @@
  * globale `calibRows`. Le calcul n'utilise QUE `p` (bar) et `v60` (cm³) ; `v15`/`v30`
  * sont acceptes pour fidelite de la ligne de saisie mais IGNORES par la science.
  *
- * --- POURQUOI une sortie reduite (anti-fuite, DoD §8) ---
- * Le calcul produit, en interne (objet `e`), les INTERMEDIAIRES DE REGRESSION qui
- * constituent la methode : la liste `pts`, le tableau `residuals`, et surtout les
- * COEFFICIENTS DE LA COURBE POLYNOMIALE `c0`/`c1`/`c2` (l'ajustement degre 2). On ne
- * whiteliste QUE le COEFFICIENT DE CALIBRAGE metier `a` (= a_calib) et les VERDICTS de
- * qualite (R², RMS). `projectEngineOutput` re-parse la sortie a travers ce schema
- * `.strict()` et STRIPPE tout champ non whiteliste (defense en profondeur).
+ * --- SORTIE « zero ecart » (decision titulaire 14/07, extension ADR 0014) ---
+ * Regle actee : « tout ce que l'outil client AFFICHE est exposable ». `renderCalibResult`
+ * affiche, en plus de a/R²/RMS : les coefficients de la courbe polynomiale c0/c1/c2
+ * (KPI + equation « Pc = c0 + c1·V + c2·V² ») et la TABLE DES RESIDUS (P, V60 mesure,
+ * V60 ajuste, residu). Ces valeurs cessent donc d'etre confidentielles : on les
+ * whiteliste. Reste SERVEUR le seul intermediaire NON affiche : la liste brute `pts`.
+ * `projectEngineOutput` re-parse la sortie a travers ce schema `.strict()` et STRIPPE
+ * tout champ non whiteliste (defense en profondeur).
  *
  * --- UNITES ---
  * P en bar, V60 en cm³. Sortie `a` (a_calib) en cm³/bar (valeur BRUTE ; le HTML affiche
@@ -63,9 +64,24 @@ export type PressioCalibrageInput = z.infer<typeof PressioCalibrageInputSchema>;
 // Sortie : WHITELIST stricte (coefficient metier + verdicts, aucun intermediaire)
 // ---------------------------------------------------------------------------
 
+/** Un residu de calibrage — colonnes EXACTES de la table client (HTML L.1973-1977). */
+const CalibResiduSchema = z
+  .object({
+    /** P (bar) — colonne « P (bar) ». */
+    p: z.number().finite(),
+    /** V60 mesure (cm³) — colonne « V60 mesure ». */
+    v60Mesure: z.number().finite(),
+    /** V60 ajuste (cm³) — colonne « V60 ajuste ». */
+    v60Ajuste: z.number().finite(),
+    /** Residu = V60 mesure − V60 ajuste — colonne « Residu ». */
+    residu: z.number().finite(),
+  })
+  .strict();
+
 /**
- * Sortie client-safe : coefficient de calibrage + qualite d'ajustement. Aucun
- * intermediaire de regression (pts / residuals / c0 / c1 / c2).
+ * Sortie client-safe : coefficient de calibrage + qualite d'ajustement + tout ce que
+ * `renderCalibResult` affiche (c0/c1/c2 de la courbe polynomiale, table des residus).
+ * Reste hors sortie le seul intermediaire non affiche : la liste brute `pts`.
  */
 export const PressioCalibrageOutputSchema = z
   .object({
@@ -75,6 +91,15 @@ export const PressioCalibrageOutputSchema = z
     R2: z.number().finite(),
     /** RMS des residus (bar) — verdict de qualite. */
     rms: z.number().finite(),
+    // --- SORTIE « zero ecart » : coefficients + residus AFFICHES par renderCalibResult ---
+    /** c0 — constante de la courbe Pc = c0 + c1·V + c2·V². */
+    c0: z.number().finite(),
+    /** c1 — coefficient de V. */
+    c1: z.number().finite(),
+    /** c2 — coefficient de V². */
+    c2: z.number().finite(),
+    /** Table des residus (P, V60 mesure, V60 ajuste, residu) — colonnes du client. */
+    residus: z.array(CalibResiduSchema).max(500),
   })
   .strict();
 export type PressioCalibrageOutput = z.infer<typeof PressioCalibrageOutputSchema>;

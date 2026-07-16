@@ -14,11 +14,21 @@
  * Confidentialité DoD §8 : aucun import @roadsen/engines.
  */
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useRef, useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
+
+import { QuotaBar } from './QuotaBar';
+import {
+  ALL_ENTITLEMENTS,
+  PACK_NAMES,
+  PACK_PRESETS,
+  customPackWarning,
+  isCustomizedVsPack,
+  type PackName,
+} from './pack-presets';
 
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { QuotaBar } from './QuotaBar';
 import {
   clientAttachSubscription,
   clientSetEntitlements,
@@ -26,22 +36,6 @@ import {
   clientTopUp,
 } from '@/lib/api/admin-mutations-client';
 import type { AdminOrgDetail, OrgSubscriptionDetail } from '@/lib/api/admin-server';
-
-// Modules connus. Le `slug` STOCKÉ dans les entitlements DOIT être le slug de GATE du
-// calcul (celui que SubscriptionGuard/assertAccess vérifie), PAS le nom du logiciel.
-// Bug corrigé (E2E modules/packs) : l'UI stockait casagrande/geoplaque/pressiopro/fastlab
-// alors que le gate attend pieux/radier/pressiometre/labo -> ces modules « cochés »
-// restaient gatés 403. On stocke le slug, on AFFICHE un libellé lisible.
-const ALL_ENTITLEMENTS = [
-  { slug: 'burmister', label: 'ROADSENS — Chaussées' },
-  { slug: 'terzaghi', label: 'Terzaghi — Fondations superficielles' },
-  { slug: 'pieux', label: 'CASAGRANDE — Pieux' },
-  { slug: 'radier', label: 'GEOPLAQUE — Radier & plaque' },
-  { slug: 'pressiometre', label: 'PressioPro — Pressiomètre' },
-  { slug: 'labo', label: 'FASTLAB — Labo GTR' },
-] as const;
-
-const PACKS = ['ROUTES', 'FONDATIONS', 'COMPLETE'] as const;
 
 interface SubscriptionEditorProps {
   orgId: string;
@@ -99,7 +93,11 @@ export function SubscriptionEditor({
             <Button variant="secondary" size="sm" onClick={() => setOpenModal('renew')}>
               Renouveler
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setOpenModal('entitlements')}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setOpenModal('entitlements')}
+            >
               Modules
             </Button>
           </>
@@ -146,7 +144,7 @@ export function SubscriptionEditor({
 // ---------------------------------------------------------------------------
 
 function SubscriptionReadView({ subscription }: { subscription: OrgSubscriptionDetail }) {
-  const rows: { label: string; value: React.ReactNode }[] = [
+  const rows: { label: string; value: ReactNode }[] = [
     { label: 'Pack', value: subscription.pack },
     {
       label: 'Quota',
@@ -187,7 +185,7 @@ function SubscriptionReadView({ subscription }: { subscription: OrgSubscriptionD
       }}
     >
       {rows.map(({ label, value }) => (
-        <React.Fragment key={label}>
+        <Fragment key={label}>
           <dt
             style={{
               padding: '12px 16px',
@@ -211,7 +209,7 @@ function SubscriptionReadView({ subscription }: { subscription: OrgSubscriptionD
           >
             {value}
           </dd>
-        </React.Fragment>
+        </Fragment>
       ))}
     </dl>
   );
@@ -268,9 +266,10 @@ function TopUpModal({
   const parsedDelta = parseInt(delta, 10);
   const canSubmit = canSubmitTopUp({ delta, motif, confirmed }) && !loading;
 
-  const newQuota = subscription && !isNaN(parsedDelta) && parsedDelta !== 0
-    ? subscription.quota + parsedDelta
-    : null;
+  const newQuota =
+    subscription && !isNaN(parsedDelta) && parsedDelta !== 0
+      ? subscription.quota + parsedDelta
+      : null;
 
   async function handleSubmit() {
     if (!canSubmit || !intentionKeyRef.current) return;
@@ -334,7 +333,10 @@ function TopUpModal({
               marginBottom: 4,
             }}
           >
-            Delta <span aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }}>*</span>
+            Delta{' '}
+            <span aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }}>
+              *
+            </span>
             <span style={{ fontWeight: 400, marginLeft: 4, color: 'var(--text-muted)' }}>
               (négatif = baisse, positif = hausse)
             </span>
@@ -361,7 +363,8 @@ function TopUpModal({
               }}
             >
               Quota résultant : <strong>{newQuota}</strong> unités
-              {subscription && newQuota < subscription.consommation &&
+              {subscription &&
+                newQuota < subscription.consommation &&
                 ' — inférieur à la consommation engagée (le backend refusera)'}
             </p>
           )}
@@ -379,7 +382,10 @@ function TopUpModal({
               marginBottom: 4,
             }}
           >
-            Motif <span aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }}>*</span>
+            Motif{' '}
+            <span aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }}>
+              *
+            </span>
           </label>
           <textarea
             id={motifId}
@@ -519,16 +525,16 @@ function RenewModal({
             color: 'var(--text-primary)',
           }}
         >
-          Le renouvellement remet la consommation à 0 et ouvre une nouvelle fenêtre.
-          Le quota reste inchangé.
+          Le renouvellement remet la consommation à 0 et ouvre une nouvelle fenêtre. Le
+          quota reste inchangé.
         </div>
 
         <div>
-          <label
-            htmlFor={debutId}
-            style={labelStyle}
-          >
-            Date de début <span aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }}>*</span>
+          <label htmlFor={debutId} style={labelStyle}>
+            Date de début{' '}
+            <span aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }}>
+              *
+            </span>
           </label>
           <input
             id={debutId}
@@ -540,11 +546,11 @@ function RenewModal({
         </div>
 
         <div>
-          <label
-            htmlFor={finId}
-            style={labelStyle}
-          >
-            Date de fin <span aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }}>*</span>
+          <label htmlFor={finId} style={labelStyle}>
+            Date de fin{' '}
+            <span aria-hidden="true" style={{ color: 'var(--status-fail-tx)' }}>
+              *
+            </span>
           </label>
           <input
             id={finId}
@@ -607,7 +613,7 @@ function EntitlementsModal({
     } else {
       intentionKeyRef.current = null;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Resynchronisation UNIQUEMENT à l'ouverture (ne jamais écraser une édition en cours).
   }, [open]);
 
   function toggleEntitlement(e: string) {
@@ -619,11 +625,24 @@ function EntitlementsModal({
     });
   }
 
-  // Action EXPLICITE : propose les modules du pack sélectionné (n'écrase jamais
-  // silencieusement — l'utilisateur clique délibérément pour appliquer).
+  // Réinitialise la sélection aux modules standards du pack courant. Utile après une
+  // personnalisation manuelle, sans avoir à changer de pack puis revenir (qui ferait
+  // le même remplacement via handlePackChange ci-dessous).
   function applyPackDefaults() {
-    setSelected(new Set(PACK_ENTITLEMENTS[pack] ?? []));
+    setSelected(new Set(PACK_PRESETS[pack as PackName] ?? []));
   }
+
+  // Changer le pack COCHE automatiquement ses modules (remplace la sélection courante)
+  // — décision titulaire 14/07. Les cases restent éditables après. Ne s'applique QUE sur
+  // un changement explicite de l'utilisateur, jamais à l'ouverture de la modal (l'init
+  // depuis subscription.entitlements ci-dessus n'appelle pas cette fonction).
+  function handlePackChange(nextPack: string) {
+    setPack(nextPack);
+    setSelected(new Set(PACK_PRESETS[nextPack as PackName] ?? []));
+  }
+
+  const customized =
+    entitlementsAvailable && isCustomizedVsPack(pack, Array.from(selected));
 
   async function handleSubmit() {
     if (loading || !intentionKeyRef.current || !entitlementsAvailable) return;
@@ -696,24 +715,37 @@ function EntitlementsModal({
             <select
               id={packId}
               value={pack}
-              onChange={(e) => setPack(e.target.value)}
+              onChange={(e) => handlePackChange(e.target.value)}
               style={{ ...fieldStyle, flex: 1 }}
             >
-              {PACKS.map((p) => (
+              {PACK_NAMES.map((p) => (
                 <option key={p} value={p}>
                   {p}
                 </option>
               ))}
             </select>
             <Button variant="ghost" size="sm" onClick={applyPackDefaults}>
-              Appliquer les modules du pack
+              Réinitialiser aux modules du pack
             </Button>
           </div>
           <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
-            Changer le pack ne modifie pas la sélection ci-dessous — cliquez sur
-            « Appliquer les modules du pack » pour la remplacer.
+            Changer le pack remplace la sélection ci-dessous par ses modules standards ;
+            vous pouvez ensuite l&apos;ajuster librement.
           </p>
         </div>
+
+        {customized && (
+          <p
+            role="status"
+            style={{
+              fontSize: 12,
+              color: 'var(--status-warn-tx, #92650a)',
+              margin: 0,
+            }}
+          >
+            {customPackWarning(pack)}
+          </p>
+        )}
 
         {/* Modules */}
         <fieldset
@@ -782,21 +814,10 @@ export function canSubmitTopUp({
 }
 
 // ---------------------------------------------------------------------------
-// Constantes partagées (même que le wizard)
-// ---------------------------------------------------------------------------
-
-// Slugs de GATE (= ceux vérifiés par SubscriptionGuard), pas les noms de logiciels.
-const PACK_ENTITLEMENTS: Record<string, string[]> = {
-  ROUTES: ['burmister'],
-  FONDATIONS: ['terzaghi', 'pieux', 'radier', 'pressiometre'],
-  COMPLETE: ['burmister', 'terzaghi', 'pieux', 'radier', 'pressiometre', 'labo'],
-};
-
-// ---------------------------------------------------------------------------
 // Styles inline partagés
 // ---------------------------------------------------------------------------
 
-const fieldStyle: React.CSSProperties = {
+const fieldStyle: CSSProperties = {
   width: '100%',
   padding: '8px 10px',
   borderRadius: 'var(--radius-base)',
@@ -808,7 +829,7 @@ const fieldStyle: React.CSSProperties = {
   boxSizing: 'border-box',
 };
 
-const labelStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
   display: 'block',
   fontSize: 12,
   fontWeight: 500,
@@ -888,7 +909,7 @@ function AttachModal({
         orgId,
         {
           pack,
-          entitlements: PACK_ENTITLEMENTS[pack] ?? [],
+          entitlements: PACK_PRESETS[pack] ?? [],
           quota: quotaNum,
           dateDebut,
           dateFin,
@@ -935,7 +956,9 @@ function AttachModal({
           <label style={labelStyle}>Pack</label>
           <select
             value={pack}
-            onChange={(e) => setPack(e.target.value as 'ROUTES' | 'FONDATIONS' | 'COMPLETE')}
+            onChange={(e) =>
+              setPack(e.target.value as 'ROUTES' | 'FONDATIONS' | 'COMPLETE')
+            }
             style={fieldStyle}
           >
             <option value="ROUTES">ROUTES</option>
@@ -943,7 +966,7 @@ function AttachModal({
             <option value="COMPLETE">COMPLETE</option>
           </select>
           <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>
-            Modules : {(PACK_ENTITLEMENTS[pack] ?? []).join(', ')}
+            Modules : {(PACK_PRESETS[pack] ?? []).join(', ')}
           </p>
         </div>
         <div>
@@ -980,6 +1003,3 @@ function AttachModal({
     </Modal>
   );
 }
-
-// React needed for JSX Fragment in SubscriptionReadView
-import React from 'react';

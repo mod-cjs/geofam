@@ -20,6 +20,11 @@ import type {
   Project,
   ProjectDomain,
   LoginResponse,
+  PressioNormalized,
+  PressioDepouillement,
+  PressioCourbePoint,
+  PressioEtalonnageResidu,
+  PressioCalibrageResidu,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -892,6 +897,18 @@ function pushText(rows: CalcOutputRow[], label: string, value: unknown, unit = '
   rows.push({ label, value: value.trim(), unit });
 }
 
+/** Liste de chaînes bornées (fail-closed) : ignore non-chaînes/vides ; borne la longueur. */
+function asStrList(v: unknown, max = 300): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const s of v) {
+    if (typeof s !== 'string') continue;
+    const t = s.trim();
+    if (t) out.push(t.length > max ? t.slice(0, max) : t);
+  }
+  return out;
+}
+
 /**
  * radier / plaque sur sol multicouche (EF) — déflexions & distorsions.
  * Moteur d'analyse (pas de verdict de conformité). Clés nommées (fail-closed §8).
@@ -1233,7 +1250,10 @@ function buildLaboRows(o: Record<string, unknown>): CalcOutputRow[] {
     // concaténer `fam` la dupliquerait ('A'+'A2'='AA2'). On prend le libellé canonique.
     // `desc` (description normative NF P 11-300, statique) et `path` (chemin de décision,
     // seuils publics + valeurs déjà exposées) SONT client-safe (avis ingenieur-securite).
-    // path passe par l'allowlist fail-closed `safeLaboPath` ; `warn` reste NON affiché.
+    // path passe par l'allowlist fail-closed `safeLaboPath`. `caveats` (= encart « Points
+    // à vérifier ») et `rNote` (assistant famille R) sont désormais AFFICHÉS verbatim
+    // comme le client (décision « zéro écart » 14/07) — libellés normatifs, sans valeur
+    // confidentielle (cf. test warnings-leak du moteur).
     const full = typeof c.full === 'string' ? c.full.trim() : '';
     const code = c.code != null && c.code !== '' ? String(c.code).trim() : '';
     const label = full || code;
@@ -1245,7 +1265,17 @@ function buildLaboRows(o: Record<string, unknown>): CalcOutputRow[] {
       step += 1;
       rows.push({ label: `Justification du classement ${step}`, value: s, unit: '' });
     }
+    // Encart « Points à vérifier » (classify().warn), verbatim client.
+    for (const w of asStrList(c.caveats)) {
+      rows.push({ label: 'Point à vérifier', value: w, unit: '' });
+    }
+    // Assistant famille R (rocheux) — libellés d'aide au classement R.
+    for (const n of asStrList(c.rNote)) {
+      rows.push({ label: 'Assistant famille R', value: n, unit: '' });
+    }
   }
+  // Nature vis-à-vis de la ligne A (readout « Nature » de l'onglet Atterberg).
+  pushText(rows, 'Nature (ligne A)', o.natureLigneA);
   // COMPLÉTUDE : tous les résultats client-safe (multi-essais). pushRow saute les null.
   // — Identification (granulo / Atterberg / bleu)
   pushRow(rows, 'Dmax', o.dmax, 'mm');
@@ -1253,7 +1283,17 @@ function buildLaboRows(o: Record<string, unknown>): CalcOutputRow[] {
   pushRow(rows, 'Passant à 2 mm', o.p2, '%');
   pushRow(rows, "Coefficient d'uniformité Cu", o.Cu, '');
   pushRow(rows, 'Coefficient de courbure Cc', o.Cc, '');
-  pushRow(rows, 'Module de finesse', o.mf, '');
+  // Module de finesse avec qualificatif accolé, format client renderRecap :
+  // « 2.41 (idéal) ». mfq (très fin/idéal/grossier) = résultat, pas méthode.
+  const mfNum = finiteOrNull(o.mf);
+  if (mfNum !== null) {
+    const mfq = typeof o.mfq === 'string' && o.mfq.trim() ? ` (${o.mfq.trim()})` : '';
+    rows.push({
+      label: 'Module de finesse',
+      value: `${mfNum.toFixed(2)}${mfq}`,
+      unit: '',
+    });
+  }
   pushRow(rows, 'Teneur en eau naturelle w_n', o.wn, '%');
   pushRow(rows, 'Limite de liquidité w_L', o.wl, '%');
   pushRow(rows, 'Limite de plasticité w_P', o.wp, '%');
@@ -1269,7 +1309,13 @@ function buildLaboRows(o: Record<string, unknown>): CalcOutputRow[] {
   pushRow(rows, 'Densité sèche max ρ_d;max', o.rdmax, 't/m³');
   // Le libellé reflète le type d'essai (CBR après immersion / IPI immédiat) — cbrType
   // est client-safe (résultat, pas méthode) : les deux alimentent la même valeur `cbr`.
-  pushRow(rows, o.cbrType === 'ipi' ? 'Indice IPI' : 'Indice CBR', o.cbr, '');
+  // Libellé aligné sur le PV (apps/api/src/pv/pdf/pv-pdf.ts) — « Indice IPI » divergeait.
+  pushRow(
+    rows,
+    o.cbrType === 'ipi' ? 'IPI (Indice Portant Immédiat)' : 'Indice CBR',
+    o.cbr,
+    '',
+  );
   pushRow(rows, 'Gonflement', o.gonfl, '%');
   // — Granulats
   pushRow(rows, 'Équivalent de sable ES', o.es, '%');
@@ -1294,15 +1340,47 @@ function buildLaboRows(o: Record<string, unknown>): CalcOutputRow[] {
   return rows;
 }
 
+/** Convertit une valeur interne (bar) en MPa d'affichage (×0,1) ; null si non finie. */
+function bar2mpa(v: unknown): number | null {
+  const n = finiteOrNull(v);
+  return n === null ? null : n * 0.1;
+}
+/** Multiplie une valeur finie par un facteur d'affichage ; null si non finie. */
+function scaleOrNull(v: unknown, k: number): number | null {
+  const n = finiteOrNull(v);
+  return n === null ? null : n * k;
+}
+/** Lit un sous-objet whitelisté (Record) ou {} (fail-closed). */
+function asObj(v: unknown): Record<string, unknown> {
+  return v != null && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+}
+/** Nombre fini ou 0 (structures pressio : grandeur toujours présente côté moteur). */
+function num0(v: unknown): number {
+  const n = finiteOrNull(v);
+  return n === null ? 0 : n;
+}
+
 /**
- * pressiomètre Ménard — dépouillement (p_L, E_M, catégorie de sol).
- * `categorieLibelle`/`consolidation` = résultats textuels. Clés nommées (fail-closed §8).
+ * pressiomètre Ménard — dépouillement (p_L, E_M, catégorie de sol) + grandeurs
+ * AFFICHÉES par renderResults (« zéro écart » 14/07) : p_f/pE/p₀/σ_h0 en MPa comme le
+ * client (interne en bar → ×0,1), description de catégorie. Les STRUCTURES (courbe,
+ * volumes, extrapolation, synthèse) partent dans `NormalizedCalcOutput.pressio` (cf.
+ * buildPressioDepouillement). Clés nommées (fail-closed §8).
  */
 function buildPressiometreRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
-  pushRow(rows, 'Pression limite p_L', o.pL, 'bar');
-  pushRow(rows, 'Pression limite nette p_L*', o.pLNette, 'bar');
-  pushRow(rows, 'Pression de fluage nette p_f*', o.pfNette, 'bar');
+  // CORRECTIF (14/07) : o.pL/pLNette/pfNette sont internes en BAR (contract.ts) — le
+  // client affiche TOUJOURS ces 3 grandeurs en MPa (kg4 : p_L, P*_LM, P*_f — cf.
+  // renderResults). L'ancien code les laissait en bar par erreur (divergence interne :
+  // pf/pE/p0/σh0 juste en-dessous étaient déjà convertis). ×0,1 comme le reste de la page.
+  pushRow(rows, 'Pression limite p_L', bar2mpa(o.pL), 'MPa');
+  pushRow(rows, 'Pression limite nette p_L*', bar2mpa(o.pLNette), 'MPa');
+  pushRow(rows, 'Pression de fluage nette p_f*', bar2mpa(o.pfNette), 'MPa');
+  // Grandeurs de tête AFFICHÉES en MPa par le client (KPI / table normalisée).
+  pushRow(rows, 'Pression de fluage p_f', bar2mpa(o.pf), 'MPa');
+  pushRow(rows, 'Pression pE (restitution)', bar2mpa(o.pE), 'MPa');
+  pushRow(rows, 'Pression p₀ (début pseudo-élastique)', bar2mpa(o.p0), 'MPa');
+  pushRow(rows, 'Contrainte horizontale au repos σ_h0', bar2mpa(o.sigmaH0), 'MPa');
   pushRow(rows, 'Module pressiométrique E_M', o.EM, 'MPa');
   pushRow(rows, 'Rapport E_M / p_L*', o.ratioEMpL, '');
   // Grandeurs publiques du dépouillement (décision titulaire — mémoire
@@ -1311,8 +1389,80 @@ function buildPressiometreRows(o: Record<string, unknown>): CalcOutputRow[] {
   pushRow(rows, 'Coefficient rhéologique α (Ménard)', o.alpha, '');
   pushRow(rows, 'Module d’Young E_y = E_M/α', o.Ey, 'MPa');
   pushText(rows, 'Catégorie de sol', o.categorieLibelle);
+  pushText(rows, 'Description de la catégorie', o.categorieDescription);
   pushText(rows, 'État de consolidation', o.consolidation);
+  // p_L méthode (direct mesuré vs extrapolé §D.4.3.2) — booléen whitelisté du contrat
+  // (pLDirect), non exposé jusqu'ici ; le client l'affiche dans la table « paramètres
+  // normalisés » (« p_L méthode »). Verbatim client (pas de valeur confidentielle).
+  if (typeof o.pLDirect === 'boolean') {
+    pushText(
+      rows,
+      'p_L méthode',
+      o.pLDirect ? 'Direct (mesuré)' : 'Extrapolé (§D.4.3.2)',
+    );
+  }
   return rows;
+}
+
+/**
+ * pressiomètre — STRUCTURES d'affichage (« zéro écart ») en UNITÉS CLIENT : la courbe
+ * corrigée, les volumes de référence (cm³), l'extrapolation (A/B bruts, pLM en MPa,
+ * errV en cm³) et la synthèse (β, mE en cm³/MPa, plage auto en n° de ligne « L… »).
+ * Reprend VERBATIM les conversions d'affichage du HTML (renderResults). Construction
+ * champ à champ à partir de la sortie whitelistée du moteur (aucun intermédiaire non
+ * affiché — pS/v15/v30/σ décomposée restent absents en amont, cf. contract moteur).
+ */
+function buildPressioDepouillement(o: Record<string, unknown>): PressioDepouillement {
+  const vol = asObj(o.volumes);
+  const ext = asObj(o.extrapolation);
+  const syn = asObj(o.synthese);
+  const courbeSrc = Array.isArray(o.courbe) ? o.courbe : [];
+  const courbe: PressioCourbePoint[] = courbeSrc.map((c) => {
+    const p = asObj(c);
+    const phase =
+      p.phase === 'Recompression' ||
+      p.phase === 'Pseudo-élast.' ||
+      p.phase === 'Plastique'
+        ? p.phase
+        : 'Recompression';
+    return {
+      p: num0(p.p),
+      pCorr: num0(p.pCorr),
+      v60: num0(p.v60),
+      d6030: num0(p.d6030),
+      phase,
+    };
+  });
+  return {
+    pf: num0(bar2mpa(o.pf)),
+    pE: num0(bar2mpa(o.pE)),
+    p0: num0(bar2mpa(o.p0)),
+    sigmaH0: num0(bar2mpa(o.sigmaH0)),
+    z: num0(o.z),
+    categorieDescription:
+      typeof o.categorieDescription === 'string' ? o.categorieDescription : '',
+    volumes: {
+      vE: num0(vol.vE),
+      v0: num0(vol.v0),
+      vf: num0(vol.vf),
+      vLim: num0(vol.vLim),
+    },
+    extrapolation: {
+      a: num0(ext.a),
+      b: num0(ext.b),
+      plmVLim: num0(bar2mpa(ext.plmVLim)),
+      plmAsymptote: num0(bar2mpa(ext.plmAsymptote)),
+      errV: finiteOrNull(ext.errV), // null si non défini (client « — »)
+    },
+    synthese: {
+      beta: num0(syn.beta),
+      mE: num0(scaleOrNull(syn.mE, 10)), // cm³/bar → cm³/MPa
+      // Plage auto en n° de ligne (indice 0-based + 1), comme « L1→L7 » du client.
+      plageAutoDebutL: num0(syn.plageAutoDebut) + 1,
+      plageAutoFinL: num0(syn.plageAutoFin) + 1,
+    },
+    courbe,
+  };
 }
 
 /**
@@ -1325,6 +1475,8 @@ function buildPressiometreRows(o: Record<string, unknown>): CalcOutputRow[] {
 function buildEtalonnageRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
   pushRow(rows, 'Vs — volume à l’origine (droite ajustée)', o.Vs, 'cm³');
+  pushRow(rows, 'Vs réel — 1er palier mesuré', o.vsReel, 'cm³');
+  pushRow(rows, 'V_pe = 1,2 × Vs réel', o.vPe, 'cm³');
   pushRow(rows, 'Pe — pression à V=1,2·Vs', o.Pe, 'bar');
   pushRow(rows, 'Pente d’air a (≠ coefficient de correction)', o.a, 'cm³/bar');
   const aNum = finiteOrNull(o.a);
@@ -1332,6 +1484,23 @@ function buildEtalonnageRows(o: Record<string, unknown>): CalcOutputRow[] {
   pushRow(rows, 'Coefficient de détermination R²', o.R2, '');
   pushRow(rows, 'RMS des résidus', o.rms, 'cm³');
   return rows;
+}
+
+/** PressioPro — ÉTALONNAGE : structure d'affichage (Vs réel, V_pe, table des résidus). */
+function buildEtalonnageStruct(
+  o: Record<string, unknown>,
+): NonNullable<PressioNormalized['etalonnage']> {
+  const src = Array.isArray(o.residus) ? o.residus : [];
+  const residus: PressioEtalonnageResidu[] = src.map((r) => {
+    const e = asObj(r);
+    return {
+      p: num0(e.p),
+      vMesure: num0(e.vMesure),
+      vAjuste: num0(e.vAjuste),
+      residu: num0(e.residu),
+    };
+  });
+  return { vsReel: num0(o.vsReel), vPe: num0(o.vPe), residus };
 }
 
 /**
@@ -1347,9 +1516,30 @@ function buildCalibrageRows(o: Record<string, unknown>): CalcOutputRow[] {
   const aNum = finiteOrNull(o.a);
   if (aNum !== null)
     pushRow(rows, 'Coefficient de calibrage a (indicatif)', aNum * 10, 'cm³/MPa');
+  // Coefficients de la courbe Pc = c0 + c1·V + c2·V² (AFFICHÉS par le client, « zéro écart »).
+  pushRow(rows, 'c₀ (constante)', o.c0, '');
+  pushRow(rows, 'c₁ (×V)', o.c1, '');
+  pushRow(rows, 'c₂ (×V²)', o.c2, '');
   pushRow(rows, 'Coefficient de détermination R²', o.R2, '');
   pushRow(rows, 'RMS des résidus', o.rms, 'bar');
   return rows;
+}
+
+/** PressioPro — CALIBRAGE : structure d'affichage (coefficients c0/c1/c2 + résidus). */
+function buildCalibrageStruct(
+  o: Record<string, unknown>,
+): NonNullable<PressioNormalized['calibrage']> {
+  const src = Array.isArray(o.residus) ? o.residus : [];
+  const residus: PressioCalibrageResidu[] = src.map((r) => {
+    const e = asObj(r);
+    return {
+      p: num0(e.p),
+      v60Mesure: num0(e.v60Mesure),
+      v60Ajuste: num0(e.v60Ajuste),
+      residu: num0(e.residu),
+    };
+  });
+  return { c0: num0(o.c0), c1: num0(o.c1), c2: num0(o.c2), residus };
 }
 
 /**
@@ -1438,19 +1628,34 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
   if (o.classe != null && typeof o.classe === 'object') {
     return { verdict: 'NA', rows: buildLaboRows(o) };
   }
-  // pressiomètre Ménard (dépouillement) : pL/EM/catégorie — pas de verdict (NA)
+  // pressiomètre Ménard (dépouillement) : pL/EM/catégorie — pas de verdict (NA).
+  // « Zéro écart » : les structures affichées (courbe, volumes, extrapolation, synthèse)
+  // partent dans `pressio.depouillement` (unités client) pour un rendu 1:1 du HTML.
   if ('categorie' in o && ('pL' in o || 'ratioEMpL' in o)) {
-    return { verdict: 'NA', rows: buildPressiometreRows(o) };
+    return {
+      verdict: 'NA',
+      rows: buildPressiometreRows(o),
+      pressio: { depouillement: buildPressioDepouillement(o) },
+    };
   }
   // PressioPro — ÉTALONNAGE : Vs + Pe (combinaison propre à l'étalonnage) — coefficients
-  // d'appareillage, pas de verdict (NA).
+  // d'appareillage, pas de verdict (NA). Structure (Vs réel, V_pe, résidus) dans `pressio`.
   if ('Vs' in o && 'Pe' in o) {
-    return { verdict: 'NA', rows: buildEtalonnageRows(o) };
+    return {
+      verdict: 'NA',
+      rows: buildEtalonnageRows(o),
+      pressio: { etalonnage: buildEtalonnageStruct(o) },
+    };
   }
   // PressioPro — CALIBRAGE : a + R² + rms sans Vs (rms est propre aux modules PressioPro
-  // d'appareillage) — coefficient de correction de volume, pas de verdict (NA).
+  // d'appareillage) — coefficient de correction de volume, pas de verdict (NA). Structure
+  // (c0/c1/c2, résidus) dans `pressio.calibrage`.
   if ('a' in o && 'R2' in o && 'rms' in o && !('Vs' in o)) {
-    return { verdict: 'NA', rows: buildCalibrageRows(o) };
+    return {
+      verdict: 'NA',
+      rows: buildCalibrageRows(o),
+      pressio: { calibrage: buildCalibrageStruct(o) },
+    };
   }
   // GEOPLAQUE — variantes (clés de diagnostic DISJOINTES du radier ACM et entre elles) :
   // axisymétrique (wc/wEdge), déformations planes (decolN+mMax), triangulaire (reactionMax+

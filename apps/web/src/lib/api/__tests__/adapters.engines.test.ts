@@ -133,6 +133,26 @@ const REAL_PRESSIOMETRE = {
   categorie: 'B',
   categorieLibelle: 'Sol mou (cat. B)',
   consolidation: 'Sol normalement consolidé',
+  // Sortie élargie « zéro écart » — valeurs internes (bar/cm³) telles que whitelistées.
+  pf: 2.3,
+  pE: 0.3,
+  p0: 1.1,
+  sigmaH0: 0.19,
+  z: 2,
+  categorieDescription: 'Argile molle, limon. 0,2 ≤ pL < 0,6 MPa.',
+  volumes: { vE: 23.6, v0: 69.2, vf: 128.6, vLim: 673.4 },
+  extrapolation: {
+    a: 0.014688,
+    b: -0.003007,
+    plmVLim: 4.3912,
+    plmAsymptote: 4.8851,
+    errV: 0.1326,
+  },
+  synthese: { beta: 1.5, mE: 49.5, plageAutoDebut: 0, plageAutoFin: 6 },
+  courbe: [
+    { p: 0.8, pCorr: 0.3, v60: 24, d6030: 2, phase: 'Recompression' },
+    { p: 2, pCorr: 1.5, v60: 89, d6030: 1, phase: 'Pseudo-élast.' },
+  ],
 };
 
 const REAL_RADIER = {
@@ -713,6 +733,37 @@ describe('adaptCalcResult — labo (classification GTR)', () => {
     expect(l).toMatch(/Angle de frottement/);
   });
 
+  it('« zéro écart » : module de finesse (mfq accolé), Nature ligne A, caveats et rNote affichés', () => {
+    const withReadouts = {
+      ...REAL_LABO,
+      mf: 2.41,
+      mfq: 'idéal',
+      natureLigneA: 'Argile (au-dessus ligne A)',
+      classe: {
+        ...REAL_LABO.classe,
+        caveats: [
+          'Distinction C1/C2 : heuristique provisoire — à confirmer avec l’abaque GTR.',
+        ],
+        rNote: ['Famille géologique : Granite', 'LA=25', 'MDE=18'],
+      },
+    };
+    const norm = normalizedOf('labo-classification-gtr', withReadouts);
+    const rows = norm.rows as CalcOutputRow[];
+    // Module de finesse avec qualificatif accolé (format client renderRecap).
+    const mfRow = rows.find((r) => r.label === 'Module de finesse');
+    expect(mfRow?.value).toBe('2.41 (idéal)');
+    // Nature vis-à-vis de la ligne A (readout Atterberg).
+    expect(rows.find((r) => r.label === 'Nature (ligne A)')?.value).toBe(
+      'Argile (au-dessus ligne A)',
+    );
+    // Encart « Points à vérifier » (caveats) + assistant famille R (rNote).
+    const s = JSON.stringify(norm);
+    expect(s).toContain('heuristique provisoire');
+    expect(rows.some((r) => r.label === 'Point à vérifier')).toBe(true);
+    expect(rows.some((r) => r.label === 'Assistant famille R')).toBe(true);
+    expect(s).toContain('Famille géologique : Granite');
+  });
+
   it('chemin de décision : desc + path (allowlistés) affichés ; warn et clés brutes JAMAIS', () => {
     // Décision confidentialité (avis ingenieur-securite) : desc (description normative
     // NF P 11-300) et path (seuils publics + valeurs déjà exposées) sont client-safe.
@@ -798,15 +849,43 @@ describe('adaptCalcResult — labo (classification GTR)', () => {
 });
 
 describe('adaptCalcResult — pressiomètre Ménard (dépouillement)', () => {
-  it('given categorie+pL, when adapté, then verdict NA + p_L en bar + catégorie textuelle', () => {
+  it('given categorie+pL, when adapté, then verdict NA + p_L en MPa (coller au KPI client) + catégorie textuelle', () => {
+    // CORRECTIF 14/07 : o.pL est interne en bar (contract.ts) ; le client affiche
+    // TOUJOURS p_L/p_L*/p_f* en MPa (kg4 renderResults) — l'ancien row (bar, non
+    // converti) divergeait des rows voisines (pf/pE/p0/σh0 déjà en MPa).
     const norm = normalizedOf('pressiometre-menard', REAL_PRESSIOMETRE);
     expect(norm.verdict).toBe('NA');
     const pl = (norm.rows as CalcOutputRow[]).find(
       (r) => r.label === 'Pression limite p_L',
     );
-    expect(pl?.unit).toBe('bar');
+    expect(pl?.unit).toBe('MPa');
+    expect(pl?.value).toBeCloseTo(0.43911, 6); // 4,3911 bar → 0,43911 MPa
+    const plNette = (norm.rows as CalcOutputRow[]).find(
+      (r) => r.label === 'Pression limite nette p_L*',
+    );
+    expect(plNette?.unit).toBe('MPa');
+    expect(plNette?.value).toBeCloseTo(0.42011, 6);
+    const pfNette = (norm.rows as CalcOutputRow[]).find(
+      (r) => r.label === 'Pression de fluage nette p_f*',
+    );
+    expect(pfNette?.unit).toBe('MPa');
+    expect(pfNette?.value).toBeCloseTo(0.211, 6);
     expect(labels(norm)).toMatch(/Catégorie de sol/);
     expect(JSON.stringify(norm)).toContain('Sol mou (cat. B)');
+  });
+
+  it('expose la méthode de p_L (direct/extrapolé — pLDirect whitelisté du contrat)', () => {
+    const norm = normalizedOf('pressiometre-menard', REAL_PRESSIOMETRE);
+    const methode = (norm.rows as CalcOutputRow[]).find((r) => r.label === 'p_L méthode');
+    expect(methode?.value).toBe('Extrapolé (§D.4.3.2)'); // REAL_PRESSIOMETRE.pLDirect = false
+    const direct = normalizedOf('pressiometre-menard', {
+      ...REAL_PRESSIOMETRE,
+      pLDirect: true,
+    });
+    const methodeDirect = (direct.rows as CalcOutputRow[]).find(
+      (r) => r.label === 'p_L méthode',
+    );
+    expect(methodeDirect?.value).toBe('Direct (mesuré)');
   });
 
   it('affiche α (Ménard) et le module d Young Ey = EM/α (décision titulaire : intermédiaires publics)', () => {
@@ -828,6 +907,44 @@ describe('adaptCalcResult — pressiomètre Ménard (dépouillement)', () => {
     // clés brutes spreadées : le drapeau pLDirect et le CODE catégorie restent masqués.
     const norm = normalizedOf('pressiometre-menard', REAL_PRESSIOMETRE);
     expectNoLeak(norm, ['pLDirect', '"categorie"']);
+  });
+
+  it('« zéro écart » : structure pressio.depouillement en UNITÉS CLIENT (bar→MPa, mE×10, plage Ln)', () => {
+    const norm = normalizedOf('pressiometre-menard', REAL_PRESSIOMETRE);
+    const dep = norm.pressio?.depouillement;
+    expect(dep).toBeDefined();
+    if (!dep) return;
+    // pf/pE/p0/σh0 convertis bar→MPa (×0,1) comme le client.
+    expect(dep.pf).toBeCloseTo(0.23, 6);
+    expect(dep.pE).toBeCloseTo(0.03, 6);
+    expect(dep.sigmaH0).toBeCloseTo(0.019, 6);
+    expect(dep.z).toBe(2);
+    expect(dep.categorieDescription).toMatch(/Argile molle/);
+    // Volumes en cm³ (tel quel).
+    expect(dep.volumes.vLim).toBe(673.4);
+    // Extrapolation : A/B bruts, pLM en MPa (×0,1).
+    expect(dep.extrapolation.a).toBeCloseTo(0.014688, 6);
+    expect(dep.extrapolation.plmVLim).toBeCloseTo(0.43912, 6);
+    expect(dep.extrapolation.errV).toBeCloseTo(0.1326, 6);
+    // Synthèse : mE ×10 en cm³/MPa, plage auto en n° de ligne (indice+1).
+    expect(dep.synthese.mE).toBeCloseTo(495, 6);
+    expect(dep.synthese.plageAutoDebutL).toBe(1);
+    expect(dep.synthese.plageAutoFinL).toBe(7);
+    // Courbe : colonnes + phase verbatim.
+    expect(dep.courbe).toHaveLength(2);
+    expect(dep.courbe[0]).toEqual({
+      p: 0.8,
+      pCorr: 0.3,
+      v60: 24,
+      d6030: 2,
+      phase: 'Recompression',
+    });
+    // Les rows KPI affichent aussi pf/pE en MPa.
+    const pfRow = (norm.rows as CalcOutputRow[]).find(
+      (r) => r.label === 'Pression de fluage p_f',
+    );
+    expect(pfRow?.unit).toBe('MPa');
+    expect(pfRow?.value).toBeCloseTo(0.23, 6);
   });
 });
 
@@ -1059,8 +1176,18 @@ describe('adaptCalcResult — pieux : libellé Rc;d vs Rt;d selon sens (MINEUR-2
 });
 
 describe('adaptCalcResult — PressioPro étalonnage (Vs/Pe/a)', () => {
-  // Sortie SERVEUR whitelistée (PressioEtalonnageOutputSchema) : Vs/Pe/a/R2/rms.
-  const REAL_ETAL = { Vs: 520.4, Pe: 0.83, a: 30.1, R2: 0.9997, rms: 0.42 };
+  // Sortie SERVEUR whitelistée (PressioEtalonnageOutputSchema) : Vs/Pe/a/R2/rms +
+  // (« zéro écart » 14/07) vsReel/vPe/residus.
+  const REAL_ETAL = {
+    Vs: 520.4,
+    Pe: 0.83,
+    a: 30.1,
+    R2: 0.9997,
+    rms: 0.42,
+    vsReel: 525,
+    vPe: 630,
+    residus: [{ p: 0.2, vMesure: 525, vAjuste: 508.18, residu: 16.82 }],
+  };
 
   it('given une sortie {Vs, Pe, a}, when adapté, then verdict NA + rows Vs/Pe/a', () => {
     const norm = normalizedOf('pressio-etalonnage', REAL_ETAL);
@@ -1075,7 +1202,22 @@ describe('adaptCalcResult — PressioPro étalonnage (Vs/Pe/a)', () => {
     expect(aMPa?.value).toBeCloseTo(301, 6);
   });
 
-  it('ne fuite aucun intermédiaire de régression même s’il survivait au strip serveur', () => {
+  it('« zéro écart » : Vs réel / V_pe en rows + structure pressio.etalonnage (résidus)', () => {
+    const norm = normalizedOf('pressio-etalonnage', REAL_ETAL);
+    expect(labels(norm)).toMatch(/Vs réel/);
+    expect(labels(norm)).toMatch(/V_pe/);
+    const etal = norm.pressio?.etalonnage;
+    expect(etal).toBeDefined();
+    expect(etal?.vsReel).toBe(525);
+    expect(etal?.vPe).toBe(630);
+    expect(etal?.residus).toEqual([
+      { p: 0.2, vMesure: 525, vAjuste: 508.18, residu: 16.82 },
+    ]);
+  });
+
+  it('ne fuite aucune CLÉ BRUTE de régression même si elle survivait au strip serveur', () => {
+    // vsReel/vPe/residus sont RENOMMÉS : les clés SOURCE pts/residuals/V_pe/Vs_reel
+    // restent absentes (preuve de projection champ à champ).
     const leaky = {
       ...REAL_ETAL,
       pts: [{ p: 0, v: 520 }],
@@ -1089,8 +1231,17 @@ describe('adaptCalcResult — PressioPro étalonnage (Vs/Pe/a)', () => {
 });
 
 describe('adaptCalcResult — PressioPro calibrage (a)', () => {
-  // Sortie SERVEUR whitelistée (PressioCalibrageOutputSchema) : a/R2/rms.
-  const REAL_CALIB = { a: 0.48, R2: 0.9991, rms: 0.06 };
+  // Sortie SERVEUR whitelistée (PressioCalibrageOutputSchema) : a/R2/rms +
+  // (« zéro écart » 14/07) c0/c1/c2/residus.
+  const REAL_CALIB = {
+    a: 0.48,
+    R2: 0.9991,
+    rms: 0.06,
+    c0: 0.5190553,
+    c1: 0.473105,
+    c2: 0.000542,
+    residus: [{ p: 1, v60Mesure: 1, v60Ajuste: 0.99, residu: 0.01 }],
+  };
 
   it('given une sortie {a, R2, rms} sans Vs, when adapté, then verdict NA + coefficient a', () => {
     const norm = normalizedOf('pressio-calibrage', REAL_CALIB);
@@ -1102,16 +1253,22 @@ describe('adaptCalcResult — PressioPro calibrage (a)', () => {
     expect(aMPa?.value).toBeCloseTo(4.8, 6);
   });
 
-  it('ne fuite jamais les coefficients polynomiaux c0/c1/c2 (méthode)', () => {
-    const leaky = {
-      ...REAL_CALIB,
-      c0: 0.1,
-      c1: 0.4,
-      c2: -0.002,
-      pts: [{ p: 1, v: 1 }],
-      residuals: [],
-    };
+  it('« zéro écart » : c0/c1/c2 EXPOSÉS (équation client) en rows + structure pressio.calibrage', () => {
+    // Décision titulaire 14/07 : le client AFFICHE l'équation Pc=c0+c1·V+c2·V² → exposés.
+    const norm = normalizedOf('pressio-calibrage', REAL_CALIB);
+    const rows = norm.rows as CalcOutputRow[];
+    expect(rows.find((r) => r.label === 'c₀ (constante)')?.value).toBe(0.5190553);
+    expect(rows.find((r) => r.label === 'c₁ (×V)')?.value).toBe(0.473105);
+    expect(rows.find((r) => r.label === 'c₂ (×V²)')?.value).toBe(0.000542);
+    const cal = norm.pressio?.calibrage;
+    expect(cal).toBeDefined();
+    expect(cal?.c0).toBe(0.5190553);
+    expect(cal?.residus).toEqual([{ p: 1, v60Mesure: 1, v60Ajuste: 0.99, residu: 0.01 }]);
+  });
+
+  it('ne fuite jamais les CLÉS BRUTES pts/residuals (non affichées / renommées)', () => {
+    const leaky = { ...REAL_CALIB, pts: [{ p: 1, v: 1 }], residuals: [] };
     const norm = normalizedOf('pressio-calibrage', leaky);
-    expectNoLeak(norm, ['"c0"', '"c1"', '"c2"', '"pts"', '"residuals"']);
+    expectNoLeak(norm, ['"pts"', '"residuals"']);
   });
 });

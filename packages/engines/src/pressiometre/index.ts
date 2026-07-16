@@ -52,6 +52,55 @@ export { PRESSIOMETRE_FIXTURES, type PressiometreFixture } from './test-fixtures
 function fin(x: unknown): x is number {
   return typeof x === 'number' && Number.isFinite(x);
 }
+/** Valeur finie sinon 0 (grandeur toujours presente). */
+function n0(x: unknown): number {
+  return fin(x) ? x : 0;
+}
+/** Valeur finie sinon null (grandeur optionnelle — ex. errV = Infinity -> « — »). */
+function nOrNull(x: unknown): number | null {
+  return fin(x) ? x : null;
+}
+/** Indice entier >= 0 sinon 0. */
+function idx0(x: unknown): number {
+  return typeof x === 'number' && Number.isInteger(x) && x >= 0 ? x : 0;
+}
+
+type CourbePoint = {
+  p: number;
+  pCorr: number;
+  v60: number;
+  d6030: number;
+  phase: 'Recompression' | 'Pseudo-élast.' | 'Plastique';
+};
+
+/**
+ * COURBE CORRIGEE client-safe : colonnes EXACTES de la table « Mesures corrigees »
+ * (P brut, P corr., V60 corr., Δ60/30, Phase — cf. HTML L.1247-1262). On ne lit QUE
+ * ces 5 grandeurs de chaque palier `c` : la pression nette pS et les volumes corriges
+ * v15/v30 (non affiches par le client) ne sont JAMAIS repris. La PHASE est derivee
+ * verbatim des indices de plage (`R.pfI`=p0, `R.plmI`=pf — cf. engine `_res`).
+ */
+function buildCourbe(R: Record<string, unknown>): CourbePoint[] {
+  const C = Array.isArray(R.C) ? R.C : [];
+  const p0Idx = idx0(R.pfI); // _res.pfI porte l'indice de p0 (debut pseudo-elastique)
+  const pfIdx = idx0(R.plmI); // _res.plmI porte l'indice de pf (fin zone plate)
+  const out: CourbePoint[] = [];
+  for (let i = 0; i < C.length; i++) {
+    const c = C[i] as Record<string, unknown>;
+    if (!c || typeof c !== 'object') continue;
+    // Parite HTML L.1255-1258 : i<p0 -> Recompression ; i<=pf -> Pseudo-elast. ; sinon Plastique.
+    const phase: CourbePoint['phase'] =
+      i < p0Idx ? 'Recompression' : i <= pfIdx ? 'Pseudo-élast.' : 'Plastique';
+    out.push({
+      p: n0(c.pRaw),
+      pCorr: n0(c.p),
+      v60: n0(c.v60),
+      d6030: n0(c.dv),
+      phase,
+    });
+  }
+  return out;
+}
 
 /**
  * ETIQUETTES d'INTERMEDIAIRES CONFIDENTIELS susceptibles d'apparaitre dans le
@@ -108,7 +157,11 @@ function fin(x: unknown): x is number {
 // dans un warning : pL/pL*/pf*/EM/ratio. Distinguables apres normalisation : 'pl'
 // (expose) vs 'pe'/'p0'/'pf' (calage) ; 'em' (expose) vs 'me' (pente).
 const BENIGN_VALUE_LABELS: ReadonlySet<string> = new Set<string>([
-  'pl', 'plnette', 'pfnette', 'em', 'ratioempl',
+  'pl',
+  'plnette',
+  'pfnette',
+  'em',
+  'ratioempl',
 ]);
 
 /** Normalise une etiquette : minuscule + non-alphanumeriques retires (fail-closed). */
@@ -185,6 +238,16 @@ function shapeOutput(R: Record<string, unknown>): unknown {
       categorie: '',
       categorieLibelle: '',
       consolidation: '',
+      pf: 0,
+      pE: 0,
+      p0: 0,
+      sigmaH0: 0,
+      z: 0,
+      categorieDescription: '',
+      volumes: { vE: 0, v0: 0, vf: 0, vLim: 0 },
+      extrapolation: { a: 0, b: 0, plmVLim: 0, plmAsymptote: 0, errV: null },
+      synthese: { beta: 0, mE: 0, plageAutoDebut: 0, plageAutoFin: 0 },
+      courbe: [],
     };
   }
 
@@ -210,6 +273,56 @@ function shapeOutput(R: Record<string, unknown>): unknown {
     categorie: typeof R.cat === 'string' ? R.cat : '',
     categorieLibelle: typeof R.catName === 'string' ? R.catName : '',
     consolidation: typeof R.consol === 'string' ? R.consol : '',
+    // --- SORTIE ELARGIE « zero ecart » — valeurs AFFICHEES par renderResults, en
+    //     UNITES INTERNES (bar/cm³/coeff bruts). Construction champ a champ (aucun
+    //     spread) : sigV0/sig'v0/u0, pS/v15/v30 par palier, _slopes/iE, `gen` ne sont
+    //     JAMAIS lus -> jamais exposes (cf. test negatif §8). ---
+    pf: n0(R.Pf),
+    pE: n0(R.pE),
+    p0: n0(R.p0),
+    sigmaH0: n0(R.sigH0),
+    z: n0(R.z),
+    categorieDescription: typeof R.catDesc === 'string' ? R.catDesc : '',
+    volumes: {
+      vE: n0(R.VE),
+      v0: n0(R.V0c),
+      vf: n0(R.Vf),
+      vLim: n0(R.VsP2V1),
+    },
+    extrapolation: readExtrapolation(R.ext),
+    synthese: {
+      beta: n0(R.beta),
+      mE: n0(R.mE),
+      plageAutoDebut: idx0(R.auto_p0I),
+      plageAutoFin: idx0(R.auto_pfI),
+    },
+    courbe: buildCourbe(R),
+  };
+}
+
+/**
+ * Lit UNIQUEMENT les 5 grandeurs AFFICHEES de l'extrapolation par courbe inverse
+ * (A, B, pLM au V conventionnel, pLM asymptote, ecart errV — encart client
+ * L.1199-1203). La fonction `gen` (closure de regression) et le reste de `ext` ne
+ * sont PAS lus. errV non fini -> null (le client affiche « — »).
+ */
+function readExtrapolation(ext: unknown): {
+  a: number;
+  b: number;
+  plmVLim: number;
+  plmAsymptote: number;
+  errV: number | null;
+} {
+  const recip =
+    ext && typeof ext === 'object' && 'recip' in ext
+      ? ((ext as Record<string, unknown>).recip as Record<string, unknown>)
+      : undefined;
+  return {
+    a: n0(recip?.A),
+    b: n0(recip?.B),
+    plmVLim: n0(recip?.PLM),
+    plmAsymptote: n0(recip?.PLMasym),
+    errV: nOrNull(recip?.errV),
   };
 }
 

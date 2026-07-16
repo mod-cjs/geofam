@@ -15,6 +15,14 @@ import { ChevronRight, ChevronLeft, Search, Check } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition, useEffect, useCallback } from 'react';
 
+import {
+  ALL_ENTITLEMENTS,
+  PACK_NAMES,
+  PACK_PRESETS,
+  customPackWarning,
+  isCustomizedVsPack,
+  type PackName,
+} from '@/components/admin/pack-presets';
 import { Button } from '@/components/ui/Button';
 import {
   clientSearchUsers,
@@ -47,6 +55,8 @@ interface WizardState extends WizardOwnerState {
   orgSlug: string;
   // Étape 3 — Abo
   subPack: string;
+  /** Modules débloqués — pré-remplis par le pack (PACK_PRESETS), éditables ensuite. */
+  subEntitlements: string[];
   subQuota: string;
   subDateDebut: string;
   subDateFin: string;
@@ -83,22 +93,7 @@ export async function resolveOwnerUserId(
   throw new Error("Impossible de déterminer l'OWNER.");
 }
 
-const PACKS = ['ROUTES', 'FONDATIONS', 'COMPLETE'] as const;
-
-// Slugs de GATE du calcul (= vérifiés par SubscriptionGuard), PAS les noms de logiciels.
-// Bug corrigé : casagrande/geoplaque/pressiopro/fastlab (labels) -> pieux/radier/pressiometre/
-// labo (slugs) ; sinon une org créée avec FONDATIONS/COMPLETE ne pouvait pas calculer ces 4.
-const PACK_ENTITLEMENTS: Record<string, string[]> = {
-  ROUTES: ['burmister'],
-  FONDATIONS: ['terzaghi', 'pieux', 'radier', 'pressiometre'],
-  COMPLETE: ['burmister', 'terzaghi', 'pieux', 'radier', 'pressiometre', 'labo'],
-};
-
-const STEP_LABELS = [
-  'Compte OWNER',
-  'Organisation',
-  'Abonnement',
-];
+const STEP_LABELS = ['Compte OWNER', 'Organisation', 'Abonnement'];
 
 // ---------------------------------------------------------------------------
 // Composant principal
@@ -123,6 +118,7 @@ export default function NewOrgPage() {
     orgName: '',
     orgSlug: '',
     subPack: 'COMPLETE',
+    subEntitlements: [...PACK_PRESETS.COMPLETE],
     subQuota: '100',
     subDateDebut: today(),
     subDateFin: oneYearFromToday(),
@@ -140,28 +136,25 @@ export default function NewOrgPage() {
     if (derived && !state.orgSlug) {
       setState((s) => ({ ...s, orgSlug: derived }));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Dépendance volontairement limitée à orgName (dérivation one-shot du slug).
   }, [state.orgName]);
 
   // ---------------------------------------------------------------------------
   // Étape 1 — Recherche user
   // ---------------------------------------------------------------------------
 
-  const searchUsers = useCallback(
-    async (q: string) => {
-      if (!q.trim()) {
-        setState((s) => ({ ...s, ownerSearchResults: [] }));
-        return;
-      }
-      try {
-        const results = await clientSearchUsers(q);
-        setState((s) => ({ ...s, ownerSearchResults: results }));
-      } catch {
-        // Recherche non bloquante
-      }
-    },
-    [],
-  );
+  const searchUsers = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setState((s) => ({ ...s, ownerSearchResults: [] }));
+      return;
+    }
+    try {
+      const results = await clientSearchUsers(q);
+      setState((s) => ({ ...s, ownerSearchResults: results }));
+    } catch {
+      // Recherche non bloquante
+    }
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -180,7 +173,7 @@ export default function NewOrgPage() {
     if (state.ownerMode === 'search') {
       if (!state.ownerSelected) return 'Sélectionnez un utilisateur existant.';
     } else {
-      if (!state.newUserEmail.trim()) return 'L\'adresse email est requise.';
+      if (!state.newUserEmail.trim()) return "L'adresse email est requise.";
       if (!state.newUserPassword.trim() || state.newUserPassword.length < 8)
         return 'Le mot de passe doit contenir au moins 8 caractères.';
       if (!state.newUserFullName.trim()) return 'Le nom complet est requis.';
@@ -189,7 +182,7 @@ export default function NewOrgPage() {
   }
 
   function validateStep1(): string | null {
-    if (!state.orgName.trim()) return 'Le nom de l\'organisation est requis.';
+    if (!state.orgName.trim()) return "Le nom de l'organisation est requis.";
     if (!state.orgSlug.trim()) return 'Le slug est requis.';
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(state.orgSlug))
       return 'Le slug doit contenir uniquement des lettres minuscules, chiffres et tirets.';
@@ -260,7 +253,7 @@ export default function NewOrgPage() {
           subscription: {
             pack: state.subPack,
             quota: parseInt(state.subQuota, 10),
-            entitlements: PACK_ENTITLEMENTS[state.subPack] ?? [],
+            entitlements: state.subEntitlements,
             dateDebut: new Date(state.subDateDebut).toISOString(),
             dateFin: new Date(state.subDateFin).toISOString(),
           },
@@ -280,7 +273,9 @@ export default function NewOrgPage() {
             : 'Erreur inattendue.';
         // Indice si le compte a été créé mais l'org a échoué (reprise possible)
         if (state.ownerMode === 'create' && state.createdUserId) {
-          setError(`${msg} — Le compte OWNER a déjà été créé, corrigez les données de l'organisation puis relancez.`);
+          setError(
+            `${msg} — Le compte OWNER a déjà été créé, corrigez les données de l'organisation puis relancez.`,
+          );
         } else {
           setError(msg);
         }
@@ -358,24 +353,9 @@ export default function NewOrgPage() {
         )}
 
         {/* Contenu de l'étape */}
-        {step === 0 && (
-          <Step0
-            state={state}
-            setState={setState}
-          />
-        )}
-        {step === 1 && (
-          <Step1
-            state={state}
-            setState={setState}
-          />
-        )}
-        {step === 2 && (
-          <Step2
-            state={state}
-            setState={setState}
-          />
-        )}
+        {step === 0 && <Step0 state={state} setState={setState} />}
+        {step === 1 && <Step1 state={state} setState={setState} />}
+        {step === 2 && <Step2 state={state} setState={setState} />}
 
         {/* Navigation */}
         <div
@@ -410,7 +390,7 @@ export default function NewOrgPage() {
               loading={isPending}
               disabled={!!success}
             >
-              {isPending ? 'Création…' : 'Créer l\'organisation'}
+              {isPending ? 'Création…' : "Créer l'organisation"}
             </Button>
           )}
         </div>
@@ -492,7 +472,8 @@ function StepIndicator({ current, steps }: { current: number; steps: string[] })
                 style={{
                   flex: 1,
                   height: 1,
-                  background: i < current ? 'var(--status-pass-tx)' : 'var(--border-subtle)',
+                  background:
+                    i < current ? 'var(--status-pass-tx)' : 'var(--border-subtle)',
                   margin: '0 4px',
                 }}
               />
@@ -535,7 +516,9 @@ function Step0({
       <div style={{ display: 'flex', gap: 8 }}>
         <button
           type="button"
-          onClick={() => setState((s) => ({ ...s, ownerMode: 'search', ownerSelected: null }))}
+          onClick={() =>
+            setState((s) => ({ ...s, ownerMode: 'search', ownerSelected: null }))
+          }
           style={{
             padding: '5px 14px',
             borderRadius: 'var(--radius-base)',
@@ -552,7 +535,9 @@ function Step0({
         </button>
         <button
           type="button"
-          onClick={() => setState((s) => ({ ...s, ownerMode: 'create', ownerSelected: null }))}
+          onClick={() =>
+            setState((s) => ({ ...s, ownerMode: 'create', ownerSelected: null }))
+          }
           style={{
             padding: '5px 14px',
             borderRadius: 'var(--radius-base)',
@@ -591,9 +576,7 @@ function Step0({
               aria-label="Rechercher un utilisateur par email ou nom"
               placeholder="Email ou nom…"
               value={state.ownerQuery}
-              onChange={(e) =>
-                setState((s) => ({ ...s, ownerQuery: e.target.value }))
-              }
+              onChange={(e) => setState((s) => ({ ...s, ownerQuery: e.target.value }))}
               style={{
                 width: '100%',
                 height: 36,
@@ -661,7 +644,8 @@ function Step0({
                       }}
                       onMouseOver={(e) => {
                         if (!alreadyInOrg) {
-                          (e.currentTarget as HTMLElement).style.background = 'var(--row-hover-bg)';
+                          (e.currentTarget as HTMLElement).style.background =
+                            'var(--row-hover-bg)';
                         }
                       }}
                       onMouseOut={(e) => {
@@ -669,7 +653,11 @@ function Step0({
                       }}
                     >
                       <div
-                        style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--text-primary)' }}
+                        style={{
+                          fontSize: 'var(--text-sm)',
+                          fontWeight: 500,
+                          color: 'var(--text-primary)',
+                        }}
                       >
                         {u.fullName}
                         {alreadyInOrg && (
@@ -686,7 +674,9 @@ function Step0({
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+                      <div
+                        style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}
+                      >
                         {u.email}
                       </div>
                     </button>
@@ -718,14 +708,18 @@ function Step0({
                 >
                   {state.ownerSelected.fullName}
                 </div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--status-pass-tx)' }}>
+                <div
+                  style={{ fontSize: 'var(--text-xs)', color: 'var(--status-pass-tx)' }}
+                >
                   {state.ownerSelected.email}
                 </div>
               </div>
               <button
                 type="button"
                 aria-label="Changer de sélection"
-                onClick={() => setState((s) => ({ ...s, ownerSelected: null, ownerQuery: '' }))}
+                onClick={() =>
+                  setState((s) => ({ ...s, ownerSelected: null, ownerQuery: '' }))
+                }
                 style={{
                   background: 'none',
                   border: 'none',
@@ -812,7 +806,9 @@ function Step1({
       <Field
         label="Slug (identifiant URL)"
         value={state.orgSlug}
-        onChange={(v) => setState((s) => ({ ...s, orgSlug: v.toLowerCase().replace(/[^a-z0-9-]/g, '') }))}
+        onChange={(v) =>
+          setState((s) => ({ ...s, orgSlug: v.toLowerCase().replace(/[^a-z0-9-]/g, '') }))
+        }
         placeholder="bureau-etudes-routes-dakar"
         hint="Lettres minuscules, chiffres et tirets uniquement."
         monospace
@@ -849,14 +845,27 @@ function Step2({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <label
           htmlFor="pack"
-          style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--text-secondary)' }}
+          style={{
+            fontSize: 'var(--text-sm)',
+            fontWeight: 500,
+            color: 'var(--text-secondary)',
+          }}
         >
           Pack
         </label>
         <select
           id="pack"
           value={state.subPack}
-          onChange={(e) => setState((s) => ({ ...s, subPack: e.target.value }))}
+          onChange={(e) => {
+            // Choisir un pack COCHE automatiquement ses modules (remplace la
+            // sélection courante) — décision titulaire 14/07. Reste éditable après.
+            const nextPack = e.target.value;
+            setState((s) => ({
+              ...s,
+              subPack: nextPack,
+              subEntitlements: [...(PACK_PRESETS[nextPack as PackName] ?? [])],
+            }));
+          }}
           style={{
             height: 36,
             padding: '0 28px 0 10px',
@@ -873,16 +882,72 @@ function Step2({
             outline: 'none',
           }}
         >
-          {PACKS.map((p) => (
+          {PACK_NAMES.map((p) => (
             <option key={p} value={p}>
               {p}
             </option>
           ))}
         </select>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
-          Modules inclus : {(PACK_ENTITLEMENTS[state.subPack] ?? []).join(', ')}
-        </div>
       </div>
+
+      {/* Modules débloqués — pré-remplis par le pack, éditables ensuite */}
+      <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
+        <legend
+          style={{
+            fontSize: 'var(--text-sm)',
+            fontWeight: 500,
+            color: 'var(--text-secondary)',
+            marginBottom: 6,
+            padding: 0,
+          }}
+        >
+          Modules débloqués
+        </legend>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {ALL_ENTITLEMENTS.map((e) => (
+            <label
+              key={e.slug}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: 'pointer',
+                fontSize: 'var(--text-sm)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={state.subEntitlements.includes(e.slug)}
+                onChange={() =>
+                  setState((s) => {
+                    const has = s.subEntitlements.includes(e.slug);
+                    return {
+                      ...s,
+                      subEntitlements: has
+                        ? s.subEntitlements.filter((x) => x !== e.slug)
+                        : [...s.subEntitlements, e.slug],
+                    };
+                  })
+                }
+              />
+              {e.label}
+            </label>
+          ))}
+        </div>
+        {isCustomizedVsPack(state.subPack, state.subEntitlements) && (
+          <p
+            role="status"
+            style={{
+              fontSize: 'var(--text-xs)',
+              color: 'var(--status-warn-tx, #92650a)',
+              margin: '8px 0 0',
+            }}
+          >
+            {customPackWarning(state.subPack)}
+          </p>
+        )}
+      </fieldset>
 
       <Field
         label="Quota (unités de calcul)"
@@ -916,14 +981,15 @@ function Step2({
           lineHeight: 1.6,
         }}
       >
-        <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: 4 }}>
+        <strong
+          style={{ color: 'var(--text-primary)', display: 'block', marginBottom: 4 }}
+        >
           Récapitulatif
         </strong>
-        Pack <strong>{state.subPack}</strong> · Quota{' '}
-        <strong>{state.subQuota}</strong> unités
+        Pack <strong>{state.subPack}</strong> · Quota <strong>{state.subQuota}</strong>{' '}
+        unités
         <br />
-        Du <strong>{state.subDateDebut}</strong> au{' '}
-        <strong>{state.subDateFin}</strong>
+        Du <strong>{state.subDateDebut}</strong> au <strong>{state.subDateFin}</strong>
       </div>
     </div>
   );
@@ -943,13 +1009,28 @@ interface FieldProps {
   monospace?: boolean;
 }
 
-function Field({ label, value, onChange, placeholder, type = 'text', hint, monospace }: FieldProps) {
-  const id = label.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = 'text',
+  hint,
+  monospace,
+}: FieldProps) {
+  const id = label
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       <label
         htmlFor={id}
-        style={{ fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--text-secondary)' }}
+        style={{
+          fontSize: 'var(--text-sm)',
+          fontWeight: 500,
+          color: 'var(--text-secondary)',
+        }}
       >
         {label}
       </label>
@@ -980,7 +1061,9 @@ function Field({ label, value, onChange, placeholder, type = 'text', hint, monos
         }}
       />
       {hint && (
-        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{hint}</span>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+          {hint}
+        </span>
       )}
     </div>
   );

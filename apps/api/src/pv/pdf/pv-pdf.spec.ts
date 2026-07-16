@@ -563,6 +563,172 @@ describe('PV labo — complétude d’affichage des essais (#106)', () => {
 });
 
 /**
+ * PV labo / FASTLAB — correctifs de présentation (audit ADR 0014, 14/07). Tous les
+ * champs testés sont DÉJÀ dans la sortie scellée (whitelistés au sceau) : le PV les
+ * étiquetait mal (essai IPI rendu « Indice CBR »), les rendait illisibles (k ~ 1e-9
+ * cm/s en notation fixe → « 0,00000000 ») ou ne les rendait pas du tout (qualificatif
+ * du module de finesse `mfq`, assistant famille R rocheuse `rNote`). Miroir du
+ * dépouillement client FASTLAB7 (renderRecap / renderVerdict). Plus une anticipation
+ * TOLÉRANTE d'un futur champ `caveats` (chantier moteur parallèle) : rendu si présent,
+ * absent sinon.
+ */
+describe('PV labo — correctifs de présentation FASTLAB (ADR 0014, 14/07)', () => {
+  const prevSecret = process.env.PV_SIGNING_SECRET;
+  beforeAll(() => {
+    process.env.PV_SIGNING_SECRET = SECRET;
+  });
+  afterAll(() => {
+    if (prevSecret === undefined) delete process.env.PV_SIGNING_SECRET;
+    else process.env.PV_SIGNING_SECRET = prevSecret;
+  });
+
+  const makeLaboPv = (output: Record<string, unknown>): OfficialPv =>
+    makeSealedPv({
+      engineId: 'labo-classification-gtr',
+      output: { erreur: null, warnings: [], ...output },
+    });
+  const laboContent = (output: Record<string, unknown>): unknown =>
+    buildPvDocDefinition(makeLaboPv(output)).content;
+
+  // — Correctif 1 : libellé CBR vs IPI selon cbrType (essai IPI mal étiqueté « CBR »).
+  it('given cbrType=ipi when PV rendu then étiquette « IPI (Indice Portant Immédiat) », pas « Indice CBR »', () => {
+    const content = laboContent({ cbr: 12, cbrType: 'ipi' });
+    expect(findRowValue(content, 'IPI (Indice Portant Immédiat)')?.value).toBe(
+      '12',
+    );
+    expect(findRowValue(content, 'Indice CBR')).toBeNull();
+  });
+
+  it('given cbrType=cbr when PV rendu then étiquette « Indice CBR »', () => {
+    const content = laboContent({ cbr: 12, cbrType: 'cbr' });
+    expect(findRowValue(content, 'Indice CBR')?.value).toBe('12');
+    expect(findRowValue(content, 'IPI (Indice Portant Immédiat)')).toBeNull();
+  });
+
+  it('given cbrType absent when PV rendu then étiquette « Indice CBR » par défaut', () => {
+    const content = laboContent({ cbr: 12 });
+    expect(findRowValue(content, 'Indice CBR')?.value).toBe('12');
+  });
+
+  // — Correctif 2 : perméabilité k en notation scientifique (notation fixe → 0 illisible).
+  it('given k=1e-9 when PV rendu then « 1,00e-9 cm/s » (et JAMAIS « 0,00000000 »)', () => {
+    const pv = makeLaboPv({ k: 1e-9 });
+    expect(
+      findRowValue(buildPvDocDefinition(pv).content, 'Perméabilité k')?.value,
+    ).toBe('1,00e-9 cm/s');
+    expect(collectPvPdfText(pv)).not.toContain('0,00000000');
+  });
+
+  it('given k=1.2e-7 when PV rendu then notation scientifique fr-FR', () => {
+    expect(
+      findRowValue(laboContent({ k: 1.2e-7 }), 'Perméabilité k')?.value,
+    ).toBe('1,20e-7 cm/s');
+  });
+
+  it('given k=0 when PV rendu then « 0,00e+0 cm/s » (borne)', () => {
+    expect(findRowValue(laboContent({ k: 0 }), 'Perméabilité k')?.value).toBe(
+      '0,00e+0 cm/s',
+    );
+  });
+
+  it('given k absent when PV rendu then la ligne perméabilité est omise', () => {
+    expect(findRowValue(laboContent({ Cu: 10 }), 'Perméabilité k')).toBeNull();
+  });
+
+  // — Correctif 3 : qualificatif du module de finesse (mfq) — jamais rendu jusqu'ici.
+  it('given mf=2.41 & mfq=idéal when PV rendu then « 2,41 (idéal) »', () => {
+    expect(
+      findRowValue(laboContent({ mf: 2.41, mfq: 'idéal' }), 'Module de finesse')
+        ?.value,
+    ).toBe('2,41 (idéal)');
+  });
+
+  it('given mf sans mfq when PV rendu then valeur seule, sans parenthèse', () => {
+    expect(
+      findRowValue(laboContent({ mf: 3.1 }), 'Module de finesse')?.value,
+    ).toBe('3,1');
+  });
+
+  it('given mfq hors référentiel when PV rendu then qualificatif écarté (fail-closed)', () => {
+    expect(
+      findRowValue(
+        laboContent({ mf: 2.41, mfq: 'coefficient EF secret' }),
+        'Module de finesse',
+      )?.value,
+    ).toBe('2,41');
+  });
+
+  // — Correctif 4 : assistant famille R rocheuse (classe.rNote) — jamais rendu jusqu'ici.
+  const laboClasse = (rNote: unknown): Record<string, unknown> => ({
+    classe: {
+      fam: '',
+      code: '',
+      full: '',
+      desc: '',
+      path: [],
+      warn: [],
+      etat: null,
+      stApplies: false,
+      rNote,
+    },
+  });
+
+  it('given classe.rNote présent when PV rendu then ligne « Assistant famille R » avec familles + LA/MDE', () => {
+    const pv = makeLaboPv(
+      laboClasse(['Famille géologique : R2', 'LA=25', 'MDE=18']),
+    );
+    const text = collectPvPdfText(pv);
+    expect(text).toContain('Assistant famille R (rocheux)');
+    expect(text).toContain('Famille géologique : R2 · LA=25 · MDE=18');
+  });
+
+  it('given classe.rNote null when PV rendu then aucune ligne famille R', () => {
+    expect(collectPvPdfText(makeLaboPv(laboClasse(null)))).not.toContain(
+      'Assistant famille R',
+    );
+  });
+
+  it('given rNote avec entrée hors gabarit when PV rendu then entrée écartée (fail-closed)', () => {
+    const text = collectPvPdfText(
+      makeLaboPv(
+        laboClasse(['coefficient EF secret = 3.2', 'Famille géologique : R4']),
+      ),
+    );
+    expect(text).toContain('Famille géologique : R4');
+    expect(text.includes('coefficient EF secret')).toBe(false);
+  });
+
+  // — Anticipation TOLÉRANTE : futur champ caveats: string[] (chantier moteur parallèle).
+  it('given caveats présents when PV rendu then encart « Points à vérifier » listant chaque point', () => {
+    const text = collectPvPdfText(
+      makeLaboPv({
+        caveats: [
+          'Essai CBR à confirmer sur le 0/50',
+          'Gonflement à revérifier',
+        ],
+      }),
+    );
+    expect(text).toContain('Points à vérifier');
+    expect(text).toContain('Essai CBR à confirmer sur le 0/50');
+    expect(text).toContain('Gonflement à revérifier');
+  });
+
+  it('given caveats absents when PV rendu then aucun encart « Points à vérifier »', () => {
+    expect(collectPvPdfText(makeLaboPv({ cbr: 10 }))).not.toContain(
+      'Points à vérifier',
+    );
+  });
+
+  it('given caveats mal typés when PV rendu then entrées non-chaîne écartées (tolérant)', () => {
+    const text = collectPvPdfText(
+      makeLaboPv({ caveats: ['Point valide', 42, null, '', '  '] }),
+    );
+    expect(text).toContain('Point valide');
+    expect(text).toContain('Points à vérifier');
+  });
+});
+
+/**
  * Cherche dans la docDef une LIGNE de table dont la 1re cellule texte === `label`,
  * et renvoie { value, unit } des cellules 2 et 3 (cible la valeur EXACTE d'un
  * champ, pas une sous-chaîne du texte global). null si introuvable.
@@ -812,5 +978,48 @@ describe('PV radier — synthèse (ADR 0014) + alerte de poinçonnement', () => 
     });
     const buf = await renderPvPdf(pv);
     expect(buf.length).toBeGreaterThan(0);
+  });
+});
+
+describe('PV pressiomètre — unités alignées sur l’app (revue adverse 15/07, MAJEUR-1)', () => {
+  const prevSecret = process.env.PV_SIGNING_SECRET;
+  beforeAll(() => {
+    process.env.PV_SIGNING_SECRET = SECRET; // même secret que makeSealedPv (hmac)
+  });
+  afterAll(() => {
+    if (prevSecret === undefined) delete process.env.PV_SIGNING_SECRET;
+    else process.env.PV_SIGNING_SECRET = prevSecret;
+  });
+
+  // L'adaptateur web affiche p_L/p_L*/p_f* en MPa (bar interne ÷10, comme
+  // l'outil client). Le PV rendait les mêmes grandeurs en bar → un même calcul
+  // scellé disait « 0,44 MPa » à l'écran et « 4,39 bar » au PV. Cohérence exigée.
+  const PRESSIO_OUTPUT = {
+    erreur: null,
+    warnings: [],
+    pL: 4.39, // bar interne
+    pLNette: 4.19,
+    pfNette: 2.31,
+    EM: 12.4, // déjà en MPa
+    ratioEMpL: 9.0,
+    categorieLibelle: 'Sol ferme (cat. C)',
+    consolidation: 'Sol normalement consolidé',
+  } as SealableValue;
+
+  it('given un output pressiomètre scellé (bar interne), then le PV affiche p_L/p_L*/p_f* en MPa (÷10) comme l’app', () => {
+    const pv = makeSealedPv({
+      engineId: 'pressiometre-menard',
+      output: PRESSIO_OUTPUT,
+    });
+    const text = collectPvPdfText(pv);
+    expect(text).toContain('Pression limite p_L');
+    // 4,39 bar -> 0,44 MPa (2 décimales, convention fdnNum fr-FR)
+    expect(text).toMatch(/0,44\s*MPa/);
+    expect(text).toMatch(/0,42\s*MPa/); // p_L* 4,19 bar
+    expect(text).toMatch(/0,23\s*MPa/); // p_f* 2,31 bar
+    // Plus AUCUNE unité bar sur ces lignes (l'écran est en MPa).
+    expect(text).not.toMatch(/bar/i);
+    // E_M reste en MPa inchangé.
+    expect(text).toMatch(/12,4\s*MPa/);
   });
 });

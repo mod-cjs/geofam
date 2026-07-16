@@ -63,6 +63,30 @@ export {
 function fin(x: unknown): x is number {
   return typeof x === 'number' && Number.isFinite(x);
 }
+/** Valeur finie sinon 0. */
+function n0(x: unknown): number {
+  return fin(x) ? x : 0;
+}
+
+/**
+ * Table des residus client-safe (colonnes EXACTES du client L.2162-2167). On lit
+ * chaque residu `{p, v, vhat, res}` du moteur en `{p, vMesure, vAjuste, residu}`
+ * (renommage d'affichage) — construction champ a champ, aucun spread du brut.
+ */
+function buildResidus(
+  residuals: unknown,
+): { p: number; vMesure: number; vAjuste: number; residu: number }[] {
+  if (!Array.isArray(residuals)) return [];
+  return residuals.map((r) => {
+    const o = (r ?? {}) as Record<string, unknown>;
+    return {
+      p: n0(o.p),
+      vMesure: n0(o.v),
+      vAjuste: n0(o.vhat),
+      residu: n0(o.res),
+    };
+  });
+}
 
 /** Resolution de la meta de version (depuis le registre). */
 function resolveMeta(): {
@@ -92,8 +116,7 @@ function resolveMeta(): {
 export function runPressioEtalonnage(
   rawInput: unknown,
 ): EngineResultEnvelope<PressioEtalonnageOutput> {
-  const input: PressioEtalonnageInput =
-    PressioEtalonnageInputSchema.parse(rawInput);
+  const input: PressioEtalonnageInput = PressioEtalonnageInputSchema.parse(rawInput);
   const R = computeEtalonnage(input) as Record<string, unknown>;
   const meta = resolveMeta();
 
@@ -101,13 +124,17 @@ export function runPressioEtalonnage(
     return { ok: false, meta, error: toSafeEngineError(R.err) };
   }
 
-  // Construction champ a champ : UNIQUEMENT coefficients + verdicts (aucun intermediaire).
+  // Construction champ a champ : coefficients + verdicts + grandeurs AFFICHEES
+  // (Vs reel, V_pe, table des residus). La liste brute `pts` n'est PAS lue.
   const shaped = {
     Vs: fin(R.Vs) ? R.Vs : 0,
     Pe: fin(R.Pe) ? R.Pe : 0,
     a: fin(R.a) ? R.a : 0,
     R2: fin(R.R2) ? R.R2 : 0,
     rms: fin(R.rmsError) ? R.rmsError : 0,
+    vsReel: fin(R.Vs_reel) ? R.Vs_reel : 0,
+    vPe: fin(R.V_pe) ? R.V_pe : 0,
+    residus: buildResidus(R.residuals),
   };
   const output = projectEngineOutput(PressioEtalonnageOutputSchema, shaped);
   return { ok: true, meta, output };
