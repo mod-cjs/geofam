@@ -1,31 +1,38 @@
 /**
- * Playwright — configuration DÉDIÉE au spec de FIDÉLITÉ D'INTERFACE ROADSENS.
+ * Playwright — configuration DÉDIÉE au spec de FIDÉLITÉ D'INTERFACE ROADSENS
+ * (généralisation « clone UI client », ADR 0015 — roadsens = burmister).
  *
- * But : PROUVER les écarts UI / fonctionnement / affichage entre :
- *   - le HTML CLIENT gelé (référence) — packages/engines/reference/roadsens_burmister_definitive.html
- *     (v2.0.0, scellée ADR 0013), piloté dans un VRAI Chromium en file:// (LECTURE seule) ;
- *   - NOTRE app LIVE — https://roadsen.vercel.app (login geoplaque@starfire.test),
- *     org etude-geoplaque, logiciel ROADSENS.
+ * MODERNISÉE (17/07/2026) sur le patron pilote terzaghi : l'app ROADSENS ne
+ * reconstruit PLUS une page React — elle sert le CLONE fidèle de la définitive
+ * client (`apps/web/src/tools-cloned/roadsens.html`, calcul EXCISÉ) en
+ * `<iframe srcdoc sandbox>` via `ToolFrame`, dont le calcul part côté SERVEUR
+ * (DoD §8). On ne cible donc plus le déploiement LIVE (Vercel↔Render) : on lance
+ * l'app en LOCAL, en MODE RÉEL, sur un port DÉDIÉ (3102 ≠ 3100/3101/3000), avec :
+ *   - NEXT_PUBLIC_API_BASE_URL → un stub backend local (port 3198) qui répond au
+ *     SEUL appel serveur→serveur du route handler `/api/tools/:toolId`
+ *     (`GET /me/entitlements`). page.route (navigateur) ne peut pas intercepter cet
+ *     appel serveur ; sans lui, le clone n'est jamais servi (401). Tous les appels
+ *     CLIENT (entitlements, projets, CALCUL) sont interceptés par page.route dans le
+ *     spec — le stub refuse le calcul (405) pour garantir zéro faux-vert.
+ *   - JWT_SECRET partagé : le middleware (serveur) vérifie le JWT HS256 ; le spec
+ *     forge un token signé avec le MÊME secret (claim `orgs` = etude-roadsens).
+ *   - ROADSEN_DISTDIR dédié : évite le verrou dev Next 16 si un autre serveur dev
+ *     (démo locale, spec terzaghi) tourne déjà sur le même dossier.
  *
- * Ce spec ne compare pas des NOMBRES bruts serveur↔HTML (c'est le rôle de
- * equivalence-burmister-golden.spec.ts) : il CATALOGUE la structure d'interface des deux
- * côtés, prend des CAPTURES alignées, et compare l'AFFICHAGE bout-en-bout (onglets,
- * formulaires, catalogue/presets, panneau Résultats, rapport Détails 9 sections, valeurs
- * rendues). Même dispositif que playwright.fidelite-geoplaque.config.ts.
- *
- * Aucun webServer local : la cible NOUS est le déploiement LIVE (Vercel↔Render). Le HTML
- * client est chargé en file://. workers:1 (déterminisme, un seul navigateur).
+ * Le HTML client de RÉFÉRENCE (`packages/engines/reference/roadsens_burmister_definitive.html`,
+ * v2.0.0, scellé ADR 0013, sha256 épinglé) est chargé en file:// (LECTURE seule —
+ * JAMAIS modifié). workers:1 (déterminisme, un seul navigateur).
  *
  * Lancer :
- *   corepack pnpm@9.12.0 exec playwright test --config=playwright.fidelite-roadsens.config.ts
- *   # volet comparaison de VALEURS (consomme du quota, ≤ 6 calculs) :
- *   RUN_CALC=1 corepack pnpm@9.12.0 exec playwright test --config=playwright.fidelite-roadsens.config.ts -g "comparaison des VALEURS"
- *
- * Variables d'env optionnelles (défauts = identifiants de la mission) :
- *   RS_EMAIL / RS_PASSWORD — compte de l'org etude-geoplaque (pack COMPLETE, 6 modules).
- *   RUN_CALC=1 — active le volet comparaison de valeurs (quota). Off par défaut.
+ *   npx playwright test --config=playwright.fidelite-roadsens.config.ts
  */
 import { defineConfig, devices } from '@playwright/test';
+
+const WEB_PORT = 3102;
+const STUB_PORT = 3198;
+export const RS_JWT_SECRET = 'fidelite-roadsens-e2e-secret-32bytes-min-xxxxxxxx';
+export const RS_WEB_PORT = WEB_PORT;
+export const RS_STUB_PORT = STUB_PORT;
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -39,10 +46,9 @@ export default defineConfig({
     ['html', { open: 'never', outputFolder: 'test-results/fidelite-roadsens-report' }],
   ],
   outputDir: 'test-results/fidelite-roadsens-artifacts',
-  // Marge pour le cold-start Render (free tier) au login live.
-  timeout: 420_000,
+  timeout: 180_000,
   use: {
-    baseURL: 'https://roadsen.vercel.app',
+    baseURL: `http://localhost:${WEB_PORT}`,
     headless: true,
     viewport: { width: 1440, height: 900 },
     trace: 'on',
@@ -50,4 +56,27 @@ export default defineConfig({
     video: 'off',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  webServer: [
+    {
+      // Stub backend (appel serveur→serveur du route handler uniquement).
+      command: `node scripts/fidelite-roadsens-stub.mjs`,
+      url: `http://127.0.0.1:${STUB_PORT}/health`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+      env: { STUB_PORT: String(STUB_PORT) },
+    },
+    {
+      // App Next.js en MODE RÉEL sur port dédié.
+      command: `pnpm --filter @roadsen/web exec next dev -p ${WEB_PORT}`,
+      url: `http://localhost:${WEB_PORT}/login`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 180_000,
+      env: {
+        NEXT_PUBLIC_API_BASE_URL: `http://127.0.0.1:${STUB_PORT}`,
+        JWT_SECRET: RS_JWT_SECRET,
+        PORT: String(WEB_PORT),
+        ROADSEN_DISTDIR: '.next-fidelite-roadsens',
+      },
+    },
+  ],
 });

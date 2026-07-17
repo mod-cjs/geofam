@@ -1,49 +1,51 @@
 /**
- * FIDÉLITÉ D'INTERFACE ROADSENS — HTML client (référence gelée) ↔ NOTRE app live.
+ * FIDÉLITÉ D'INTERFACE ROADSENS — HTML client (référence gelée) ↔ NOTRE clone.
+ * (généralisation « clone UI client », ADR 0015 — roadsens = moteur burmister).
  * ==========================================================================
  *
- * OBJECTIF (distinct de l'équivalence golden-master qui compare des NOMBRES bruts
- * serveur↔HTML — cf. equivalence-burmister-golden.spec.ts) : PRODUIRE LA PREUVE des
- * écarts d'INTERFACE, de FONCTIONNEMENT et d'AFFICHAGE entre l'outil ROADSENS
- * (moteur Burmister) livré par le client et notre portage web. Même dispositif que
- * l'audit GEOPLAQUE (fidelite-geoplaque-ui.spec.ts). Ce spec ne CORRIGE rien : il
- * CATALOGUE + CAPTURE + COMPARE.
+ * OBJECTIF : PROUVER l'équivalence d'AFFICHAGE/FONCTIONNEMENT entre l'outil
+ * ROADSENS du client (`roadsens_burmister_definitive.html`, v2.0.0 scellée
+ * ADR 0013) et notre logiciel web — qui, depuis ADR 0015, N'EST PLUS une
+ * reconstruction React mais le CLONE fidèle de l'UI client (calcul EXCISÉ),
+ * chargé en `<iframe srcdoc sandbox>` via `ToolFrame`, dont le calcul part côté
+ * SERVEUR (DoD §8). Ce spec ne CORRIGE rien : il CATALOGUE + CAPTURE + COMPARE.
  *
- * DISPOSITIF :
- *   1. CLIENT (référence, LECTURE seule) — roadsens_burmister_definitive.html (v2.0.0,
- *      scellé ADR 0013) chargé en file:// dans un vrai Chromium. Inventaire COMPLET de
- *      l'UI : 6 onglets (Structure / Trafic / Paramètres / Catalogue / Résultats /
- *      Détails calcul), champs de chaque pane (libellé/id/type/défaut), tableaux
- *      (couches, fatigue), catalogue AGEROUTE, presets « Cas de validation ». Calcul de
- *      cas de référence (réassignation des bindings ly/pf/tr/cp + doCalc + renderDetails)
- *      pour capturer le panneau Résultats et le rapport Détails (9 sections). Captures
- *      → docs/audits-fidelite/captures/roadsens-client-*.png.
- *   2. NOUS (live) — login geoplaque@starfire.test sur roadsen.vercel.app → org
- *      etude-geoplaque → logiciel ROADSENS. Même inventaire (onglets réels, sections,
- *      champs, boutons). Captures alignées → roadsens-nous-*.png.
- *   3. COMPARAISON DES VALEURS (volet RUN_CALC, consomme du quota, ≤ 6 calculs) : pour
- *      2-3 cas identiques (preset catalogue, saisie par défaut, cas rigide BC), on rend
- *      le rapport Détails des DEUX côtés et on compare CHAQUE ligne (tol rel 1e-6, unités
- *      comprises) via classifyRow — détecteur d'omission ET d'écart.
+ * DISPOSITIF (mêmes 3 volets que le pilote terzaghi) :
+ *   (a) SORTIE SERVEUR du cas de référence CAS_REF — exécutée par le MOTEUR
+ *       SOURCE `runBurmister` en sous-processus (`scripts/burmister-engine-run.mts`) :
+ *       c'est numériquement la sortie qu'un serveur renverrait (équivalence
+ *       module↔origine prouvée par `engine.equivalence.test.ts`, tol rel 1e-9).
+ *       On charge la SOURCE `.ts` via tsx — jamais d'import moteur dans le spec.
+ *   (b) RÉFÉRENCE (LECTURE seule) — la définitive en file://, MÊME cas piloté par
+ *       réassignation des bindings `ly/pf/tr/cp` + `doCalc()` (elle a encore son
+ *       moteur) → extraction du rapport #detout (9 sections) + du panneau Résultats.
+ *   (c) NOTRE app en LOCAL, MODE RÉEL (port 3102), clone en iframe : MÊME cas saisi
+ *       dans le CLONE (mêmes bindings — c'est l'UI de la définitive) ; la requête de
+ *       calcul (`POST .../calc/burmister`) est INTERCEPTÉE par page.route et fulfillée
+ *       avec la sortie (a), forme `BackendPersistedCalcResult` que consomme ToolFrame.
+ *       Extraction du MÊME jeu (#detout + Résultats) dans le frame.
+ *   (d) CLASSIFICATION FERMÉE par ligne du rapport #detout via `classifyRow` (la MÊME
+ *       fonction des deux côtés : deux lignes équivalentes reçoivent la MÊME clé, tol
+ *       rel 1e-6 / 5e-4 en notation sci). Toute ligne NON classée (clé null) = ÉCHEC.
+ *       Les RÉSIDUS FERMÉS §8 (stC/stG composantes collée/glissante, axe/mid décompo
+ *       ε_z) n'apparaissent QUE dans la colonne COMMENTAIRE (le clone y affiche « — ») ;
+ *       la VALEUR reste whitelistée et FIDÈLE → non comparés en valeur, tracés en synthèse.
+ *   (e) On compare AUSSI le panneau Résultats (verdict + KPI) réf↔clone.
  *
- * MAPPING À JOUR (ADR 0014, « zéro écart d'affichage », 13/07/2026) : TOUT ce que
- * l'outil client affiche est exposé côté plateforme — kθ/SN/Sh/δ/kr/kc/ks/σ_PSC et
- * « et_adm r=50% » sont désormais des LIGNES-VALEUR (plus « non exposé §8 », plus
- * « absent »). Seul le CODE moteur reste serveur. Toute ligne « non exposé côté client »
- * qui SUBSISTERAIT côté burmister est donc un DÉFAUT, pas un masque voulu.
+ * ZÉRO FAUX-VERT : réf absente → ÉCHEC dur ; « 0 ligne » extraite d'un côté → ÉCHEC
+ * dur ; calc non intercepté → ÉCHEC dur ; le stub backend REFUSE le calcul (405) pour
+ * garantir que la sortie comparée vient bien de l'interception, jamais du stub.
  *
- * ZÉRO FAUX-VERT : HTML client absent → ÉCHEC DUR (jamais de skip silencieux) ;
- * « 0 ligne extraite » → ÉCHEC DUR ; volet valeurs → API/live injoignable = skip
- * BRUYANT, jamais un pass. Les captures sont des ARTEFACTS de preuve.
- *
- * PORTÉE HONNÊTE : ceci prouve la FIDÉLITÉ D'INTERFACE + AFFICHAGE bout-en-bout, PAS la
- * justesse scientifique (responsabilité STARFIRE — split contractuel).
+ * PORTÉE HONNÊTE : ceci prouve la FIDÉLITÉ D'INTERFACE + AFFICHAGE, PAS la justesse
+ * scientifique (responsabilité STARFIRE — split contractuel).
  */
+import { execFileSync } from 'node:child_process';
+import { createHmac } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Frame, type Page } from '@playwright/test';
 
 // --------------------------------------------------------------------------
 // Références & cibles
@@ -54,15 +56,19 @@ const DEFINITIVE_HTML = path.resolve(
   __dirname,
   '../../packages/engines/reference/roadsens_burmister_definitive.html',
 );
-const FRONT = 'https://roadsen.vercel.app';
-const RS_EMAIL = process.env.RS_EMAIL ?? 'geoplaque@starfire.test';
-const RS_PASSWORD = process.env.RS_PASSWORD ?? 'P@sser12345#';
-const ORG_SLUG = 'etude-geoplaque';
-const RUN_CALC = process.env.RUN_CALC === '1';
-const NAV = 120_000;
-
-const CAP_DIR = path.resolve(__dirname, '../../docs/audits-fidelite/captures');
+/** Notre clone (artefact généré par scripts/clone-tool.mjs, calcul excisé). */
+const CLONE_HTML = path.resolve(
+  __dirname,
+  '../../apps/web/src/tools-cloned/roadsens.html',
+);
+const REPO = path.resolve(__dirname, '../..');
 const OUT_DIR = path.resolve(__dirname, '../../docs/audits-fidelite');
+const CAP_DIR = path.join(OUT_DIR, 'captures');
+
+// Identité forgée — mêmes claims que le middleware attend (cf. config JWT_SECRET).
+const SECRET = 'fidelite-roadsens-e2e-secret-32bytes-min-xxxxxxxx'; // = webServer.env.JWT_SECRET
+const ORG_SLUG = 'etude-roadsens';
+const ORG_ID = 'org_rs';
 
 function ensureDirs(): void {
   mkdirSync(CAP_DIR, { recursive: true });
@@ -73,39 +79,42 @@ function dumpJson(name: string, data: unknown): void {
   writeFileSync(path.join(OUT_DIR, name), JSON.stringify(data, null, 2), 'utf8');
 }
 
-// Symboles GLOBAUX de la définitive (bindings lexicaux `let`/fonctions déclarées :
-// accessibles en IDENTIFIANTS NUS depuis page.evaluate, JAMAIS via globalThis).
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- identifiant NU requis par page.evaluate (globaux de la définitive)
-declare let ly: Array<{
-  id: number;
-  mat: string;
-  h: number;
-  E: number;
-  nu: number;
-  ifc: string;
-}>;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- identifiant NU requis par page.evaluate (globaux de la définitive)
-declare let pf: { cls: string; E: number; nu: number };
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- identifiant NU requis par page.evaluate (globaux de la définitive)
-declare let tr: { T: number; C: number; N: number; tau: number; dir: number; tv: number };
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- identifiant NU requis par page.evaluate (globaux de la définitive)
-declare let cp: {
-  p: number;
-  a: number;
-  d: number;
-  r: string;
-  sh: string;
-  ks: string;
-  gntAuto: boolean;
-  neForce: number | null;
-};
-declare function doCalc(): void;
-declare function renderDetails(): void;
-declare function loadPreset(id: string): void;
+// --------------------------------------------------------------------------
+// JWT HS256 forgé (node:crypto, aucune dépendance) — claim `orgs` = etude-roadsens.
+// --------------------------------------------------------------------------
+function b64url(buf: Buffer | string): string {
+  return Buffer.from(buf)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+function forgeJwt(): string {
+  const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payload = b64url(
+    JSON.stringify({
+      sub: 'user_rs',
+      orgs: [{ id: ORG_ID, slug: ORG_SLUG, role: 'OWNER' }],
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    }),
+  );
+  const sig = b64url(
+    createHmac('sha256', SECRET).update(`${header}.${payload}`).digest(),
+  );
+  return `${header}.${payload}.${sig}`;
+}
+
+// NB : les bindings globaux de la définitive/du clone (`ly`/`pf`/`tr`/`cp`,
+// `doCalc`/`renderDetails`) sont pilotés par EVAL DE CHAÎNE (stateScript + IIFE),
+// jamais comme identifiants TS nus — donc aucune `declare` n'est requise ici.
 
 // ==========================================================================
-// Cas de référence — répliqués en constantes locales (on n'importe PAS
-// @roadsen/engines dans un spec e2e). Un cas « manuel » (défauts) + deux presets.
+// Cas de référence — répliqué en constante locale (on n'importe PAS @roadsen/engines
+// dans un spec e2e). Cas MANUEL bitumineux (BBSG1/GB3/GL1 sur PF2, faible trafic) —
+// exerce la fatigue ε_t (couche liée) ET une couche granulaire non liée (ε_z sommet,
+// dont la décompo axe/mid est un résidu fermé §8 côté clone). Aucune couche traitée
+// (rigL vide) : famille bitumineuse épaisse, pas de σ_t MTLH/béton.
 // ==========================================================================
 
 interface BurmisterInput {
@@ -113,12 +122,9 @@ interface BurmisterInput {
   subgrade: { cls: string; E: number; nu: number };
   traffic: { T: number; C: number; N: number; tau: number; dir: number; tv: number };
   load: { p: number; a: number; d: number; r: 'auto'; sh: 'auto'; ks: 'auto' };
-  neForce?: number | null;
-  gntAuto?: boolean;
 }
 
-/** Cas MANUEL bitumineux — structure classique BBSG1/GB3/GL1 sur PF2, T=150. */
-const _CAS_MANUEL: BurmisterInput = {
+const CAS_REF: BurmisterInput = {
   layers: [
     { mat: 'BBSG1', h: 0.06, E: 1512, nu: 0.45 },
     { mat: 'GB3', h: 0.1, E: 2588, nu: 0.45 },
@@ -127,13 +133,61 @@ const _CAS_MANUEL: BurmisterInput = {
   subgrade: { cls: 'PF2', E: 50, nu: 0.35 },
   traffic: { T: 150, C: 0.9, N: 20, tau: 4.0, dir: 1.0, tv: 1.0 },
   load: { p: 0.662, a: 0.125, d: 0.375, r: 'auto', sh: 'auto', ks: 'auto' },
-  neForce: null,
-  gntAuto: false,
 };
+
+/** STATE de l'UI (ly/pf/tr/cp) équivalent à CAS_REF — piloté à l'identique des 2 côtés. */
+interface UiState {
+  ly: Array<{ id: number; mat: string; h: number; E: number; nu: number; ifc: string }>;
+  pf: { cls: string; E: number; nu: number };
+  tr: BurmisterInput['traffic'];
+  cp: {
+    p: number;
+    a: number;
+    d: number;
+    r: string;
+    sh: string;
+    ks: string;
+    gntAuto: boolean;
+    neForce: number | null;
+  };
+}
+function stateFor(input: BurmisterInput): UiState {
+  return {
+    ly: input.layers.map((l, i) => ({
+      id: i + 1,
+      mat: l.mat,
+      h: l.h,
+      E: l.E,
+      nu: l.nu,
+      ifc: 'auto',
+    })),
+    pf: { cls: input.subgrade.cls, E: input.subgrade.E, nu: input.subgrade.nu },
+    tr: { ...input.traffic },
+    cp: {
+      p: input.load.p,
+      a: input.load.a,
+      d: input.load.d,
+      r: 'auto',
+      sh: 'auto',
+      ks: 'auto',
+      gntAuto: false,
+      neForce: null,
+    },
+  };
+}
+/** Script d'affectation des bindings `let` (technique du harnais d'équivalence). */
+function stateScript(st: UiState): string {
+  return (
+    `ly=${JSON.stringify(st.ly)};` +
+    `pf=${JSON.stringify(st.pf)};` +
+    `tr=${JSON.stringify(st.tr)};` +
+    `cp=${JSON.stringify(st.cp)};`
+  );
+}
 
 // ==========================================================================
 // Extraction DOM du rapport Détails — fonction SÉRIALISÉE (navigateur). Générique :
-// même code pour la définitive (#detout table) et pour notre app (table aria-label).
+// MÊME code pour la définitive (#detout table) et pour le clone (#detout table).
 //   - ligne 1 cellule (colspan=3) fond #1a4a7a (rgb 26,74,122) → bandeau SECTION ;
 //     fond #f0f0f8 → FORMULE (ignorée).
 //   - ligne 3 cellules → donnée. Unité = <span> couleur #888 (rgb 136,136,136) dans
@@ -186,8 +240,34 @@ function extractReport(sel: string): { rows: RawRow[]; error?: string } {
   return { rows };
 }
 
+/** Extraction du panneau Résultats (#resout) : verdict + KPI (.metric) + badges. */
+interface ResultsPanel {
+  verdict: string;
+  metrics: { label: string; value: string; sub: string }[];
+  badges: string[];
+}
+function extractResults(): ResultsPanel {
+  const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
+  const out = document.getElementById('resout');
+  const txt = norm(out?.textContent);
+  const verdict = /Structure non satisfaisante/.test(txt)
+    ? 'non satisfaisante'
+    : /Structure satisfaisante/.test(txt)
+      ? 'satisfaisante'
+      : '';
+  const metrics = Array.from(out?.querySelectorAll('.metric') ?? []).map((m) => ({
+    label: norm(m.querySelector('.ml')?.textContent),
+    value: norm(m.querySelector('.mv')?.textContent),
+    sub: norm(m.querySelector('.ms')?.textContent),
+  }));
+  const badges = Array.from(out?.querySelectorAll('.badge') ?? []).map((b) =>
+    norm(b.textContent),
+  );
+  return { verdict, metrics, badges };
+}
+
 // ==========================================================================
-// Normalisation & parsing (côté Node) — inchangés (robustes aux deux moteurs de rendu).
+// Normalisation & parsing (côté Node) — robustes aux deux moteurs de rendu.
 // ==========================================================================
 
 function normLabel(s: string): string {
@@ -204,6 +284,10 @@ function normLabel(s: string): string {
   t = t.replace(/sigma/g, 's');
   t = t
     .replace(/[\u00a0\u202f]/g, ' ')
+    // Underscore = séparateur d'indice (σ_z, ez_adm, et_adm) — le mapping classifyRow
+    // suppose « s z psc » / « ^s [zr] » : on aligne « _ » sur l'espace (sinon les
+    // lignes σ des sections 5/8 tomberaient en NON classées → ÉCHEC).
+    .replace(/_/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   return t;
@@ -230,10 +314,11 @@ function relErr(a: number, b: number): number {
 // ==========================================================================
 // MAPPING DOCUMENTÉ — classifyRow(section, label) → { key, kind }, À JOUR ADR 0014.
 // La MÊME fonction s'applique aux DEUX côtés : deux lignes équivalentes reçoivent la
-// MÊME `key`. `kind` : 'value' (à comparer). Depuis « zéro écart » (13/07/2026) il n'y
-// a PLUS de 'notexposed' ni de 'absent' côté burmister : tous les coefficients LCPC et
-// le « et_adm r=50% » sont exposés. `key === null` ⇒ ligne NON classée = ÉCHEC (omission
-// de couverture du mapping — à corriger dans le mapping, PAS un écart d'app).
+// MÊME `key`. Depuis « zéro écart » (13/07/2026) il n'y a PLUS de 'notexposed' ni
+// d'absence côté burmister : tous les coefficients LCPC et le « et_adm r=50% » sont
+// exposés. `key === null` ⇒ ligne NON classée = ÉCHEC (trou de mapping à corriger ici,
+// PAS un écart d'app). Les résidus fermés stC/stG/axe/mid ne sont PAS des lignes : ils
+// vivent dans la colonne COMMENTAIRE (« — » côté clone) → hors comparaison de valeur.
 // ==========================================================================
 
 type Kind = 'value';
@@ -351,6 +436,254 @@ function classifyRow(
 }
 
 // ==========================================================================
+// Sortie serveur (a) via moteur SOURCE en sous-processus (jamais importé dans le spec).
+// ==========================================================================
+function serverOutputFor(input: BurmisterInput): unknown {
+  const raw = execFileSync('npx', ['tsx', 'scripts/burmister-engine-run.mts'], {
+    input: JSON.stringify(input),
+    cwd: REPO,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  const parsed = JSON.parse(raw) as { ok: boolean; output?: unknown; error?: string };
+  expect(parsed.ok, `moteur serveur (a) a échoué : ${raw.slice(0, 400)}`).toBe(true);
+  expect(parsed.output, 'sortie serveur (a) vide').toBeTruthy();
+  return parsed.output;
+}
+
+// ==========================================================================
+// (b) RÉFÉRENCE — file://, réassignation d'état + doCalc + renderDetails, extraction.
+// ==========================================================================
+async function driveReferenceCase(
+  page: Page,
+  st: UiState,
+): Promise<{ rows: RawRow[]; results: ResultsPanel }> {
+  const err = (await page.evaluate(
+    `(function(){ try { ${stateScript(st)} doCalc(); renderDetails(); return null; } catch(e){ return String(e && e.message || e); } })()`,
+  )) as string | null;
+  expect(err, `la définitive doit calculer sans lever (err=${err})`).toBeNull();
+  const det = await page.evaluate(extractReport, '#detout table');
+  expect(det.error, `extraction définitive : ${det.error ?? ''}`).toBeUndefined();
+  const results = await page.evaluate(extractResults);
+  return { rows: det.rows, results };
+}
+
+// ==========================================================================
+// (c) NOTRE app — connexion forgée, iframe clone, interception du calcul.
+// ==========================================================================
+async function openOurClone(
+  page: Page,
+  serverOutput: unknown,
+  token: string,
+): Promise<{ intercepted: () => boolean }> {
+  let calcIntercepted = false;
+
+  await page.addInitScript((tok) => {
+    try {
+      window.sessionStorage.setItem('roadsen_access_token', tok);
+    } catch {
+      /* noop */
+    }
+  }, token);
+
+  // Appels CLIENT interceptés (le route-handler serveur, lui, tape le stub).
+  await page.route(/\/me\/entitlements/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        orgId: ORG_ID,
+        pack: 'COMPLETE',
+        modules: ['burmister', 'chaussee-burmister'],
+        expiresAt: new Date(Date.now() + 3.15e10).toISOString(),
+        expired: false,
+        quota: { limit: 1000, used: 1, remaining: 999 },
+        serverTime: new Date().toISOString(),
+      }),
+    }),
+  );
+  // UN SEUL projet CH → la page roadsens l'auto-sélectionne (ch.length === 1) →
+  // ToolFrame monte le clone.
+  await page.route(/\/projects$/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        {
+          id: 'proj_rs',
+          orgId: ORG_ID,
+          name: 'E2E fidélité ROADSENS',
+          domain: 'CH',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          createdById: 'user_rs',
+        },
+      ]),
+    }),
+  );
+  // LE CŒUR : la requête de calcul burmister est interceptée et fulfillée avec (a),
+  // forme BackendPersistedCalcResult ({calcResultId, ok, meta, output}) → ToolFrame
+  // livre `output` (rawOutput whitelisté) au clone.
+  await page.route(/\/projects\/[^/]+\/calc\/[^/]+/, async (route) => {
+    calcIntercepted = true;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        calcResultId: 'cr_e2e_rs_1',
+        ok: true,
+        meta: { engineId: 'burmister', engineVersion: 'e2e-fidelite' },
+        output: serverOutput,
+      }),
+    });
+  });
+
+  await page.goto(`/app/${ORG_SLUG}/logiciels/roadsens`, {
+    waitUntil: 'domcontentloaded',
+  });
+  await page
+    .locator('iframe[data-testid="tool-frame-iframe"]')
+    .waitFor({ state: 'attached', timeout: 30_000 });
+  await page.waitForTimeout(1500);
+  return { intercepted: () => calcIntercepted };
+}
+
+function cloneFrame(page: Page): Frame {
+  const frame = page
+    .frames()
+    .find((f) => f.url().includes('srcdoc') || f !== page.mainFrame());
+  if (!frame) throw new Error('frame du clone introuvable');
+  return frame;
+}
+
+/** Pilote le CLONE : saisit CAS_REF, clique « Calculer » (calc serveur intercepté). */
+async function driveCloneCase(
+  page: Page,
+  frame: Frame,
+  st: UiState,
+): Promise<{ rows: RawRow[]; results: ResultsPanel }> {
+  await frame.locator('#btnc').waitFor({ state: 'visible', timeout: 15_000 });
+  // Saisie : réassignation des mêmes bindings que la référence (UI identique).
+  await frame.evaluate(`(function(){ ${stateScript(st)} })()`);
+  await frame.locator('#btnc').click();
+  // Fin du recalc async : le panneau Résultats porte au moins une carte KPI.
+  await expect
+    .poll(async () => frame.locator('#resout .metric').count(), { timeout: 20_000 })
+    .toBeGreaterThan(0);
+  await page.waitForTimeout(600);
+  const det = await frame.evaluate(extractReport, '#detout table');
+  expect(det.error, `extraction clone : ${det.error ?? ''}`).toBeUndefined();
+  const results = await frame.evaluate(extractResults);
+  return { rows: det.rows, results };
+}
+
+// ==========================================================================
+// Comparaison des rapports Détails via classifyRow (tol rel 1e-6 / 5e-4 sci).
+// ==========================================================================
+interface CompareResult {
+  valuesOk: number;
+  uncoveredClient: string[];
+  uncoveredOurs: string[];
+  omitted: string[];
+  masked: string[];
+  mismatch: string[];
+}
+
+/**
+ * REDACTION ASSUMÉE DE LA FAMILLE (FUITE #1, ADR 0015) : le clone affiche le libellé
+ * NU d'allowlist (`sanitizeFamille`), la définitive y ajoute la référence de section
+ * normative « (§x.y) » et/ou le discriminant Kmix « K=… ». On retire ces éléments
+ * confidentiels des DEUX côtés avant de comparer le NOM de famille — la différence
+ * est la redaction VOULUE, pas une infidélité d'affichage.
+ */
+function stripFamilleRedaction(s: string): string {
+  return s
+    .replace(/\s*\(§[^)]*\)/g, '')
+    .replace(/[,;]?\s*K(?:mix)?\s*=\s*-?[\d.,]+/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function compareDetails(defRows: RawRow[], ourRows: RawRow[]): CompareResult {
+  const ourByKey = new Map<string, RawRow>();
+  const uncoveredOurs: string[] = [];
+  const masked: string[] = [];
+  for (const r of ourRows) {
+    const c = classifyRow(r.section, r.label);
+    if (/non expos/i.test(r.value))
+      masked.push(`[${r.section}] « ${r.label} » = « ${r.value} »`);
+    if (c.key === null) uncoveredOurs.push(`[${r.section}] « ${r.label} »`);
+    else if (!ourByKey.has(c.key)) ourByKey.set(c.key, r);
+  }
+
+  const uncoveredClient: string[] = [];
+  const omitted: string[] = [];
+  const mismatch: string[] = [];
+  let valuesOk = 0;
+
+  for (const d of defRows) {
+    const c = classifyRow(d.section, d.label);
+    const tag = `[${d.section}] « ${d.label} » = « ${d.value} »${d.unit ? ' ' + d.unit : ''}`;
+    if (c.key === null) {
+      uncoveredClient.push(tag);
+      continue;
+    }
+    const ours = ourByKey.get(c.key);
+    if (!ours) {
+      omitted.push(`${tag} — ABSENTE côté clone (clé ${c.key}).`);
+      continue;
+    }
+    // Famille : comparaison redaction-aware (le clone masque « (§x.y) » / « K=… »).
+    if (c.key === 'S6.famille') {
+      const df = stripFamilleRedaction(d.value);
+      const of = stripFamilleRedaction(ours.value);
+      if (normText(df) === normText(of)) valuesOk++;
+      else
+        mismatch.push(
+          `${tag} vs clone « ${ours.value} » — famille (hors redaction) « ${df} » ≠ « ${of} »`,
+        );
+      continue;
+    }
+
+    const dn = parseNums(d.value);
+    const on = parseNums(ours.value);
+    const isSci = /\d[eE][+-]?\d/.test(d.value);
+    const tol = isSci ? 5e-4 : 1e-6;
+
+    let ok = true;
+    let why = '';
+    if (dn.length === 0 && on.length === 0) {
+      if (normText(d.value) !== normText(ours.value)) {
+        ok = false;
+        why = `texte différent (déf « ${d.value} » ≠ clone « ${ours.value} »)`;
+      }
+    } else if (dn.length !== on.length) {
+      ok = false;
+      why = `nombre de valeurs différent (déf ${JSON.stringify(dn)} ≠ clone ${JSON.stringify(on)})`;
+    } else {
+      for (let i = 0; i < dn.length; i++) {
+        const e = relErr(dn[i], on[i]);
+        if (e > tol) {
+          ok = false;
+          why = `valeur[${i}] déf=${dn[i]} clone=${on[i]} rel=${e.toExponential(3)} > tol=${tol.toExponential(0)}${isSci ? ' (déf notation sci lossy)' : ''}`;
+          break;
+        }
+      }
+    }
+    if (ok && d.unit && ours.unit && normUnit(d.unit) !== normUnit(ours.unit)) {
+      ok = false;
+      why = `unité déf « ${d.unit} » ≠ clone « ${ours.unit} »`;
+    }
+    if (ok) valuesOk++;
+    else
+      mismatch.push(
+        `${tag} vs clone « ${ours.value} »${ours.unit ? ' ' + ours.unit : ''} — ${why}`,
+      );
+  }
+  return { valuesOk, uncoveredClient, uncoveredOurs, omitted, masked, mismatch };
+}
+
+// ==========================================================================
 // SUITE 1 — INVENTAIRE + CAPTURES DU HTML CLIENT (référence, file://)
 // ==========================================================================
 
@@ -359,16 +692,9 @@ interface ClientInventory {
   brand: string;
   calcButton: string;
   tabs: { tab: string; label: string; active: boolean }[];
-  panes: Record<string, PaneFields>;
+  panes: Record<string, unknown>;
   presets: { id: string; label: string }[];
   catalogueFamilies: { group: string; value: string; label: string }[];
-}
-interface PaneFields {
-  sectionTitles: string[];
-  fields: { label: string; id: string; type: string; value: string }[];
-  checkboxes: { label: string; id: string; checked: boolean }[];
-  tableHeaders: string[][];
-  buttons: string[];
 }
 
 test.describe('FIDÉLITÉ ROADSENS — inventaire + captures du HTML CLIENT (référence)', () => {
@@ -508,569 +834,205 @@ test.describe('FIDÉLITÉ ROADSENS — inventaire + captures du HTML CLIENT (ré
       }, tab);
       await page.waitForTimeout(200);
     };
-    await switchTab('s');
-    await page.screenshot({
-      path: path.join(CAP_DIR, 'roadsens-client-00-structure.png'),
-      fullPage: false,
-    });
-    await switchTab('t');
-    await page.screenshot({
-      path: path.join(CAP_DIR, 'roadsens-client-01-trafic.png'),
-      fullPage: false,
-    });
-    await switchTab('p');
-    await page.screenshot({
-      path: path.join(CAP_DIR, 'roadsens-client-02-parametres.png'),
-      fullPage: false,
-    });
-    await switchTab('c');
-    await page.screenshot({
-      path: path.join(CAP_DIR, 'roadsens-client-03-catalogue.png'),
-      fullPage: false,
-    });
+    for (const [tab, slug] of [
+      ['s', '00-structure'],
+      ['t', '01-trafic'],
+      ['p', '02-parametres'],
+      ['c', '03-catalogue'],
+    ] as const) {
+      await switchTab(tab);
+      await page.screenshot({
+        path: path.join(CAP_DIR, `roadsens-client-${slug}.png`),
+        fullPage: false,
+      });
+    }
 
     dumpJson('roadsens-inventaire-client.json', inv);
-    console.log('[CLIENT INVENTAIRE]\n' + JSON.stringify(inv, null, 2));
   });
+});
 
-  test('given un preset catalogue, when on le sélectionne, then le calcul est immédiat + bascule Résultats (comportement) et on capture Résultats + Détails', async () => {
-    // Comportement clé : loadPreset('s2') pose la structure, appelle doCalc() et
-    // BASCULE sur l'onglet Résultats (pane-r .on) — capture ce comportement.
-    const beh = await page.evaluate(() => {
-      let err: string | null = null;
-      try {
-        loadPreset('s2');
-      } catch (e) {
-        err = String((e && (e as Error).message) || e);
-      }
-      const rActive =
-        document.getElementById('pane-r')?.classList.contains('on') ?? false;
-      const hasMetric = !!document.querySelector('#resout .metric');
-      return { err, rActive, hasMetric };
-    });
-    expect(beh.err, `loadPreset('s2') doit aboutir : ${beh.err}`).toBeNull();
-    expect(
-      beh.rActive,
-      'la sélection d’un preset doit BASCULER sur l’onglet Résultats',
-    ).toBe(true);
-    expect(beh.hasMetric, 'le panneau Résultats doit être peuplé (calcul immédiat)').toBe(
+// ==========================================================================
+// SUITE 2 — CLONE (iframe) ↔ RÉFÉRENCE : comparaison (classification fermée, dures)
+// ==========================================================================
+test.describe('FIDÉLITÉ ROADSENS — clone (iframe) ↔ référence', () => {
+  test('given le même cas CAS_REF, when calcul serveur intercepté, then #detout + Résultats du clone FIDÈLES à la réf (classification fermée)', async ({
+    browser,
+  }) => {
+    test.setTimeout(180_000);
+    expect(existsSync(DEFINITIVE_HTML), `Définitive ABSENTE (${DEFINITIVE_HTML}).`).toBe(
       true,
     );
+    expect(existsSync(CLONE_HTML), `Clone ABSENT (${CLONE_HTML}).`).toBe(true);
+    ensureDirs();
 
-    await page.screenshot({
-      path: path.join(CAP_DIR, 'roadsens-client-04-resultats.png'),
-      fullPage: false,
-    });
+    const st = stateFor(CAS_REF);
 
-    // Extraction du panneau Résultats (verdict, métriques, badges de critère).
-    const resPanel = await page.evaluate(() => {
-      const txt = (el: Element | null) =>
-        (el?.textContent || '').replace(/\s+/g, ' ').trim();
-      const out = document.getElementById('resout');
-      const metrics = Array.from(out?.querySelectorAll('.metric') ?? []).map((m) => ({
-        label: txt(m.querySelector('.ml')),
-        value: txt(m.querySelector('.mv')),
-        sub: txt(m.querySelector('.ms')),
-      }));
-      const badges = Array.from(out?.querySelectorAll('.badge') ?? []).map((b) => txt(b));
-      const sections = Array.from(out?.querySelectorAll('.sec') ?? []).map((s) => txt(s));
-      return { metrics, badges, sections, textLen: txt(out).length };
-    });
-    expect(
-      resPanel.metrics.length,
-      'le panneau Résultats client doit exposer des métriques',
-    ).toBeGreaterThanOrEqual(3);
-
-    // Détails — bascule pane-d et rends le rapport 9 sections.
-    await page.evaluate(() => {
-      try {
-        renderDetails();
-      } catch {
-        /* déjà rendu par renderRes */
-      }
-      document.querySelectorAll('.tbtn').forEach((x) => x.classList.remove('on'));
-      document.querySelectorAll('.pane').forEach((x) => x.classList.remove('on'));
-      document.querySelector('[data-tab="d"]')?.classList.add('on');
-      document.getElementById('pane-d')?.classList.add('on');
-    });
-    await page.waitForTimeout(200);
-    await page.screenshot({
-      path: path.join(CAP_DIR, 'roadsens-client-05-details.png'),
-      fullPage: true,
-    });
-
-    const det = await page.evaluate(extractReport, '#detout table');
-    expect(det.error, `extraction Détails client : ${det.error ?? ''}`).toBeUndefined();
-    expect(
-      det.rows.length,
-      'le rapport Détails client (9 sections) ne doit pas être vide',
-    ).toBeGreaterThan(25);
-    const sections = Array.from(new Set(det.rows.map((r) => r.section)));
-
-    dumpJson('roadsens-resultats-client.json', {
-      preset: 's2',
-      resPanel,
-      detailSections: sections,
-      detailRows: det.rows,
-    });
-    console.log(
-      `[CLIENT preset s2] Résultats=${resPanel.metrics.length} métriques · Détails=${det.rows.length} lignes / ${sections.length} sections`,
-    );
-  });
-});
-
-// ==========================================================================
-// SUITE 2 — INVENTAIRE + CAPTURES DE NOTRE APP LIVE (Vercel↔Render)
-// ==========================================================================
-
-async function login(page: Page): Promise<void> {
-  await page.goto(`${FRONT}/login`, { waitUntil: 'domcontentloaded', timeout: NAV });
-  await page.getByLabel('Adresse e-mail').fill(RS_EMAIL);
-  await page.getByLabel('Mot de passe').fill(RS_PASSWORD);
-  await Promise.all([
-    page.waitForURL(new RegExp(`/app/${ORG_SLUG}/(logiciels|projets)`), { timeout: NAV }),
-    page.getByRole('button', { name: 'Se connecter' }).click(),
-  ]);
-}
-
-const OUR_TAB_LABELS = [
-  'Structure',
-  'Trafic',
-  'Paramètres',
-  'Catalogue',
-  'Résultats',
-  'Détails',
-];
-
-test.describe('FIDÉLITÉ ROADSENS — inventaire + captures de NOTRE app LIVE', () => {
-  test('given l’org etude-geoplaque connectée, when j’ouvre ROADSENS, then on catalogue nos onglets + capture chaque état', async ({
-    browser,
-  }) => {
-    test.setTimeout(400_000);
-    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    const page = await ctx.newPage();
-    page.setDefaultNavigationTimeout(NAV);
-
-    await login(page);
-    await page.goto(`${FRONT}/app/${ORG_SLUG}/logiciels/roadsens`, {
-      waitUntil: 'domcontentloaded',
-      timeout: NAV,
-    });
-    await page.waitForLoadState('networkidle', { timeout: 40_000 }).catch(() => {});
-    await expect(
-      page.getByText(
-        /couldn.t load|server error|Application error|page n.a pas pu|403|non autorisé/i,
-      ),
-    ).toHaveCount(0);
-
-    // Onglet Structure présent (role=tab).
-    await expect(page.getByRole('tab', { name: 'Structure' })).toBeVisible({
-      timeout: 30_000,
-    });
-
-    const ourTabs = await page
-      .getByRole('tab')
-      .allTextContents()
-      .then((a) => a.map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean));
-    console.log('[NOUS onglets live] ' + JSON.stringify(ourTabs));
-
-    await page.screenshot({
-      path: path.join(CAP_DIR, 'roadsens-nous-00-vue-globale.png'),
-      fullPage: true,
-    });
-
-    // Capture par onglet + inventaire des champs visibles de chaque panneau.
-    const panesInventory: Record<
-      string,
-      { headings: string[]; labels: string[]; buttons: string[] }
-    > = {};
-    let idx = 0;
-    for (const label of OUR_TAB_LABELS) {
-      const tab = page.getByRole('tab', { name: new RegExp('^' + label, 'i') }).first();
-      if (
-        await tab
-          .count()
-          .then((c) => c > 0)
-          .catch(() => false)
-      ) {
-        await tab.click().catch(() => {});
-        await page.waitForTimeout(500);
-        const slug = label
-          .toLowerCase()
-          .normalize('NFD')
-          .replace(/[̀-ͯ]/g, '')
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '');
-        await page.screenshot({
-          path: path.join(CAP_DIR, `roadsens-nous-0${idx + 1}-${slug}.png`),
-          fullPage: true,
-        });
-        panesInventory[label] = await page.evaluate(() => {
-          const txt = (el: Element | null) =>
-            (el?.textContent || '').replace(/\s+/g, ' ').trim();
-          const panel = document.querySelector('[role="tabpanel"]:not([hidden])');
-          if (!panel) return { headings: [], labels: [], buttons: [] };
-          const headings = Array.from(panel.querySelectorAll('h1,h2,h3,h4,strong'))
-            .map((h) => txt(h))
-            .filter((t) => t.length > 1 && t.length < 80);
-          const labels = Array.from(panel.querySelectorAll('label,[aria-label]'))
-            .map((l) => txt(l) || l.getAttribute('aria-label') || '')
-            .map((s) => s.replace(/\s+/g, ' ').trim())
-            .filter((t) => t.length > 1 && t.length < 80);
-          const buttons = Array.from(panel.querySelectorAll('button'))
-            .map((b) => txt(b))
-            .filter((t) => t.length > 1 && t.length < 60);
-          return {
-            headings: Array.from(new Set(headings)),
-            labels: Array.from(new Set(labels)),
-            buttons: Array.from(new Set(buttons)),
-          };
-        });
-      }
-      idx++;
-    }
-
-    dumpJson('roadsens-inventaire-nous.json', { tabs: ourTabs, panes: panesInventory });
-    console.log(
-      '[NOUS INVENTAIRE live]\n' +
-        JSON.stringify({ tabs: ourTabs, panes: panesInventory }, null, 2),
-    );
-
-    expect(ourTabs.length, 'notre app doit présenter 6 onglets').toBeGreaterThanOrEqual(
-      6,
-    );
-    await ctx.close();
-  });
-});
-
-// ==========================================================================
-// SUITE 3 — COMPARAISON DES VALEURS (client Détails ↔ notre Détails), RUN_CALC.
-// Consomme du quota (≤ 6 calculs). 3 cas : preset s2 (bitumineux), preset s16
-// (rigide BC), et un cas MANUEL bitumineux par défaut.
-// ==========================================================================
-
-/** Pilote la définitive (file://) pour un preset ou une saisie manuelle → RawRow[]. */
-async function computeClientDetails(
-  page: Page,
-  mode: { kind: 'preset'; id: string } | { kind: 'manual'; input: BurmisterInput },
-): Promise<RawRow[]> {
-  const res = await page.evaluate(
-    (m) => {
-      let err: string | null = null;
-      try {
-        if (m.kind === 'preset') {
-          loadPreset(m.id);
-        } else {
-          const st = m.input;
-          ly = st.layers.map((l, i) => ({
-            id: i + 1,
-            mat: l.mat,
-            h: l.h,
-            E: l.E,
-            nu: l.nu,
-            ifc: 'auto',
-          }));
-          pf = { cls: st.subgrade.cls, E: st.subgrade.E, nu: st.subgrade.nu };
-          tr = {
-            T: st.traffic.T,
-            C: st.traffic.C,
-            N: st.traffic.N,
-            tau: st.traffic.tau,
-            dir: st.traffic.dir,
-            tv: st.traffic.tv,
-          };
-          cp = {
-            p: st.load.p,
-            a: st.load.a,
-            d: st.load.d,
-            r: st.load.r,
-            sh: st.load.sh,
-            ks: st.load.ks,
-            gntAuto: st.gntAuto ?? false,
-            neForce: st.neForce ?? null,
-          };
-          doCalc();
-        }
-        renderDetails();
-      } catch (e) {
-        err = String((e && (e as Error).message) || e);
-      }
-      return { err };
-    },
-    mode as unknown as Record<string, unknown>,
-  );
-  expect(res.err, `la définitive doit calculer sans lever (err=${res.err})`).toBeNull();
-  const out = await page.evaluate(extractReport, '#detout table');
-  expect(out.error, `extraction définitive : ${out.error ?? ''}`).toBeUndefined();
-  return out.rows;
-}
-
-/** Sélectionne un projet existant (ou en crée un) sur la page ROADSENS live. */
-async function ensureProject(page: Page): Promise<void> {
-  const projetSelect = page.getByLabel('Projet', { exact: true });
-  if (
-    await projetSelect
-      .count()
-      .then((c) => c > 0)
-      .catch(() => false)
-  ) {
-    const optionValues = await projetSelect
-      .locator('option')
-      .evaluateAll((opts) => opts.map((o) => (o as HTMLOptionElement).value));
-    const firstReal = optionValues.find((v) => v && v !== '__new__');
-    if (firstReal) {
-      await projetSelect.selectOption(firstReal);
-    } else {
-      await projetSelect.selectOption('__new__');
-      await page
-        .getByLabel('Nom du nouveau projet')
-        .fill(`E2E fidélité ROADSENS ${Date.now()}`);
-      await page.getByRole('button', { name: 'Créer' }).click();
-      await page.waitForTimeout(2500);
-    }
-  }
-}
-
-/** Rend le rapport Détails de NOTRE app après un calcul, extrait RawRow[]. */
-async function extractOurDetails(page: Page): Promise<RawRow[]> {
-  await page
-    .getByRole('tab', { name: /^Détails/i })
-    .first()
-    .click();
-  const detailsTable = page.locator(
-    '[data-testid="tab-details"] table[aria-label="Rapport détaillé ROADSENS — sections numérotées"]',
-  );
-  await expect(
-    detailsTable,
-    'le rapport Détails de la plateforme doit être rendu',
-  ).toBeVisible({ timeout: 30_000 });
-  const out = await page.evaluate(
-    extractReport,
-    '[data-testid="tab-details"] table[aria-label="Rapport détaillé ROADSENS — sections numérotées"]',
-  );
-  expect(out.error, `extraction plateforme : ${out.error ?? ''}`).toBeUndefined();
-  return out.rows;
-}
-
-interface CompareResult {
-  valuesOk: number;
-  uncoveredClient: string[];
-  uncoveredOurs: string[];
-  omitted: string[];
-  masked: string[];
-  mismatch: string[];
-}
-
-/** Compare deux rapports Détails via classifyRow (tol rel 1e-6, unités comprises). */
-function compareDetails(defRows: RawRow[], ourRows: RawRow[]): CompareResult {
-  const ourByKey = new Map<string, RawRow>();
-  const uncoveredOurs: string[] = [];
-  const masked: string[] = [];
-  for (const r of ourRows) {
-    const c = classifyRow(r.section, r.label);
-    if (/non expos/i.test(r.value))
-      masked.push(`[${r.section}] « ${r.label} » = « ${r.value} »`);
-    if (c.key === null) uncoveredOurs.push(`[${r.section}] « ${r.label} »`);
-    else if (!ourByKey.has(c.key)) ourByKey.set(c.key, r);
-  }
-
-  const uncoveredClient: string[] = [];
-  const omitted: string[] = [];
-  const mismatch: string[] = [];
-  let valuesOk = 0;
-
-  for (const d of defRows) {
-    const c = classifyRow(d.section, d.label);
-    const tag = `[${d.section}] « ${d.label} » = « ${d.value} »${d.unit ? ' ' + d.unit : ''}`;
-    if (c.key === null) {
-      uncoveredClient.push(tag);
-      continue;
-    }
-    const ours = ourByKey.get(c.key);
-    if (!ours) {
-      omitted.push(`${tag} — ABSENTE côté plateforme (clé ${c.key}).`);
-      continue;
-    }
-    const dn = parseNums(d.value);
-    const on = parseNums(ours.value);
-    const isSci = /\d[eE][+-]?\d/.test(d.value);
-    const tol = isSci ? 5e-4 : 1e-6;
-
-    let ok = true;
-    let why = '';
-    if (dn.length === 0 && on.length === 0) {
-      if (normText(d.value) !== normText(ours.value)) {
-        ok = false;
-        why = `texte différent (déf « ${d.value} » ≠ plateforme « ${ours.value} »)`;
-      }
-    } else if (dn.length !== on.length) {
-      ok = false;
-      why = `nombre de valeurs différent (déf ${JSON.stringify(dn)} ≠ plateforme ${JSON.stringify(on)})`;
-    } else {
-      for (let i = 0; i < dn.length; i++) {
-        const e = relErr(dn[i], on[i]);
-        if (e > tol) {
-          ok = false;
-          why = `valeur[${i}] déf=${dn[i]} plateforme=${on[i]} rel=${e.toExponential(3)} > tol=${tol.toExponential(0)}${isSci ? ' (déf notation sci lossy)' : ''}`;
-          break;
-        }
-      }
-    }
-    if (ok && d.unit && ours.unit && normUnit(d.unit) !== normUnit(ours.unit)) {
-      ok = false;
-      why = `unité déf « ${d.unit} » ≠ plateforme « ${ours.unit} »`;
-    }
-    if (ok) valuesOk++;
-    else
-      mismatch.push(
-        `${tag} vs plateforme « ${ours.value} »${ours.unit ? ' ' + ours.unit : ''} — ${why}`,
-      );
-  }
-  return { valuesOk, uncoveredClient, uncoveredOurs, omitted, masked, mismatch };
-}
-
-test.describe('FIDÉLITÉ ROADSENS — comparaison des VALEURS (Détails client ↔ plateforme)', () => {
-  test('given RUN_CALC=1, when on rend le rapport Détails des 2 côtés pour 3 cas, then chaque ligne client est mappée + concorde (tol 1e-6)', async ({
-    browser,
-  }) => {
-    test.skip(
-      !RUN_CALC,
-      'RUN_CALC=1 requis (consomme du quota, ≤ 6 calculs) pour le volet comparaison de valeurs.',
-    );
-    test.setTimeout(600_000);
-
-    // --- Contexte client (file://) réutilisé pour les 3 cas ---
+    // ---- (b) RÉFÉRENCE (file://) — autonome ----
     const refCtx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const refPage = await refCtx.newPage();
     refPage.on('pageerror', () => {});
+    refPage.on('dialog', (d) => void d.accept());
     await refPage.goto(pathToFileURL(DEFINITIVE_HTML).href, {
       waitUntil: 'domcontentloaded',
     });
-
-    // --- Contexte live (login une fois, 3 calculs) ---
-    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    const page = await ctx.newPage();
-    page.setDefaultNavigationTimeout(NAV);
-    await login(page);
-    await page.goto(`${FRONT}/app/${ORG_SLUG}/logiciels/roadsens`, {
-      waitUntil: 'domcontentloaded',
-      timeout: NAV,
+    const REF = await driveReferenceCase(refPage, st);
+    await refPage.screenshot({
+      path: path.join(CAP_DIR, 'roadsens-client-05-details.png'),
+      fullPage: true,
     });
-    await page.waitForLoadState('networkidle', { timeout: 40_000 }).catch(() => {});
-    await ensureProject(page);
-
-    const _calcBtn = page.getByRole('button', { name: /^Calculer/ }).first();
-
-    const cases: Array<{
-      name: string;
-      client: { kind: 'preset'; id: string } | { kind: 'manual'; input: BurmisterInput };
-      driveOurs: () => Promise<void>;
-      capture: string;
-    }> = [
-      {
-        name: 'preset s2 (bitumineux — BBSG/GB3)',
-        client: { kind: 'preset', id: 's2' },
-        capture: 'roadsens-nous-07-details-s2.png',
-        driveOurs: async () => {
-          await page
-            .getByRole('tab', { name: /^Structure/ })
-            .first()
-            .click()
-            .catch(() => {});
-          await page
-            .getByLabel('Charger une famille de structure validée')
-            .selectOption('s2');
-          // Le preset déclenche le calcul serveur + bascule Résultats (handleApplyPreset).
-          await page.waitForResponse(
-            (r) =>
-              /\/calc\/burmister$/.test(new URL(r.url()).pathname) &&
-              r.request().method() === 'POST',
-            { timeout: 120_000 },
-          );
-          await page.waitForTimeout(1500);
-        },
-      },
-      {
-        name: 'preset s16 (rigide — BC5/BC2)',
-        client: { kind: 'preset', id: 's16' },
-        capture: 'roadsens-nous-08-details-s16.png',
-        driveOurs: async () => {
-          await page
-            .getByRole('tab', { name: /^Structure/ })
-            .first()
-            .click()
-            .catch(() => {});
-          await page
-            .getByLabel('Charger une famille de structure validée')
-            .selectOption('s16');
-          await page.waitForResponse(
-            (r) =>
-              /\/calc\/burmister$/.test(new URL(r.url()).pathname) &&
-              r.request().method() === 'POST',
-            { timeout: 120_000 },
-          );
-          await page.waitForTimeout(1500);
-        },
-      },
-    ];
-
-    const summary: Record<string, CompareResult & { defRows: number; ourRows: number }> =
-      {};
-
-    for (const cs of cases) {
-      const defRows = await computeClientDetails(refPage, cs.client);
-      expect(defRows.length, `Détails client vide pour ${cs.name}`).toBeGreaterThan(25);
-
-      await cs.driveOurs();
-      const ourRows = await extractOurDetails(page);
-      expect(ourRows.length, `Détails plateforme vide pour ${cs.name}`).toBeGreaterThan(
-        25,
-      );
-      await page.screenshot({ path: path.join(CAP_DIR, cs.capture), fullPage: true });
-
-      const cmp = compareDetails(defRows, ourRows);
-      summary[cs.name] = { ...cmp, defRows: defRows.length, ourRows: ourRows.length };
-      console.log(
-        `\n[COMPARE ${cs.name}] client=${defRows.length} · plateforme=${ourRows.length} lignes` +
-          `\n  valeurs conformes : ${cmp.valuesOk}` +
-          `\n  lignes « non exposé » restantes côté plateforme (DÉFAUT ADR 0014 si >0) : ${cmp.masked.length}` +
-          (cmp.uncoveredClient.length
-            ? `\n  NON COUVERTES (client) :\n    - ${cmp.uncoveredClient.join('\n    - ')}`
-            : '') +
-          (cmp.omitted.length
-            ? `\n  OMISES (plateforme) :\n    - ${cmp.omitted.join('\n    - ')}`
-            : '') +
-          (cmp.mismatch.length
-            ? `\n  ÉCARTS DE VALEUR :\n    - ${cmp.mismatch.join('\n    - ')}`
-            : '') +
-          (cmp.masked.length
-            ? `\n  MASQUÉES :\n    - ${cmp.masked.join('\n    - ')}`
-            : ''),
-      );
-    }
-
+    dumpJson('roadsens-fidelite-reference.json', REF);
+    expect(
+      REF.rows.length,
+      'le rapport Détails de réf (9 sections) ne doit pas être vide',
+    ).toBeGreaterThan(25);
+    expect(
+      REF.results.metrics.length,
+      'la réf doit rendre des KPI (.metric)',
+    ).toBeGreaterThanOrEqual(3);
+    expect(REF.results.verdict, 'la réf doit rendre un verdict').not.toBe('');
     await refCtx.close();
-    await ctx.close();
-    dumpJson('roadsens-comparaison-valeurs.json', summary);
 
-    // ---- Assertions (zéro faux-vert) ----
-    for (const [name, cmp] of Object.entries(summary)) {
-      expect(
-        cmp.valuesOk,
-        `[${name}] au moins 20 valeurs comparées (sinon extraction cassée)`,
-      ).toBeGreaterThan(20);
-      expect(
-        cmp.uncoveredClient,
-        `[${name}] lignes client NON classées par le mapping`,
-      ).toHaveLength(0);
-      expect(
-        cmp.masked,
-        `[${name}] lignes « non exposé » restantes côté burmister (DÉFAUT ADR 0014)`,
-      ).toHaveLength(0);
-      expect(cmp.omitted, `[${name}] lignes client OMISES côté plateforme`).toHaveLength(
-        0,
+    // ---- (a) SORTIE SERVEUR du cas CAS_REF ----
+    const serverOutput = serverOutputFor(CAS_REF);
+
+    // ---- (c) NOTRE CLONE (iframe, calcul intercepté) ----
+    const token = forgeJwt();
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await ctx.addCookies([
+      { name: 'roadsen_access_token', value: token, domain: 'localhost', path: '/' },
+    ]);
+    const page = await ctx.newPage();
+    const { intercepted } = await openOurClone(page, serverOutput, token);
+
+    const frame = cloneFrame(page);
+    const OURS = await driveCloneCase(page, frame, st);
+    await page.screenshot({
+      path: path.join(CAP_DIR, 'roadsens-nous-05-details.png'),
+      fullPage: true,
+    });
+    dumpJson('roadsens-fidelite-clone.json', OURS);
+
+    expect(
+      intercepted(),
+      'la requête de calcul DOIT avoir été interceptée (sinon comparaison invalide)',
+    ).toBe(true);
+    expect(
+      OURS.rows.length,
+      'INTÉGRATION : le clone n’a rendu AUCUNE ligne de détail (sortie serveur non livrée au clone ?)',
+    ).toBeGreaterThan(25);
+
+    // ---- Recheck CONFIDENTIALITÉ §8 : le HTML servi ne contient aucun symbole moteur ----
+    const servedHtml = await page.evaluate(async () => {
+      const res = await fetch(
+        `/api/tools/roadsens?orgId=${encodeURIComponent('org_rs')}`,
+        {
+          headers: {
+            Authorization: `Bearer ${sessionStorage.getItem('roadsen_access_token')}`,
+          },
+        },
       );
-      expect(cmp.mismatch, `[${name}] VALEURS/UNITÉS divergentes`).toHaveLength(0);
-    }
+      return res.text();
+    });
+    expect(servedHtml.length, 'HTML servi trop court (fetch échoué ?)').toBeGreaterThan(
+      10_000,
+    );
+    expect(servedHtml, 'HTML servi ≠ clone roadsens (bridge absent)').toContain(
+      '__geofamBridge',
+    );
+    const EXCISED_MARKERS = [
+      'burIntegrateMLWithPSC',
+      'computeBurmister',
+      'krLCPC',
+      'shLCPC',
+      'ksLCPC',
+      '__ROADSEN_ENGINE_',
+      '__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__',
+    ];
+    const leaks = EXCISED_MARKERS.filter((m) => servedHtml.includes(m));
+    expect(
+      leaks,
+      `symboles moteur EXCISÉS/confidentiels présents dans le HTML servi : ${leaks.join(', ')}`,
+    ).toHaveLength(0);
+
+    // ==================================================================
+    // COMPARAISON — rapport #detout (classification fermée)
+    // ==================================================================
+    const cmp = compareDetails(REF.rows, OURS.rows);
+
+    // Résidus fermés §8 (colonne COMMENTAIRE, non comparés en valeur) — tracés.
+    const residualsClosed = [
+      'S7 st base C{i} : composantes collée (stC) / glissante (stG) — « — » côté clone ' +
+        '(non whitelistées) ; NON sollicitées par CAS_REF (aucune couche traitée, rigL vide).',
+      'S8 ez sommet couche (non liée) : décomposition axe/e-jum — « — » côté clone ' +
+        '(non whitelistées) ; la VALEUR ε_z sommet reste whitelistée et FIDÈLE.',
+    ];
+    // Redaction assumée de la famille (FUITE #1) — tracée pour honnêteté.
+    const refFamille = REF.rows.find(
+      (r) => classifyRow(r.section, r.label).key === 'S6.famille',
+    );
+    const ourFamille = OURS.rows.find(
+      (r) => classifyRow(r.section, r.label).key === 'S6.famille',
+    );
+    const familleRedaction = {
+      reference: refFamille?.value ?? null,
+      clone: ourFamille?.value ?? null,
+      note: 'Le clone affiche le libellé NU d’allowlist (sanitizeFamille) ; la référence y ajoute « (§x.y) »/« K=… » (confidentiel) — redaction VOULUE, comparée hors ces éléments.',
+    };
+
+    const summary = {
+      case: 'CAS_REF (BBSG1/GB3/GL1 sur PF2, T=150)',
+      refRows: REF.rows.length,
+      ourRows: OURS.rows.length,
+      valuesOk: cmp.valuesOk,
+      uncoveredClient: cmp.uncoveredClient,
+      uncoveredOurs: cmp.uncoveredOurs,
+      omitted: cmp.omitted,
+      masked: cmp.masked,
+      mismatch: cmp.mismatch,
+      residualsClosed,
+      familleRedaction,
+      refVerdict: REF.results.verdict,
+      ourVerdict: OURS.results.verdict,
+      refMetrics: REF.results.metrics,
+      ourMetrics: OURS.results.metrics,
+    };
+    dumpJson('roadsens-fidelite-classification.json', summary);
+    // eslint-disable-next-line no-console
+    console.log('\n[FIDÉLITÉ ROADSENS]\n' + JSON.stringify(summary, null, 2));
+
+    // ==================================================================
+    // ASSERTIONS DURES (zéro faux-vert)
+    // ==================================================================
+    expect(
+      cmp.valuesOk,
+      'au moins 20 valeurs comparées (sinon extraction/mapping cassé)',
+    ).toBeGreaterThan(20);
+    expect(
+      cmp.uncoveredClient,
+      'lignes réf NON classées par le mapping (trou de couverture)',
+    ).toHaveLength(0);
+    expect(
+      cmp.uncoveredOurs,
+      'lignes clone NON classées par le mapping (trou de couverture)',
+    ).toHaveLength(0);
+    expect(
+      cmp.masked,
+      'lignes « non exposé » restantes côté burmister (DÉFAUT ADR 0014)',
+    ).toHaveLength(0);
+    expect(cmp.omitted, 'lignes réf OMISES côté clone').toHaveLength(0);
+    expect(cmp.mismatch, 'VALEURS/UNITÉS divergentes clone↔réf').toHaveLength(0);
+
+    // ---- Panneau Résultats (verdict + KPI) : fidélité par construction ----
+    expect(OURS.results.verdict, 'verdict clone ≠ réf').toBe(REF.results.verdict);
+    expect(
+      OURS.results.metrics.map((m) => m.value),
+      'KPI (.metric) clone ≠ réf',
+    ).toEqual(REF.results.metrics.map((m) => m.value));
+    expect(
+      OURS.results.metrics.map((m) => m.label),
+      'libellés KPI clone ≠ réf',
+    ).toEqual(REF.results.metrics.map((m) => m.label));
+
+    await ctx.close();
   });
 });

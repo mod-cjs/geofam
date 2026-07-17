@@ -50,8 +50,13 @@ async function driveWithFixture(dom: JSDOM, input: unknown): Promise<void> {
   Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
   fileInput.dispatchEvent(new win.Event('change', { bubbles: true }));
   const pane = () => win.document.getElementById('tab-verifs')?.innerHTML ?? '';
-  for (let i = 0; i < 160; i++) {
-    if (pane().length > 60 && !pane().includes('Calcul en cours')) break;
+  // On attend le rendu du FIXTURE (carte de verdict `.vcard`) — PAS le placeholder
+  // d'attente (« Calcul en cours ») NI le message no-calc-initial (« Renseignez… »,
+  // rendu au chargement sur l'etat vide AVANT que le FileReader du fileImport n'ait
+  // repeuple l'etat). Sans cette garde, le poll romprait sur le message d'etat vide.
+  for (let i = 0; i < 200; i++) {
+    const p = pane();
+    if (p.includes('vcard') && !p.includes('Calcul en cours')) break;
     await new Promise((r) => setTimeout(r, 15));
   }
 }
@@ -219,6 +224,41 @@ d('terzaghi — fidelite du clone excise (mapping serveur -> renderers conserves
       dom.window.document.querySelectorAll('#tab-verifs .calc .step').length,
     ).toBeGreaterThan(4);
 
+    dom.window.close();
+  });
+
+  it('NO-CALC-INITIAL : au chargement (state vide) aucun appel serveur, message natif', async () => {
+    // Le clone auto-lance recalc au chargement (init) ; sur l'etat VIDE (blankState :
+    // sondage sans z, B non renseigne) la garde no-calc-initial rend le message natif
+    // « Renseignez… » et NE poste PAS de calc:request — la zone n'affiche donc jamais
+    // « Calcul en cours » (qui signalerait un appel serveur pendant). On CAPTURE aussi
+    // window.parent.postMessage : aucun message calc:request ne doit partir a l'init.
+    const html = readFileSync(CLONE_PATH, 'utf8');
+    const posted: unknown[] = [];
+    const dom = new JSDOM(html, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      beforeParse(window) {
+        const orig = window.postMessage.bind(window);
+        (window as unknown as { postMessage: unknown }).postMessage = (
+          ...args: unknown[]
+        ) => {
+          posted.push(args[0]);
+          return (orig as (...a: unknown[]) => unknown)(...args);
+        };
+      },
+    });
+    // Laisse le microtask de l'init recalc se derouler.
+    await new Promise((r) => setTimeout(r, 30));
+    const pane = dom.window.document.getElementById('tab-verifs')?.innerHTML ?? '';
+    // Aucun calc:request emis a l'init.
+    const calcRequests = posted.filter(
+      (m) => (m as { type?: string })?.type === 'calc:request',
+    );
+    expect(calcRequests, 'un calc:request a fuite au chargement').toHaveLength(0);
+    // Message natif rendu, pas de « Calcul en cours » (aucun appel serveur pendant).
+    expect(pane).not.toContain('Calcul en cours');
+    expect(pane).toContain('Renseignez au moins une ligne de sondage');
     dom.window.close();
   });
 

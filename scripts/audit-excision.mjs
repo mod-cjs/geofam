@@ -101,13 +101,46 @@ function isMain() {
 if (isMain()) {
   const selfTest = process.argv.includes('--self-test');
   if (selfTest) {
-    // Le temoin DOIT echouer : un clone contenant un appel moteur.
-    const firstTool = Object.keys(TOOLS)[0];
-    const forb = TOOLS[firstTool].forbiddenSymbols;
-    const witness =
+    // TEMOINS NEGATIFS — POUR CHAQUE outil, un clone forge contenant un APPEL a son
+    // 1er symbole moteur DOIT etre capture (sinon l'audit est trop laxiste / un
+    // faux-vert masquerait une fuite de calcul). On teste aussi le temoin historique
+    // `computeAll` (terzaghi) pour non-regression.
+    let allCaught = true;
+    for (const [toolId, cfg] of Object.entries(TOOLS)) {
+      const sym = cfg.forbiddenSymbols[0];
+      const witness = `<html><script>"use strict"; function recalc(){ const R=${sym}(state); return R; }</script></html>`;
+      const caught = auditHtml(witness, cfg.forbiddenSymbols).some(
+        (v) => v.symbol === sym,
+      );
+      console.log(
+        `[audit] self-test temoin ${toolId} (${sym}) capturé : ${caught ? 'OUI' : 'NON'}`,
+      );
+      if (!caught) allCaught = false;
+    }
+    // Temoin transverse explicite (terzaghi computeAll) — garde de non-regression.
+    const terzForb = TOOLS.terzaghi?.forbiddenSymbols ?? [];
+    const computeAllWitness =
       '<html><script>"use strict"; function recalc(){ const R=computeAll(state); return R; }</script></html>';
-    const wv = auditHtml(witness, forb);
-    const witnessCaught = wv.some((v) => v.symbol === 'computeAll');
+    const computeAllCaught = auditHtml(computeAllWitness, terzForb).some(
+      (v) => v.symbol === 'computeAll',
+    );
+    console.log(
+      `[audit] self-test temoin transverse (computeAll) capturé : ${computeAllCaught ? 'OUI' : 'NON'}`,
+    );
+    if (!computeAllCaught) allCaught = false;
+
+    // Temoins geoplaque explicites (solveModel appelant + solveDense LU) — un clone qui
+    // laisserait fuiter l'ORCHESTRATEUR EF ou le SOLVEUR DENSE doit ECHOUER.
+    const geoForb = TOOLS.geoplaque?.forbiddenSymbols ?? [];
+    for (const sym of ['solveModel', 'solveDense']) {
+      const witness = `<html><script>"use strict"; function doSolve(){ const R=${sym}(opts); return R; }</script></html>`;
+      const caught = auditHtml(witness, geoForb).some((v) => v.symbol === sym);
+      console.log(
+        `[audit] self-test temoin geoplaque (${sym}) capturé : ${caught ? 'OUI' : 'NON'}`,
+      );
+      if (!caught) allCaught = false;
+    }
+
     // Le clone reel DOIT passer.
     let realClean = true;
     try {
@@ -117,14 +150,11 @@ if (isMain()) {
       realClean = false;
     }
     console.log(
-      `[audit] self-test temoin (computeAll) capturé : ${witnessCaught ? 'OUI' : 'NON'}`,
-    );
-    console.log(
       `[audit] self-test clone réel propre          : ${realClean ? 'OUI' : 'NON'}`,
     );
-    if (!witnessCaught) {
+    if (!allCaught) {
       console.error(
-        '[audit] ECHEC : le temoin `computeAll(` n a PAS ete capture (audit trop laxiste).',
+        '[audit] ECHEC : un temoin moteur n a PAS ete capture (audit trop laxiste).',
       );
       process.exit(1);
     }

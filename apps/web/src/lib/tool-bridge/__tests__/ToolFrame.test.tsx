@@ -62,6 +62,9 @@ afterEach(() => {
 interface RenderOpts {
   onCalcResultId?: (id: string | null) => void;
   onPvEmitted?: (pv: unknown) => void;
+  toolId?: string;
+  engineId?: string;
+  engineAllowlist?: string[];
 }
 
 async function renderFrame(opts: RenderOpts = {}) {
@@ -69,8 +72,9 @@ async function renderFrame(opts: RenderOpts = {}) {
     root = createRoot(container);
     root.render(
       <ToolFrame
-        toolId="terzaghi"
-        engineId="terzaghi"
+        toolId={opts.toolId ?? 'terzaghi'}
+        engineId={opts.engineId ?? 'terzaghi'}
+        engineAllowlist={opts.engineAllowlist}
         orgId="org_01"
         orgSlug="be-routes-dakar"
         projectId="proj_01"
@@ -348,6 +352,132 @@ describe('ToolFrame — calc:request → calc:response', () => {
     expect(call?.[0]).toMatchObject({
       payload: { ok: false, error: { statusCode: 403, reason: 'MODULE_NOT_IN_PACK' } },
     });
+  });
+});
+
+describe('ToolFrame — engineAllowlist (multi-engine, GEOPLAQUE)', () => {
+  const GEOPLAQUE_MODES = ['radier', 'plane-strain', 'axi', 'tri-raft'];
+
+  it.each(GEOPLAQUE_MODES)(
+    'given engineAllowlist des 4 modes GEOPLAQUE, when calc:request.engineId=%s, then runCalc est appelé avec cet engineId TEL QUEL',
+    async (mode) => {
+      mockRunCalc.mockResolvedValue({
+        id: `calc_${mode}`,
+        engineId: mode,
+        domain: 'FD',
+        status: 'DONE',
+        output: {},
+      });
+      await renderFrame({
+        toolId: 'geoplaque',
+        engineId: 'radier',
+        engineAllowlist: GEOPLAQUE_MODES,
+      });
+      const iframe = getIframe();
+      const postSpy = vi.spyOn(iframe.contentWindow as Window, 'postMessage');
+
+      await sendFromIframe(iframe, {
+        v: 1,
+        type: 'calc:request',
+        id: `req_${mode}`,
+        payload: { engineId: mode, label: 'Calcul', params: {} },
+      });
+
+      expect(mockRunCalc).toHaveBeenCalledWith(
+        'org_01',
+        'proj_01',
+        expect.objectContaining({ engineId: mode }),
+      );
+      const call = postSpy.mock.calls.find(
+        (c) => (c[0] as { id?: string }).id === `req_${mode}`,
+      );
+      expect(call?.[0]).toMatchObject({ payload: { ok: true } });
+    },
+  );
+
+  it('given engineAllowlist des 4 modes GEOPLAQUE, when calc:request.engineId est un slug inconnu, then rejeté sans appeler runCalc', async () => {
+    await renderFrame({
+      toolId: 'geoplaque',
+      engineId: 'radier',
+      engineAllowlist: GEOPLAQUE_MODES,
+    });
+    const iframe = getIframe();
+    const postSpy = vi.spyOn(iframe.contentWindow as Window, 'postMessage');
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_unknown',
+      payload: { engineId: 'mode-inconnu', label: 'Calcul', params: {} },
+    });
+
+    expect(mockRunCalc).not.toHaveBeenCalled();
+    expect(postSpy).toHaveBeenCalledWith(
+      {
+        v: 1,
+        type: 'calc:response',
+        id: 'req_unknown',
+        payload: {
+          ok: false,
+          error: {
+            statusCode: 400,
+            reason: 'ENGINE_NOT_ALLOWED',
+            message: expect.stringMatching(/mode-inconnu/),
+          },
+        },
+      },
+      '*',
+    );
+  });
+
+  it("given engineAllowlist des 4 modes GEOPLAQUE, when calc:request.engineId='chaussee-burmister' (moteur réel mais hors liste), then rejeté sans appeler runCalc", async () => {
+    await renderFrame({
+      toolId: 'geoplaque',
+      engineId: 'radier',
+      engineAllowlist: GEOPLAQUE_MODES,
+    });
+    const iframe = getIframe();
+    const postSpy = vi.spyOn(iframe.contentWindow as Window, 'postMessage');
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_burmister',
+      payload: { engineId: 'chaussee-burmister', label: 'Calcul', params: {} },
+    });
+
+    expect(mockRunCalc).not.toHaveBeenCalled();
+    const call = postSpy.mock.calls.find(
+      (c) => (c[0] as { id?: string }).id === 'req_burmister',
+    );
+    expect(call?.[0]).toMatchObject({
+      payload: { ok: false, error: { statusCode: 400, reason: 'ENGINE_NOT_ALLOWED' } },
+    });
+  });
+
+  it("given AUCUN engineAllowlist (terzaghi/roadsens, rétrocompatibilité), when calc:request déclare un engineId différent, then l'engineId de l'HÔTE prime (comportement historique inchangé)", async () => {
+    mockRunCalc.mockResolvedValue({
+      id: 'calc_1',
+      engineId: 'terzaghi',
+      domain: 'FD',
+      status: 'DONE',
+      output: {},
+    });
+    await renderFrame(); // pas d'engineAllowlist — patron terzaghi
+    const iframe = getIframe();
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_legacy',
+      payload: { engineId: 'fondation-superficielle', label: 'Calcul', params: {} },
+    });
+
+    expect(mockRunCalc).toHaveBeenCalledWith(
+      'org_01',
+      'proj_01',
+      expect.objectContaining({ engineId: 'terzaghi' }),
+    );
   });
 });
 

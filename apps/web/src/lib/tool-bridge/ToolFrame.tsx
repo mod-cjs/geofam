@@ -20,6 +20,17 @@
  *    (`null`) : on ne peut pas cibler par origine, donc on valide côté RÉCEPTION
  *    en comparant `event.source` à la fenêtre attendue (contentWindow côté
  *    hôte, `window.parent` côté iframe) — jamais `event.origin`.
+ *
+ * Multi-engine (GEOPLAQUE, ADR 0015) : un clone peut émettre `calc:request`
+ * avec un `engineId` DIFFÉRENT par mode interne (ex. radier / plane-strain /
+ * axi / tri-raft — tous groupés sous le MÊME gate d'abonnement, cf.
+ * `software-catalog.ts`). Par défaut (rétrocompatible, `engineAllowlist`
+ * absent), l'`engineId` FACTURABLE reste TOUJOURS celui configuré par l'hôte
+ * (prop `engineId`) — celui déclaré par l'iframe est ignoré (frontière de
+ * confiance inchangée, terzaghi/roadsens). Si `engineAllowlist` est fourni,
+ * un `calc:request.engineId` membre de la liste est accepté TEL QUEL ; un
+ * `engineId` hors liste est REJETÉ (`calc:response.error`), jamais transmis à
+ * `runCalc`.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -39,6 +50,14 @@ export interface ToolFrameProps {
   toolId: string;
   /** engineId de calcul attendu (généralement = toolId, cf. software-catalog.ts). */
   engineId: string;
+  /**
+   * Liste fermée des engineId qu'un `calc:request` de CE clone peut déclarer
+   * TEL QUEL (multi-engine, ex. GEOPLAQUE : radier/plane-strain/axi/tri-raft).
+   * Absente = comportement historique (l'engineId de l'hôte prime toujours,
+   * celui de l'iframe est ignoré). Présente = accepte un membre de la liste,
+   * REJETTE (calc:response.error) tout engineId hors liste sans appeler l'API.
+   */
+  engineAllowlist?: string[];
   orgId: string | null;
   orgSlug: string;
   projectId: string;
@@ -66,6 +85,7 @@ function apiErrorFrom(err: unknown): CalcResponsePayload['error'] {
 export function ToolFrame({
   toolId,
   engineId,
+  engineAllowlist,
   orgId,
   orgSlug,
   projectId,
@@ -164,12 +184,37 @@ export function ToolFrame({
             });
             break;
           }
-          // Frontière de confiance : l'engineId FACTURABLE est celui configuré par
-          // l'hôte (slug URL attendu par l'API tenant et le gate d'abonnement),
-          // jamais celui déclaré par l'iframe (le clone émet l'id registre
-          // « fondation-superficielle », inconnu du dispatch tenant → 403).
+          // Frontière de confiance : par défaut, l'engineId FACTURABLE est celui
+          // configuré par l'hôte (slug URL attendu par l'API tenant et le gate
+          // d'abonnement), jamais celui déclaré par l'iframe (le clone émet l'id
+          // registre « fondation-superficielle », inconnu du dispatch tenant →
+          // 403). Multi-engine (GEOPLAQUE) : si `engineAllowlist` est fourni, un
+          // engineId MEMBRE de la liste est accepté tel quel (chaque mode reste
+          // sous le même gate — cf. software-catalog.ts) ; un engineId hors
+          // liste est rejeté SANS appeler l'API.
+          let effectiveEngineId = engineId;
+          if (engineAllowlist) {
+            if (engineAllowlist.includes(payload.engineId)) {
+              effectiveEngineId = payload.engineId;
+            } else {
+              post({
+                v: TOOL_BRIDGE_PROTOCOL_VERSION,
+                type: 'calc:response',
+                id: msg.id,
+                payload: {
+                  ok: false,
+                  error: {
+                    statusCode: 400,
+                    reason: 'ENGINE_NOT_ALLOWED',
+                    message: `Mode de calcul non autorisé : ${payload.engineId}.`,
+                  },
+                },
+              });
+              break;
+            }
+          }
           runCalc(orgId, projectId, {
-            engineId,
+            engineId: effectiveEngineId,
             label: payload.label,
             params: payload.params,
           })
@@ -280,6 +325,7 @@ export function ToolFrame({
   }, [
     post,
     engineId,
+    engineAllowlist,
     orgSlug,
     projectLabel,
     readOnly,
@@ -295,7 +341,7 @@ export function ToolFrame({
       style={{
         width: '100%',
         height: '100%',
-        minHeight: 640,
+        minHeight: 0,
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -322,7 +368,7 @@ export function ToolFrame({
           srcDoc={srcDoc}
           // Pas de allow-same-origin : origine opaque, aucun accès cookies/JWT/DOM parent.
           sandbox="allow-scripts allow-forms allow-modals allow-downloads"
-          style={{ width: '100%', flex: 1, border: 'none', minHeight: 640 }}
+          style={{ width: '100%', flex: 1, border: 'none', minHeight: 0 }}
         />
       )}
     </div>

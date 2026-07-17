@@ -128,7 +128,7 @@ export default function TerzaghiPage() {
         margin: '0 auto',
         display: 'flex',
         flexDirection: 'column',
-        minHeight: 'calc(100vh - 32px)',
+        height: 'calc(100vh - 32px)',
       }}
     >
       {/* Bandeau outil — shell GEOFAM (sélection projet, gate, PV) */}
@@ -274,7 +274,7 @@ export default function TerzaghiPage() {
       <div
         style={{
           flex: 1,
-          minHeight: 640,
+          minHeight: 0,
           borderRadius: 12,
           overflow: 'hidden',
           border: `1px solid ${LINE}`,
