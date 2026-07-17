@@ -1,0 +1,475 @@
+{
+  "source": "03-Moteurs-client/GeoSuite/source/tools/casagrande_V5.html (1833 lignes, LECTURE SEULE)",
+  "titre": "CASAGRANDE — Calcul de fondations profondes (NF P 94-262)",
+  "navigation": [
+    { "n": "01", "id": "projet", "libelle": "Projet & pieu" },
+    { "n": "02", "id": "fn", "libelle": "Frottement négatif" },
+    { "n": "03", "id": "sol", "libelle": "Profil de sol" },
+    { "n": "04", "id": "coef", "libelle": "Coefficients" },
+    { "n": "05", "id": "res", "libelle": "Résultats & vérifs" },
+    {
+      "action": "Remplir la fiche fictivement",
+      "fonction": "fillFictitious() — exemple complet pré-chargé (projet Dakar, 4 couches, pénétrogramme)"
+    },
+    { "action": "Calculer la portance →", "fonction": "goTab('res') → compute()" }
+  ],
+  "entete": {
+    "marque": "CASAGRANDE — Fondations Profondes",
+    "reference": "Calcul selon NF P 94-262 — Eurocode 7 · Méthodes pressiométrique · pénétrométrique · c-φ"
+  },
+  "sections": [
+    {
+      "titre": "Onglet 01 — Projet & pieu / carte Identification",
+      "champs": [
+        {
+          "libelle": "Nom du projet",
+          "id": "p_nom",
+          "type": "text",
+          "placeholder": "Projet sans titre"
+        },
+        {
+          "libelle": "Sondage / pieu",
+          "id": "p_pieu",
+          "type": "text",
+          "placeholder": "P1"
+        }
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Onglet 01 — carte Géométrie du pieu (tag « m »)",
+      "champs": [
+        {
+          "libelle": "Section",
+          "type": "segmenté 4",
+          "options": ["Circulaire", "Carrée", "Rectangulaire", "Quelconque"]
+        },
+        {
+          "libelle": "Diamètre B (m) — devient « Côté / largeur B (m) » hors circulaire",
+          "id": "g_B",
+          "placeholder": "0.60"
+        },
+        {
+          "libelle": "Largeur b (m) — visible si rectangulaire",
+          "id": "g_b2",
+          "placeholder": "0.50"
+        },
+        {
+          "libelle": "Aire de pointe A_p (m²) — visible si quelconque",
+          "id": "g_Ap",
+          "placeholder": "0.28"
+        },
+        {
+          "libelle": "Périmètre du fût P (m) — visible si quelconque",
+          "id": "g_P",
+          "placeholder": "1.88"
+        },
+        { "libelle": "Profondeur tête z₀ (m)", "id": "g_z0", "placeholder": "0.0" },
+        { "libelle": "Profondeur base D (m)", "id": "g_D", "placeholder": "15.0" }
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [],
+      "hints": [
+        "La base du pieu doit se situer dans une couche définie au profil de sol."
+      ]
+    },
+    {
+      "titre": "Onglet 01 — carte Type de pieu (tag « Classe NF P 94-262 »)",
+      "champs": [
+        {
+          "libelle": "Technique de mise en œuvre",
+          "id": "g_pieu",
+          "type": "select 20 catégories",
+          "format_option": "« 1. FS — Foré simple (pieux et barrettes) » (n° + abréviation + nom)"
+        }
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [],
+      "hints": [
+        "pieu-info DYNAMIQUE : « Catégorie N (ab) → classe X · avec/sans refoulement (fluage 0,7/0,5·Rb) · micropieu : pointe non comptée »"
+      ]
+    },
+    {
+      "titre": "Onglet 01 — carte Béton du pieu (tag « Structure »)",
+      "champs": [
+        {
+          "libelle": "Résistance caractéristique f_ck (MPa)",
+          "id": "b_fck",
+          "placeholder": "25"
+        },
+        {
+          "libelle": "Section",
+          "type": "segmenté 2",
+          "options": ["Béton armé", "Non armé"]
+        },
+        {
+          "libelle": "Contrôles d'intégrité",
+          "type": "segmenté 2",
+          "options": ["Courants", "Renforcés"]
+        }
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [],
+      "hints": [
+        "Sert à vérifier la résistance structurale du fût en compression (f_cd). C_max et k₁ déduits de la technique ; vérification à l'onglet 05. Sans objet pieux acier/préfabriqués/traction."
+      ]
+    },
+    {
+      "titre": "Onglet 01 — carte Charges appliquées (tag « kN »)",
+      "champs": [
+        {
+          "libelle": "Sollicitation",
+          "type": "segmenté 2",
+          "options": ["Compression", "Traction"]
+        },
+        { "libelle": "G permanent (kN)", "id": "c_G", "placeholder": "800" },
+        { "libelle": "Q variable (kN)", "id": "c_Q", "placeholder": "350" },
+        {
+          "libelle": "Essais de chargement (traction ELS-QP)",
+          "type": "segmenté 2",
+          "options": ["Non réalisés", "Réalisés"]
+        }
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [],
+      "hints": [
+        "Valeurs caractéristiques non pondérées. En traction sans essais, ELS-QP plafonné à 0,15·Rs (§4.3.3)."
+      ]
+    },
+    {
+      "titre": "Onglet 01 — carte Groupe de pieux (tag « Effet de groupe »)",
+      "champs": [
+        { "libelle": "Nb de files n", "id": "grp_n", "placeholder": "1" },
+        { "libelle": "Pieux / file m", "id": "grp_m", "placeholder": "1" },
+        { "libelle": "Entraxe S (m)", "id": "grp_s", "placeholder": "—" }
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [],
+      "hints": [
+        "n = m = 1 pieu isolé ; S < 3·B → coefficient réducteur C_e sur R_s (§4.3.2)."
+      ]
+    },
+    {
+      "titre": "Onglet 01 — carte Méthode de calcul (tag « Portance »)",
+      "champs": [
+        {
+          "libelle": "(sans label)",
+          "type": "segmenté 3",
+          "options": ["Pressiométrique", "Pénétrométrique", "c — φ"]
+        }
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [],
+      "hints": [
+        "meth-info DYNAMIQUE par méthode (Ménard pl* Annexe F / CPT qc / c-φ Nq-Nc)."
+      ]
+    },
+    {
+      "titre": "Onglet 01 — carte Approche de calcul (tag « EN 1997-1 »)",
+      "champs": [
+        {
+          "libelle": "(sans label)",
+          "type": "segmenté 3",
+          "options": ["DA 1", "DA 2 (défaut)", "DA 3"]
+        }
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [],
+      "hints": ["da-info DYNAMIQUE : combinaisons A/M/R détaillées par approche."]
+    },
+    {
+      "titre": "Onglet 01 — carte Nappe & modèle (tag « Options »)",
+      "champs": [
+        {
+          "libelle": "Profondeur de la nappe (m)",
+          "id": "o_nappe",
+          "placeholder": "3.0",
+          "nota": "champ vide → 0 (nappe en surface)"
+        },
+        {
+          "libelle": "Nb. de profils de sondage (N)",
+          "id": "o_nprofil",
+          "placeholder": "1"
+        },
+        {
+          "libelle": "Surface d'investigation S (m²)",
+          "id": "o_surf",
+          "placeholder": "2500"
+        },
+        {
+          "libelle": "Redistribution des charges",
+          "type": "select",
+          "options": ["Non", "Structure rigide (÷1,1)"]
+        }
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [],
+      "hints": [
+        "Pilote ξ₃/ξ₄ (Tableau C.2.4.2)",
+        "E.2.1 : ξ = 1+(ξ′−1)·√(S/2500), borné 100–2500 m²",
+        "÷1,1 sur ξ si structure redistribue (§9.2.3)"
+      ]
+    },
+    {
+      "titre": "Onglet 02 — Frottement négatif / carte Zone de frottement négatif (tag « Point neutre »)",
+      "champs": [
+        {
+          "libelle": "Mode",
+          "type": "segmenté 2",
+          "options": ["Automatique", "Hauteur imposée"]
+        },
+        {
+          "libelle": "Tassement en surface s₀ (mm) — mode auto",
+          "id": "fn_s0",
+          "placeholder": "90"
+        },
+        {
+          "libelle": "Profondeur compressible H_c (m) — mode auto",
+          "id": "fn_hc",
+          "placeholder": "9.0"
+        },
+        {
+          "libelle": "Frottement négatif de (m) — mode imposé",
+          "id": "fn_zt",
+          "placeholder": "0.0"
+        },
+        { "libelle": "… jusqu'à (m) — mode imposé", "id": "fn_zb", "placeholder": "9.0" }
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [],
+      "hints": [
+        "Point neutre par compatibilité des déplacements (auto)",
+        "Zone imposée : q_sn = K·tanδ·σ'v (Combarieu, Annexe H)"
+      ]
+    },
+    {
+      "titre": "Onglet 02 — carte Interaction sol-pieu (tag « Annexe H »)",
+      "champs": [
+        {
+          "libelle": "Charge structurelle en tête Q (kN)",
+          "id": "fn_Q",
+          "placeholder": "800"
+        },
+        {
+          "libelle": "Terme K·tanδ (frottement négatif)",
+          "id": "fn_ktd",
+          "placeholder": "0.30"
+        }
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [
+        "Reprendre Q et la coupe du projet (fnFromProject : préremplit Q=G, K·tanδ=0,30/0,20 selon refoulement, s₀=90, H_c=9)"
+      ],
+      "hints": [
+        "Frottement négatif plafonné à q_sn = K·tanδ·σ'v (Combarieu, Tableau 31) au-dessus du point neutre."
+      ]
+    },
+    {
+      "titre": "Onglet 02 — panneau de résultats fn-content (calcul LIVE à l'ouverture de l'onglet)",
+      "champs": [],
+      "tables": [
+        "4 cartes KPI : Effort axial max (MN, au point neutre) · Frottement négatif G_sn (MN, Nmax − Q) · Point neutre (m) · Tassement tête pieu (mm)"
+      ],
+      "figures": [
+        "drawDowndrag : SVG 3 panneaux côte à côte — (1) Tassement sol / pieu (mm) vs z (courbes pieu + tassement libre du sol, ou zone F.N. imposée grisée) ; (2) Frottement axial (kPa) vs z (courbe mobilisée + limites q_s positive et q_sn négative en pointillés + ligne point neutre) ; (3) Effort axial N (kN) vs z — avec légende 4 entrées"
+      ],
+      "actions": [],
+      "hints": [
+        "Notice : G_sn action permanente à AJOUTER à la charge en tête (ch. 11) ; interprétation point neutre ; à valider par étude œdométrique."
+      ]
+    },
+    {
+      "titre": "Onglet 03 — Profil de sol / carte Profil géotechnique (tag « Couches »)",
+      "champs": [],
+      "tables": [
+        "Table des couches : # (index coloré) · Nature (select 5 : Argile/Limon, Sable/Grave, Craie, Marne/M-calc., Roche altérée + pastille couleur) · Épais. (m) · pl* (MPa) [colonne PMT] · E_M (MPa) [colonne PMT] · q_c (MPa) [colonne CPT] · c' (kPa) [colonne c-φ] · φ' (°) [colonne c-φ] · γ (kN/m³) · bouton × suppression — LES COLONNES INUTILES SONT MASQUÉES SELON LA MÉTHODE ; démarrage à VIDE (0 couche)"
+      ],
+      "figures": [],
+      "actions": [
+        "+ Ajouter une couche",
+        "Remplir la fiche fictivement (ghost)",
+        "pill « Profondeur totale : X m » (live)"
+      ],
+      "hints": [
+        "La nature détermine la catégorie de sol et la courbe de frottement de la norme."
+      ]
+    },
+    {
+      "titre": "Onglet 03 — carte Pénétrogramme q_c(z) (visible méthode CPT seulement)",
+      "champs": [
+        { "libelle": "Pas (m)", "id": "cpt_step", "defaut": "0.20" },
+        {
+          "libelle": "Zone de collage (textarea) « profondeur(m)  qc(MPa) »",
+          "id": "cpt_paste"
+        }
+      ],
+      "tables": [
+        "Table des points z / q_c ÉDITABLE point à point (input par cellule + suppression ×), scroll 260px"
+      ],
+      "figures": [],
+      "actions": [
+        "↻ Générer depuis les couches (genPenetrogram)",
+        "+ Point (addPenetroPoint)",
+        "Importer le collage (importPenetro)"
+      ]
+    },
+    {
+      "titre": "Onglet 03 — carte Coupe géotechnique (tag « Live », sticky)",
+      "champs": [],
+      "tables": [],
+      "figures": [
+        "drawCoupe : SVG 360×520 — strates hachurées par nature (5 motifs : argile lignes, sable points, craie diagonales, marne croisillons, roche croisillons denses), cotes z de chaque toit + fond, ligne de surface, ligne de nappe (pointillés + triangle + libellé), pieu dessiné à l'échelle (fût hachuré + pointe triangulaire), zone d'influence q_b [D−b ; D+3a] cotée, cote D — REDESSINÉE LIVE à chaque saisie (B, b2, D, z₀, nappe, Ap, P, couches)"
+      ],
+      "actions": [],
+      "hints": ["Légende dynamique : natures utilisées + « Pieu »."]
+    },
+    {
+      "titre": "Onglet 03 — carte Log q_c(z) (visible méthode CPT seulement, tag « CPT »)",
+      "champs": [],
+      "tables": [],
+      "figures": [
+        "drawQcLog : SVG 280×460 — courbe q_c(z) sur grille, zone d'influence [D−b ; D+3a] ombrée, ligne du plafond d'écrêtage « 1,3·moy » (pointillés), ligne verte « q_ce » avec valeur, ligne de base D cotée, axes q_c (MPa) / profondeur (m)"
+      ],
+      "actions": []
+    },
+    {
+      "titre": "Onglet 04 — Coefficients / notice + carte Facteurs partiels (tag « Annexe C »)",
+      "champs": [
+        { "libelle": "γ_b — pointe", "id": "k_gb", "defaut": "1.10", "editable": true },
+        {
+          "libelle": "γ_s — frottement",
+          "id": "k_gs",
+          "defaut": "1.10",
+          "editable": true
+        },
+        { "libelle": "γ_t — total", "id": "k_gt", "defaut": "1.10", "editable": true },
+        {
+          "libelle": "γ_s;t — traction",
+          "id": "k_gst",
+          "defaut": "1.15",
+          "editable": true
+        },
+        { "libelle": "γ_G (défav.)", "id": "k_gG", "defaut": "1.35", "editable": true },
+        { "libelle": "γ_Q (défav.)", "id": "k_gQ", "defaut": "1.50", "editable": true },
+        { "libelle": "ψ₀ (caract.)", "id": "k_psi0", "defaut": "0.7", "editable": true },
+        { "libelle": "ψ₂ (q-perm.)", "id": "k_psi2", "defaut": "0.3", "editable": true }
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [],
+      "hints": [
+        "Notice verte : coefficients extraits de la norme (kp,max F.4.2.1 / kc,max G.4.2.1, courbes F.5.2.2/G.5.2.2, α F.5.2.1/G.5.2.1, qs,max F.5.2.3, γR;d1 F.2.1, ξ C.2.4.2)",
+        "γR;d1 déterminé automatiquement : 1,15 courant · 1,40 craie · 2,0 injection ; traction 1,4/1,7/2,0",
+        "xi-info DYNAMIQUE : « N = 1 profil → ξ₃ = 1.40 · ξ₄ = 1.40 » (recalculé live avec S et redistribution)"
+      ]
+    },
+    {
+      "titre": "Onglet 04 — carte Charge de fluage (ELS) (tag « 14.2.2 »)",
+      "champs": [
+        {
+          "libelle": "Pieux refoulant : R_c;cr = a·R_b;k + b·R_s;k",
+          "ids": ["cr_b_b=0.70", "cr_b_s=0.70"],
+          "editable": true
+        },
+        {
+          "libelle": "Pieux ne refoulant pas : R_c;cr = a·R_b;k + b·R_s;k",
+          "ids": ["cr_f_b=0.50", "cr_f_s=0.70"],
+          "editable": true
+        },
+        {
+          "libelle": "γ_cr compression",
+          "ids": ["cr_car=0.90", "cr_qp=1.10"],
+          "editable": true
+        },
+        {
+          "libelle": "γ_s;cr traction",
+          "ids": ["cr_car_t=1.10", "cr_qp_t=1.50"],
+          "editable": true
+        }
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Onglet 04 — carte Facteurs appliqués au pieu sélectionné (tag dynamique « Pieu cat. N »)",
+      "champs": [],
+      "tables": [
+        "Table DYNAMIQUE par nature de sol (5 lignes) : k_p,max (classe) · k_c,max (classe) · courbe pressio (Q1–Q5) · α_PMT (catégorie) · courbe pénétro · α_CPT · q_s,max (kPa) — « — » si combinaison non couverte ; mise à jour au changement de type de pieu"
+      ],
+      "figures": [],
+      "actions": [],
+      "hints": [
+        "Nom de la catégorie courante affiché ; « Changez le type de pieu à l'onglet 01 pour mettre à jour »."
+      ]
+    },
+    {
+      "titre": "Onglet 04 — carte Approches de calcul & facteurs partiels (tag « NF EN 1997-1 — Annexe A »)",
+      "champs": [],
+      "tables": [
+        "Table A.3 actions (γ_F) : G défav./G favor./Q défav. × A1/A2",
+        "Table A.4 paramètres de sol (γ_M) : tan φ' / c' / c_u / γ × M1/M2",
+        "Tables A.6/A.7/A.8 résistances de pieux (γ_R) : battu/foré/CFA × pointe/frott./traction × R1/R2/R3/R4"
+      ],
+      "figures": [],
+      "actions": [],
+      "hints": [
+        "Note : DA2 = valeurs éditables (NA = R2) ; DA1/DA3 = jeux recommandés Annexe A automatiques."
+      ]
+    },
+    {
+      "titre": "Onglet 05 — Résultats & vérifs (rendu par compute())",
+      "champs": [],
+      "tables": [
+        "Notice avertissements ⚠ (multi-lignes) : D dépasse le profil · ancrage h < 3·B (Note 1 F.4.2/G.4.2) · couches non couvertes (α non défini) · micropieu pointe non comptée · qs/2 au-delà de 25 m (§4.3.1) · effet de groupe C_e (§4.3.2) / non appliqué J.2(3) · traction sans essais plafond 0,15·Rs",
+        "Bandeau verdict ✓/✗ « Portance vérifiée / NON vérifiée » + « Taux de travail le plus défavorable : X % · pieu pressiométrique/pénétrométrique/c-φ en compression/traction · approche DA X »",
+        "4 cartes KPI : R_b — pointe (MN, sous-détail : p_le* = X MPa (zone D−b…D+3a) · D_ef/B = X · k_p = X (k_p,max=X)) · R_s — frottement (MN, « sur X m de fût ») · R_c;d — calcul ELU (MN, « après γ_b, γ_s, ξ ») · Tassement (ELS car.) (mm, « Frank & Zhao »)",
+        "Table Résistances (kN) : lignes Pointe R_b / Frottement R_s / Total R_c / Charge fluage R_c;cr;k × colonnes Brut R_m / Caract. R_k / Calcul R_d + hint « ξ₃ = X · ξ₄ = X (N profils · S m² → √(S/2500)) · γ_R;d1 = X »",
+        "Table Vérifications (ELU/ELS) : par état-limite (ELU par combinaison DA + ELS caractéristique + ELS quasi-permanent) avec sous-libellé de combinaison (ex. « 1,35·G + 1,50·Q · R2 (NA) ») × F_d / R_d / Taux % / ✓✗ + hint charges G, Q",
+        "Table Frottement latéral par couche : Couche (pastille + nature) / Cote (m) / Ép. mob. (m) / q_s (kPa) / R_s,i (kN) + ligne Total R_s",
+        "Table Synthèse géométrique : Pieu (cat → classe) · Section (A_b, périm.) · Encastrement D · Encastrement équiv. D_ef et D_ef/B · Couche porteuse · Zone d'influence pointe · a = max(B/2;0,5), b = min(a;h) · γ_R;d1 · Effet de groupe C_e (avec motif) · formule Charge de fluage",
+        "Carte Résistance du béton (structure) §4.4 : verdict ✓/✗ « Béton vérifié/NON vérifié » + taux + f_cd ; table σ ELU = N_d/A_b et σ ELS = N_ser/A_b × σ (MPa) / limite (MPa) / taux / ✓✗ ; note formule f_ck* = min(C_max;f_ck)/(k₁·k₂) et f_cd = α_cc·k₃·f_ck*/γ_c avec toutes les valeurs ; message explicatif si non applicable (traction / catégorie non couverte)"
+      ],
+      "figures": [
+        "drawSettle : SVG 420×300 — Courbe charge—tassement (Frank & Zhao, loi t-z trilinéaire par tir) : courbe F→s, ligne verticale F_ELS, point ELS avec valeur « X mm », axes Charge F (MN) / Tassement (mm) + hint E_M couche porteuse, k_τ fin/granulaire, module pieu 20 GPa",
+        "drawPortance : SVG 720×470 — Courbe de portance avec la profondeur : bande de coupe stratigraphique colorée à gauche + 4 courbes (ELU fondamentales rouge, ELU accidentelles gris, ELS caractéristiques pétrole, ELS quasi-permanentes ocre) capacité (MN) vs profondeur d'ancrage D (m), repères verticaux de sollicitation 1,35G+1,5Q et G+Q, ligne horizontale D courant, légende + note formalisme Q_d = μ_s·Q_s;k + μ_p·Q_p;k"
+      ],
+      "actions": [
+        "⎙ Imprimer la note (window.print ; CSS @media print : tous les onglets imprimés, nav/boutons masqués)"
+      ]
+    }
+  ],
+  "footer": "CASAGRANDE v1 — calcul de fondations profondes selon NF P 94-262 (Eurocode 7), juillet 2012. Coefficients issus de la norme (Annexes A, C, F, G). Outil d'aide au prédimensionnement.",
+  "workflows": [
+    "Nominal : saisie onglets 01→03 (coupe live) → « Calculer la portance → » (bascule onglet 05 + compute()) → verdict + KPI + tables + 2 figures + béton + courbe de portance → « ⎙ Imprimer la note » (rapport imprimable complet)",
+    "Exemple : « Remplir la fiche fictivement » (nav ou onglet sol) → fiche complète (projet Dakar, pieu Ø0,60 D=15, G=800/Q=350, 4 couches argile/sable/argile/marne, pénétrogramme généré) → calcul immédiat possible",
+    "CPT : choisir Pénétrométrique (onglet 01) → colonnes q_c affichées + cartes pénétrogramme/log → générer depuis les couches OU coller un sondage réel OU éditer point à point → log q_c(z) live avec q_ce et écrêtage 1,3·moy après calcul",
+    "Frottement négatif : ouvrir l'onglet 02 → calcul LIVE immédiat (computeDowndrag) → « Reprendre Q et la coupe du projet » pour préremplir → mode auto (s₀, H_c) ou hauteur imposée (zt, zb) → 4 KPI + 3 profils t-z + notice",
+    "Coefficients : onglet 04 → ajuster les facteurs partiels/fluage (éditables) → consulter les tables normatives appliquées au pieu choisi → recalculer",
+    "Live : coupe géotechnique redessinée à chaque saisie ; colonnes de la table de sol masquées selon la méthode ; hints pieu-info / meth-info / da-info / xi-info recalculés en continu"
+  ],
+  "comptage": {
+    "onglets": 5,
+    "actions_nav": 2,
+    "inputs_environ": 49,
+    "segmentes": 9,
+    "selects": 3,
+    "figures_svg": 5,
+    "note_figures": "coupe géotechnique, log qc(z), courbe charge—tassement, courbe de portance en profondeur, profils downdrag (1 SVG à 3 panneaux) ; drawBeton rend une carte tabulaire (pas un SVG)",
+    "tables_resultats": 7,
+    "tables_coefficients": 6,
+    "cartes_kpi": 8
+  }
+}

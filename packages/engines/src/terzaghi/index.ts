@@ -32,7 +32,7 @@ import {
   type TerzaghiInput,
   type TerzaghiOutput,
 } from './contract.js';
-import { computeTerzaghi } from './engine.js';
+import { computeTerzaghi, terzaghiKpCurveCoeffs } from './engine.js';
 
 export {
   TERZAGHI_ENGINE_ID,
@@ -86,7 +86,10 @@ function fin(x: unknown): x is number {
  * « Sondage limite a X m ») n'ont pas de motif `= <nombre>` et sont preserves.
  */
 const BENIGN_VALUE_LABELS: ReadonlySet<string> = new Set([
-  'b', 'l', 'd', 'lb', // semelle : largeur B, longueur L, encastrement D, ratio L/B
+  'b',
+  'l',
+  'd',
+  'lb', // semelle : largeur B, longueur L, encastrement D, ratio L/B
 ]);
 
 /** Normalise une etiquette : minuscule + non-alphanumeriques retires. Les labels
@@ -117,6 +120,79 @@ export function redactConfidentialWarnings(warnings: readonly string[]): string[
   return warnings.map((w) => redactConfidentialWarning(w));
 }
 
+/** Copie SELECTIVE de champs numeriques finis d'une source vers une cible. */
+function pickFinite(
+  src: Record<string, unknown> | undefined | null,
+  target: Record<string, unknown>,
+  keys: readonly string[],
+): void {
+  if (src == null || typeof src !== 'object') return;
+  for (const k of keys) {
+    if (fin(src[k])) target[k] = src[k];
+  }
+}
+
+/** Copie SELECTIVE de champs chaine (bornes) d'une source vers une cible. */
+function pickStr(
+  src: Record<string, unknown> | undefined | null,
+  target: Record<string, unknown>,
+  keys: readonly string[],
+  max = 120,
+): void {
+  if (src == null || typeof src !== 'object') return;
+  for (const k of keys) {
+    const v = src[k];
+    if (typeof v === 'string') target[k] = v.slice(0, max);
+  }
+}
+
+/**
+ * Projette le sous-objet de tassement DETAILLE (Ménard / elastique / Schmertmann /
+ * oedometrique) sur l'allowlist reco A. Clés NOMMEES uniquement (fail-closed §8) :
+ * aucune copie brute. Renvoie undefined si rien de whiteliste (cle omise).
+ */
+function shapeTass(raw: unknown, kind: 'tass' | 'elast' | 'schm' | 'oed'): unknown {
+  if (raw == null || typeof raw !== 'object') return undefined;
+  const s = raw as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  if (kind === 'tass') {
+    pickFinite(s, out, ['Ec', 'Ed', 'alc', 'ald', 'lc', 'ld', 'dq', 'sc', 'sd', 'sf']);
+    pickStr(s, out, ['lamLib'], 40);
+    pickStr(s, out, ['mode'], 80);
+  } else if (kind === 'elast') {
+    pickFinite(s, out, ['cf', 'E', 'nu', 'dq', 's']);
+    pickStr(s, out, ['cfLib'], 40);
+    pickStr(s, out, ['err'], 300);
+  } else if (kind === 'schm') {
+    pickFinite(s, out, [
+      'C1',
+      'C2',
+      'C3',
+      'Izp',
+      'Efac',
+      'Emin',
+      'Emax',
+      'zfac',
+      'zI',
+      's',
+    ]);
+    pickStr(s, out, ['err'], 300);
+  } else {
+    pickFinite(s, out, ['alphaSang', 'Mmin', 'Mmax', 'depth', 's']);
+    pickStr(s, out, ['zlbl'], 60);
+    pickStr(s, out, ['err'], 300);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Coefficients de courbe [a,b,c,d] finis, sinon undefined (cle omise). */
+function curve4(a: unknown): number[] | undefined {
+  if (!Array.isArray(a) || a.length !== 4) return undefined;
+  return a.every((x) => typeof x === 'number' && Number.isFinite(x))
+    ? (a as number[]).slice()
+    : undefined;
+}
+
 /**
  * Re-FORME le resultat brut du moteur (`R`) en la SORTIE whitelistee. On
  * CONSTRUIT un objet propre champ a champ (jamais de copie brute) : seuls les
@@ -132,14 +208,32 @@ function shapeOutput(
     warn?: unknown[];
     err?: unknown;
     cases?: unknown[];
-    ctx?: { regime?: unknown } | null;
+    ctx?: {
+      regime?: unknown;
+      u?: unknown;
+      q0?: unknown;
+      sv0?: unknown;
+      raid?: Record<string, unknown> | null;
+    } | null;
     refCap?: Record<string, unknown>;
   },
-  /** true si methode c–φ labo : le bloc cphi complementaire n'est alors PAS reproduit
-   * (c–φ est la portance PRINCIPALE, deja dans Rtot/qRvd/taux) — fidele au HTML d'origine
-   * (`C.cphi && !X.labo`). */
-  labo: boolean,
+  /** Type d'essai in situ : 'pressio' | 'penetro' | 'labo'. Sert au choix de la table
+   * de coefficients de courbe (KP pressio / KC penetro) et au drapeau labo (le bloc cphi
+   * complementaire n'est alors PAS reproduit — c–φ est la portance PRINCIPALE, fidele au
+   * HTML d'origine `C.cphi && !X.labo`). */
+  essai: string,
 ): unknown {
+  const labo = essai === 'labo';
+  const curveCat = (cat: unknown): { f?: number[]; c?: number[] } => {
+    const co = terzaghiKpCurveCoeffs(cat, essai);
+    if (!co) return {};
+    const out: { f?: number[]; c?: number[] } = {};
+    const f = curve4(co.f);
+    if (f) out.f = f;
+    const c = curve4(co.c);
+    if (c) out.c = c;
+    return out;
+  };
   // MAJEUR-1 : on REDACTE les valeurs d'intermediaires confidentiels de TOUT
   // canal texte libre (erreur globale ET warnings) AVANT exposition. La whitelist
   // couvre les cles structurees ; ce canal texte etait la faille. `erreur` ne
@@ -157,6 +251,14 @@ function shapeOutput(
     out.regime = regime;
   }
 
+  // --- Contraintes de base (overburden affiche par la note §2) ---
+  // Grandeurs elementaires (u, q0, sv0) — client-safe (cf. contract.ts). On
+  // n'expose QUE ces trois champs, jamais l'objet ctx (FUITES_INTERDITES).
+  const ctx = R.ctx;
+  if (ctx && fin(ctx.u) && fin(ctx.q0) && fin(ctx.sv0)) {
+    out.contraintesBase = { u: ctx.u, q0: ctx.q0, sv0: ctx.sv0 };
+  }
+
   // --- Capacite portante de reference (charge centree) ---
   const rc = R.refCap;
   if (rc && rc.ok === true && fin(rc.A) && fin(rc.R0) && Array.isArray(rc.states)) {
@@ -170,7 +272,51 @@ function shapeOutput(
           fin((s as { qRvd?: unknown }).qRvd),
       )
       .map((s) => ({ etat: s.etat, gRv: s.gRv, Rvd: s.Rvd, qRvd: s.qRvd }));
-    out.capaciteReference = { ok: true, A: rc.A, R0: rc.R0, states };
+    const refOut: Record<string, unknown> = { ok: true, A: rc.A, R0: rc.R0, states };
+    // Detail pas-a-pas refCap (in situ) — allowlist reco A, clés nommées.
+    pickFinite(rc, refOut, [
+      'q0',
+      'hr',
+      'ple',
+      'De',
+      'DeB',
+      'kpx',
+      'kf',
+      'kc',
+      'kp',
+      'ib',
+      'qnet',
+      'gRdv',
+      'qTass',
+    ]);
+    if (typeof rc.method === 'string') refOut.method = rc.method.slice(0, 40);
+    if (typeof rc.perML === 'boolean') refOut.perML = rc.perML;
+    // Coefficients de courbe (categorie du calcul) — table publiee (reco A).
+    if (typeof rc.method === 'string' && rc.method.indexOf('c–φ') < 0) {
+      const cc = curveCat(rc.cat);
+      if (cc.f) refOut.coefCourbeF = cc.f;
+      if (cc.c) refOut.coefCourbeC = cc.c;
+    }
+    const rct = shapeTass(rc.tass, 'tass');
+    if (rct) refOut.tass = rct;
+    const rce = shapeTass(rc.elast, 'elast');
+    if (rce) refOut.elast = rce;
+    const rcs = shapeTass(rc.schm, 'schm');
+    if (rcs) refOut.schm = rcs;
+    const rco = shapeTass(rc.oed, 'oed');
+    if (rco) refOut.oed = rco;
+    out.capaciteReference = refOut;
+  }
+
+  // --- Raideurs equivalentes du sol support (annexe J.3 / Gazetas) — reco A ---
+  // K_v/K_h/K_θ : grandeurs de dimensionnement affichees ; le CODE (ratios) reste serveur.
+  const raid = R.ctx?.raid;
+  if (raid && typeof raid === 'object' && fin(raid.Kv)) {
+    const rOut: Record<string, unknown> = { Kv: raid.Kv };
+    pickFinite(raid, rOut, ['KhB', 'KhL', 'KtB', 'KtL']);
+    pickStr(raid, rOut, ['methodLib'], 60);
+    if (typeof raid.perML === 'boolean') rOut.perML = raid.perML;
+    out.raideurs = rOut;
   }
 
   // --- Verdict par cas de charge ---
@@ -183,6 +329,11 @@ function shapeOutput(
       etat: c.etat,
       invalide: c.invalid != null,
     };
+    // Grandeurs de DEMANDE affichees (verdict + synthese, clone UI) : q_ref et
+    // H_d se re-derivent des efforts SAISIS (cf. contract.ts) — pas de methode.
+    if (fin(c.qref)) item.qref = c.qref;
+    if (fin(c.H)) item.Hd = c.H;
+
     if (fin(c.Rtot)) item.Rtot = c.Rtot;
     if (fin(c.qRvd)) item.qRvd = c.qRvd;
     if (fin(c.taux)) item.taux = c.taux;
@@ -236,6 +387,57 @@ function shapeOutput(
     if (elast && fin(elast.s)) item.tassementElastique = elast.s;
     if (fin(c.dv)) item.deplacementVertical = c.dv;
 
+    // --- DETAIL PAS-A-PAS du cas (ADR 0015 reco A) — grandeurs d'affichage ---
+    // Geometrie effective (Meyerhof) + coefficients de portance/reduction (annexes D/E) +
+    // resistances : re-derivables des saisies / tables publiees. Clés NOMMEES (fail-closed §8).
+    pickFinite(c, item, [
+      'A',
+      'Ap',
+      'eB',
+      'eL',
+      'delta',
+      'hr',
+      'ple',
+      'De',
+      'DeB',
+      'kpx',
+      'kf',
+      'kc',
+      'kp',
+      'idel',
+      'ibet',
+      'idb',
+      'qnet',
+      'R0',
+      'gRv',
+      'gRdv',
+      'da',
+      'gRh',
+      'gRdh',
+    ]);
+    if (typeof c.hrRed === 'boolean') item.hrRed = c.hrRed;
+    if (typeof c.glisMode === 'string') item.glisMode = c.glisMode.slice(0, 120);
+    // Largeur/longueur effectives B'/L' (objet geom brut — on ne lit que Bp/Lp).
+    const geomBp = c.geom as { Bp?: unknown; Lp?: unknown } | undefined;
+    if (geomBp && fin(geomBp.Bp)) item.Bp = geomBp.Bp;
+    if (geomBp && fin(geomBp.Lp)) item.Lp = geomBp.Lp;
+    // Coefficients de courbe k_p/k_c (categorie du calcul) — in situ uniquement (table
+    // publiee annexe D/E, reco A). En labo, la portance est analytique (pas de courbe).
+    if (!labo && c.ple != null) {
+      const cc = curveCat(c.cat);
+      if (cc.f) item.coefCourbeF = cc.f;
+      if (cc.c) item.coefCourbeC = cc.c;
+    }
+    // Tassements DETAILLES (un seul present selon la methode).
+    const tassD = shapeTass(c.tass, 'tass');
+    if (tassD) item.tass = tassD;
+    const elastD = shapeTass(c.elast, 'elast');
+    if (elastD) item.elast = elastD;
+    const schmD = shapeTass(c.schm, 'schm');
+    if (schmD) item.schm = schmD;
+    const oedD = shapeTass(c.oed, 'oed');
+    if (oedD) item.oed = oedD;
+
     cas.push(item);
   }
   out.cas = cas;
@@ -272,10 +474,7 @@ function resolveMeta(): {
 export function runTerzaghi(rawInput: unknown): EngineResultEnvelope<TerzaghiOutput> {
   const input: TerzaghiInput = TerzaghiInputSchema.parse(rawInput);
   const rawResult = computeTerzaghi(input);
-  const shaped = shapeOutput(
-    rawResult as Parameters<typeof shapeOutput>[0],
-    input.essai === 'labo',
-  );
+  const shaped = shapeOutput(rawResult as Parameters<typeof shapeOutput>[0], input.essai);
   // Re-strip a travers le schema declare : tout champ non whiteliste qui aurait
   // survecu a shapeOutput est retire ici (defense en profondeur, anti-fuite).
   const output = projectEngineOutput(TerzaghiOutputSchema, shaped);

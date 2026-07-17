@@ -107,14 +107,28 @@ enum ProjectStatus {
   ARCHIVED
 }
 
+// Domaine metier d'un projet — porte le cloisonnement fonctionnel des logiciels :
+// chaque logiciel (terzaghi/casagrande/... = FD, roadsens = CH, fastlab/pressiopro
+// = LB) ne liste que les projets de SON domaine. CH = chaussees, FD = fondations,
+// LB = laboratoire/sols.
+enum ProjectDomain {
+  CH
+  FD
+  LB
+}
+
 // Table metier minimale, presente uniquement pour PROUVER l'isolation
 // (un tenant ne voit jamais les projets d'un autre, RLS + guard).
 model Project {
-  id          String        @id @default(uuid()) @db.Uuid
-  orgId       String        @map("org_id") @db.Uuid
+  id          String         @id @default(uuid()) @db.Uuid
+  orgId       String         @map("org_id") @db.Uuid
   name        String
-  status      ProjectStatus @default(DRAFT)
-  createdById String        @map("created_by_id") @db.Uuid
+  status      ProjectStatus  @default(DRAFT)
+  // NULLABLE a dessein : les projets crees AVANT l'ajout de la colonne (0022) ont
+  // un domaine INCONNU -> null, pas de defaut silencieusement faux. Un projet
+  // domain=null reste selectionnable dans tous les logiciels (cote front).
+  domain      ProjectDomain? @map("domain")
+  createdById String         @map("created_by_id") @db.Uuid
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
 

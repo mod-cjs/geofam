@@ -1,0 +1,23 @@
+{
+  "integrationOk": true,
+  "refCards": 3,
+  "ourCards": 3,
+  "classes": {
+    "uncovered": [],
+    "omitted": [],
+    "valueMismatch": [],
+    "sec8Residual": [],
+    "absentClosed": [
+      "Détail des facteurs de portance c–φ annexe F (N_q/N_c/N_γ) : hors allowlist nominative reco A — non exposé (résidu fermé §8) ; non sollicité par ce cas in situ."
+    ]
+  },
+  "ourStubText": false,
+  "refHasSteps": true,
+  "ourHasSteps": true,
+  "refSteps": 17,
+  "ourSteps": 17,
+  "refStepResults": 36,
+  "ourStepResults": 36,
+  "contraintesRef": "u = 0,0 kPa · q0 (totale, après travaux) = γap·D = 90,0 kPa · σ′v0 (effective, avant travaux) = γav·D − u = 90,0 kPa",
+  "contraintesNous": "u = 0,0 kPa · q0 (totale, après travaux) = γap·D = 90,0 kPa · σ′v0 (effective, avant travaux) = γav·D − u = 90,0 kPa"
+}

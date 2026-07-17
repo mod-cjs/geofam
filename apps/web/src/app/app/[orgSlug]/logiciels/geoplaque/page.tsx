@@ -24,6 +24,7 @@ import { computeGeoplaqueEc7Indicators, type IndicatorLevel } from './ec7-indica
 import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
+import { matchesDomain } from '@/lib/api/project-domain';
 import type {
   Project,
   EntitlementsResponse,
@@ -2640,7 +2641,7 @@ export default function GeoplaquePage() {
     if (!orgId) return;
     Promise.all([listProjects(orgId), getEntitlements(orgId)])
       .then(([projs, ent]) => {
-        const fd = projs.filter((p) => p.domain === 'FD');
+        const fd = projs.filter((p) => matchesDomain(p, 'FD'));
         setProjects(fd);
         setEnt(ent);
         if (fd.length === 1) setProjectId(fd[0].id);

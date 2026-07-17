@@ -1,0 +1,1945 @@
+<!--
+  CLONE EXCISÉ — NE PAS ÉDITER À LA MAIN. Artefact généré par scripts/clone-tool.mjs.
+  Outil            : terzaghi (fondation-superficielle)
+  Source (gelée)   : terzaghi_V13.html
+  sha256 source    : 43214960a014d64e76c8d06e8d9c9746157ba0f75220afc425d6e87fd102c291
+  Calcul           : EXCISÉ — exécuté côté serveur via bridge postMessage (ADR 0015, DoD §8).
+  Régénérer        : pnpm clone:tools   ·   Auditer : pnpm audit:excision
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terzaghi — Fondations superficielles · NF P 94-261</title>
+<style>
+/* ================= TERZAGHI — design tokens ================= */
+:root{
+  --bg:#E7E4DA;            /* kraft technique */
+  --panel:#FCFBF6;
+  --panel2:#F3F1E8;
+  --ink:#232E33;           /* encre bleutée */
+  --muted:#71767a;
+  --line:#D9D3C2;
+  --line2:#C9C2AD;
+  --accent:#A65A1E;        /* ocre brûlée — la terre */
+  --accent-deep:#7C4316;
+  --pl:#963B28;            /* courbe pl* : brique */
+  --em:#2C637E;            /* courbe EM : pétrole */
+  --nappe:#3D7EA6;
+  --ok:#2E7D4F;
+  --ok-bg:#E4EFE6;
+  --bad:#B23A2E;
+  --bad-bg:#F6E5E1;
+  --warn:#96701A;
+  --warn-bg:#F4EDD8;
+  --chip:#ECE8D9;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Consolas,monospace;
+  --disp:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --body:"Archivo",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+}
+@font-face{font-family:'Archivo';src:local('Archivo');font-display:swap}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--body);-webkit-font-smoothing:antialiased}
+input,select,button,textarea{font:inherit;color:inherit}
+::selection{background:#E9C9A6}
+
+/* ---------- top bar ---------- */
+.topbar{
+  background:linear-gradient(180deg,#28333a 0%,#222b31 100%);
+  color:#EDE9DC;border-bottom:3px solid var(--accent);
+  padding:10px 22px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+}
+.brand{display:flex;align-items:center;gap:11px}
+.brand .strata{width:26px;height:26px;flex:none}
+.brand h1{
+  font-family:var(--disp);font-size:21px;letter-spacing:.24em;font-weight:900;
+  margin:0;text-transform:uppercase;
+}
+.brand small{
+  display:block;letter-spacing:.14em;font-weight:500;font-size:9.5px;color:#B9B29C;
+  text-transform:uppercase;margin-top:1px;
+}
+.proj{flex:1;min-width:200px;display:flex;gap:8px}
+.proj input{
+  background:#1B2329;border:1px solid #3a464d;border-radius:3px;color:#EDE9DC;
+  padding:7px 10px;width:100%;max-width:380px;
+}
+.proj input::placeholder{color:#7d8a91}
+.actions{display:flex;gap:7px;flex-wrap:wrap}
+.btn{
+  border:1px solid #4a565d;background:#2E3940;color:#E7E2D2;border-radius:3px;
+  padding:7px 13px;cursor:pointer;font-size:12.5px;letter-spacing:.04em;
+}
+.btn:hover{background:#39454d}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#FFF8EE;font-weight:600}
+.btn.primary:hover{background:#B5681F}
+.btn:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+/* ---------- layout ---------- */
+.layout{display:grid;grid-template-columns:minmax(430px,520px) 1fr;gap:18px;padding:18px 22px 60px;max-width:1560px;margin:0 auto}
+@media (max-width:1020px){.layout{grid-template-columns:1fr}}
+
+/* ---------- cards ---------- */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:5px;margin-bottom:14px;box-shadow:0 1px 0 rgba(35,46,51,.04)}
+.card-h{
+  display:flex;align-items:baseline;gap:10px;padding:11px 15px 9px;
+  border-bottom:1px solid var(--line);
+}
+.card-h .no{
+  font-family:var(--mono);font-size:11px;color:var(--accent-deep);
+  border:1px solid var(--line2);background:var(--chip);border-radius:2px;padding:2px 6px;font-weight:600;
+}
+.card-h h2{
+  margin:0;font-family:var(--disp);font-size:13px;font-weight:800;
+  letter-spacing:.13em;text-transform:uppercase;
+}
+.card-h .hint{margin-left:auto;font-size:11px;color:var(--muted)}
+.card-b{padding:13px 15px 15px}
+
+/* ---------- forms ---------- */
+.grid{display:grid;gap:9px 14px}
+.g2{grid-template-columns:1fr 1fr}
+.g3{grid-template-columns:1fr 1fr 1fr}
+.field label{display:block;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:3px;font-weight:600}
+.field input,.field select{
+  width:100%;background:#fff;border:1px solid var(--line2);border-radius:3px;padding:6px 8px;
+}
+.field input[type=text]{font-family:var(--mono);font-size:13px}
+.unit{color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
+.seg{display:flex;border:1px solid var(--line2);border-radius:3px;overflow:hidden}
+.seg button{flex:1;border:0;background:#fff;padding:6px 4px;cursor:pointer;font-size:12px;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--ink);color:#F2EFE4;font-weight:600}
+.check{display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;user-select:none}
+.check input{width:15px;height:15px;accent-color:var(--accent)}
+.subnote{font-size:11.5px;color:var(--muted);margin-top:7px;line-height:1.5}
+
+/* ---------- data tables (saisie) ---------- */
+table.entry{width:100%;border-collapse:collapse;margin-top:2px}
+table.entry th{
+  font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);
+  text-align:left;padding:3px 5px;border-bottom:1.5px solid var(--line2);font-weight:600;white-space:nowrap;
+}
+table.entry td{padding:2px 3px;border-bottom:1px solid var(--panel2)}
+table.entry input,table.entry select{
+  width:100%;border:1px solid transparent;background:transparent;border-radius:2px;
+  padding:4px 5px;font-family:var(--mono);font-size:12.5px;
+}
+table.entry select{font-family:var(--body);font-size:12px}
+table.entry input:hover,table.entry select:hover{border-color:var(--line2);background:#fff}
+table.entry input:focus,table.entry select:focus{border-color:var(--accent);background:#fff}
+.rowdel{
+  border:0;background:none;color:#B9B2A0;cursor:pointer;font-size:15px;line-height:1;
+  padding:3px 6px;border-radius:2px;
+}
+.rowdel:hover{color:var(--bad);background:var(--bad-bg)}
+.addrow{
+  margin-top:8px;border:1px dashed var(--line2);background:none;border-radius:3px;
+  padding:6px 12px;cursor:pointer;color:var(--accent-deep);font-size:12.5px;font-weight:600;
+}
+.addrow:hover{background:var(--chip)}
+
+/* ---------- right pane / tabs ---------- */
+.pane{position:sticky;top:14px}
+@media (max-width:1020px){.pane{position:static}}
+.tabs{display:flex;gap:0;border:1px solid var(--line);border-bottom:0;border-radius:5px 5px 0 0;overflow:hidden;background:var(--panel2)}
+.tabs button{
+  flex:1;border:0;background:none;padding:11px 8px;cursor:pointer;
+  font-family:var(--disp);font-weight:700;font-size:12px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--muted);border-right:1px solid var(--line);
+}
+.tabs button:last-child{border-right:0}
+.tabs button.on{background:var(--panel);color:var(--ink);box-shadow:inset 0 3px 0 var(--accent)}
+.pane-body{background:var(--panel);border:1px solid var(--line);border-radius:0 0 5px 5px;min-height:520px;padding:16px}
+.tabpane{display:none}
+.tabpane.on{display:block}
+
+/* ---------- coupe ---------- */
+.coupe-wrap{overflow-x:auto}
+.coupe-wrap svg{display:block;margin:0 auto;max-width:100%}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:9px;font-size:11.5px;color:var(--muted)}
+.legend .sw{display:inline-block;width:16px;height:0;border-top:2.5px solid;vertical-align:middle;margin-right:5px}
+
+/* ---------- résultats ---------- */
+.verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;margin-bottom:14px}
+.vcard{border:1px solid var(--line);border-radius:4px;padding:9px 11px;background:var(--panel2)}
+.vcard .k{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.vcard .v{font-family:var(--mono);font-size:17px;font-weight:600;margin-top:3px}
+.vcard .s{font-size:11px;margin-top:2px}
+.vcard.ok{border-color:#BCD6C2;background:var(--ok-bg)} .vcard.ok .v{color:var(--ok)}
+.vcard.bad{border-color:#E0BBB2;background:var(--bad-bg)} .vcard.bad .v{color:var(--bad)}
+.vcard.warn{border-color:#DFCB94;background:var(--warn-bg)} .vcard.warn .v{color:var(--warn)}
+
+/* ---------- note de calcul détaillée (mode sans charges) ---------- */
+.lead{background:var(--panel2);border:1px solid var(--line2);border-left:4px solid var(--accent);border-radius:4px;padding:9px 12px;margin:0 0 12px;font-size:12.5px;line-height:1.55}
+.lead strong{color:var(--ink)}
+.calc{margin:8px 0 0}
+.calc .step{border:1px solid var(--line);border-radius:4px;margin:0 0 9px;overflow:hidden;background:var(--panel)}
+.calc .step-h{display:flex;align-items:baseline;gap:8px;background:var(--panel2);padding:6px 11px;border-bottom:1px solid var(--line);font-family:var(--disp);font-weight:800;font-size:11.5px;letter-spacing:.04em}
+.calc .step-n{font-family:var(--mono);font-size:10.5px;color:#FFF8EE;background:var(--accent);border-radius:2px;padding:1px 7px;font-weight:700;flex:none}
+.calc .step-b{font-family:var(--mono);font-size:12px;line-height:1.8;padding:9px 12px;overflow-x:auto}
+.calc .rl{color:var(--accent-deep);font-weight:700}
+.calc .cm{color:var(--muted)}
+.calc table.sub{width:auto;border-collapse:collapse;margin:5px 0 3px;font-size:11.5px}
+.calc table.sub td{padding:1px 14px 1px 0;white-space:nowrap;border-bottom:1px solid var(--panel2)}
+.calc .grp{margin-top:13px;margin-bottom:3px;font-family:var(--disp);font-weight:800;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-deep);border-bottom:1.5px solid var(--line2);padding-bottom:3px}
+.note .calc .step-b{font-size:11px;line-height:1.75}
+.note .calc .step{break-inside:avoid}
+h3.sect{
+  font-family:var(--disp);font-size:11.5px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;
+  border-bottom:1.5px solid var(--line2);padding-bottom:5px;margin:20px 0 9px;
+}
+h3.sect:first-child{margin-top:2px}
+table.res{width:100%;border-collapse:collapse;font-size:12px}
+table.res th{
+  font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600;
+  text-align:right;padding:4px 7px;border-bottom:1.5px solid var(--line2);white-space:nowrap;
+}
+table.res th:first-child,table.res td:first-child{text-align:left}
+table.res td{
+  padding:5px 7px;border-bottom:1px solid var(--panel2);font-family:var(--mono);
+  text-align:right;white-space:nowrap;
+}
+table.res td:first-child{font-family:var(--body)}
+table.res tr:hover td{background:#F7F5EC}
+.pill{display:inline-block;border-radius:2px;padding:2px 7px;font-size:10.5px;font-weight:700;font-family:var(--body);letter-spacing:.03em}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}
+.pill.bad{background:var(--bad-bg);color:var(--bad)}
+.pill.na{background:var(--chip);color:var(--muted)}
+.warnbox{border-left:3px solid var(--warn);background:var(--warn-bg);padding:8px 12px;border-radius:0 3px 3px 0;font-size:12.5px;margin:0 0 12px;line-height:1.55}
+.scroll-x{overflow-x:auto}
+input.bad-input,select.bad-input{border-color:var(--bad)!important;background:var(--bad-bg)!important}
+
+/* ---------- α : remplissage de colonne + guide ---------- */
+.alpharow{display:flex;align-items:center;gap:9px;margin-top:9px;flex-wrap:wrap}
+.alpharow input{width:80px;background:#fff;border:1px solid var(--line2);border-radius:3px;padding:5px 8px;font-family:var(--mono);font-size:12.5px}
+.ghost{margin-left:auto;border:1px solid var(--line2);background:var(--chip);color:var(--accent-deep);border-radius:3px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer}
+.ghost:hover{border-color:var(--accent);background:#F1E7D6}
+.qmark{border:1px solid var(--line2);background:var(--chip);color:var(--accent-deep);border-radius:50%;width:16px;height:16px;line-height:1;font-size:10.5px;font-weight:700;cursor:pointer;padding:0;vertical-align:1px}
+.qmark:hover{border-color:var(--accent)}
+table.entry input:disabled{color:#A39C8E;background:var(--panel2);cursor:not-allowed}
+.modal-back{position:fixed;inset:0;background:rgba(35,46,51,.45);display:flex;align-items:flex-start;justify-content:center;z-index:60;padding:26px 14px;overflow:auto}
+.modal-back[hidden]{display:none}
+.modal{background:var(--panel);border:1px solid var(--line2);border-radius:6px;max-width:800px;width:100%;padding:16px 20px 18px;box-shadow:0 22px 55px rgba(35,46,51,.4)}
+.modal-h{display:flex;align-items:center;justify-content:space-between;border-bottom:1.5px solid var(--line2);padding-bottom:8px;margin-bottom:10px}
+.modal-h h3{margin:0;font-family:var(--disp);font-size:13px;letter-spacing:.12em;text-transform:uppercase;font-weight:800}
+.mclose{border:0;background:none;font-size:21px;line-height:1;cursor:pointer;color:var(--muted);padding:2px 7px;border-radius:3px}
+.mclose:hover{color:var(--bad);background:var(--bad-bg)}
+.mintro,.mfoot{font-size:12.5px;line-height:1.55;margin:8px 0}
+.mfoot{color:var(--muted);font-size:11.5px}
+table.gtable{width:100%;border-collapse:collapse;font-size:12px;margin:10px 0}
+.gtable th{border:1px solid var(--line2);background:var(--panel2);padding:5px 6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+.gtable td{border:1px solid var(--line2);padding:5px 6px;text-align:center;font-family:var(--mono);font-size:12px}
+.gtable td.l{text-align:left;font-family:var(--body)}
+.aval{cursor:pointer;border:1px solid var(--line2);background:#fff;border-radius:3px;padding:3px 9px;font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent-deep)}
+.aval:hover{background:var(--accent);border-color:var(--accent);color:#FFF6EC}
+
+/* ---------- note de calcul ---------- */
+.note{font-size:12.5px;line-height:1.55;max-width:860px}
+.note .nhead{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2.5px solid var(--ink);padding-bottom:9px;margin-bottom:14px;gap:14px;flex-wrap:wrap}
+.note .nhead h2{margin:0;font-family:var(--disp);font-size:17px;letter-spacing:.16em;text-transform:uppercase;font-weight:900}
+.note .nhead .meta{font-size:11px;text-align:right;color:var(--muted);font-family:var(--mono)}
+.note h4{font-family:var(--disp);font-size:12px;letter-spacing:.1em;text-transform:uppercase;margin:18px 0 7px;border-bottom:1px solid var(--line2);padding-bottom:4px}
+.note table{width:100%;border-collapse:collapse;font-size:11.5px;margin:7px 0 12px}
+.note th{border:1px solid var(--line2);background:var(--panel2);padding:4px 7px;font-weight:600;text-align:center}
+.note td{border:1px solid var(--line2);padding:4px 7px;text-align:center;font-family:var(--mono);font-size:11px}
+.note td.l{text-align:left;font-family:var(--body)}
+.note .f{font-family:var(--mono);font-size:11.5px;background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:7px 11px;margin:5px 0;overflow-x:auto}
+.note .okt{color:var(--ok);font-weight:700}.note .badt{color:var(--bad);font-weight:700}
+.note .foot{margin-top:22px;border-top:1px solid var(--line2);padding-top:8px;font-size:10.5px;color:var(--muted)}
+
+/* ---------- print : la note seulement ---------- */
+#printArea{display:none}
+@media print{
+  body{background:#fff}
+  .app-shell{display:none!important}
+  .modal-back{display:none!important}
+  #printArea{display:block;padding:0 6mm}
+  .note .f{break-inside:avoid}
+  .note table{break-inside:avoid}
+  .coupe-print{margin:0 0 16px;break-inside:avoid}
+  .coupe-print-title{font-weight:600;font-size:12px;margin-bottom:6px;color:#232E33}
+  .coupe-print svg{display:block;width:100%;max-width:540px;height:auto;margin:0 auto}
+  .coupe-print .legend{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:6px;font-size:10px}
+  @page{margin:14mm 12mm}
+}
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar">
+    <div class="brand">
+      <svg class="strata" viewBox="0 0 26 26" aria-hidden="true">
+        <rect x="1" y="3"  width="24" height="6" fill="#C98A4B"/>
+        <rect x="1" y="11" width="24" height="6" fill="#A65A1E"/>
+        <rect x="1" y="19" width="24" height="5" fill="#6E3D14"/>
+        <rect x="9" y="0" width="8" height="4" fill="#B9B29C"/>
+      </svg>
+      <div>
+        <h1>Terzaghi</h1>
+        <small>Fondations superficielles · NF P 94-261</small>
+      </div>
+    </div>
+    <div class="proj">
+      <input id="projName" type="text" placeholder="Nom du projet / affaire…" value="">
+    </div>
+    <div class="actions">
+      <button class="btn" id="btnExample" title="Charger un jeu de données fictif de démonstration">Exemple fictif</button>
+      <button class="btn" id="btnImport">Importer</button>
+      <button class="btn" id="btnExport">Exporter</button>
+      <button class="btn primary" id="btnCalc">Calculer →</button>
+      <button class="btn" id="btnPrint">Imprimer la note</button>
+      <input id="fileImport" type="file" accept=".json" style="display:none">
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- ============ COLONNE SAISIE ============ -->
+    <section class="inputs">
+
+      <div class="card">
+        <div class="card-h"><span class="no">01</span><h2>Sondage in situ</h2><span class="hint">profondeurs / TN</span></div>
+        <div class="card-b">
+          <div class="field" style="margin-bottom:11px">
+            <label>Méthode de calcul</label>
+            <div class="seg" id="segEssai">
+              <button data-v="pressio" class="on">Pressiomètre Ménard</button>
+              <button data-v="penetro">Pénétromètre statique</button>
+              <button data-v="labo">Méthode c–φ</button>
+            </div>
+          </div>
+          <div class="alpharow" id="sangBox" style="display:none">
+            <label class="check" style="margin:0">α Sanglerat (M = α·q<sub>c</sub>, tassement J.4.1) :</label>
+            <input type="text" id="alphaSang" inputmode="decimal" placeholder="ex. 2">
+            <button class="ghost" id="btnSangGuide" type="button">Guide α Sanglerat</button>
+          </div>
+          <div id="sondageOnly">
+          <table class="entry" id="tblSondage">
+            <thead><tr>
+              <th>Prof. <span class="unit">(m)</span></th>
+              <th id="thResist">pl* <span class="unit">(MPa)</span></th>
+              <th id="thModule">E<sub>M</sub> <span class="unit">(MPa)</span></th>
+              <th>α <span class="unit">(–)</span> <button class="qmark" id="thAlphaGuide" type="button" title="Guide de choix de α">?</button></th>
+              <th></th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+          <button class="addrow" id="addSondage">+ Ajouter une ligne</button>
+          <div class="alpharow">
+            <label class="check"><input type="checkbox" id="alphaConstOn"> α identique sur toute la hauteur :</label>
+            <input type="text" id="alphaConstVal" inputmode="decimal" placeholder="ex. 0,33">
+            <button class="ghost" id="btnAlphaGuide" type="button">Guide de choix de α</button>
+          </div>
+          <div class="field" style="margin-top:11px">
+            <label>Lecture du profil</label>
+            <div class="seg" id="segProfil">
+              <button data-v="couches" class="on">Couches (escalier)</button>
+              <button data-v="essais">Essais ponctuels (interpolé)</button>
+            </div>
+          </div>
+          <div class="subnote"><strong>Couches</strong> : chaque valeur s'applique de sa profondeur jusqu'à la ligne suivante. <strong>Essais ponctuels</strong> : interpolation entre points de mesure (log pl*, pl* et 1/E<sub>M</sub> linéaires — convention GEOFOND), extrapolation sous le dernier essai, D<sub>e</sub> intégré à partir du premier essai.</div>
+          <div class="subnote" id="hintProfil" style="margin-top:6px">Méthode pressiométrique : pl* = pression limite <em>nette</em>, E<sub>M</sub> = module Ménard.</div>
+          </div>
+
+          <div class="grid g2" style="margin-top:13px">
+            <div class="field">
+              <label>Catégorie de terrain porteur <span class="unit">(facteur k<sub>p</sub>)</span></label>
+              <select id="solCat">
+                <option value="argiles">Argiles et limons</option>
+                <option value="sables" selected>Sables et graves</option>
+                <option value="craies">Craies</option>
+                <option value="marnes">Marnes et marno-calcaires</option>
+                <option value="roches">Roches altérées</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Nappe <span class="unit">(m / TN, vide = absente)</span></label>
+              <input type="text" id="nappe" inputmode="decimal">
+            </div>
+            <div class="field">
+              <label>γ avant travaux <span class="unit">(kN/m³)</span></label>
+              <input type="text" id="gAvant" inputmode="decimal">
+            </div>
+            <div class="field">
+              <label>γ après travaux <span class="unit">(kN/m³)</span></label>
+              <input type="text" id="gApres" inputmode="decimal">
+            </div>
+            <div class="field">
+              <label>Cohésion c′ sous fondation <span class="unit">(kPa)</span></label>
+              <input type="text" id="cSol" inputmode="decimal">
+            </div>
+            <div class="field">
+              <label>Angle de frottement φ′ <span class="unit">(°)</span></label>
+              <input type="text" id="phiSol" inputmode="decimal">
+            </div>
+            <div class="field">
+              <label>Module d'Young E <span class="unit">(MPa — raideurs)</span></label>
+              <input type="text" id="eYoung" inputmode="decimal">
+            </div>
+            <div class="field">
+              <label>Coefficient de Poisson ν <span class="unit">(– — raideurs)</span></label>
+              <input type="text" id="nuSol" inputmode="decimal">
+            </div>
+          </div>
+          <div class="subnote" id="cphiHelp">c′ et φ′ servent au coefficient d'inclinaison i<sub>δ</sub> (sol cohérent / frottant / intermédiaire) et au glissement. φ′ = 0 → comportement purement cohérent (c′ lu comme c<sub>u</sub>). Les raideurs K<sub>v</sub>, K<sub>h</sub>, K<sub>θ</sub> sont déduites directement du modèle in situ (Ménard §7.2.1 / Schmertmann §7.2.2, ratios de Gazetas §7.3) ; E et ν ne servent que de repli élastique (annexe J.3).</div>
+          <label class="check" id="cphiCheckRow" style="margin-top:10px"><input type="checkbox" id="cphiOn"> Portance par la méthode analytique c–φ (annexe F)</label>
+          <div class="grid g2" id="cphiFields" style="margin-top:8px;display:none">
+            <div class="field">
+              <label>Comportement</label>
+              <select id="cphiMode">
+                <option value="auto">Automatique (φ′ &gt; 0 → drainé)</option>
+                <option value="nd">Non drainé (c lu comme c<sub>u</sub>)</option>
+                <option value="d">Drainé (c′ et φ′)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>γ sous la base <span class="unit">(kN/m³ — facultatif)</span></label>
+              <input type="text" id="gSous" inputmode="decimal" placeholder="défaut : γ après travaux">
+            </div>
+            <div class="subnote" style="grid-column:1 / -1;margin-top:0">Calcul en complément de la méthode pressiométrique, selon les tableaux F.3.2 (non drainé) et F.3.3 (drainé) : N<sub>q</sub>, N<sub>c</sub>, N<sub>γ</sub> (base rugueuse), coefficients s et i, exposant m. Base horizontale (α = 0), surcharge latérale q = 0, γ<sub>R;d;v</sub> = 1,2 (non drainé) / 2,0 (drainé). Le terme 0,5·γ′·B′·N<sub>γ</sub> utilise un poids volumique déjaugé, humide ou interpolé selon la profondeur de la nappe sous la base (0 à 1,5·B). Près d'un talus, la réduction i<sub>β</sub> est appliquée (F.3.4).</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><span class="no">02</span><h2>Fondation</h2></div>
+        <div class="card-b">
+          <div class="field" style="margin-bottom:10px">
+            <label>Forme de la semelle</label>
+            <div class="seg" id="segForme">
+              <button data-v="filante">Filante</button>
+              <button data-v="carree" class="on">Carrée</button>
+              <button data-v="rect">Rectangulaire</button>
+              <button data-v="circ">Circulaire</button>
+            </div>
+          </div>
+          <div class="grid g3">
+            <div class="field"><label id="lblB">Largeur B <span class="unit">(m)</span></label><input type="text" id="dimB" inputmode="decimal"></div>
+            <div class="field" id="fldL"><label>Longueur L <span class="unit">(m)</span></label><input type="text" id="dimL" inputmode="decimal"></div>
+            <div class="field"><label>Encastrement D <span class="unit">(m / TN)</span></label><input type="text" id="dimD" inputmode="decimal"></div>
+          </div>
+          <div style="margin-top:12px">
+            <label class="check"><input type="checkbox" id="talusOn"> Présence d'un talus à proximité</label>
+            <div class="grid g2" id="talusFields" style="margin-top:8px;display:none">
+              <div class="field"><label>Pente du talus β <span class="unit">(°)</span></label><input type="text" id="talusBeta" inputmode="decimal"></div>
+              <div class="field"><label>Distance bord / talus d <span class="unit">(m)</span></label><input type="text" id="talusD" inputmode="decimal"></div>
+              <div class="field" style="grid-column:1 / -1">
+                <label>Inclinaison de la charge par rapport au talus</label>
+                <select id="talusDir">
+                  <option value="ext">Vers l'extérieur du talus — produit iδ·iβ (D.2.6)</option>
+                  <option value="int">Vers l'intérieur du talus — iδβ = min(iβ/iδ ; iδ) (D.2.6.1)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:12px" class="grid g2">
+            <div class="field">
+              <label>Interface (glissement)</label>
+              <select id="typeBeton">
+                <option value="coule">Béton coulé en place — δ<sub>a</sub> = φ′</option>
+                <option value="prefa">Préfabriqué lisse — δ<sub>a</sub> = ⅔ φ′</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><span class="no">03</span><h2>Cas de charge</h2><span class="hint" id="hintCharges">kN, kN·m</span></div>
+        <div class="card-b">
+          <div class="scroll-x">
+          <table class="entry" id="tblCharges">
+            <thead><tr>
+              <th>État-limite</th>
+              <th>F<sub>z</sub></th>
+              <th>F<sub>x</sub></th>
+              <th>F<sub>y</sub></th>
+              <th>M<sub>x</sub></th>
+              <th>M<sub>y</sub></th>
+              <th></th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+          </div>
+          <button class="addrow" id="addCharge">+ Ajouter un cas de charge</button>
+          <div class="subnote">F<sub>z</sub> vertical (↓), F<sub>x</sub> horizontal selon B, F<sub>y</sub> selon L. Excentricités : e<sub>B</sub> = |M<sub>y</sub>|/F<sub>z</sub>, e<sub>L</sub> = |M<sub>x</sub>|/F<sub>z</sub>. Semelle filante : valeurs <strong>par mètre linéaire</strong>.</div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ============ COLONNE RÉSULTATS ============ -->
+    <section class="pane">
+      <div class="tabs" id="tabs">
+        <button data-t="coupe" class="on">Coupe</button>
+        <button data-t="verifs">Vérifications</button>
+        <button data-t="note">Note de calcul</button>
+      </div>
+      <div class="pane-body">
+        <div class="tabpane on" id="tab-coupe">
+          <div class="coupe-wrap" id="coupeSvg"></div>
+          <div class="legend" id="coupeLegend">
+            <span><span class="sw" style="border-color:var(--pl)"></span>pl* (MPa)</span>
+            <span><span class="sw" style="border-color:var(--em)"></span>E<sub>M</sub> (MPa)</span>
+            <span><span class="sw" style="border-color:var(--nappe);border-top-style:dashed"></span>nappe</span>
+            <span><span class="sw" style="border-color:var(--accent)"></span>zone p*<sub>le</sub> (1,5·B)</span>
+          </div>
+        </div>
+        <div class="tabpane" id="tab-verifs"></div>
+        <div class="tabpane" id="tab-note"><div class="note" id="noteView"></div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="printArea"><div class="note" id="notePrint"></div></div>
+
+<div class="modal-back" id="alphaModal" hidden>
+  <div class="modal" role="dialog" aria-label="Guide de choix du coefficient rhéologique α">
+    <div class="modal-h">
+      <h3>Choisir le coefficient rhéologique α</h3>
+      <button class="mclose" id="alphaClose" type="button" title="Fermer">×</button>
+    </div>
+    <p class="mintro">α dépend de la nature du terrain et de son état de consolidation ou de serrage. Il s'estime à partir du rapport <strong>E<sub>M</sub>/p<sub>l</sub></strong> mesuré au pressiomètre (NF P 94-261, tableaux H.2.1.1.1 et H.2.1.1.2). <strong>Cliquez sur une valeur</strong> pour l'appliquer automatiquement à toute la colonne α du sondage.</p>
+    <table class="gtable">
+      <thead>
+        <tr><th rowspan="2">État du terrain</th><th>Tourbe</th><th colspan="2">Argile</th><th colspan="2">Limon</th><th colspan="2">Sable</th><th colspan="2">Grave</th></tr>
+        <tr><th>α</th><th>E<sub>M</sub>/p<sub>l</sub></th><th>α</th><th>E<sub>M</sub>/p<sub>l</sub></th><th>α</th><th>E<sub>M</sub>/p<sub>l</sub></th><th>α</th><th>E<sub>M</sub>/p<sub>l</sub></th><th>α</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="l">Surconsolidé ou très serré</td><td>—</td>
+          <td>&gt; 16</td><td><button class="aval" type="button" data-v="1">1</button></td>
+          <td>&gt; 14</td><td><button class="aval" type="button" data-v="0,67">2/3</button></td>
+          <td>&gt; 12</td><td><button class="aval" type="button" data-v="0,5">1/2</button></td>
+          <td>&gt; 10</td><td><button class="aval" type="button" data-v="0,33">1/3</button></td></tr>
+        <tr><td class="l">Normalement consolidé ou normalement serré</td>
+          <td><button class="aval" type="button" data-v="1">1</button></td>
+          <td>9 – 16</td><td><button class="aval" type="button" data-v="0,67">2/3</button></td>
+          <td>8 – 14</td><td><button class="aval" type="button" data-v="0,5">1/2</button></td>
+          <td>7 – 12</td><td><button class="aval" type="button" data-v="0,33">1/3</button></td>
+          <td>6 – 10</td><td><button class="aval" type="button" data-v="0,25">1/4</button></td></tr>
+        <tr><td class="l">Surconsolidé altéré et remanié ou lâche</td>
+          <td><button class="aval" type="button" data-v="1">1</button></td>
+          <td>9 – 16</td><td><button class="aval" type="button" data-v="0,67">2/3</button></td>
+          <td>8 – 14</td><td><button class="aval" type="button" data-v="0,5">1/2</button></td>
+          <td>5 – 7</td><td><button class="aval" type="button" data-v="0,33">1/3</button></td>
+          <td>—</td><td>—</td></tr>
+      </tbody>
+    </table>
+    <table class="gtable" style="max-width:340px">
+      <thead><tr><th>Rocher</th><th>α</th></tr></thead>
+      <tbody>
+        <tr><td class="l">Très peu fracturé</td><td><button class="aval" type="button" data-v="0,67">2/3</button></td></tr>
+        <tr><td class="l">Normalement fracturé</td><td><button class="aval" type="button" data-v="0,5">1/2</button></td></tr>
+        <tr><td class="l">Très fracturé</td><td><button class="aval" type="button" data-v="0,33">1/3</button></td></tr>
+        <tr><td class="l">Très altéré</td><td><button class="aval" type="button" data-v="0,67">2/3</button></td></tr>
+      </tbody>
+    </table>
+    <p class="mfoot">Valeurs décimales appliquées : 1 ; 2/3 → 0,67 ; 1/2 → 0,5 ; 1/3 → 0,33 ; 1/4 → 0,25. Pour un profil hétérogène, décochez « α identique sur toute la hauteur » et saisissez α couche par couche dans le tableau.</p>
+  </div>
+</div>
+
+<div class="modal-back" id="sangModal" hidden>
+  <div class="modal" role="dialog" aria-label="Guide du coefficient α de Sanglerat">
+    <div class="modal-h">
+      <h3>Coefficient α de Sanglerat — module œdométrique M = α·q<sub>c</sub></h3>
+      <button class="mclose" id="sangClose" type="button" title="Fermer">×</button>
+    </div>
+    <p class="mintro">Pour le tassement par déformation unidimensionnelle (annexe J.4.1), le module œdométrique se déduit de la résistance de pointe par M = α·q<sub>c</sub> (NF P 94-261, tableau J.2.3). <strong>Cliquez sur une valeur</strong> pour l'appliquer. Les plages indiquées correspondent à la fourchette de la norme ; un choix prudent (valeur basse) majore le tassement.</p>
+    <table class="gtable">
+      <thead><tr><th>Type de sol</th><th>q<sub>c</sub> (MPa)</th><th>α (plage)</th><th>Valeur</th></tr></thead>
+      <tbody>
+        <tr><td class="l" rowspan="3">Argile peu plastique</td><td>&lt; 0,7</td><td>3 à 8</td><td><button class="sval" type="button" data-v="5">5</button></td></tr>
+        <tr><td>0,7 à 2</td><td>2 à 5</td><td><button class="sval" type="button" data-v="3">3</button></td></tr>
+        <tr><td>&gt; 2</td><td>1 à 2,5</td><td><button class="sval" type="button" data-v="1,5">1,5</button></td></tr>
+        <tr><td class="l" rowspan="2">Limon peu plastique</td><td>&lt; 2</td><td>3 à 6</td><td><button class="sval" type="button" data-v="4">4</button></td></tr>
+        <tr><td>&gt; 2</td><td>1 à 2</td><td><button class="sval" type="button" data-v="1,5">1,5</button></td></tr>
+        <tr><td class="l">Argile / limon très plastique</td><td>&lt; 2</td><td>2 à 6</td><td><button class="sval" type="button" data-v="3">3</button></td></tr>
+        <tr><td class="l">Argile / limon très plastique</td><td>&gt; 2</td><td>1 à 2</td><td><button class="sval" type="button" data-v="1,5">1,5</button></td></tr>
+        <tr><td class="l">Limon très organique</td><td>&lt; 1,2</td><td>2 à 8</td><td><button class="sval" type="button" data-v="4">4</button></td></tr>
+        <tr><td class="l">Tourbe / argile très org. (w 50–100 %)</td><td>&lt; 0,7</td><td>1,5 à 4</td><td><button class="sval" type="button" data-v="2">2</button></td></tr>
+        <tr><td class="l">Tourbe / argile très org. (w 100–200 %)</td><td>&lt; 0,7</td><td>1 à 1,5</td><td><button class="sval" type="button" data-v="1,2">1,2</button></td></tr>
+        <tr><td class="l">Tourbe / argile très org. (w &gt; 200 %)</td><td>&lt; 0,7</td><td>0,4 à 1,0</td><td><button class="sval" type="button" data-v="0,7">0,7</button></td></tr>
+        <tr><td class="l" rowspan="2">Craie</td><td>2 à 3</td><td>2 à 4</td><td><button class="sval" type="button" data-v="3">3</button></td></tr>
+        <tr><td>&gt; 3</td><td>1,5 à 3</td><td><button class="sval" type="button" data-v="2">2</button></td></tr>
+        <tr><td class="l" rowspan="2">Sable</td><td>&lt; 5</td><td>2</td><td><button class="sval" type="button" data-v="2">2</button></td></tr>
+        <tr><td>&gt; 10</td><td>1,5</td><td><button class="sval" type="button" data-v="1,5">1,5</button></td></tr>
+      </tbody>
+    </table>
+    <p class="mfoot">Le tassement pénétrométrique est calculé en premier lieu par la méthode de Schmertmann (§6.2). En complément, une variante par déformation unidimensionnelle (annexe J.4.1, Sanglerat) utilise ce coefficient α : M = α·q<sub>c</sub> et le tassement intègre I<sub>z</sub>(ζ)/M(ζ) (I<sub>z</sub> = facteur de Boussinesq sous le centre) sur 2,5·B sous la base (4·B pour une semelle filante).</p>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   TERZAGHI v0.1 — Fondations superficielles, NF P 94-261
+   Méthode pressiométrique (portance, excentrement, glissement,
+   tassement Ménard). Moteur pur + interface.
+   ============================================================ */
+
+/* ===================== ENGINE ===================== */
+
+function num(v){
+  if(v===null||v===undefined) return NaN;
+  const s=String(v).trim().replace(/\s/g,'').replace(',','.');
+  if(s==='') return NaN;
+  const x=Number(s);
+  return Number.isFinite(x)?x:NaN;
+}
+function fmt(x,d){
+  if(d===undefined) d=2;
+  if(!Number.isFinite(x)) return '—';
+  if(Math.abs(x)<0.5/Math.pow(10,d)) x=0;   /* évite « -0,00 » et les négatifs négligeables */
+  return x.toLocaleString('fr-FR',{minimumFractionDigits:d,maximumFractionDigits:d});
+}
+function clamp(x,a,b){ return Math.min(b,Math.max(a,x)); }
+function escH(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ---- profil en escalier : la valeur s'applique de sa profondeur vers le bas ---- */
+function parsedSondage(state){
+  return state.sondage
+    .map(function(r){ return {z:num(r.z),pl:num(r.pl),em:num(r.em),al:num(r.al),qc:num(r.qc)}; })
+    .filter(function(r){ return Number.isFinite(r.z); })
+    .sort(function(a,b){ return a.z-b.z; });
+}
+function valAt(rows,key,z){
+  let v=NaN;
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i];
+    if(r.z<=z+1e-9 && Number.isFinite(r[key])) v=r[key];
+  }
+  if(!Number.isFinite(v)){
+    for(let i=0;i<rows.length;i++){
+      if(Number.isFinite(rows[i][key])){ v=rows[i][key]; break; }
+    }
+  }
+  return v;
+}
+
+
+
+
+
+
+/* ---- ple* et De ---- */
+
+
+
+
+
+
+const KP={argiles:{lib:'Argiles et limons'},sables:{lib:'Sables et graves'},craies:{lib:'Craies'},marnes:{lib:'Marnes et marno-calcaires'},roches:{lib:'Roches altérées'}};
+const KC={argiles:{lib:'Argiles et limons'},sables:{lib:'Sables et graves'},craies:{lib:'Craies'},marnes:{lib:'Marnes et marno-calcaires'},roches:{lib:'Roches altérées'}};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+/* ---- tassement de Schmertmann (NF P94-261, §6.2 / annexe I) ---- */
+
+
+
+/* ---- raideur verticale native depuis le modèle pressiométrique (Ménard, §7.2.1) ---- */
+
+/* ---- raideur verticale native depuis le modèle pénétrométrique (Schmertmann, §7.2.2) ---- */
+
+
+
+/* ---- calcul complet ---- */
+const ETATS=[
+  ['ELU_F','ELU fondamental (durable / transitoire)'],
+  ['ELU_A','ELU accidentel'],
+  ['ELS_C','ELS caractéristique'],
+  ['ELS_F','ELS fréquent'],
+  ['ELS_QP','ELS quasi-permanent']
+];
+
+
+
+
+
+/* ===================== END ENGINE ===================== */
+
+/* ===================== UI ===================== */
+if(typeof document!=='undefined'){
+/* ===================== BRIDGE + MAPPING (injecté — clone excisé, ADR 0015) ===================== */
+/* Runtime bridge cote iframe : correlation par id, source === parent (origine opaque). */
+(function(){
+  var TOOL_ID="terzaghi", ENGINE_ID="fondation-superficielle";
+  var pending=Object.create(null), seq=0;
+  var ctx={ engineId:ENGINE_ID, orgSlug:null, projectLabel:null, readOnly:false };
+  function post(msg){ try{ window.parent.postMessage(msg,"*"); }catch(e){} }
+  window.addEventListener("message", function(ev){
+    if(ev.source !== window.parent) return;
+    var d=ev.data; if(!d || d.v!==1 || typeof d.type!=="string") return;
+    if(d.type==="init"){ ctx=Object.assign(ctx, d.payload||{}); return; }
+    if(d.type==="calc:response"){ var p=pending[d.id]; if(!p) return; delete pending[d.id]; p(d.payload||{ok:false,error:{message:"réponse vide"}}); return; }
+  });
+  window.__geofamBridge={
+    calc:function(params){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:ENGINE_ID,label:(params&&params.projet)||null,params:params}}); }); },
+    emitPv:function(calcResultId){ post({v:1,type:"pv:request",payload:{calcResultId:calcResultId}}); },
+    context:function(){ return ctx; }
+  };
+  post({v:1,type:"ready",payload:{toolId:TOOL_ID}});
+})();
+
+var REFCAP_LIB={ELU_F:"ELU fondamental",ELU_A:"ELU accidentel",ELS_C:"ELS (caract. / fréq. / QP)"};
+function etatLibClone(code){ for(var i=0;i<ETATS.length;i++){ if(ETATS[i][0]===code) return ETATS[i][1]; } return code; }
+
+/* Reconstruit le contexte d'affichage X depuis le STATE (rejeu des entrées) +
+   les grandeurs benignes renvoyées par le serveur (regime, contraintes de base). */
+function buildCtxFromState(S, output){
+  var rows=parsedSondage(S);
+  var B=num(S.B), L=num(S.L), D=num(S.D), zw=num(S.nappe);
+  var eY=num(S.eYoung), nu=num(S.nuSol);
+  var labo=(S.essai==="labo");
+  var cb=(output&&output.contraintesBase)||{};
+  var rd=(output&&output.raideurs&&typeof output.raideurs==="object")?output.raideurs:null;
+  return {
+    forme:S.forme, B:B, L:L, D:D, essai:S.essai, labo:labo, cat:S.solCat,
+    c:num(S.c), phi:num(S.phi), gAv:num(S.gAvant), gAp:num(S.gApres),
+    eY:eY, nu:nu, zw:zw, beton:S.beton, cphiOn:!!S.cphiOn,
+    talus:!!S.talusOn, beta:num(S.beta), dT:num(S.dTalus), talusDir:S.talusDir,
+    profilMode:S.profilMode, rows:rows,
+    zmaxSond: rows.length?rows[rows.length-1].z:0,
+    regime:(output&&output.regime)||undefined,
+    raid: rd,
+    u:Number.isFinite(cb.u)?cb.u:NaN, q0:Number.isFinite(cb.q0)?cb.q0:NaN, sv0:Number.isFinite(cb.sv0)?cb.sv0:NaN,
+    DeBref:NaN, deFrom:0
+  };
+}
+
+/* Nombre fini de la sortie serveur, sinon NaN (affichage « — » cote renderers). */
+function svNum(v){ return Number.isFinite(v)?v:NaN; }
+/* Injecte les coefficients de courbe k_p/k_c (categorie active) fournis par le
+   serveur dans KP/KC (table publiee annexe D/E — ADR 0015 reco A) pour que curveStr
+   (local a caseSteps/refCapSteps) substitue la formule. Jamais la table complete : on
+   ne renseigne QUE la categorie du calcul, depuis la sortie whitelistee. */
+function feedCurveCoeffs(S, f, c){
+  if(!Array.isArray(f) || !Array.isArray(c)) return;
+  var tbl=(S.essai==="penetro")?KC:KP; var e=tbl[S.solCat];
+  if(e) tbl[S.solCat]={ lib:e.lib, f:f.slice(), c:c.slice() };
+}
+/* Recopie un sous-objet de tassement whitelisté en marquant ok:true (les renderers
+   testent .ok). Lecture de cle nommee (l'objet vient deja de la whitelist serveur). */
+function tassObj(o){ return (o && typeof o==="object") ? Object.assign({ok:true}, o) : null; }
+
+/* Mappe la SORTIE whitelistée (contract.ts) vers la forme R attendue par les
+   renderers CONSERVÉS (renderVerifs/renderRefCap/caseSteps/refCapSteps). Aucune
+   science : lecture de champs whitelistés + rejeu des efforts SAISIS. */
+function mapOutputToR(R, output, S){
+  R.err = output.erreur || null;
+  R.warn = Array.isArray(output.warnings)?output.warnings.slice():[];
+  R.ctx = buildCtxFromState(S, output);
+  var charges = Array.isArray(S.charges)?S.charges:[];
+  R.cases = (Array.isArray(output.cas)?output.cas:[]).map(function(o){
+    var ch = charges[o.idx] || {};
+    var C = { idx:o.idx, etat:o.etat, lib:etatLibClone(o.etat), notes:[], cat:S.solCat,
+      Fz:num(ch.fz), Fx:num(ch.fx)||0, Fy:num(ch.fy)||0, Mx:num(ch.mx)||0, My:num(ch.my)||0,
+      invalid: o.invalide ? "Cas de charge rejeté à la saisie (charge nulle ou géométrie invalide)." : null };
+    if(C.invalid) return C;
+    C.qref = svNum(o.qref); C.qRvd = svNum(o.qRvd); C.Rtot = svNum(o.Rtot);
+    C.taux = svNum(o.taux); C.portOk = (typeof o.portanceOk==="boolean")?o.portanceOk:false;
+    C.H = Number.isFinite(o.Hd)?o.Hd:0; C.Rhd = svNum(o.Rhd); C.tauxH = svNum(o.tauxH);
+    C.glisOk = (typeof o.glissementOk==="boolean")?o.glissementOk:null;
+    C.excOk = (typeof o.excOk==="boolean")?o.excOk:null;
+    C.excLim = svNum(o.excLim); C.excLimLib = (typeof o.excLimLib==="string")?o.excLimLib:"";
+    C.A = svNum(o.A); C.Ap = svNum(o.Ap); C.eB = svNum(o.eB); C.eL = svNum(o.eL);
+    C.geom = { exc: svNum(o.exc), Bp: svNum(o.Bp), Lp: svNum(o.Lp), A: svNum(o.A), Ap: svNum(o.Ap) };
+    C.delta = svNum(o.delta); C.idel = svNum(o.idel); C.ibet = svNum(o.ibet); C.idb = svNum(o.idb);
+    C.hr = svNum(o.hr); C.hrRed = (o.hrRed===true); C.ple = svNum(o.ple); C.De = svNum(o.De); C.DeB = svNum(o.DeB);
+    C.kpx = svNum(o.kpx); C.kf = svNum(o.kf); C.kc = svNum(o.kc); C.kp = svNum(o.kp);
+    C.qnet = svNum(o.qnet); C.R0 = svNum(o.R0); C.gRv = svNum(o.gRv); C.gRdv = svNum(o.gRdv);
+    C.da = svNum(o.da); C.gRh = svNum(o.gRh); C.gRdh = svNum(o.gRdh);
+    C.glisMode = (typeof o.glisMode==="string")?o.glisMode:"";
+    feedCurveCoeffs(S, o.coefCourbeF, o.coefCourbeC);
+    if(o.cphi && typeof o.cphi==="object") C.cphi = o.cphi;
+    C.tass = tassObj(o.tass); C.elast = tassObj(o.elast); C.schm = tassObj(o.schm); C.oed = tassObj(o.oed);
+    if(!C.tass && Number.isFinite(o.tassement)) C.tass={ok:true,sf:o.tassement};
+    if(!C.schm && Number.isFinite(o.tassementSchmertmann)) C.schm={ok:true,s:o.tassementSchmertmann};
+    if(!C.oed && Number.isFinite(o.tassementOed)) C.oed={ok:true,s:o.tassementOed,zlbl:"la zone d'influence"};
+    if(!C.elast && Number.isFinite(o.tassementElastique)) C.elast={ok:true,s:o.tassementElastique};
+    if(Number.isFinite(o.deplacementVertical)) C.dv=o.deplacementVertical;
+    return C;
+  });
+  var cr = output.capaciteReference;
+  if(cr && cr.ok){
+    feedCurveCoeffs(S, cr.coefCourbeF, cr.coefCourbeC);
+    var rf = { ok:true, A:svNum(cr.A), R0:svNum(cr.R0), q0:svNum(cr.q0),
+      perML:(typeof cr.perML==="boolean")?cr.perML:(S.forme==="filante"),
+      method:(typeof cr.method==="string")?cr.method:"", cat:S.solCat,
+      hr:svNum(cr.hr), ple:svNum(cr.ple), De:svNum(cr.De), DeB:svNum(cr.DeB), kpx:svNum(cr.kpx),
+      kf:svNum(cr.kf), kc:svNum(cr.kc), kp:svNum(cr.kp), ib:svNum(cr.ib), qnet:svNum(cr.qnet),
+      gRdv:svNum(cr.gRdv), qTass:svNum(cr.qTass),
+      states:(Array.isArray(cr.states)?cr.states:[]).map(function(s){
+        return { etat:s.etat, lib:REFCAP_LIB[s.etat]||s.etat, gRv:s.gRv, Rvd:s.Rvd, qRvd:s.qRvd }; }) };
+    rf.tass = tassObj(cr.tass); rf.elast = tassObj(cr.elast); rf.schm = tassObj(cr.schm); rf.oed = tassObj(cr.oed);
+    R.refCap = rf;
+  } else if(cr) { R.refCap = { ok:false, err:(typeof cr.err==="string")?cr.err:"capacité incalculable" }; }
+  else { R.refCap = null; }
+  return R;
+}
+
+function renderCalcError(R, err){
+  var msg=(err&&err.message)?err.message:"Calcul indisponible.";
+  var reason=(err&&err.reason)?" ("+err.reason+")":"";
+  var pane=$('tab-verifs'); if(pane) pane.innerHTML='<div class="warnbox" style="border-left-color:var(--bad);background:var(--bad-bg)"><strong>Calcul indisponible</strong><br>'+escH(msg+reason)+'</div>';
+  var nv=$('noteView'); if(nv) nv.innerHTML='<p>'+escH(msg)+'</p>';
+  try{ var coupe=drawCoupe(R); var np=$('notePrint'); if(np) np.innerHTML=coupeFigure(coupe); }catch(e){}
+}
+/* =================== FIN BRIDGE + MAPPING =================== */
+
+
+const $=function(id){ return document.getElementById(id); };
+
+function blankState(){
+  return {
+    projet:'',
+    sondage:[
+      {z:'', pl:'', em:'', al:''},
+      {z:'', pl:'', em:'', al:''},
+      {z:'', pl:'', em:'', al:''}
+    ],
+    solCat:'sables', nappe:'', gAvant:'', gApres:'', c:'', phi:'',
+    eYoung:'', nuSol:'',
+    cphiOn:false, cphiMode:'auto', gSous:'',
+    essai:'pressio', alphaSang:'',
+    profilMode:'couches',
+    forme:'carree', B:'', L:'', D:'',
+    talusOn:false, beta:'', dTalus:'', talusDir:'ext', beton:'coule',
+    alphaConst:false, alphaConstVal:'',
+    charges:[
+      {etat:'ELS_QP', fz:'', fx:'', fy:'', mx:'', my:''}
+    ]
+  };
+}
+function isDirty(st){
+  const txt=[st.projet,st.nappe,st.gAvant,st.gApres,st.c,st.phi,st.eYoung,st.nuSol,st.gSous,st.alphaSang,st.B,st.L,st.D,st.beta,st.dTalus];
+  if(txt.some(function(v){ return String(v==null?'':v).trim()!==''; })) return true;
+  if(st.sondage.some(function(r){ return [r.z,r.pl,r.em,r.al,r.qc].some(function(v){ return String(v==null?'':v).trim()!==''; }); })) return true;
+  if(st.charges.some(function(r){ return [r.fz,r.fx,r.fy,r.mx,r.my].some(function(v){ return String(v==null?'':v).trim()!==''; }); })) return true;
+  return false;
+}
+function exampleState(){
+  /* Cas de validation : note GEOFOND V1.22A « diarra sp1 » (31/07/2022) */
+  return {
+    projet:'Bâtiment R+5 — exemple',
+    sondage:[
+      {z:'1,5',  pl:'',    em:'2,5', al:'0,5'},
+      {z:'3',    pl:'0,5', em:'7',   al:'0,5'},
+      {z:'4,5',  pl:'0,6', em:'6',   al:'0,5'},
+      {z:'6',    pl:'0,6', em:'6',   al:'0,5'},
+      {z:'7,5',  pl:'0,7', em:'6',   al:'0,5'},
+      {z:'9',    pl:'5',   em:'150', al:'0,5'},
+      {z:'10,5', pl:'5',   em:'200', al:'0,5'},
+      {z:'12',   pl:'5',   em:'198', al:'0,5'},
+      {z:'13,5', pl:'5',   em:'202', al:'0,5'}
+    ],
+    solCat:'marnes', nappe:'', gAvant:'20', gApres:'20', c:'0', phi:'30',
+    eYoung:'50', nuSol:'0,33',
+    cphiOn:false, cphiMode:'auto', gSous:'',
+    essai:'pressio', alphaSang:'',
+    profilMode:'essais',
+    forme:'rect', B:'6', L:'10', D:'4,5',
+    talusOn:false, beta:'', dTalus:'', talusDir:'ext', beton:'coule',
+    alphaConst:true, alphaConstVal:'0,5',
+    charges:[
+      {etat:'ELS_QP', fz:'12240', fx:'0', fy:'0', mx:'0', my:'0'}
+    ]
+  };
+}
+let S=blankState();
+
+/* ---------- rendu des tables de saisie ---------- */
+function inputCell(t,i,k,v){
+  return '<td><input type="text" inputmode="decimal" data-t="'+t+'" data-i="'+i+'" data-k="'+k+'" value="'+escH(v==null?'':v)+'"></td>';
+}
+function applyAlphaConst(){
+  S.sondage.forEach(function(r){ r.al=S.alphaConstVal; });
+}
+function renderSondage(){
+  const tb=$('tblSondage').querySelector('tbody');
+  let h='';
+  const pen=(S.essai==='penetro');
+  S.sondage.forEach(function(r,i){
+    const res=pen?inputCell('sondage',i,'qc',r.qc):inputCell('sondage',i,'pl',r.pl);
+    h+='<tr>'+inputCell('sondage',i,'z',r.z)+res+inputCell('sondage',i,'em',r.em)
+      +'<td><input type="text" inputmode="decimal" data-t="sondage" data-i="'+i+'" data-k="al" value="'+escH(r.al==null?'':r.al)+'"'+(S.alphaConst?' disabled':'')+'></td>'
+      +'<td><button class="rowdel" data-del="sondage" data-i="'+i+'" title="Supprimer la ligne">×</button></td></tr>';
+  });
+  tb.innerHTML=h;
+}
+function renderCharges(){
+  const tb=$('tblCharges').querySelector('tbody');
+  let h='';
+  S.charges.forEach(function(r,i){
+    let sel='<td><select data-t="charge" data-i="'+i+'" data-k="etat">';
+    ETATS.forEach(function(e){ sel+='<option value="'+e[0]+'"'+(r.etat===e[0]?' selected':'')+'>'+e[1].split(' (')[0]+'</option>'; });
+    sel+='</select></td>';
+    h+='<tr>'+sel+inputCell('charge',i,'fz',r.fz)+inputCell('charge',i,'fx',r.fx)+inputCell('charge',i,'fy',r.fy)+inputCell('charge',i,'mx',r.mx)+inputCell('charge',i,'my',r.my)
+      +'<td><button class="rowdel" data-del="charge" data-i="'+i+'" title="Supprimer le cas">×</button></td></tr>';
+  });
+  tb.innerHTML=h;
+}
+function setStatics(){
+  $('projName').value=S.projet;
+  $('solCat').value=S.solCat;
+  $('nappe').value=S.nappe; $('gAvant').value=S.gAvant; $('gApres').value=S.gApres;
+  $('cSol').value=S.c; $('phiSol').value=S.phi;
+  $('eYoung').value=S.eYoung==null?'':S.eYoung; $('nuSol').value=S.nuSol==null?'':S.nuSol;
+  $('cphiOn').checked=!!S.cphiOn;
+  $('cphiFields').style.display=S.cphiOn?'':'none';
+  $('cphiMode').value=S.cphiMode||'auto';
+  $('gSous').value=S.gSous==null?'':S.gSous;
+  $('dimB').value=S.B; $('dimL').value=S.L; $('dimD').value=S.D;
+  $('talusOn').checked=!!S.talusOn;
+  $('talusFields').style.display=S.talusOn?'grid':'none';
+  $('talusBeta').value=S.beta; $('talusD').value=S.dTalus; $('talusDir').value=S.talusDir||'ext';
+  $('typeBeton').value=S.beton;
+  $('alphaConstOn').checked=!!S.alphaConst;
+  $('alphaConstVal').value=(S.alphaConstVal==null?'':S.alphaConstVal);
+  $('segProfil').querySelectorAll('button').forEach(function(b){ b.classList.toggle('on',b.dataset.v===(S.profilMode||'couches')); });
+  $('segEssai').querySelectorAll('button').forEach(function(b){ b.classList.toggle('on',b.dataset.v===(S.essai||'pressio')); });
+  $('alphaSang').value=S.alphaSang==null?'':S.alphaSang;
+  applyEssaiUI();
+  const seg=$('segForme').querySelectorAll('button');
+  seg.forEach(function(b){ b.classList.toggle('on',b.dataset.v===S.forme); });
+  applyFormeUI();
+}
+function applyEssaiUI(){
+  const pen=(S.essai==='penetro');
+  const labo=(S.essai==='labo');
+  /* masquer le bloc sondage (table pl* ou qc, profil, alpha) en mode laboratoire */
+  const so=$('sondageOnly'); if(so) so.style.display=labo?'none':'';
+  $('thResist').innerHTML=pen?'q<sub>c</sub> <span class="unit">(MPa)</span>':'pl* <span class="unit">(MPa)</span>';
+  const em=$('thModule'); if(em) em.style.display=pen?'none':'';
+  const sb=$('sangBox'); if(sb) sb.style.display=pen?'':'none';
+  /* en labo : c–φ est la méthode principale → masquer la case « complémentaire »,
+     afficher les contrôles c–φ (comportement, γ sous base) et adapter l'aide */
+  const cc=$('cphiCheckRow'); if(cc) cc.style.display=labo?'none':'';
+  if(labo){ S.cphiOn=false; $('cphiOn').checked=false; }
+  $('cphiFields').style.display=(labo||S.cphiOn)?'':'none';
+  const ch=$('cphiHelp');
+  if(ch) ch.innerHTML=labo
+    ?'<strong>Méthode c–φ</strong> (paramètres de cisaillement, dits « de laboratoire ») : la portance est calculée par l\u2019approche analytique (annexe F) à partir de la cohésion c\u2032 et de l\u2019angle de frottement φ\u2032 (ou c<sub>u</sub> en non drainé). Le tassement est estimé par l\u2019élasticité linéaire (annexe J.3.1) à partir du module d\u2019Young E et du coefficient de Poisson ν. Aucun sondage pl* ou q<sub>c</sub> n\u2019est requis.'
+    :'c′ et φ′ servent au coefficient d\u2019inclinaison i<sub>δ</sub> (sol cohérent / frottant / intermédiaire) et au glissement. φ′ = 0 → comportement purement cohérent (c′ lu comme c<sub>u</sub>). Les raideurs K<sub>v</sub>, K<sub>h</sub>, K<sub>θ</sub> sont déduites directement du modèle in situ (K<sub>v</sub> : Ménard §7.2.1 en pressiométrique, Schmertmann §7.2.2 en pénétrométrique ; K<sub>h</sub>, K<sub>θ</sub> : ratios de Gazetas §7.3). E et ν ne servent que de <em>repli</em> élastique (annexe J.3) si le modèle in situ est indisponible.';
+  const lg=$('coupeLegend');
+  if(lg){
+    const curve=labo?''
+      :pen?'<span><span class="sw" style="border-color:var(--pl)"></span>q<sub>c</sub> (MPa)</span>'
+      :'<span><span class="sw" style="border-color:var(--pl)"></span>pl* (MPa)</span><span><span class="sw" style="border-color:var(--em)"></span>E<sub>M</sub> (MPa)</span>';
+    lg.innerHTML=curve
+      +'<span><span class="sw" style="border-color:var(--nappe);border-top-style:dashed"></span>nappe</span>'
+      +'<span><span class="sw" style="border-color:var(--accent)"></span>zone d\u2019influence (1,5\u00b7B)</span>';
+  }
+  $('hintProfil').innerHTML=pen
+    ?'Méthode pénétrométrique (annexe E) : q<sub>c</sub> = résistance de pointe. q<sub>ce</sub> = moyenne de q<sub>c</sub> sur [D ; D+h<sub>r</sub>] après écrêtage à 1,3·q<sub>cm</sub> ; D<sub>e</sub> intégré depuis la surface (annexe C). Tassement par Schmertmann (§6.2, zone d\u2019influence 2·B en axisymétrique, 4·B en filante) avec variante œdométrique de Sanglerat. Le module E<sub>M</sub> pressiométrique n\u2019est pas utilisé.'
+    :'Méthode pressiométrique : pl* = pression limite <em>nette</em>, E<sub>M</sub> = module Ménard.';
+}
+function applyFormeUI(){
+  $('fldL').style.display=(S.forme==='rect')?'':'none';
+  $('lblB').innerHTML=(S.forme==='circ')?'Diamètre B <span class="unit">(m)</span>':'Largeur B <span class="unit">(m)</span>';
+  $('hintCharges').textContent=(S.forme==='filante')?'kN/ml, kN·m/ml':'kN, kN·m';
+}
+
+/* ---------- coupe SVG ---------- */
+function coupeLabo(X){
+  const zMax=Math.max(1,Math.ceil(Math.max(X.D+1.5*X.B+0.4,Number.isFinite(X.zw)?X.zw+0.6:0,X.D+0.6)+0.001));
+  const W=720, top=44, bottom=26, plotH=380, Hh=top+plotH+bottom;
+  const yz=function(z){ return top+z/zMax*plotH; };
+  const pxm=plotH/zMax;
+  const sx0=58, sx1=470;                       /* bande schéma élargie (pas de plot) */
+  const cx=(sx0+sx1)/2;
+  let s='<svg viewBox="0 0 '+W+' '+Hh+'" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono,monospace">';
+  s+='<defs><pattern id="hsoil" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" stroke="#A65A1E" stroke-width="1.1" opacity="0.45"/></pattern></defs>';
+
+  /* fond terrain */
+  s+='<rect x="'+sx0+'" y="'+yz(0)+'" width="'+(sx1-sx0)+'" height="'+(yz(zMax)-yz(0))+'" fill="#F3F1E8"/>';
+
+  /* axe profondeur */
+  const step=zMax<=8?1:zMax<=16?2:5;
+  for(let z=0;z<=zMax;z+=step){
+    s+='<line x1="'+(sx0-4)+'" y1="'+yz(z)+'" x2="'+sx0+'" y2="'+yz(z)+'" stroke="#232E33"/>';
+    s+='<text x="'+(sx0-8)+'" y="'+(yz(z)+3.5)+'" text-anchor="end" font-size="10" fill="#232E33">'+z+'</text>';
+  }
+  s+='<text x="14" y="'+(top+plotH/2)+'" font-size="10" fill="#71767a" transform="rotate(-90 14 '+(top+plotH/2)+')" text-anchor="middle">profondeur (m / TN)</text>';
+  s+='<line x1="'+sx0+'" y1="'+top+'" x2="'+sx0+'" y2="'+(top+plotH)+'" stroke="#232E33" stroke-width="1.2"/>';
+
+  /* TN */
+  s+='<line x1="'+sx0+'" y1="'+yz(0)+'" x2="'+sx1+'" y2="'+yz(0)+'" stroke="#232E33" stroke-width="1.6"/>';
+  for(let x=sx0;x<sx1;x+=9) s+='<line x1="'+x+'" y1="'+yz(0)+'" x2="'+(x-5)+'" y2="'+(yz(0)-5)+'" stroke="#232E33" stroke-width="0.8"/>';
+  s+='<text x="'+(sx1-2)+'" y="'+(yz(0)-7)+'" text-anchor="end" font-size="10" fill="#232E33">TN</text>';
+
+  /* zone d'influence 1,5·B sous la base (hachurée) */
+  const footW=Math.min(X.B*pxm,sx1-sx0-40);
+  const hrV=1.5*X.B;
+  s+='<rect x="'+(cx-footW/2)+'" y="'+yz(X.D)+'" width="'+footW+'" height="'+Math.min(hrV*pxm,yz(zMax)-yz(X.D))+'" fill="url(#hsoil)" stroke="#A65A1E" stroke-width="0.8" stroke-dasharray="3 3"/>';
+  var infY=yz(X.D+hrV/2)+3;
+  if(Number.isFinite(X.zw)&&X.zw<=zMax&&Math.abs((yz(X.zw)-5)-infY)<13){ infY=Math.min(yz(X.zw)+18, yz(zMax)-3); }
+  s+='<text x="'+(cx+footW/2+6)+'" y="'+infY+'" font-size="9.5" fill="#A65A1E">zone d\u2019influence (1,5·B)</text>';
+
+  /* poteau d'encastrement + semelle */
+  const hF=Math.max(Math.min(0.4*pxm,yz(X.D)-yz(0)),7);
+  if(X.D>0){
+    const colW=Math.min(Math.max(footW*0.28,10),28);
+    s+='<rect x="'+(cx-colW/2)+'" y="'+yz(0)+'" width="'+colW+'" height="'+Math.max(yz(X.D)-hF-yz(0),0)+'" fill="#D9D3C2" stroke="#232E33" stroke-width="1"/>';
+  }
+  s+='<rect x="'+(cx-footW/2)+'" y="'+(yz(X.D)-hF)+'" width="'+footW+'" height="'+hF+'" fill="#FCFBF6" stroke="#232E33" stroke-width="1.6"/>';
+  /* cote D */
+  if(X.D>0){
+    s+='<line x1="'+(sx0+10)+'" y1="'+yz(0)+'" x2="'+(sx0+10)+'" y2="'+yz(X.D)+'" stroke="#232E33" stroke-width="0.9"/>';
+    s+='<line x1="'+(sx0+6)+'" y1="'+yz(0)+'" x2="'+(sx0+14)+'" y2="'+yz(0)+'" stroke="#232E33" stroke-width="0.9"/>';
+    s+='<line x1="'+(sx0+6)+'" y1="'+yz(X.D)+'" x2="'+(sx0+14)+'" y2="'+yz(X.D)+'" stroke="#232E33" stroke-width="0.9"/>';
+    s+='<text x="'+(sx0+16)+'" y="'+((yz(0)+yz(X.D))/2+3)+'" font-size="9.5" fill="#232E33">D = '+fmt(X.D,2)+' m</text>';
+  }
+  s+='<text x="'+cx+'" y="'+(yz(X.D)+Math.min(hrV*pxm,plotH)*0.55)+'" text-anchor="middle" font-size="9.5" fill="#7C4316">B = '+fmt(X.B,2)+' m</text>';
+
+  /* nappe */
+  if(Number.isFinite(X.zw)&&X.zw<=zMax){
+    s+='<line x1="'+sx0+'" y1="'+yz(X.zw)+'" x2="'+sx1+'" y2="'+yz(X.zw)+'" stroke="#3D7EA6" stroke-width="1.3" stroke-dasharray="6 4"/>';
+    s+='<text x="'+(sx1-4)+'" y="'+(yz(X.zw)-5)+'" text-anchor="end" font-size="10" fill="#3D7EA6">\u25BD nappe '+fmt(X.zw,1)+' m</text>';
+  }
+
+  /* panneau de paramètres (laboratoire) */
+  const px=505, lineH=20; let py=top+8;
+  s+='<text x="'+px+'" y="'+py+'" font-size="11" font-weight="600" fill="#232E33">Méthode c–φ</text>'; py+=lineH+2;
+  const items=[
+    ['c\u2032 (cohésion)',fmt(X.c,0)+' kPa'],
+    ['\u03C6\u2032 (frottement)',fmt(X.phi,0)+' °'],
+    ['\u03B3 (poids vol.)',fmt(X.gAp,1)+' kN/m³'],
+    ['E (Young)',Number.isFinite(X.eY)&&X.eY>0?fmt(X.eY,0)+' MPa':'—'],
+    ['\u03BD (Poisson)',Number.isFinite(X.nu)?fmt(X.nu,2):'—']
+  ];
+  items.forEach(function(it){
+    s+='<text x="'+px+'" y="'+py+'" font-size="10" fill="#71767a">'+it[0]+'</text>';
+    s+='<text x="'+(W-18)+'" y="'+py+'" font-size="10.5" text-anchor="end" fill="#232E33">'+it[1]+'</text>';
+    py+=lineH;
+  });
+  py+=6;
+  s+='<text x="'+px+'" y="'+py+'" font-size="9" fill="#9a8f78">Portance : annexe F</text>'; py+=15;
+  s+='<text x="'+px+'" y="'+py+'" font-size="9" fill="#9a8f78">Tassement : annexe J.3.1</text>';
+
+  s+='</svg>';
+  return s;
+}
+function drawCoupe(R){
+  const box=$('coupeSvg');
+  if(R.err||!R.ctx){ box.innerHTML='<div class="subnote" style="padding:18px">'+escH(R.err||'Données insuffisantes.')+'</div>'; return ''; }
+  const X=R.ctx, rows=X.rows;
+  if(X.labo){ const sl=coupeLabo(X); box.innerHTML=sl; return sl; }
+  const zMax=Math.max(1,Math.ceil(Math.max(X.zmaxSond,X.D+1.5*X.B+0.4,Number.isFinite(X.zw)?X.zw+0.6:0)+0.001));
+  const W=720, top=44, bottom=26, plotH=380, Hh=top+plotH+bottom;
+  const yz=function(z){ return top+z/zMax*plotH; };
+  const pxm=plotH/zMax;
+  const sx0=58, sx1=212, px0=246, px1=702;
+
+  /* échelle log */
+  let vmin=Infinity,vmax=0;
+  const keysScale=(X.essai==='penetro')?['qc']:['pl','em'];
+  rows.forEach(function(r){ keysScale.forEach(function(k){ const v=r[k]; if(Number.isFinite(v)&&v>0){ vmin=Math.min(vmin,v); vmax=Math.max(vmax,v); } }); });
+  if(!(vmin<Infinity)){ vmin=0.1; vmax=10; }
+  let lo=Math.pow(10,Math.floor(Math.log10(vmin))), hi=Math.pow(10,Math.ceil(Math.log10(vmax)));
+  if(hi<=lo) hi=lo*10;
+  const xv=function(v){ return px0+(Math.log10(v)-Math.log10(lo))/(Math.log10(hi)-Math.log10(lo))*(px1-px0); };
+
+  let s='<svg viewBox="0 0 '+W+' '+Hh+'" xmlns="http://www.w3.org/2000/svg" font-family="IBM Plex Mono,monospace">';
+  s+='<defs><pattern id="hsoil" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" stroke="#A65A1E" stroke-width="1.1" opacity="0.45"/></pattern></defs>';
+
+  /* fond bande schéma */
+  s+='<rect x="'+sx0+'" y="'+yz(0)+'" width="'+(sx1-sx0)+'" height="'+(yz(zMax)-yz(0))+'" fill="#F3F1E8"/>';
+
+  /* lignes de couches */
+  rows.forEach(function(r){
+    if(r.z>0&&r.z<zMax){
+      s+='<line x1="'+sx0+'" y1="'+yz(r.z)+'" x2="'+px1+'" y2="'+yz(r.z)+'" stroke="#C9C2AD" stroke-width="0.7" stroke-dasharray="2 4"/>';
+    }
+  });
+
+  /* grille log + libellés */
+  for(let d=lo;d<=hi*1.0001;d*=10){
+    [1,2,5].forEach(function(m){
+      const v=d*m; if(v<lo*0.999||v>hi*1.001) return;
+      const x=xv(v), major=(m===1);
+      s+='<line x1="'+x+'" y1="'+top+'" x2="'+x+'" y2="'+(top+plotH)+'" stroke="'+(major?'#C9C2AD':'#E0DACA')+'" stroke-width="'+(major?1:0.6)+'"/>';
+      if(major) s+='<text x="'+x+'" y="'+(top-8)+'" text-anchor="middle" font-size="10" fill="#71767a">'+fmt(v,v<1?1:0)+'</text>';
+    });
+  }
+  s+='<text x="'+px1+'" y="'+(top-24)+'" text-anchor="end" font-size="10" fill="#71767a">MPa (échelle log)</text>';
+
+  /* axe profondeur */
+  const step=zMax<=8?1:zMax<=16?2:5;
+  for(let z=0;z<=zMax;z+=step){
+    s+='<line x1="'+(sx0-4)+'" y1="'+yz(z)+'" x2="'+sx0+'" y2="'+yz(z)+'" stroke="#232E33"/>';
+    s+='<text x="'+(sx0-8)+'" y="'+(yz(z)+3.5)+'" text-anchor="end" font-size="10" fill="#232E33">'+z+'</text>';
+  }
+  s+='<text x="14" y="'+(top+plotH/2)+'" font-size="10" fill="#71767a" transform="rotate(-90 14 '+(top+plotH/2)+')" text-anchor="middle">profondeur (m / TN)</text>';
+  s+='<line x1="'+sx0+'" y1="'+top+'" x2="'+sx0+'" y2="'+(top+plotH)+'" stroke="#232E33" stroke-width="1.2"/>';
+
+  /* TN */
+  s+='<line x1="'+sx0+'" y1="'+yz(0)+'" x2="'+px1+'" y2="'+yz(0)+'" stroke="#232E33" stroke-width="1.6"/>';
+  for(let x=sx0;x<sx1;x+=9) s+='<line x1="'+x+'" y1="'+yz(0)+'" x2="'+(x-5)+'" y2="'+(yz(0)-5)+'" stroke="#232E33" stroke-width="0.8"/>';
+  s+='<text x="'+(sx1-2)+'" y="'+(yz(0)-7)+'" text-anchor="end" font-size="10" fill="#232E33">TN</text>';
+
+  /* zone ple* hachurée puis semelle */
+  const cx=(sx0+sx1)/2;
+  const footW=Math.min(X.B*pxm,sx1-sx0-16);
+  const hrV=1.5*X.B;
+  s+='<rect x="'+(cx-footW/2)+'" y="'+yz(X.D)+'" width="'+footW+'" height="'+Math.min(hrV*pxm,yz(zMax)-yz(X.D))+'" fill="url(#hsoil)" stroke="#A65A1E" stroke-width="0.8" stroke-dasharray="3 3"/>';
+  s+='<text x="'+(cx+footW/2+5)+'" y="'+(yz(X.D+hrV/2)+3)+'" font-size="9.5" fill="#A65A1E">1,5·B</text>';
+
+  const hF=Math.max(Math.min(0.4*pxm,yz(X.D)-yz(0)),7);
+  if(X.D>0){
+    const colW=Math.min(Math.max(footW*0.28,10),26);
+    s+='<rect x="'+(cx-colW/2)+'" y="'+yz(0)+'" width="'+colW+'" height="'+Math.max(yz(X.D)-hF-yz(0),0)+'" fill="#D9D3C2" stroke="#232E33" stroke-width="1"/>';
+  }
+  s+='<rect x="'+(cx-footW/2)+'" y="'+(yz(X.D)-hF)+'" width="'+footW+'" height="'+hF+'" fill="#FCFBF6" stroke="#232E33" stroke-width="1.6"/>';
+  /* cote D */
+  if(X.D>0){
+    s+='<line x1="'+(sx0+10)+'" y1="'+yz(0)+'" x2="'+(sx0+10)+'" y2="'+yz(X.D)+'" stroke="#232E33" stroke-width="0.9"/>';
+    s+='<line x1="'+(sx0+6)+'" y1="'+yz(0)+'" x2="'+(sx0+14)+'" y2="'+yz(0)+'" stroke="#232E33" stroke-width="0.9"/>';
+    s+='<line x1="'+(sx0+6)+'" y1="'+yz(X.D)+'" x2="'+(sx0+14)+'" y2="'+yz(X.D)+'" stroke="#232E33" stroke-width="0.9"/>';
+    s+='<text x="'+(sx0+16)+'" y="'+((yz(0)+yz(X.D))/2+3)+'" font-size="9.5" fill="#232E33">D = '+fmt(X.D,2)+'</text>';
+  }
+  s+='<text x="'+cx+'" y="'+(yz(X.D)+Math.min(hrV*pxm,plotH)*0.55)+'" text-anchor="middle" font-size="9.5" fill="#7C4316">B = '+fmt(X.B,2)+' m</text>';
+  if(Number.isFinite(X.DeRef)) s+='<text x="'+(sx1-4)+'" y="'+(yz(X.D)+12)+'" text-anchor="end" font-size="9.5" fill="#232E33">De = '+fmt(X.DeRef,2)+' m</text>';
+
+  /* nappe */
+  if(Number.isFinite(X.zw)&&X.zw<=zMax){
+    s+='<line x1="'+sx0+'" y1="'+yz(X.zw)+'" x2="'+px1+'" y2="'+yz(X.zw)+'" stroke="#3D7EA6" stroke-width="1.3" stroke-dasharray="6 4"/>';
+    s+='<text x="'+(px1-4)+'" y="'+(yz(X.zw)-5)+'" text-anchor="end" font-size="10" fill="#3D7EA6">\u25BD nappe '+fmt(X.zw,1)+' m</text>';
+  }
+
+  /* courbes en escalier */
+  function stepPath(key){
+    let p='',prev=NaN;
+    const v0=valAt(rows,key,0);
+    if(!(v0>0)) return '';
+    p='M '+xv(v0)+' '+yz(0); prev=v0;
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i]; if(!(r.z>0)) { if(Number.isFinite(r[key])&&r[key]>0) prev=r[key]; continue; }
+      const v=Number.isFinite(r[key])&&r[key]>0?r[key]:prev;
+      if(r.z<=zMax){ p+=' L '+xv(prev)+' '+yz(r.z)+' L '+xv(v)+' '+yz(r.z); }
+      prev=v;
+    }
+    p+=' L '+xv(prev)+' '+yz(zMax);
+    return p;
+  }
+  function pathFor(key){
+    if(X.profilMode==='essais'){
+      const N=[];
+      rows.forEach(function(r){ if(Number.isFinite(r[key])&&r[key]>0&&r.z<=zMax) N.push(r); });
+      if(!N.length) return {solid:'',ext:''};
+      let p='M '+xv(N[0][key])+' '+yz(N[0].z);
+      for(let i=1;i<N.length;i++) p+=' L '+xv(N[i][key])+' '+yz(N[i].z);
+      let ext='';
+      const last=N[N.length-1];
+      if(last.z<zMax-1e-6) ext='M '+xv(last[key])+' '+yz(last.z)+' L '+xv(last[key])+' '+yz(zMax);
+      return {solid:p,ext:ext};
+    }
+    return {solid:stepPath(key),ext:''};
+  }
+  if(X.essai==='penetro'){
+    const PQc=pathFor('qc');
+    s+='<path d="'+PQc.solid+'" fill="none" stroke="#963B28" stroke-width="2.2"/>';
+    if(PQc.ext) s+='<path d="'+PQc.ext+'" fill="none" stroke="#963B28" stroke-width="1.6" stroke-dasharray="4 4" opacity="0.7"/>';
+    rows.forEach(function(r){
+      if(r.z<=zMax&&Number.isFinite(r.qc)&&r.qc>0) s+='<circle cx="'+xv(r.qc)+'" cy="'+yz(r.z)+'" r="3" fill="#FCFBF6" stroke="#963B28" stroke-width="1.6"/>';
+    });
+  }else{
+    const PPl=pathFor('pl'), PEm=pathFor('em');
+    s+='<path d="'+PPl.solid+'" fill="none" stroke="#963B28" stroke-width="2.2"/>';
+    if(PPl.ext) s+='<path d="'+PPl.ext+'" fill="none" stroke="#963B28" stroke-width="1.6" stroke-dasharray="4 4" opacity="0.7"/>';
+    s+='<path d="'+PEm.solid+'" fill="none" stroke="#2C637E" stroke-width="2.2"/>';
+    if(PEm.ext) s+='<path d="'+PEm.ext+'" fill="none" stroke="#2C637E" stroke-width="1.6" stroke-dasharray="4 4" opacity="0.7"/>';
+    rows.forEach(function(r){
+      if(r.z<=zMax){
+        if(Number.isFinite(r.pl)&&r.pl>0) s+='<circle cx="'+xv(r.pl)+'" cy="'+yz(r.z)+'" r="3" fill="#FCFBF6" stroke="#963B28" stroke-width="1.6"/>';
+        if(Number.isFinite(r.em)&&r.em>0) s+='<circle cx="'+xv(r.em)+'" cy="'+yz(r.z)+'" r="3" fill="#FCFBF6" stroke="#2C637E" stroke-width="1.6"/>';
+      }
+    });
+  }
+  s+='<rect x="'+px0+'" y="'+top+'" width="'+(px1-px0)+'" height="'+plotH+'" fill="none" stroke="#C9C2AD" stroke-width="1"/>';
+  s+='</svg>';
+  box.innerHTML=s;
+  return s;
+}
+
+/* ---------- onglet vérifications ---------- */
+function pill(ok,libOk,libBad,libNa){
+  if(ok===null||ok===undefined) return '<span class="pill na">'+(libNa||'sans objet')+'</span>';
+  return ok?'<span class="pill ok">'+(libOk||'vérifié')+'</span>':'<span class="pill bad">'+(libBad||'non vérifié')+'</span>';
+}
+function vcard(cls,k,v,sub){
+  return '<div class="vcard '+cls+'"><div class="k">'+k+'</div><div class="v">'+v+'</div><div class="s">'+(sub||'')+'</div></div>';
+}
+function caseTitle(C,X){
+  const ml=(X.forme==='filante')?'/ml':'';
+  let t='Cas '+(C.idx+1)+' — '+C.lib;
+  let loads='F<sub>z</sub> = '+fmt(C.Fz,0)+' kN'+ml;
+  if(Math.abs(C.Fx)>1e-9) loads+=' · F<sub>x</sub> = '+fmt(C.Fx,0);
+  if(Math.abs(C.Fy)>1e-9) loads+=' · F<sub>γ</sub> = '+fmt(C.Fy,0);
+  if(Math.abs(C.Mx)>1e-9) loads+=' · M<sub>x</sub> = '+fmt(C.Mx,0);
+  if(Math.abs(C.My)>1e-9) loads+=' · M<sub>γ</sub> = '+fmt(C.My,0)+' kN·m'+ml;
+  return {t:t,loads:loads};
+}
+function caseSteps(C,X){
+  if(C.invalid) return '';
+  const IND='&nbsp;&nbsp;&nbsp;&nbsp;';
+  function eqn(lhs,formula,subst,result){
+    let s=lhs+' = '+formula;
+    if(subst!=null&&subst!=='') s+='<br>'+IND+'= '+subst;
+    if(result!=null&&result!=='') s+='<br>'+IND+'= <span class="rl">'+result+'</span>';
+    return s;
+  }
+  function step(num,title,body){ return '<div class="step"><div class="step-h"><span class="step-n">'+num+'</span>'+title+'</div><div class="step-b">'+body+'</div></div>'; }
+  function curveStr(p){ return fmt(p[3],2)+' + ('+fmt(p[0],2)+' + '+fmt(p[1],3)+'·x)·(1 − e^(−'+fmt(p[2],1)+'·x))'; }
+  const perML=(X.forme==='filante'), mlF=perML?' kN/ml':' kN', pm=perML?'/ml':'';
+  const formeLbl={filante:'filante',carree:'carrée',rect:'rectangulaire',circ:'circulaire'}[X.forme];
+  const B=X.B,L=X.L,D=X.D,forme=X.forme;
+  let h='<div class="calc">'; let n=0; let sec=1;
+  function grpLetter(){ sec++; return String.fromCharCode(64+sec); }
+
+  h+='<div class="grp">A · Capacité portante</div>';
+
+  n++;
+  let geoF,geoS,geoR;
+  if(forme==='filante'){ geoF='B × 1 ml'; geoS=fmt(B,2)+' × 1'; geoR=fmt(C.A,2)+' m²/ml'; }
+  else if(forme==='circ'){ geoF='π·(B/2)²'; geoS='π × ('+fmt(B,2)+'/2)²'; geoR=fmt(C.A,2)+' m²'; }
+  else if(forme==='carree'){ geoF='B × B'; geoS=fmt(B,2)+' × '+fmt(B,2); geoR=fmt(C.A,2)+' m²'; }
+  else { geoF='B × L'; geoS=fmt(B,2)+' × '+fmt(L,2); geoR=fmt(C.A,2)+' m²'; }
+  let loads='V<sub>d</sub> = F<sub>z</sub> = '+fmt(C.Fz,0)+' kN'+pm;
+  if(C.H>1e-9) loads+=' · H<sub>d</sub> = '+fmt(C.H,0)+' kN'+pm+' <span class="cm">(F<sub>x</sub> = '+fmt(C.Fx,0)+', F<sub>y</sub> = '+fmt(C.Fy,0)+')</span>';
+  if(Math.abs(C.Mx)>1e-9) loads+=' · M<sub>x</sub> = '+fmt(C.Mx,0);
+  if(Math.abs(C.My)>1e-9) loads+=' · M<sub>γ</sub> = '+fmt(C.My,0)+' kN·m'+pm;
+  h+=step(n,'Géométrie et sollicitations',
+      'Forme : '+formeLbl+' · B = '+fmt(B,2)+' m'+(forme==='rect'?' · L = '+fmt(L,2)+' m':'')+' · D = '+fmt(D,2)+' m<br>'
+      +eqn('A',geoF,geoS,geoR)+'<br>'+loads);
+
+  n++;
+  let excBody='';
+  if(forme==='circ'){
+    excBody=eqn('e','√(e<sub>B</sub>² + e<sub>L</sub>²)','',fmt(Math.hypot(C.eB,C.eL),3)+' m')+'<br>'
+      +eqn('A\u2032 (surface comprimée)','aire comprimée de la section circulaire','',fmt(C.Ap,2)+' m²');
+  }else{
+    const LL=(forme==='carree')?B:L;
+    excBody=eqn('e<sub>B</sub>','|M<sub>γ</sub>| / V<sub>d</sub>',fmt(Math.abs(C.My),0)+' / '+fmt(C.Fz,0),fmt(C.eB,3)+' m')
+      +(forme==='filante'?'':'<br>'+eqn('e<sub>L</sub>','|M<sub>x</sub>| / V<sub>d</sub>',fmt(Math.abs(C.Mx),0)+' / '+fmt(C.Fz,0),fmt(C.eL,3)+' m'))+'<br>'
+      +eqn('B\u2032','B − 2·e<sub>B</sub>',fmt(B,2)+' − 2×'+fmt(C.eB,3),fmt(C.geom.Bp,2)+' m')
+      +(forme==='filante'?'':'<br>'+eqn('L\u2032','L − 2·e<sub>L</sub>',fmt(LL,2)+' − 2×'+fmt(C.eL,3),fmt(C.geom.Lp,2)+' m'))+'<br>'
+      +eqn('A\u2032 (Meyerhof)',(forme==='filante'?'B\u2032 × 1 ml':'B\u2032 × L\u2032'),(forme==='filante'?fmt(C.geom.Bp,2)+' × 1':fmt(C.geom.Bp,2)+' × '+fmt(C.geom.Lp,2)),fmt(C.Ap,2)+' m²'+pm);
+  }
+  if(C.Ap<C.A-1e-6) excBody+='<br><span class="cm">A\u2032 &lt; A = '+fmt(C.A,2)+' m² : l\u2019excentrement réduit la surface portante.</span>';
+  h+=step(n,'Excentrement et surface comprimée A\u2032',excBody);
+
+  n++;
+  h+=step(n,'Inclinaison de la charge',
+      eqn('H<sub>d</sub>','√(F<sub>x</sub>² + F<sub>y</sub>²)',fmt(C.Fx,0)+', '+fmt(C.Fy,0),fmt(C.H,0)+' kN'+pm)+'<br>'
+      +eqn('δ<sub>d</sub>','atan(H<sub>d</sub> / V<sub>d</sub>)','atan('+fmt(C.H,0)+' / '+fmt(C.Fz,0)+')',fmt(C.delta,1)+' °')+'<br>'
+      +'i<sub>δ</sub> = <span class="rl">'+fmt(C.idel,3)+'</span>'+(C.H<1e-9?' <span class="cm">(charge verticale, H = 0)</span>':' <span class="cm">(coefficient d\u2019inclinaison, annexe D.2.6)</span>'));
+
+  n++;
+  h+=step(n,'Contraintes au niveau de la base',
+      eqn('u','(D − z<sub>w</sub>) × 10',(X.u>0?'('+fmt(D,2)+' − '+fmt(X.zw,2)+') × 10':'nappe absente ou sous la base'),fmt(X.u,1)+' kPa')+'<br>'
+      +eqn('q<sub>0</sub>','γ<sub>ap</sub> · D',fmt(X.gAp,1)+' × '+fmt(D,2),fmt(X.q0,1)+' kPa')+'<br>'
+      +eqn('σ\u2032<sub>v0</sub>','γ<sub>av</sub> · D − u',fmt(X.gAv,1)+' × '+fmt(D,2)+' − '+fmt(X.u,1),fmt(X.sv0,1)+' kPa'));
+
+  if(!X.labo){
+    const isPen=(X.essai==='penetro');
+    const rLbl=isPen?'q<sub>ce</sub>':'p<sub>le</sub>*', kLbl=isPen?'k<sub>c</sub>':'k<sub>p</sub>';
+    let win='';
+    X.rows.forEach(function(r){ const v=isPen?r.qc:r.pl; if(Number.isFinite(v)&&r.z>=D-1e-9&&r.z<=D+C.hr+1e-9){ win+='<tr><td>z = '+fmt(r.z,2)+' m</td><td>'+rLbl+' = '+fmt(v,2)+' MPa</td></tr>'; } });
+    n++;
+    h+=step(n,'Pression nette équivalente '+rLbl,
+        eqn('h<sub>r</sub> (hauteur de moyenne)','1,5 · B'+(C.hrRed?' (réduite, excentrement fort)':''),(C.hrRed?'':'1,5 × '+fmt(B,2)),fmt(C.hr,2)+' m')+'<br>'
+        +rLbl+' = moyenne '+(isPen?'arithmétique de q<sub>c</sub>':'géométrique de pl*')+' sur [D ; D+h<sub>r</sub>] = ['+fmt(D,2)+' ; '+fmt(D+C.hr,2)+'] m'
+        +(win?'<br><span class="cm">valeurs mesurées dans la zone :</span><table class="sub">'+win+'</table>':'<br>')
+        +'<span class="rl">'+rLbl+' = '+fmt(C.ple,3)+' MPa</span>');
+    n++;
+    h+=step(n,'Hauteur d\u2019encastrement équivalente D<sub>e</sub>',
+        'D<sub>e</sub> = (1/'+rLbl+') · ∫<sub>0</sub><sup>D</sup> '+rLbl+'(z) dz <span class="cm">(moyenne du terrain au-dessus de la base)</span><br>'
+        +'<span class="rl">D<sub>e</sub> = '+fmt(C.De,2)+' m</span> &nbsp;→&nbsp; D<sub>e</sub>/B = '+fmt(C.De,2)+'/'+fmt(B,2)+' = <span class="rl">'+fmt(C.DeB,2)+'</span>');
+    n++;
+    const P=(isPen?KC:KP)[C.cat]||(isPen?KC.sables:KP.sables);
+    let kpBody='Catégorie de sol : '+escH(P.lib)+' · x = D<sub>e</sub>/B (plafonné à 2) = '+fmt(C.kpx,2)+'<br>';
+    if(forme==='filante') kpBody+=eqn(kLbl,curveStr(P.f),'',fmt(C.kf,3));
+    else if(forme==='rect'){ const r=clamp(B/L,0,1);
+      kpBody+=eqn(kLbl+' (base filante)',curveStr(P.f),'',fmt(C.kf,3))+'<br>'+eqn(kLbl+' (base carrée)',curveStr(P.c),'',fmt(C.kc,3))+'<br>'
+            +eqn(kLbl,'k<sub>f</sub>·(1 − B/L) + k<sub>c</sub>·(B/L)',fmt(C.kf,3)+'×(1 − '+fmt(r,2)+') + '+fmt(C.kc,3)+'×'+fmt(r,2),fmt(C.kp,3));
+    } else kpBody+=eqn(kLbl+' (carré/cercle)',curveStr(P.c),'',fmt(C.kp,3));
+    h+=step(n,'Facteur de portance '+kLbl,kpBody);
+    n++;
+    h+=step(n,'Coefficients de réduction',
+        'i<sub>δ</sub> (inclinaison) = <span class="rl">'+fmt(C.idel,3)+'</span> · i<sub>β</sub> (talus) = <span class="rl">'+fmt(C.ibet,3)+'</span><br>'
+        +eqn('i<sub>δβ</sub> (combiné)',(X.talusDir==='int'&&X.talus?'min(i<sub>β</sub>/i<sub>δ</sub> ; i<sub>δ</sub>)':'i<sub>δ</sub> · i<sub>β</sub>'),(X.talusDir==='int'&&X.talus?'':fmt(C.idel,3)+' × '+fmt(C.ibet,3)),fmt(C.idb,3)));
+    n++;
+    h+=step(n,'Résistance nette du sol q<sub>net</sub>',
+        eqn('q<sub>net</sub>',kLbl+' · '+rLbl+' · i<sub>δβ</sub>',fmt(C.kp,3)+' × '+fmt(C.ple,3)+' × '+fmt(C.idb,3)+' MPa',fmt(C.qnet/1000,3)+' MPa = '+fmt(C.qnet,0)+' kPa'));
+  } else {
+    const F=C.cphi;
+    n++;
+    if(F&&!F.err&&F.drained){
+      h+=step(n,'Facteurs de portance (annexe F, drainé)',
+        'φ\u2032 = '+fmt(X.phi,1)+'° · c\u2032 = '+fmt(X.c,0)+' kPa · B\u2032/L\u2032 = '+fmt(F.Bp,2)+'/'+(F.Lp===Infinity?'∞':fmt(F.Lp,2))+'<br>'
+        +eqn('N<sub>q</sub>','e^(π·tanφ\u2032)·tan²(45° + φ\u2032/2)','',fmt(F.Nq,2))+'<br>'
+        +eqn('N<sub>c</sub>','(N<sub>q</sub> − 1)/tanφ\u2032','',fmt(F.Nc,2))+'<br>'
+        +eqn('N<sub>γ</sub>','2·(N<sub>q</sub> − 1)·tanφ\u2032','',fmt(F.Ng,2))+'<br>'
+        +'s : '+fmt(F.sq,2)+'/'+fmt(F.sc,2)+'/'+fmt(F.sg,2)+' · i : '+fmt(F.iq,3)+'/'+fmt(F.ic,3)+'/'+fmt(F.ig,3)+' (m = '+fmt(F.m,2)+') · γ\u2032 = '+fmt(F.gEff,1)+' kN/m³ · q\u2032<sub>0</sub> = '+fmt(F.q0eff,1)+' kPa');
+      n++;
+      h+=step(n,'Résistance nette q<sub>net</sub> (drainé)',
+        eqn('q<sub>net</sub>','c\u2032·N<sub>c</sub>·s<sub>c</sub>·i<sub>c</sub> + q\u2032<sub>0</sub>·(N<sub>q</sub>·s<sub>q</sub>·i<sub>q</sub> − 1) + ½·γ\u2032·B\u2032·N<sub>γ</sub>·s<sub>γ</sub>·i<sub>γ</sub>','',fmt(C.qnet,0)+' kPa'));
+    } else if(F&&!F.err){
+      h+=step(n,'Résistance nette q<sub>net</sub> (annexe F, non drainé)',
+        'c<sub>u</sub> = '+fmt(X.c,0)+' kPa · s<sub>c</sub> = '+fmt(F.sc,2)+' · i<sub>c</sub> = '+fmt(F.ic,3)+'<br>'
+        +eqn('q<sub>net</sub>','(π + 2)·c<sub>u</sub>·b<sub>c</sub>·s<sub>c</sub>·i<sub>c</sub>','',fmt(C.qnet,0)+' kPa'));
+    } else h+=step(n,'Résistance nette q<sub>net</sub> (c–φ)','— '+escH((F&&F.err)||'incalculable'));
+  }
+
+  n++;
+  h+=step(n,'Contrainte de référence appliquée',
+      eqn('q<sub>ref</sub>','V<sub>d</sub> / A\u2032',fmt(C.Fz,0)+' / '+fmt(C.Ap,2),fmt(C.qref,0)+' kPa'));
+
+  n++;
+  const okTxt=C.portOk?'<span style="color:var(--ok);font-weight:700">VÉRIFIÉE</span>':'<span style="color:var(--bad);font-weight:700">NON VÉRIFIÉE</span>';
+  h+=step(n,'Résistance de calcul R<sub>v;d</sub> et vérification',
+      eqn('R<sub>0</sub>','A · q<sub>0</sub>',fmt(C.A,2)+' × '+fmt(X.q0,1),fmt(C.R0,0)+mlF)+'<br>'
+      +eqn('R<sub>v;d</sub>','R<sub>0</sub> + A\u2032·q<sub>net</sub>/(γ<sub>R;v</sub>·γ<sub>R;d;v</sub>)',fmt(C.R0,0)+' + '+fmt(C.Ap,2)+'×'+fmt(C.qnet,0)+'/('+fmt(C.gRv,1)+'×'+fmt(C.gRdv,1)+')',fmt(C.Rtot,0)+mlF)+'<br>'
+      +eqn('q<sub>Rv;d</sub>','R<sub>v;d</sub> / A\u2032',fmt(C.Rtot,0)+' / '+fmt(C.Ap,2),fmt(C.qRvd,0)+' kPa')+'<br><br>'
+      +'<strong>Vérification :</strong> q<sub>ref</sub> = '+fmt(C.qref,0)+' '+(C.portOk?'≤':'&gt;')+' q<sub>Rv;d</sub> = '+fmt(C.qRvd,0)+' kPa &nbsp;→&nbsp; portance '+okTxt+' (taux '+fmt(C.taux*100,0)+' %)<br>'
+      +'<span class="cm">forme en efforts : V<sub>d</sub> = '+fmt(C.Fz,0)+' '+(C.portOk?'≤':'&gt;')+' R<sub>v;d</sub> = '+fmt(C.Rtot,0)+mlF+'</span>');
+
+  if(!X.labo && C.cphi && !C.cphi.err){
+    const F=C.cphi;
+    n++;
+    h+=step(n,'Vérification complémentaire par la méthode c–φ (annexe F)',
+      (F.drained
+        ? 'drainé (γ<sub>R;d;v</sub> = 2,0) · N<sub>q</sub>/N<sub>c</sub>/N<sub>γ</sub> = '+fmt(F.Nq,2)+'/'+fmt(F.Nc,2)+'/'+fmt(F.Ng,2)+'<br>'
+        : 'non drainé (γ<sub>R;d;v</sub> = 1,2) · s<sub>c</sub> = '+fmt(F.sc,2)+' · i<sub>c</sub> = '+fmt(F.ic,3)+'<br>')
+      +eqn('q<sub>net;F</sub>','(annexe F)','',fmt(F.qnet,0)+' kPa')+'<br>'
+      +eqn('R<sub>v;d;F</sub>','R<sub>0</sub> + A\u2032·q<sub>net;F</sub>/(γ·γ)','',fmt(F.Rtot,0)+mlF)+'<br>'
+      +'q<sub>ref</sub> = '+fmt(C.qref,0)+' '+(F.ok?'≤':'&gt;')+' q<sub>Rv;d;F</sub> = '+fmt(F.qRvd,0)+' kPa → '+(F.ok?'vérifié':'NON vérifié')+' (taux '+fmt(F.taux*100,0)+' %)');
+  }
+
+  const isELU=(C.etat==='ELU_F'||C.etat==='ELU_A');
+  if(isELU && C.H>1e-9 && C.glisOk!==null && C.glisOk!==undefined){
+    h+='<div class="grp">'+grpLetter()+' · Glissement</div>';
+    n++;
+    let gBody='';
+    if(C.da!=null){
+      gBody=eqn('R<sub>h;d</sub>','V<sub>d</sub>·tan(δ<sub>a</sub>) / (γ<sub>R;h</sub>·γ<sub>R;d;h</sub>)',fmt(C.Fz,0)+'×tan('+fmt(C.da,1)+'°) / ('+fmt(C.gRh,1)+'×'+fmt(C.gRdh,1)+')',fmt(C.Rhd,0)+mlF)+'<br><span class="cm">δ<sub>a</sub> = '+fmt(C.da,1)+'° (interface '+(X.beton==='coule'?'béton coulé : δ<sub>a</sub> = φ\u2032':'préfa : δ<sub>a</sub> = ⅔φ\u2032')+')</span>';
+    } else {
+      gBody=eqn('R<sub>h;d</sub>','min( A\u2032·c<sub>u</sub>/(γ<sub>R;h</sub>·γ<sub>R;d;h</sub>) ; 0,4·V<sub>d</sub> )','',fmt(C.Rhd,0)+mlF);
+    }
+    const gok=C.glisOk?'<span style="color:var(--ok);font-weight:700">VÉRIFIÉ</span>':'<span style="color:var(--bad);font-weight:700">NON VÉRIFIÉ</span>';
+    gBody+='<br><br><strong>Vérification :</strong> H<sub>d</sub> = '+fmt(C.H,0)+' '+(C.glisOk?'≤':'&gt;')+' R<sub>h;d</sub> = '+fmt(C.Rhd,0)+mlF+' → '+gok+' (taux '+fmt(C.tauxH*100,0)+' %)';
+    h+=step(n,'Résistance au glissement',gBody);
+  }
+
+  if(C.tass||C.elast||C.schm||C.oed){
+    h+='<div class="grp">'+grpLetter()+' · Tassement</div>';
+    const dq=Math.max(C.qref-X.sv0,0);
+    n++;
+    h+=step(n,'Accroissement de contrainte sous la base',
+      eqn('Δq','q<sub>ref</sub> − σ\u2032<sub>v0</sub>',fmt(C.qref,0)+' − '+fmt(X.sv0,1),fmt(dq,0)+' kPa'));
+    if(C.tass&&C.tass.ok){
+      const t=C.tass;
+      n++;
+      h+=step(n,'Modules pressiométriques et coefficients',
+        'E<sub>c</sub> = moyenne harmonique de E<sub>M</sub> sur [D ; D+B/2] = <span class="rl">'+fmt(t.Ec,1)+' MPa</span><br>'
+        +'E<sub>d</sub> = moyenne harmonique pondérée ('+escH(t.mode)+') = <span class="rl">'+fmt(t.Ed,1)+' MPa</span><br>'
+        +'α<sub>c</sub> = '+fmt(t.alc,2)+' · α<sub>d</sub> = '+fmt(t.ald,2)+' · λ<sub>c</sub> = '+fmt(t.lc,2)+' · λ<sub>d</sub> = '+fmt(t.ld,2)+' <span class="cm">(forme, '+escH(t.lamLib)+')</span>');
+      n++;
+      h+=step(n,'Tassement de consolidation s<sub>c</sub>',
+        eqn('s<sub>c</sub>','α<sub>c</sub>/(9·E<sub>c</sub>) · Δq · λ<sub>c</sub> · B',fmt(t.alc,2)+'/(9 × '+fmt(t.Ec*1000,0)+') × '+fmt(dq,0)+' × '+fmt(t.lc,2)+' × '+fmt(B,2),fmt(t.sc*100,2)+' cm')+'<br><span class="cm">E<sub>c</sub> en kPa</span>');
+      n++;
+      h+=step(n,'Tassement déviatorique s<sub>d</sub>',
+        eqn('s<sub>d</sub>','2/(9·E<sub>d</sub>) · Δq · B<sub>0</sub> · (λ<sub>d</sub>·B/B<sub>0</sub>)<sup>α<sub>d</sub></sup>','2/(9 × '+fmt(t.Ed*1000,0)+') × '+fmt(dq,0)+' × 0,60 × ('+fmt(t.ld,2)+'×'+fmt(B,2)+'/0,60)^'+fmt(t.ald,2),fmt(t.sd*100,2)+' cm')+'<br><span class="cm">B<sub>0</sub> = 0,60 m</span>');
+      n++;
+      h+=step(n,'Tassement total',eqn('s<sub>f</sub>','s<sub>c</sub> + s<sub>d</sub>',fmt(t.sc*100,2)+' + '+fmt(t.sd*100,2),'<strong>'+fmt(t.sf*100,2)+' cm</strong>'));
+    }
+    if(C.elast&&C.elast.ok){
+      const e=C.elast;
+      n++;
+      h+=step(n,'Tassement élastique (annexe J.3.1)',
+        'c<sub>f</sub> = '+fmt(e.cf,2)+' <span class="cm">(Giroud, '+escH(e.cfLib)+')</span> · E = '+fmt(e.E,0)+' MPa · ν = '+fmt(e.nu,2)+'<br>'
+        +eqn('s','c<sub>f</sub> · (1 − ν²) · B · Δq / E',fmt(e.cf,2)+' × (1 − '+fmt(e.nu,2)+'²) × '+fmt(B,2)+' × '+fmt(dq,0)+' / '+fmt(e.E*1000,0),'<strong>'+fmt(e.s*100,2)+' cm</strong>')+'<br><span class="cm">E en kPa</span>');
+    }
+    if(C.schm&&C.schm.ok){
+      const s=C.schm;
+      n++;
+      h+=step(n,'Tassement de Schmertmann (§6.2)',
+        'C<sub>1</sub> = '+fmt(s.C1,2)+' (encastrement) · C<sub>2</sub> = '+fmt(s.C2,2)+' (fluage) · C<sub>3</sub> = '+fmt(s.C3,2)+' (forme)<br>'
+        +'I<sub>z;pic</sub> = '+fmt(s.Izp,3)+' · E = '+fmt(s.Efac,1)+'·q<sub>c</sub> ('+fmt(s.Emin,1)+'–'+fmt(s.Emax,1)+' MPa)<br>'
+        +eqn('s','C<sub>1</sub>·C<sub>2</sub>·Δq·∫ I<sub>z</sub>/(C<sub>3</sub>·E) dz','intégré sur '+fmt(s.zfac,0)+'·B = '+fmt(s.zI,2)+' m','<strong>'+fmt(s.s*100,2)+' cm</strong>'));
+    }
+    if(C.oed&&C.oed.ok){
+      const o=C.oed;
+      n++;
+      h+=step(n,'Tassement œdométrique (variante J.4.1)',
+        'M = α·q<sub>c</sub> (Sanglerat, α = '+fmt(o.alphaSang,2)+') varie de '+fmt(o.Mmin,1)+' à '+fmt(o.Mmax,1)+' MPa sur '+o.zlbl+' = '+fmt(o.depth,2)+' m<br>'
+        +eqn('s','q<sub>ref</sub> · ∫ I<sub>z</sub>(ζ)/M(ζ) dζ','','<strong>'+fmt(o.s*100,2)+' cm</strong>'));
+    }
+  }
+
+  if(X.raid){
+    const rd=X.raid, mlK=rd.perML?'/ml':'';
+    h+='<div class="grp">'+grpLetter()+' · Raideurs équivalentes</div>';
+    n++;
+    h+=step(n,'Raideurs du sol support ('+escH(rd.methodLib||'annexe J.3')+')',
+      'K<sub>v</sub> = <span class="rl">'+fmt(rd.Kv,0)+' MN/m'+mlK+'</span> (verticale)<br>'
+      +'K<sub>h;B</sub> / K<sub>h;L</sub> = '+fmt(rd.KhB,0)+' / '+(Number.isFinite(rd.KhL)?fmt(rd.KhL,0):'—')+' MN/m'+mlK+' (horizontale)<br>'
+      +'K<sub>θ;B</sub> / K<sub>θ;L</sub> = '+(Number.isFinite(rd.KtB)?fmt(rd.KtB,0):'—')+' / '+(Number.isFinite(rd.KtL)?fmt(rd.KtL,0):'—')+' MN·m/rd'+mlK+' (rotation)'
+      +(Number.isFinite(C.dv)?'<br>'+eqn('δ<sub>v</sub>','V<sub>d</sub> / K<sub>v</sub>','','<span class="rl">'+fmt(C.dv*100,2)+' cm</span>'):''));
+  }
+
+  h+='</div>';
+  return h;
+}
+function refCapSteps(R){
+  const rc=R.refCap, X=R.ctx;
+  if(!rc||!rc.ok) return '';
+  const perML=rc.perML, mlF=perML?' kN/ml':' kN';
+  const IND='&nbsp;&nbsp;&nbsp;&nbsp;';
+  const formeLbl={filante:'filante',carree:'carrée',rect:'rectangulaire',circ:'circulaire'}[X.forme];
+  function eqn(lhs,formula,subst,result){
+    let s=lhs+' = '+formula;
+    if(subst!=null&&subst!=='') s+='<br>'+IND+'= '+subst;
+    if(result!=null&&result!=='') s+='<br>'+IND+'= <span class="rl">'+result+'</span>';
+    return s;
+  }
+  function step(num,title,body){ return '<div class="step"><div class="step-h"><span class="step-n">'+num+'</span>'+title+'</div><div class="step-b">'+body+'</div></div>'; }
+  const B=X.B,L=X.L,D=X.D,forme=X.forme;
+  let h='<div class="calc">';
+  let n=0;
+
+  h+='<div class="grp">A · Capacité portante R<sub>v;d</sub></div>';
+
+  n++;
+  let geoF,geoS,geoR;
+  if(forme==='filante'){ geoF='B × 1 ml'; geoS=fmt(B,2)+' × 1'; geoR=fmt(rc.A,2)+' m²/ml'; }
+  else if(forme==='circ'){ geoF='π · (B/2)²'; geoS='π × ('+fmt(B,2)+'/2)²'; geoR=fmt(rc.A,2)+' m²'; }
+  else if(forme==='carree'){ geoF='B × B'; geoS=fmt(B,2)+' × '+fmt(B,2); geoR=fmt(rc.A,2)+' m²'; }
+  else { geoF='B × L'; geoS=fmt(B,2)+' × '+fmt(L,2); geoR=fmt(rc.A,2)+' m²'; }
+  h+=step(n,'Géométrie de la semelle',
+      'Forme : '+formeLbl+' · B = '+fmt(B,2)+' m'+(forme==='rect'?' · L = '+fmt(L,2)+' m':'')+' · encastrement D = '+fmt(D,2)+' m<br>'
+      +eqn('A (surface d\u2019appui)',geoF,geoS,geoR));
+
+  n++;
+  h+=step(n,'Contraintes au niveau de la base',
+      eqn('u (pression d\u2019eau)','(D − z<sub>w</sub>) × 10',(X.u>0?'('+fmt(D,2)+' − '+fmt(X.zw,2)+') × 10':'nappe absente ou sous la base'),fmt(X.u,1)+' kPa')+'<br>'
+      +eqn('q<sub>0</sub> (totale, après travaux)','γ<sub>ap</sub> · D',fmt(X.gAp,1)+' × '+fmt(D,2),fmt(rc.q0,1)+' kPa')+'<br>'
+      +eqn('σ\u2032<sub>v0</sub> (effective, avant travaux)','γ<sub>av</sub> · D − u',fmt(X.gAv,1)+' × '+fmt(D,2)+' − '+fmt(X.u,1),fmt(X.sv0,1)+' kPa'));
+
+  if(rc.method.indexOf('c–φ')<0){
+    const isPen=(X.essai==='penetro');
+    const rLbl=isPen?'q<sub>ce</sub>':'p<sub>le</sub>*';
+    const kLbl=isPen?'k<sub>c</sub>':'k<sub>p</sub>';
+    n++;
+    let win='';
+    X.rows.forEach(function(r){ const v=isPen?r.qc:r.pl; if(Number.isFinite(v)&&r.z>=D-1e-9&&r.z<=D+rc.hr+1e-9){ win+='<tr><td>z = '+fmt(r.z,2)+' m</td><td>'+rLbl+' = '+fmt(v,2)+' MPa</td></tr>'; } });
+    h+=step(n,'Pression nette équivalente '+rLbl,
+        eqn('h<sub>r</sub> (hauteur de moyenne)','1,5 · B','1,5 × '+fmt(B,2),fmt(rc.hr,2)+' m')+'<br>'
+        +(isPen
+          ? rLbl+' = moyenne de q<sub>c</sub> sur [D ; D+h<sub>r</sub>] = ['+fmt(D,2)+' ; '+fmt(D+rc.hr,2)+'] m (écrêtée à 1,3·q<sub>cm</sub>)'
+          : rLbl+' = moyenne géométrique de pl* sur [D ; D+h<sub>r</sub>] = ['+fmt(D,2)+' ; '+fmt(D+rc.hr,2)+'] m = exp[(1/h<sub>r</sub>)·∫ ln(pl*) dz]')
+        +(win?'<br><span class="cm">valeurs mesurées dans la zone :</span><table class="sub">'+win+'</table>':'<br>')
+        +'<span class="rl">'+rLbl+' = '+fmt(rc.ple,3)+' MPa</span>');
+    n++;
+    h+=step(n,'Hauteur d\u2019encastrement équivalente D<sub>e</sub>',
+        'D<sub>e</sub> = (1/'+rLbl+') · ∫<sub>0</sub><sup>D</sup> '+rLbl+'(z) dz <span class="cm">(moyenne de '+rLbl+' du terrain au-dessus de la base)</span><br>'
+        +'<span class="rl">D<sub>e</sub> = '+fmt(rc.De,2)+' m</span> &nbsp;→&nbsp; D<sub>e</sub>/B = '+fmt(rc.De,2)+'/'+fmt(B,2)+' = <span class="rl">'+fmt(rc.DeB,2)+'</span>');
+    n++;
+    const P=(isPen?KC:KP)[rc.cat]||(isPen?KC.sables:KP.sables);
+    function curveStr(p){ return fmt(p[3],2)+' + ('+fmt(p[0],2)+' + '+fmt(p[1],3)+'·x)·(1 − e^(−'+fmt(p[2],1)+'·x))'; }
+    let kpBody='Catégorie de sol : '+escH(P.lib)+' · x = D<sub>e</sub>/B (plafonné à 2) = '+fmt(rc.kpx,2)+'<br>';
+    if(forme==='filante'){
+      kpBody+=eqn(kLbl,curveStr(P.f),'',fmt(rc.kf,3));
+    }else if(forme==='rect'){
+      const r=clamp(B/L,0,1);
+      kpBody+=eqn(kLbl+' (base filante)',curveStr(P.f),'',fmt(rc.kf,3))+'<br>'
+            +eqn(kLbl+' (base carrée)',curveStr(P.c),'',fmt(rc.kc,3))+'<br>'
+            +eqn(kLbl,'k<sub>f</sub>·(1 − B/L) + k<sub>c</sub>·(B/L)',fmt(rc.kf,3)+'×(1 − '+fmt(r,2)+') + '+fmt(rc.kc,3)+'×'+fmt(r,2),fmt(rc.kp,3));
+    }else{
+      kpBody+=eqn(kLbl+' (carré/cercle)',curveStr(P.c),'',fmt(rc.kp,3));
+    }
+    h+=step(n,'Facteur de portance '+kLbl,kpBody);
+    n++;
+    h+=step(n,'Coefficients de réduction',
+        'i<sub>δ</sub> (inclinaison) = <span class="rl">1,000</span> <span class="cm">(charge verticale, H = 0)</span><br>'
+        +'i<sub>β</sub> (talus) = <span class="rl">'+fmt(rc.ib,3)+'</span>'+(rc.ib>0.999?' <span class="cm">(pas de talus)</span>':' <span class="cm">(annexe D.2.5)</span>'));
+    n++;
+    h+=step(n,'Résistance nette du sol q<sub>net</sub>',
+        eqn('q<sub>net</sub>',kLbl+' · '+rLbl+' · i<sub>δ</sub> · i<sub>β</sub>',
+            fmt(rc.kp,3)+' × '+fmt(rc.ple,3)+' × 1,000 × '+fmt(rc.ib,3)+' MPa',
+            fmt(rc.qnet/1000,3)+' MPa = '+fmt(rc.qnet,0)+' kPa'));
+  } else {
+    const F=rc.cphiF;
+    if(rc.drained){
+      n++;
+      h+=step(n,'Facteurs de portance (annexe F, drainé)',
+        'φ\u2032 = '+fmt(X.phi,1)+'° · c\u2032 = '+fmt(X.c,0)+' kPa<br>'
+        +eqn('N<sub>q</sub>','e^(π·tanφ\u2032)·tan²(45° + φ\u2032/2)','',fmt(F.Nq,2))+'<br>'
+        +eqn('N<sub>c</sub>','(N<sub>q</sub> − 1)/tanφ\u2032','',fmt(F.Nc,2))+'<br>'
+        +eqn('N<sub>γ</sub>','2·(N<sub>q</sub> − 1)·tanφ\u2032','',fmt(F.Ng,2))+'<br>'
+        +'s<sub>q</sub> = '+fmt(F.sq,2)+' · s<sub>c</sub> = '+fmt(F.sc,2)+' · s<sub>γ</sub> = '+fmt(F.sg,2)+' <span class="cm">(B\u2032/L\u2032 = '+fmt(rc.Bp,2)+'/'+(rc.Lp===Infinity?'∞':fmt(rc.Lp,2))+')</span><br>'
+        +'γ\u2032 (sous base) = '+fmt(rc.gEff,1)+' kN/m³ · q\u2032<sub>0</sub> = '+fmt(rc.q0eff,1)+' kPa');
+      n++;
+      h+=step(n,'Résistance nette q<sub>net</sub> (drainé)',
+        eqn('q<sub>net</sub>','c\u2032·N<sub>c</sub>·s<sub>c</sub> + q\u2032<sub>0</sub>·(N<sub>q</sub>·s<sub>q</sub> − 1) + ½·γ\u2032·B\u2032·N<sub>γ</sub>·s<sub>γ</sub>','',fmt(rc.qnet,0)+' kPa'));
+    }else{
+      n++;
+      h+=step(n,'Résistance nette q<sub>net</sub> (annexe F, non drainé)',
+        'c<sub>u</sub> = '+fmt(X.c,0)+' kPa · s<sub>c</sub> = '+fmt(F.sc,2)+' · i<sub>c</sub> = '+fmt(F.ic,3)+'<br>'
+        +eqn('q<sub>net</sub>','(π + 2)·c<sub>u</sub>·b<sub>c</sub>·s<sub>c</sub>·i<sub>c</sub>','',fmt(rc.qnet,0)+' kPa'));
+    }
+  }
+
+  n++;
+  let rvBody=eqn('R<sub>0</sub> (surcharge latérale)','A · q<sub>0</sub>',fmt(rc.A,2)+' × '+fmt(rc.q0,1),fmt(rc.R0,0)+mlF)+'<br><br>'
+    +'R<sub>v;d</sub> = R<sub>0</sub> + A · q<sub>net</sub> / (γ<sub>R;v</sub> · γ<sub>R;d;v</sub>) &nbsp;<span class="cm">avec γ<sub>R;d;v</sub> = '+fmt(rc.gRdv,1)+'</span>'
+    +'<table class="sub" style="margin-top:6px"><tr><td class="cm">état limite</td><td class="cm">γ<sub>R;v</sub></td><td class="cm">substitution</td><td class="cm">R<sub>v;d</sub></td><td class="cm">q<sub>Rv;d</sub> = R<sub>v;d</sub>/A</td></tr>';
+  rc.states.forEach(function(s){
+    rvBody+='<tr><td>'+s.lib+'</td><td>'+fmt(s.gRv,1)+'</td><td>'+fmt(rc.R0,0)+' + '+fmt(rc.A,2)+'×'+fmt(rc.qnet,0)+'/('+fmt(s.gRv,1)+'×'+fmt(rc.gRdv,1)+')</td><td class="rl">'+fmt(s.Rvd,0)+mlF+'</td><td class="rl">'+fmt(s.qRvd,0)+' kPa</td></tr>';
+  });
+  rvBody+='</table>';
+  h+=step(n,'Résistance de calcul R<sub>v;d</sub> (par état limite)',rvBody);
+
+  if(rc.tass||rc.elast||rc.schm||rc.oed){
+    h+='<div class="grp">B · Tassement sous q<sub>Rv;d</sub> (ELS caractéristique)</div>';
+    const dq=Math.max(rc.qTass-X.sv0,0);
+    n++;
+    h+=step(n,'Contrainte appliquée retenue',
+      'Charges inconnues → on prend la pression maximale admissible à l\u2019ELS caractéristique (q<sub>Rv;d</sub> ELS). Le tassement obtenu est donc le plus défavorable.<br>'
+      +eqn('q<sub>ref</sub>','q<sub>Rv;d</sub>(ELS)','',fmt(rc.qTass,0)+' kPa')+'<br>'
+      +eqn('Δq (accroissement net)','q<sub>ref</sub> − σ\u2032<sub>v0</sub>',fmt(rc.qTass,0)+' − '+fmt(X.sv0,1),fmt(dq,0)+' kPa'));
+
+    if(rc.tass&&rc.tass.ok){
+      const t=rc.tass;
+      n++;
+      h+=step(n,'Modules pressiométriques et coefficients',
+        'E<sub>c</sub> = moyenne harmonique de E<sub>M</sub> sur [D ; D+B/2] = <span class="rl">'+fmt(t.Ec,1)+' MPa</span><br>'
+        +'E<sub>d</sub> = moyenne harmonique pondérée ('+escH(t.mode)+') = <span class="rl">'+fmt(t.Ed,1)+' MPa</span><br>'
+        +'α<sub>c</sub> = '+fmt(t.alc,2)+' · α<sub>d</sub> = '+fmt(t.ald,2)+' <span class="cm">(coefficients rhéologiques)</span><br>'
+        +'λ<sub>c</sub> = '+fmt(t.lc,2)+' · λ<sub>d</sub> = '+fmt(t.ld,2)+' <span class="cm">(forme, '+escH(t.lamLib)+')</span>');
+      n++;
+      h+=step(n,'Tassement de consolidation s<sub>c</sub>',
+        eqn('s<sub>c</sub>','α<sub>c</sub>/(9·E<sub>c</sub>) · Δq · λ<sub>c</sub> · B',
+            fmt(t.alc,2)+'/(9 × '+fmt(t.Ec*1000,0)+') × '+fmt(dq,0)+' × '+fmt(t.lc,2)+' × '+fmt(B,2),
+            fmt(t.sc*100,2)+' cm')+'<br><span class="cm">E<sub>c</sub> en kPa</span>');
+      n++;
+      h+=step(n,'Tassement déviatorique s<sub>d</sub>',
+        eqn('s<sub>d</sub>','2/(9·E<sub>d</sub>) · Δq · B<sub>0</sub> · (λ<sub>d</sub>·B/B<sub>0</sub>)<sup>α<sub>d</sub></sup>',
+            '2/(9 × '+fmt(t.Ed*1000,0)+') × '+fmt(dq,0)+' × 0,60 × ('+fmt(t.ld,2)+'×'+fmt(B,2)+'/0,60)^'+fmt(t.ald,2),
+            fmt(t.sd*100,2)+' cm')+'<br><span class="cm">B<sub>0</sub> = 0,60 m (largeur de référence)</span>');
+      n++;
+      h+=step(n,'Tassement total',
+        eqn('s<sub>f</sub>','s<sub>c</sub> + s<sub>d</sub>',fmt(t.sc*100,2)+' + '+fmt(t.sd*100,2),'<strong>'+fmt(t.sf*100,2)+' cm</strong>'));
+    }
+    if(rc.elast&&rc.elast.ok){
+      const e=rc.elast;
+      n++;
+      h+=step(n,'Tassement élastique (annexe J.3.1)',
+        'c<sub>f</sub> = '+fmt(e.cf,2)+' <span class="cm">(Giroud, '+escH(e.cfLib)+')</span> · E = '+fmt(e.E,0)+' MPa · ν = '+fmt(e.nu,2)+'<br>'
+        +eqn('s','c<sub>f</sub> · (1 − ν²) · B · Δq / E',
+            fmt(e.cf,2)+' × (1 − '+fmt(e.nu,2)+'²) × '+fmt(B,2)+' × '+fmt(dq,0)+' / '+fmt(e.E*1000,0),
+            '<strong>'+fmt(e.s*100,2)+' cm</strong>')+'<br><span class="cm">E en kPa</span>');
+    }
+    if(rc.schm&&rc.schm.ok){
+      const s=rc.schm;
+      n++;
+      h+=step(n,'Tassement de Schmertmann (§6.2)',
+        'C<sub>1</sub> = '+fmt(s.C1,2)+' (encastrement) · C<sub>2</sub> = '+fmt(s.C2,2)+' (fluage) · C<sub>3</sub> = '+fmt(s.C3,2)+' (forme)<br>'
+        +'I<sub>z;pic</sub> = '+fmt(s.Izp,3)+' · E = '+fmt(s.Efac,1)+'·q<sub>c</sub> ('+fmt(s.Emin,1)+'–'+fmt(s.Emax,1)+' MPa)<br>'
+        +eqn('s','C<sub>1</sub>·C<sub>2</sub>·Δq·∫ I<sub>z</sub>/(C<sub>3</sub>·E) dz','intégré sur '+fmt(s.zfac,0)+'·B = '+fmt(s.zI,2)+' m','<strong>'+fmt(s.s*100,2)+' cm</strong>'));
+    }
+    if(rc.oed&&rc.oed.ok){
+      const o=rc.oed;
+      n++;
+      h+=step(n,'Tassement œdométrique (variante J.4.1)',
+        'M = α·q<sub>c</sub> (Sanglerat, α = '+fmt(o.alphaSang,2)+') varie de '+fmt(o.Mmin,1)+' à '+fmt(o.Mmax,1)+' MPa sur '+o.zlbl+' = '+fmt(o.depth,2)+' m<br>'
+        +eqn('s','q<sub>ref</sub> · ∫ I<sub>z</sub>(ζ)/M(ζ) dζ','','<strong>'+fmt(o.s*100,2)+' cm</strong>'));
+    }
+  }
+
+  h+='</div>';
+  return h;
+}
+function renderRefCap(R){
+  const rc=R.refCap, X=R.ctx;
+  if(!rc) return '';
+  const perML=rc.perML, mlF=perML?' kN/ml':' kN';
+  let h='<div style="margin:0 0 22px;padding:14px 15px;border:1px solid var(--line);border-radius:5px;background:var(--panel)">';
+  h+='<div style="margin-bottom:4px"><strong style="font-family:var(--disp);letter-spacing:.04em;font-size:15px">Capacité portante de référence</strong>'
+    +'<div class="hint" style="margin-top:2px">Charges non renseignées — calcul détaillé, charge centrée verticale</div></div>';
+  if(!rc.ok){ h+='<div class="warnbox" style="border-left-color:var(--bad);background:var(--bad-bg);margin:6px 0 0">'+escH(rc.err||'capacité incalculable')+'</div></div>'; return h; }
+  h+='<div class="lead">Les charges n\u2019étant pas saisies, le calcul est mené pour une <strong>charge centrée et verticale</strong> (excentrement nul → A\u2032 = A ; inclinaison nulle → i<sub>δ</sub> = 1). Toutes les étapes sont déroulées ci-dessous avec les valeurs substituées. Synthèse :</div>';
+  h+='<div class="verdict">';
+  rc.states.forEach(function(s){
+    h+=vcard('','R<sub>v;d</sub> · '+s.lib,fmt(s.Rvd,0)+mlF,'q<sub>Rv;d</sub> = '+fmt(s.qRvd,0)+' kPa');
+  });
+  if(rc.tass||rc.elast||rc.schm||rc.oed){
+    let sval=(rc.tass&&rc.tass.ok)?rc.tass.sf:(rc.elast&&rc.elast.ok)?rc.elast.s:(rc.schm&&rc.schm.ok)?rc.schm.s:(rc.oed&&rc.oed.ok)?rc.oed.s:null;
+    if(sval!=null) h+=vcard('','Tassement (sous q<sub>Rv;d</sub> ELS)',fmt(sval*100,1)+' cm','q<sub>ref</sub> = '+fmt(rc.qTass,0)+' kPa');
+  }
+  h+='</div>';
+  h+=refCapSteps(R);
+  h+='</div>';
+  return h;
+}
+function renderVerifs(R){
+  const pane=$('tab-verifs');
+  if(R.err){ pane.innerHTML='<div class="warnbox" style="border-left-color:var(--bad);background:var(--bad-bg)">'+escH(R.err)+'</div>'; return; }
+  let h='';
+  if(R.warn.length){
+    h+='<div class="warnbox"><strong>Avertissements</strong><br>'+R.warn.map(escH).join('<br>')+'</div>';
+  }
+  const valid=R.cases.filter(function(c){ return !c.invalid; });
+  if(valid.length===0){
+    h+=renderRefCap(R);
+    R.cases.forEach(function(C){
+      if(C.invalid){ const tt=caseTitle(C,R.ctx); h+='<div class="warnbox" style="margin:0 0 12px"><strong>'+escH(tt.t)+'</strong> — '+escH(C.invalid)+'</div>'; }
+    });
+    if(!R.cases.length) h+='<p class="subnote">Renseignez au moins F<sub>z</sub> dans un cas de charge pour les vérifications complètes (portance sous charge réelle, glissement, excentrement, tassement).</p>';
+    pane.innerHTML=h; return;
+  }
+  const X=R.ctx, ml=(X.forme==='filante')?'/ml':'';
+  R.cases.forEach(function(C){
+    const tt=caseTitle(C,X);
+    h+='<div style="margin:0 0 22px;padding:14px 15px;border:1px solid var(--line);border-radius:5px;background:var(--panel)">';
+    h+='<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;margin-bottom:10px">'
+      +'<strong style="font-family:var(--disp);letter-spacing:.04em">'+escH(tt.t)+'</strong>'
+      +'<span class="hint" style="font-family:var(--mono)">'+tt.loads+'</span></div>';
+    if(C.invalid){ h+='<div class="warnbox" style="border-left-color:var(--bad);background:var(--bad-bg);margin:0">'+escH(C.invalid)+'</div></div>'; return; }
+
+    const isELU=(C.etat==='ELU_F'||C.etat==='ELU_A');
+    h+='<div class="verdict">';
+    h+=vcard(C.portOk?'ok':'bad','Portance'+(X.labo?' (c–φ)':''),fmt(C.taux*100,0)+' %','q<sub>ref</sub> = '+fmt(C.qref,0)+' ≤ q<sub>Rv;d</sub> = '+fmt(C.qRvd,0)+' kPa<br><span style="color:var(--muted)">V<sub>d</sub> = '+fmt(C.Fz,0)+' ≤ R<sub>v;d</sub> = '+fmt(C.Rtot,0)+' kN'+ml+'</span>');
+    if(C.cphi&&!X.labo){
+      if(C.cphi.err) h+=vcard('','Portance c–φ (F)','—',escH(C.cphi.err));
+      else h+=vcard(C.cphi.ok?'ok':'bad','Portance c–φ (F)',fmt(C.cphi.taux*100,0)+' %','q<sub>ref</sub> = '+fmt(C.qref,0)+' ≤ q<sub>Rv;d;F</sub> = '+fmt(C.cphi.qRvd,0)+' kPa<br><span style="color:var(--muted)">V<sub>d</sub> ≤ R<sub>v;d;F</sub> = '+fmt(C.cphi.Rtot,0)+' kN'+ml+'</span>');
+    }
+    if(C.excOk===null) h+=vcard('','Excentrement','—','non requis (ELU acc.)');
+    else h+=vcard(C.excOk?'ok':'bad','Excentrement',fmt(C.geom.exc,3),'≥ '+C.excLimLib);
+    if(isELU){
+      if(C.glisOk===null) h+=vcard('','Glissement','—','H<sub>d</sub> = 0');
+      else h+=vcard(C.glisOk?'ok':'bad','Glissement',fmt(C.tauxH*100,0)+' %','H<sub>d</sub> = '+fmt(C.H,0)+' ≤ R<sub>h;d</sub> = '+fmt(C.Rhd,0)+' kN'+ml);
+    }else{
+      if(C.elast){
+        if(C.elast.ok) h+=vcard('','Tassement s (élast. J.3.1)',fmt(C.elast.s*100,2)+' cm','sous q<sub>ref</sub> − σ\u2032<sub>v0</sub> = '+fmt(C.elast.dq,0)+' kPa · c<sub>f</sub> = '+fmt(C.elast.cf,2)+' · E = '+fmt(C.elast.E,0)+' MPa, ν = '+fmt(C.elast.nu,2));
+        else h+=vcard('warn','Tassement élast.','—',escH(C.elast.err||'incalculable'));
+      }else if(C.schm||C.oed){
+        if(C.schm){
+          if(C.schm.ok) h+=vcard('','Tassement s (Schmertmann §6.2)',fmt(C.schm.s*100,2)+' cm','sous q<sub>ref</sub> = '+fmt(C.qref,0)+' kPa · I<sub>z;pic</sub> = '+fmt(C.schm.Izp,2)+' · E = '+fmt(C.schm.Efac,1)+'·q<sub>c</sub> · sur '+fmt(C.schm.zfac,0)+'·B');
+          else h+=vcard('warn','Tassement Schmertmann','—',escH(C.schm.err||'incalculable'));
+        }
+        if(C.oed){
+          if(C.oed.ok) h+=vcard('','Tassement s (œdo. J.4.1)',fmt(C.oed.s*100,2)+' cm','variante Sanglerat · M = α·q<sub>c</sub> ('+fmt(C.oed.Mmin,1)+'–'+fmt(C.oed.Mmax,1)+' MPa) sur '+C.oed.zlbl);
+          else h+=vcard('warn','Tassement œdo.','—',escH(C.oed.err||'incalculable'));
+        }
+      }else if(C.tass&&C.tass.ok) h+=vcard('','Tassement s<sub>f</sub>',fmt(C.tass.sf*100,2)+' cm','sous q<sub>ref</sub> = '+fmt(C.qref,0)+' kPa · s<sub>c</sub> = '+fmt(C.tass.sc*100,2)+' + s<sub>d</sub> = '+fmt(C.tass.sd*100,2)+' cm');
+      else h+=vcard('warn','Tassement','—','incalculable');
+    }
+    h+='</div>';
+
+    h+=caseSteps(C,X);
+    if(C.notes.length) h+='<div class="subnote">'+C.notes.map(escH).join('<br>')+'</div>';
+    h+='</div>';
+  });
+  pane.innerHTML=h;
+}
+
+/* ---------- note de calcul ---------- */
+function buildNote(R){
+  const today=new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'});
+  const methLib=(R.ctx&&R.ctx.essai==='labo')?'méthode c–φ':(R.ctx&&R.ctx.essai==='penetro')?'méthode pénétrométrique':'méthode pressiométrique';
+  let h='<div class="nhead"><div><h2>Terzaghi — note de calcul</h2><div style="font-size:12px;margin-top:3px">Semelle superficielle · '+methLib+' · NF P 94-261</div></div>'
+    +'<div class="meta">'+escH(S.projet||'—')+'<br>'+today+'</div></div>';
+  if(R.err){ return h+'<p>'+escH(R.err)+'</p>'; }
+  const X=R.ctx, ml=(X.forme==='filante')?'/ml':'';
+  const formeLib={filante:'filante',carree:'carrée',rect:'rectangulaire',circ:'circulaire'}[X.forme];
+
+  h+='<h4>1 · Hypothèses</h4>';
+  h+='<table><tr><td class="l">Fondation</td><td class="l" colspan="3">Semelle '+formeLib
+    +(X.forme==='circ'?', diamètre B = '+fmt(X.B,2)+' m':', B = '+fmt(X.B,2)+' m'+(X.forme==='rect'?', L = '+fmt(X.L,2)+' m':''))
+    +', encastrement D = '+fmt(X.D,2)+' m'+(Number.isFinite(X.DeBref)?' (D<sub>e</sub>/B = '+fmt(X.DeBref,2)+(X.regime?', '+X.regime:'')+')':'')+'</td></tr>'
+    +'<tr><td class="l">Terrain porteur</td><td class="l" colspan="3">'+escH(KP[X.cat].lib)+' — c\u2032 = '+fmt(X.c,0)+' kPa, φ\u2032 = '+fmt(X.phi,0)+' °, interface '+(X.beton==='coule'?'béton coulé en place (δ<sub>a</sub> = φ\u2032)':'préfabriquée (δ<sub>a</sub> = ⅔ φ\u2032)')+(X.raid?', E = '+fmt(X.eY,0)+' MPa, ν = '+fmt(X.nu,2)+(X.labo?' (tassement élastique J.3.1 + raideurs J.3)':' (raideurs J.3)'):'')+'</td></tr>'
+    +(X.labo?'':'<tr><td class="l">Profil</td><td class="l" colspan="3">'+(X.profilMode==='essais'
+      ?'essais ponctuels interpolés entre points de mesure (log p<sub>l</sub>*, p<sub>l</sub>* et 1/E<sub>m</sub> linéaires — convention GEOFOND ; extrapolation sous le dernier essai'+(X.deFrom>0?' ; D<sub>e</sub> intégré depuis le premier essai à '+fmt(X.deFrom,2)+' m':'')+')'
+      :'par couches — chaque valeur s\u2019applique de sa profondeur à la suivante (escalier)')+'</td></tr>')
+    +'<tr><td class="l">Méthode</td><td class="l" colspan="3">'+(X.labo
+      ?'méthode c–φ (paramètres de cisaillement) — portance par l\u2019approche analytique (annexe F) à partir de c\u2032 et φ\u2032 (ou c<sub>u</sub>) ; tassement par élasticité linéaire (annexe J.3.1) à partir de E et ν ; γ<sub>R;d;v</sub> = 1,2 (non drainé) / 2,0 (drainé)'
+      :X.essai==='penetro'
+      ?'pénétromètre statique — portance par la méthode pénétrométrique (annexe E) : q<sub>net</sub> = k<sub>c</sub>·q<sub>ce</sub>·i\u03B4·i\u03B2, q<sub>ce</sub> écrêté à 1,3·q<sub>cm</sub>, γ<sub>R;d;v</sub> = 1,2'
+      :'pressiomètre Ménard — portance par la méthode pressiométrique (annexe D)')+'</td></tr>'
+    +(X.cphiOn&&!X.labo?'<tr><td class="l">Méthode c–φ</td><td class="l" colspan="3">portance analytique (annexe F) calculée en complément de la méthode in situ — base horizontale (α = 0), surcharge latérale q = 0, γ<sub>R;d;v</sub> = 1,2 (non drainé) / 2,0 (drainé)</td></tr>':'')
+    +'<tr><td class="l">Poids volumiques</td><td class="l" colspan="3">γ avant = '+fmt(X.gAv,1)+' kN/m³, γ après = '+fmt(X.gAp,1)+' kN/m³'
+    +(Number.isFinite(X.zw)?', nappe à '+fmt(X.zw,2)+' m/TN (γ<sub>w</sub> = 10 kN/m³)':', nappe non rencontrée')+'</td></tr>'
+    +(X.talus&&X.beta>0?'<tr><td class="l">Talus</td><td class="l" colspan="3">pente β = '+fmt(X.beta,0)+' °, distance d = '+fmt(X.dT,2)+' m, charge inclinée vers l\u2019'+(X.talusDir==='int'?'intérieur':'extérieur')+' du talus</td></tr>':'')
+    +'</table>';
+
+  if(X.labo){
+    /* pas de sondage en mode laboratoire */
+  }else if(X.essai==='penetro'){
+    h+='<table><thead><tr><th>z (m/TN)</th><th>q<sub>c</sub> (MPa)</th></tr></thead><tbody>';
+    X.rows.forEach(function(r){
+      h+='<tr><td>'+fmt(r.z,2)+'</td><td>'+(Number.isFinite(r.qc)?fmt(r.qc,2):'—')+'</td></tr>';
+    });
+    h+='</tbody></table>';
+  }else{
+    h+='<table><thead><tr><th>z (m/TN)</th><th>pl* (MPa)</th><th>E<sub>m</sub> (MPa)</th><th>α (–)</th></tr></thead><tbody>';
+    X.rows.forEach(function(r){
+      h+='<tr><td>'+fmt(r.z,2)+'</td><td>'+fmt(r.pl,2)+'</td><td>'+fmt(r.em,1)+'</td><td>'+fmt(r.al,2)+'</td></tr>';
+    });
+    h+='</tbody></table>';
+  }
+
+  h+='<h4>2 · Contraintes au niveau de la base</h4>';
+  h+='<div class="f">u = '+fmt(X.u,1)+' kPa &nbsp;·&nbsp; q<sub>0</sub> (totale, après travaux) = γ<sub>ap</sub>·D = '+fmt(X.q0,1)+' kPa &nbsp;·&nbsp; σ\u2032<sub>v0</sub> (effective, avant travaux) = γ<sub>av</sub>·D − u = '+fmt(X.sv0,1)+' kPa</div>';
+
+  const noteValid=R.cases.filter(function(c){ return !c.invalid; });
+  if(noteValid.length===0 && R.refCap){
+    const rc=R.refCap;
+    h+='<h4>3 · Capacité portante de référence — charge centrée verticale (calcul détaillé)</h4>';
+    if(!rc.ok){
+      h+='<p class="badt">'+escH(rc.err||'capacité incalculable')+'</p>';
+    }else{
+      h+='<div class="lead">Les charges n\u2019ont pas été saisies : la vérification sous charge réelle n\u2019est pas possible. Ce paragraphe déroule, étape par étape, <strong>la charge maximale que cette semelle peut supporter</strong> (R<sub>v;d</sub> et la pression q<sub>Rv;d</sub>) puis <strong>le tassement le plus défavorable</strong> (semelle chargée jusqu\u2019à sa résistance ELS). Hypothèse : charge centrée et verticale (cas le plus favorable) — une charge réelle excentrée ou inclinée réduira R<sub>v;d</sub>.</div>';
+      h+=refCapSteps(R);
+      h+='<div class="f">Saisir les charges réelles affinera ces valeurs : A\u2032 &lt; A (excentrement) et i<sub>δ</sub> &lt; 1 (inclinaison) réduisent R<sub>v;d</sub> ; le tassement réel correspondra à la charge ELS réelle, généralement &lt; q<sub>Rv;d</sub>.</div>';
+    }
+  }
+
+  R.cases.forEach(function(C,i){
+    if(C.invalid && noteValid.length===0) return; /* couvert par la capacité de référence ci-dessus */
+    const tt=caseTitle(C,X);
+    h+='<h4>'+(3+i)+' · '+escH(tt.t)+'</h4>';
+    h+='<div class="f">'+tt.loads+'</div>';
+    if(C.invalid){ h+='<p class="badt">'+escH(C.invalid)+'</p>'; return; }
+    h+=caseSteps(C,X);
+  });
+
+  h+='<h4>'+(3+R.cases.length)+' · Synthèse</h4>';
+  h+='<table><thead><tr><th>Cas</th><th>État-limite</th><th>Portance</th><th>Excentr.</th><th>Glissement</th><th>s<sub>f</sub> (cm) · q<sub>ref</sub></th></tr></thead><tbody>';
+  R.cases.forEach(function(C){
+    function cell(ok){ return ok===null||ok===undefined?'—':(ok?'<span class="okt">OK</span>':'<span class="badt">NON</span>'); }
+    h+='<tr><td>'+(C.idx+1)+'</td><td class="l">'+escH(C.lib)+'</td>'
+      +'<td>'+(C.invalid?'<span class="badt">—</span>':cell(C.portOk)+' ('+fmt(C.taux*100,0)+' %)')+'</td>'
+      +'<td>'+(C.invalid?'—':cell(C.excOk))+'</td>'
+      +'<td>'+(C.invalid?'—':cell(C.glisOk))+'</td>'
+      +'<td>'+(C.tass&&C.tass.ok?fmt(C.tass.sf*100,2)+' <small>('+fmt(C.qref,0)+' kPa)</small>':C.elast&&C.elast.ok?fmt(C.elast.s*100,2)+' <small>(élast.)</small>':C.schm&&C.schm.ok?fmt(C.schm.s*100,2)+' <small>(Schmertmann, '+fmt(C.qref,0)+' kPa)</small>':(C.oed&&C.oed.ok?fmt(C.oed.s*100,2)+' <small>(œdo., '+fmt(C.qref,0)+' kPa)</small>':'—'))+'</td></tr>';
+  });
+  h+='</tbody></table>';
+  if(R.warn.length) h+='<div class="f" style="border-left:3px solid var(--warn)">'+R.warn.map(escH).join('<br>')+'</div>';
+  h+='<div class="foot">Calculé par Terzaghi v0.9.3 — semelles superficielles, '+methLib+' NF P 94-261. '
+    +'Document d\u2019étude à faire valider par un géotechnicien qualifié ; il ne se substitue pas à une mission d\u2019ingénierie géotechnique (NF P 94-500).</div>';
+  return h;
+}
+
+/* ---------- recalcul global ---------- */
+function markField(id,bad){
+  const el=$(id); if(!el) return;
+  el.classList.toggle('bad-input',!!bad);
+}
+function flagInput(t,i,k,bad){
+  const el=document.querySelector('[data-t="'+t+'"][data-i="'+i+'"][data-k="'+k+'"]');
+  if(el) el.classList.toggle('bad-input',!!bad);
+}
+function validateInputs(){
+  /* champs scalaires : vide ou ≤ 0 → signalé (sauf nappe/L-filante/c/φ/E/ν/gSous/α qui peuvent être vides) */
+  const pos=function(v){ const x=num(v); return Number.isFinite(x)&&x>0; };
+  markField('dimB',!pos(S.B));
+  markField('dimD',!(Number.isFinite(num(S.D))&&num(S.D)>=0));
+  markField('dimL',S.forme==='rect'&&!pos(S.L));
+  markField('gAvant',!pos(S.gAvant));
+  markField('gApres',!pos(S.gApres));
+  const pen=(S.essai==='penetro');
+  S.sondage.forEach(function(r,i){
+    flagInput('sondage',i,'z',!(Number.isFinite(num(r.z))));
+    if(pen){ flagInput('sondage',i,'qc', String(r.qc==null?'':r.qc).trim()!=='' && !pos(r.qc)); }
+    else{
+      flagInput('sondage',i,'pl', String(r.pl==null?'':r.pl).trim()!=='' && !pos(r.pl));
+      flagInput('sondage',i,'em', String(r.em==null?'':r.em).trim()!=='' && !pos(r.em));
+    }
+  });
+  S.charges.forEach(function(r,i){
+    flagInput('charge',i,'fz', String(r.fz==null?'':r.fz).trim()!=='' && !pos(r.fz));
+  });
+}
+async function recalc(){
+  var R={ err:null, warn:[], cases:[], refCap:null, ctx:buildCtxFromState(S,null) };
+  var pane=$('tab-verifs'); if(pane) pane.innerHTML='<div class="hint">Calcul en cours…</div>';
+  var resp;
+  try{ resp = await window.__geofamBridge.calc(JSON.parse(JSON.stringify(S))); }
+  catch(e){ renderCalcError(R,{message:'Pont de calcul indisponible : '+((e&&e.message)||e)}); validateInputs(); return; }
+  if(!resp || !resp.ok){ renderCalcError(R,(resp&&resp.error)||{message:'Réponse de calcul vide.'}); validateInputs(); return; }
+  window.__terzaghiLastCalcResultId = resp.calcResultId || null;
+  mapOutputToR(R, resp.output||{erreur:null,warnings:[],cas:[]}, S);
+  var coupeSvg=''; try{ coupeSvg=drawCoupe(R); }catch(e){}
+  try{ renderVerifs(R); }catch(e){ if(pane) pane.innerHTML='<div class="warnbox">Erreur de rendu des vérifications.</div>'; }
+  var note=''; try{ note=buildNote(R); }catch(e){ note='<p>Erreur de rendu de la note.</p>'; }
+  var nv=$('noteView'); if(nv) nv.innerHTML=note;
+  var np=$('notePrint'); if(np) np.innerHTML=coupeFigure(coupeSvg)+note;
+  validateInputs();
+}
+function coupeFigure(svg){
+  if(!svg) return '';
+  const lg=$('coupeLegend'); const legend=lg?lg.innerHTML:'';
+  return '<figure class="coupe-print f">'
+       + '<div class="coupe-print-title">Coupe \u2014 profil de sol et fondation</div>'
+       + svg
+       + (legend?'<figcaption class="legend">'+legend+'</figcaption>':'')
+       + '</figure>';
+}
+
+/* ---------- événements ---------- */
+const FIELD={projName:'projet',nappe:'nappe',gAvant:'gAvant',gApres:'gApres',cSol:'c',phiSol:'phi',eYoung:'eYoung',nuSol:'nuSol',gSous:'gSous',alphaSang:'alphaSang',
+             dimB:'B',dimL:'L',dimD:'D',talusBeta:'beta',talusD:'dTalus'};
+
+document.addEventListener('input',function(e){
+  const t=e.target;
+  if(t.id==='alphaConstVal'){ S.alphaConstVal=t.value; if(S.alphaConst){ applyAlphaConst(); renderSondage(); } recalc(); return; }
+  if(t.id==='alphaSang'){ S.alphaSang=t.value; recalc(); return; }
+  if(t.dataset&&t.dataset.t==='sondage'){ S.sondage[+t.dataset.i][t.dataset.k]=t.value; recalc(); return; }
+  if(t.dataset&&t.dataset.t==='charge'){ S.charges[+t.dataset.i][t.dataset.k]=t.value; recalc(); return; }
+  if(FIELD[t.id]!==undefined){ S[FIELD[t.id]]=t.value; recalc(); }
+});
+document.addEventListener('change',function(e){
+  const t=e.target;
+  if(t.id==='solCat'){ S.solCat=t.value; recalc(); }
+  else if(t.id==='typeBeton'){ S.beton=t.value; recalc(); }
+  else if(t.id==='talusDir'){ S.talusDir=t.value; recalc(); }
+  else if(t.id==='alphaConstOn'){ S.alphaConst=t.checked; if(t.checked) applyAlphaConst(); renderSondage(); recalc(); }
+  else if(t.id==='cphiOn'){ S.cphiOn=t.checked; $('cphiFields').style.display=t.checked?'':'none'; recalc(); }
+  else if(t.id==='cphiMode'){ S.cphiMode=t.value; recalc(); }
+  else if(t.id==='talusOn'){ S.talusOn=t.checked; $('talusFields').style.display=t.checked?'grid':'none'; recalc(); }
+  else if(t.dataset&&t.dataset.t==='charge'&&t.dataset.k==='etat'){ S.charges[+t.dataset.i].etat=t.value; recalc(); }
+  else if(t.id==='fileImport'){
+    const f=t.files&&t.files[0]; if(!f) return;
+    const rd=new FileReader();
+    rd.onload=function(){
+      try{
+        const o=JSON.parse(rd.result);
+        if(!o||!Array.isArray(o.sondage)||!Array.isArray(o.charges)) throw new Error('format');
+        S=Object.assign(blankState(),o);
+        if(S.alphaConst) applyAlphaConst();
+        setStatics(); renderSondage(); renderCharges(); recalc();
+      }catch(err){ alert('Fichier illisible : ce n\u2019est pas un export Terzaghi valide.'); }
+    };
+    rd.readAsText(f);
+    t.value='';
+  }
+});
+document.addEventListener('click',function(e){
+  if(e.target&&e.target.id==='alphaModal'){ e.target.hidden=true; return; }
+  if(e.target&&e.target.id==='sangModal'){ e.target.hidden=true; return; }
+  const t=e.target.closest('button');
+  if(!t) return;
+  if(t.id==='btnAlphaGuide'||t.id==='thAlphaGuide'){ $('alphaModal').hidden=false; return; }
+  if(t.id==='btnSangGuide'){ $('sangModal').hidden=false; return; }
+  if(t.id==='sangClose'){ $('sangModal').hidden=true; return; }
+  if(t.classList&&t.classList.contains('sval')){ S.alphaSang=t.dataset.v; $('alphaSang').value=t.dataset.v; recalc(); $('sangModal').hidden=true; return; }
+  if(t.id==='alphaClose'){ $('alphaModal').hidden=true; return; }
+  if(t.classList&&t.classList.contains('aval')){
+    S.alphaConstVal=t.dataset.v; S.alphaConst=true;
+    $('alphaConstOn').checked=true; $('alphaConstVal').value=t.dataset.v;
+    applyAlphaConst(); renderSondage(); recalc();
+    $('alphaModal').hidden=true; return;
+  }
+  if(t.id==='addSondage'){ S.sondage.push({z:'',pl:'',em:'',al:(S.alphaConst?S.alphaConstVal:'')}); renderSondage(); recalc(); return; }
+  if(t.id==='addCharge'){ S.charges.push({etat:'ELU_F',fz:'',fx:'',fy:'',mx:'',my:''}); renderCharges(); recalc(); return; }
+  if(t.dataset&&t.dataset.del==='sondage'){ S.sondage.splice(+t.dataset.i,1); renderSondage(); recalc(); return; }
+  if(t.dataset&&t.dataset.del==='charge'){ S.charges.splice(+t.dataset.i,1); renderCharges(); recalc(); return; }
+  if(t.parentElement&&t.parentElement.id==='segEssai'){
+    S.essai=t.dataset.v;
+    t.parentElement.querySelectorAll('button').forEach(function(b){ b.classList.toggle('on',b===t); });
+    applyEssaiUI(); renderSondage(); recalc(); return;
+  }
+  if(t.parentElement&&t.parentElement.id==='segProfil'){
+    S.profilMode=t.dataset.v;
+    t.parentElement.querySelectorAll('button').forEach(function(b){ b.classList.toggle('on',b===t); });
+    recalc(); return;
+  }
+  if(t.parentElement&&t.parentElement.id==='segForme'){
+    S.forme=t.dataset.v;
+    t.parentElement.querySelectorAll('button').forEach(function(b){ b.classList.toggle('on',b===t); });
+    applyFormeUI(); recalc(); return;
+  }
+  if(t.parentElement&&t.parentElement.id==='tabs'){
+    document.querySelectorAll('#tabs button').forEach(function(b){ b.classList.toggle('on',b===t); });
+    document.querySelectorAll('.tabpane').forEach(function(p){ p.classList.toggle('on',p.id==='tab-'+t.dataset.t); });
+    return;
+  }
+  if(t.id==='btnCalc'){
+    recalc();
+    document.querySelectorAll('#tabs button').forEach(function(b){ b.classList.toggle('on', b.dataset.t==='verifs'); });
+    document.querySelectorAll('.tabpane').forEach(function(p){ p.classList.toggle('on', p.id==='tab-verifs'); });
+    const pane=document.querySelector('.pane'); if(pane&&pane.scrollIntoView) pane.scrollIntoView({behavior:'smooth',block:'start'});
+    return;
+  }
+  if(t.id==='btnExample'){
+    if(isDirty(S)&&!window.confirm('Charger l\u2019exemple fictif et remplacer la saisie actuelle ?')) return;
+    S=exampleState(); setStatics(); renderSondage(); renderCharges(); recalc(); return;
+  }
+  if(t.id==='btnExport'){
+    const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='terzaghi-'+(S.projet||'projet').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)+'.json';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },200);
+    return;
+  }
+  if(t.id==='btnImport'){ $('fileImport').click(); return; }
+  if(t.id==='btnPrint'){ window.print(); return; }
+});
+
+document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ ['alphaModal','sangModal'].forEach(function(id){ const m=$(id); if(m) m.hidden=true; }); } });
+
+/* ---------- démarrage ---------- */
+setStatics();
+renderSondage();
+renderCharges();
+recalc();
+
+}
+/* ===================== END UI ===================== */
+
+</script>
+</body>
+</html>

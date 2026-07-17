@@ -82,6 +82,51 @@ describe('ProjectsService.getById', () => {
  *    null -> 404, jamais un P2025) et exclure les projets deja ARCHIVED ;
  *  - archive ecrit status=ARCHIVED (soft-delete), sans DELETE physique.
  */
+describe('ProjectsService.create — persiste le domaine metier', () => {
+  let tx: { project: { create: jest.Mock } };
+  let prisma: { withTenant: jest.Mock };
+  let service: ProjectsService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    tx = { project: { create: jest.fn() } };
+    prisma = {
+      withTenant: jest.fn(
+        (_orgId: string, fn: (t: Prisma.TransactionClient) => unknown) =>
+          fn(tx as unknown as Prisma.TransactionClient),
+      ),
+    };
+    service = new ProjectsService(prisma as unknown as PrismaService);
+  });
+
+  it('given {name, domain, createdById} : INSERT porte orgId du contexte + domain (jamais un domaine par defaut silencieux)', async () => {
+    const created = {
+      id: 'p1',
+      name: 'Forage',
+      domain: 'FD',
+    } as unknown as Project;
+    tx.project.create.mockResolvedValue(created);
+
+    const out = await withOrg(() =>
+      service.create({ name: 'Forage', domain: 'FD', createdById: 'user-1' }),
+    );
+    expect(out).toBe(created);
+    expect(prisma.withTenant).toHaveBeenCalledWith(
+      ORG_ID,
+      expect.any(Function),
+    );
+    // Le domaine est persiste tel quel ; l'orgId vient du contexte (jamais du client).
+    expect(tx.project.create).toHaveBeenCalledWith({
+      data: {
+        orgId: ORG_ID,
+        name: 'Forage',
+        domain: 'FD',
+        createdById: 'user-1',
+      },
+    });
+  });
+});
+
 describe('ProjectsService.rename / archive', () => {
   let tx: {
     project: {

@@ -29,7 +29,9 @@ function formatDate(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
     timeZone: 'Africa/Dakar',
-  }).format(new Date(iso)).replace(/[\u202F\u00A0]/g, ' '); // espace ICU déterministe (anti #418)
+  })
+    .format(new Date(iso))
+    .replace(/[\u202F\u00A0]/g, ' '); // espace ICU déterministe (anti #418)
 }
 
 export default function InfosPage({ params: paramsPromise }: Props) {
@@ -86,7 +88,10 @@ export default function InfosPage({ params: paramsPromise }: Props) {
       // Rollback : le renommage n'a pas persisté, on revient à l'état précédent.
       setProject({ ...project, name: prev });
       setName(prev);
-      addToast({ type: 'error', message: 'Erreur lors de la sauvegarde. Le projet n’a pas été renommé.' });
+      addToast({
+        type: 'error',
+        message: 'Erreur lors de la sauvegarde. Le projet n’a pas été renommé.',
+      });
     } finally {
       setSaving(false);
     }
@@ -190,8 +195,11 @@ export default function InfosPage({ params: paramsPromise }: Props) {
         <MetaRow
           label="Domaine"
           value={
-            { CH: 'Chaussées', FD: 'Fondations', LB: 'Labo / Sol' }[project.domain] ??
             project.domain
+              ? ({ CH: 'Chaussées', FD: 'Fondations', LB: 'Labo / Sol' }[
+                  project.domain
+                ] ?? project.domain)
+              : 'Non renseigné'
           }
         />
         <MetaRow label="Créé le" value={formatDate(project.createdAt)} />
@@ -256,7 +264,9 @@ export default function InfosPage({ params: paramsPromise }: Props) {
           </div>
         }
       >
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', margin: 0 }}>
+        <p
+          style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', margin: 0 }}
+        >
           Le projet « {project.name} » sera retiré de la liste des projets.
         </p>
         <p

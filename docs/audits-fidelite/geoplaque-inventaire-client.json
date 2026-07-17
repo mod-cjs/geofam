@@ -1,0 +1,360 @@
+{
+  "title": "GEOPLAQUE — plaques sur sol multicouche élastique",
+  "brand": "GEOPLAQUE plaques sur sol multicouche élastique",
+  "menuButtons": [
+    "Nouveau",
+    "Exemple",
+    "Importer coords…",
+    "Exporter .json",
+    "Ouvrir .json",
+    "Imprimer"
+  ],
+  "toolRail": [
+    {
+      "tool": "select",
+      "tip": "Sélection (Échap)"
+    },
+    {
+      "tool": "raft",
+      "tip": "Plaque — polygone (R)"
+    },
+    {
+      "tool": "point",
+      "tip": "Charge ponctuelle (P)"
+    },
+    {
+      "tool": "line",
+      "tip": "Charge linéique (L)"
+    },
+    {
+      "tool": "area",
+      "tip": "Charge répartie sur plaque (A)"
+    },
+    {
+      "tool": "ext",
+      "tip": "Charge extérieure sur le sol (E)"
+    },
+    {
+      "tool": "spring",
+      "tip": "Ressort ponctuel (K)"
+    },
+    {
+      "tool": "lspring",
+      "tip": "Ressort linéique"
+    },
+    {
+      "tool": "measure",
+      "tip": "Mesurer (M)"
+    },
+    {
+      "tool": "pan",
+      "tip": "Panoramique (Espace)"
+    },
+    {
+      "tool": "zoomfit",
+      "tip": "Zoom étendu (Z)"
+    }
+  ],
+  "tabs": [
+    {
+      "pane": "model",
+      "label": "Modèle",
+      "active": true
+    },
+    {
+      "pane": "soil",
+      "label": "Sol",
+      "active": false
+    },
+    {
+      "pane": "props",
+      "label": "Propriétés",
+      "active": false
+    },
+    {
+      "pane": "results",
+      "label": "Résultats",
+      "active": false
+    },
+    {
+      "pane": "ps",
+      "label": "2D",
+      "active": false
+    }
+  ],
+  "panes": {
+    "pane-model": {
+      "sectionTitles": ["Informations projet", "Entités du projet"],
+      "fields": [
+        {
+          "label": "Titre du projet",
+          "id": "proj-title",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "label": "Client / Maître d'ouvrage",
+          "id": "proj-client",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "label": "Affaire / N°",
+          "id": "proj-ref",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "label": "Auteur",
+          "id": "proj-author",
+          "type": "text",
+          "value": ""
+        }
+      ],
+      "toggles": [],
+      "actionButtons": []
+    },
+    "pane-soil": {
+      "sectionTitles": [
+        "Couches de sol",
+        "Stratigraphie non horizontale (pendage, §2.3.1)",
+        "Interface plaque / sol",
+        "Fondation en profondeur / fond de fouille (cote d'assise §2.3.2 + recompression §2.3.4)",
+        "Mouvement du sol en champ libre (§2.3.3)",
+        "Appuis répartis supplémentaires (ressorts de Winkler, §2.2.7)",
+        "Maillage"
+      ],
+      "fields": [
+        {
+          "label": "Pendage ∂(prof.)/∂x (m/m)",
+          "id": "opt-dip-x",
+          "type": "number",
+          "value": "0"
+        },
+        {
+          "label": "Pendage ∂(prof.)/∂y (m/m)",
+          "id": "opt-dip-y",
+          "type": "number",
+          "value": "0"
+        },
+        {
+          "label": "Seuil de plastification de l'interface qlim (kPa) — 0 = désactivé",
+          "id": "opt-qlim",
+          "type": "number",
+          "value": "0"
+        },
+        {
+          "label": "Profondeur d'assise D (m) — 0 = en surface",
+          "id": "opt-exc-d",
+          "type": "number",
+          "value": "0"
+        },
+        {
+          "label": "γ terres excavées (kN/m³)",
+          "id": "opt-exc-g",
+          "type": "number",
+          "value": "18"
+        },
+        {
+          "label": "Rapport de recompression k = Eur/E₀ — 1 = pas de recompression",
+          "id": "opt-exc-k",
+          "type": "number",
+          "value": "1"
+        },
+        {
+          "label": "Tassement imposé g₀ (mm) — déplacement vertical du sol indépendant du contact (+ vers le bas, − soulèvement)",
+          "id": "opt-ff-g0",
+          "type": "number",
+          "value": "0"
+        },
+        {
+          "label": "Gradient ∂g/∂x (mm/m)",
+          "id": "opt-ff-gx",
+          "type": "number",
+          "value": "0"
+        },
+        {
+          "label": "Gradient ∂g/∂y (mm/m)",
+          "id": "opt-ff-gy",
+          "type": "number",
+          "value": "0"
+        },
+        {
+          "label": "Module de réaction additionnel kw (kN/m³) — 0 = désactivé",
+          "id": "opt-wink",
+          "type": "number",
+          "value": "0"
+        },
+        {
+          "label": "Plastification plim (kPa) — 0 = aucune",
+          "id": "opt-wink-plim",
+          "type": "number",
+          "value": "0"
+        },
+        {
+          "label": "Maillage — pas de la grille de calcul (m)",
+          "id": "meshsize",
+          "type": "number",
+          "value": "0.8"
+        }
+      ],
+      "toggles": [
+        {
+          "label": "Autoriser le décollement (sans traction)",
+          "id": "opt-decol"
+        },
+        {
+          "label": "Compression seule (décollement)",
+          "id": "opt-wink-decol"
+        }
+      ],
+      "actionButtons": ["+ Ajouter une couche"]
+    },
+    "pane-props": {
+      "sectionTitles": [],
+      "fields": [],
+      "toggles": [],
+      "actionButtons": []
+    },
+    "pane-results": {
+      "sectionTitles": [],
+      "fields": [],
+      "toggles": [],
+      "actionButtons": []
+    },
+    "pane-ps": {
+      "sectionTitles": [
+        "Déformations planes (§2.4.2)",
+        "Axisymétrie (§2.4.1)",
+        "Maillage triangulaire (DKT, §2.2.2)"
+      ],
+      "fields": [
+        {
+          "label": "Largeur B (m)",
+          "id": "ps-b",
+          "type": "number",
+          "value": "10"
+        },
+        {
+          "label": "Épaisseur e (m)",
+          "id": "ps-e",
+          "type": "number",
+          "value": "0.5"
+        },
+        {
+          "label": "E béton (kPa)",
+          "id": "ps-E",
+          "type": "number",
+          "value": "3e7"
+        },
+        {
+          "label": "ν béton",
+          "id": "ps-nu",
+          "type": "number",
+          "value": "0.2"
+        },
+        {
+          "label": "Charge répartie q (kPa) sur toute la largeur",
+          "id": "ps-q",
+          "type": "number",
+          "value": "100"
+        },
+        {
+          "label": "Charges ponctuelles linéiques — une par ligne : « x P » (x en m, P en kN/m)",
+          "id": "ps-loads",
+          "type": "textarea",
+          "value": ""
+        },
+        {
+          "label": "Nb d'éléments",
+          "id": "ps-ne",
+          "type": "number",
+          "value": "60"
+        },
+        {
+          "label": "Rayon R (m)",
+          "id": "ax-r",
+          "type": "number",
+          "value": "6"
+        },
+        {
+          "label": "Épaisseur e (m)",
+          "id": "ax-e",
+          "type": "number",
+          "value": "0.4"
+        },
+        {
+          "label": "E béton (kPa)",
+          "id": "ax-E",
+          "type": "number",
+          "value": "3e7"
+        },
+        {
+          "label": "ν béton",
+          "id": "ax-nu",
+          "type": "number",
+          "value": "0.2"
+        },
+        {
+          "label": "Charge répartie q (kPa)",
+          "id": "ax-q",
+          "type": "number",
+          "value": "120"
+        },
+        {
+          "label": "Charge centrale P (kN)",
+          "id": "ax-pc",
+          "type": "number",
+          "value": "0"
+        },
+        {
+          "label": "Nb d'éléments (annulaires)",
+          "id": "ax-ne",
+          "type": "number",
+          "value": "50"
+        },
+        {
+          "label": "Épaisseur e (m)",
+          "id": "tri-e",
+          "type": "number",
+          "value": "0.5"
+        },
+        {
+          "label": "Taille maille cible (m²)",
+          "id": "tri-target",
+          "type": "number",
+          "value": "1.0"
+        },
+        {
+          "label": "E béton (kPa)",
+          "id": "tri-E",
+          "type": "number",
+          "value": "3e7"
+        },
+        {
+          "label": "ν béton",
+          "id": "tri-nu",
+          "type": "number",
+          "value": "0.2"
+        },
+        {
+          "label": "Charge répartie additionnelle q (kPa)",
+          "id": "tri-q",
+          "type": "number",
+          "value": "0"
+        }
+      ],
+      "toggles": [
+        {
+          "label": "Décollement",
+          "id": "ps-decol"
+        }
+      ],
+      "actionButtons": [
+        "Calculer (déformations planes)",
+        "Calculer (axisymétrique)",
+        "Mailler & calculer (DKT)"
+      ]
+    }
+  }
+}

@@ -127,7 +127,9 @@ export default function ProjetLayoutClient({
           >
             {project?.name ?? '—'}
           </span>
-          {project && <Badge variant="neutre" label={project.domain} />}
+          {project && (
+            <Badge variant="neutre" label={project.domain ?? 'Domaine non défini'} />
+          )}
         </div>
 
         {/* Séparateur vertical */}

@@ -21,6 +21,10 @@ import { ProjectsService } from './projects.service';
 
 const createProjectSchema = z.object({
   name: z.string().trim().min(1).max(200),
+  // Domaine metier REQUIS a la creation (CH/FD/LB) : on ne fabrique jamais un
+  // domaine par defaut cote serveur (un defaut faux polluerait le filtrage des
+  // logiciels). Seuls les projets LEGACY d'avant la colonne restent domain=null.
+  domain: z.enum(['CH', 'FD', 'LB']),
 });
 type CreateProjectDto = z.infer<typeof createProjectSchema>;
 
@@ -90,6 +94,7 @@ export class ProjectsController {
     // createdById = identite JWT verifiee (jamais une valeur fournie par le client).
     return this.projects.create({
       name: body.name,
+      domain: body.domain,
       createdById: req.auth!.userId,
     });
   }

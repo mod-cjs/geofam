@@ -1,0 +1,233 @@
+{
+  "outil": "PressioPro v3.2 — NF EN ISO 22476-4 (pressiometre__1_.html, 2423 lignes)",
+  "navigation": [
+    { "ordre": 1, "dataPage": "log", "libelle": "Log", "actifParDefaut": true },
+    { "ordre": 2, "dataPage": "etalon", "libelle": "Étalon." },
+    { "ordre": 3, "dataPage": "calibrage", "libelle": "Calibrage" },
+    { "ordre": 4, "dataPage": "projet", "libelle": "Projet" },
+    { "ordre": 5, "dataPage": "mesures", "libelle": "Mesures" },
+    { "ordre": 6, "dataPage": "resultats", "libelle": "Résultats" },
+    { "ordre": 7, "dataPage": "profil", "libelle": "Profil" },
+    { "ordre": 8, "dataPage": "export", "libelle": "Export" }
+  ],
+  "sections": [
+    {
+      "titre": "Header global (toutes pages)",
+      "champs": [
+        "Titre « PressioPro » + sous-titre dynamique « {Sondage N°} · {Projet} » (updateHdr)"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [
+        "🧪 Exemple — loadExempleFictif() : jeu fictif complet (projet+étalonnage 7 pts+calibrage 10 pts+4 profondeurs+coupe 5 couches), calcule tout et affiche le 1er dépouillement",
+        "Sauvegarder (icône disquette) — saveLocal() : localStorage 'pressiopro_v32'",
+        "Réinitialiser (icône reset) — openMod('reset') : modale de confirmation « Tout effacer ? » puis initEmpty()",
+        "Auto-chargement au démarrage : loadLocal() sinon état vide avec message d'accueil"
+      ]
+    },
+    {
+      "titre": "Barre de profondeurs (dbar, toutes pages)",
+      "champs": ["Chips par profondeur (label cliquable = profondeur courante)"],
+      "tables": [],
+      "figures": [],
+      "actions": [
+        "+ Nouvelle profondeur — prompt('Profondeur (ex : 16 m) :'), pf_idx=2/plm_idx=8 par défaut, toast",
+        "× Supprimer une profondeur — confirm() si mesures saisies, toast, vide le panneau Résultats"
+      ]
+    },
+    {
+      "titre": "Page Projet — Identification",
+      "champs": [
+        "Projet (texte, oninput updateHdr)",
+        "Chantier (texte)",
+        "Sondage N° (texte, placeholder BH-01, oninput updateHdr)",
+        "Équipe (texte)",
+        "Opérateur (texte)",
+        "Date (date, préremplie aujourd'hui)",
+        "N° calibrage (texte)"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Page Projet — Appareillage",
+      "champs": [
+        "Type sonde (select 18 options / 6 optgroups : Ø44 ×3 Vs=280, Ø52 ×2 Vs=400, Ø60 ×3 Vs=535 [défaut Ø60 Standard], Ø75 ×4 Vs=810, Ø90 ×2 Vs=1200, Autres : Pencel Vs=100, Micro Ø22 Vs=80, PAF/HP Vs=535) — onchange autoFillSonde() remplit Vs + toast",
+        "Type gaine (select 5 options : 1,5 mm souple a=0.35 · 3 mm standard a=0.65 [défaut] · métallique à lamelles a=0.15 · toilée renforcée a=0.45 · toilée métallique a=0.25) — info documentaire",
+        "Longueur de passe (m) — défaut 1.0, hint « documente la méthode de forage »",
+        "Zc — Haut. mano/sonde (m) — défaut 0.8, oninput syncZc() (synchronise le calculateur Ph)",
+        "Nappe Zw (m/TN) — placeholder « — si absente », oninput calcU0() : hint u₀ dynamique + encart bleu « 💧 Essai sous nappe » si Zs > Zw"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Page Projet — Corrections NF EN ISO 22476-4 Annexe D",
+      "champs": [
+        "a — Coeff. d'expansion propre (cm³/MPa) — défaut 0, hint « a vient du calibrage, laissez 0 sinon », oninput checkParamsLogic()",
+        "Vs — Volume initial sonde (cm³) — défaut 535",
+        "Ph — Colonne eau (bar) — défaut 0.177, note « = 0,1×(Zs+Zc) »",
+        "Pe — Résist. propre sonde (bar) — défaut 1.25",
+        "K₀ — Coeff. terre au repos — défaut 0.5",
+        "γ — Poids volumique sol (kN/m³) — défaut 19, note « pour σ_h0 »",
+        "Calculateur Ph : Zs — Profondeur essai (m), Zc (synchronisé), → Ph calculé (bar, readonly)"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [
+        "Remettre a = 0 (bouton + toast)",
+        "↑ Appliquer cette valeur dans Ph (applyPh + toast)",
+        "🔍 Vérifier la cohérence des paramètres — checkParamsLogic() : alertes ok/warn/err/info sur a (plafond 6 cm³/MPa §B.4.2.1), Vs (plage selon Ø sonde), Pe (plage §B.4.3), Ph (négatif/0/> 5 bar)"
+      ]
+    },
+    {
+      "titre": "Page Log — Coupe de sondage (sondage carotté)",
+      "champs": [
+        "Nature : select 22 sols/roches ISO 14688-1/14689-1 groupés (Sol très grossier, Sol grossier, Sol fin, Sol organique, Roche 14689, Anthropique, Couverture) avec couleur + motif SVG chacun",
+        "État : select ISO 14688-2 (Cohérent — consistance : Très molle→Dure ; Pulvérulent — densité : Très lâche→Très dense)",
+        "Prél. : select catégorie de prélèvement A/B/C (NF EN ISO 22475-1 §6.2)",
+        "Qual. : select classe de qualité 1–5 CONTRAINTE par la catégorie (A→1-5, B→3-5, C→5)",
+        "RQD % : number 0–100",
+        "Description : texte libre (placeholder « couleur, particularités… »)"
+      ],
+      "tables": [
+        "logTbl : De (m) | À (m) | Nature (14688/14689) | État (14688-2) | Prél. | Qual. | RQD % | Description | ✕"
+      ],
+      "figures": [
+        "logVisual : SVG drawBoreholeLog — colonne lithologique colorée + 7 motifs SVG (dots/circ/dash/hatch/brick/veg/mix), bande latérale couleur classe qualité, axe des profondeurs gradué, libellé « Nature — état » + desc/cl./RQD par couche, ligne de nappe bleue pointillée + triangle + libellé « nappe X m »",
+        "logLegend : légende sols utilisés (pastilles couleur) + classes de qualité (1–5 colorées)"
+      ],
+      "actions": ["+ Ajouter une couche (préremplit De = À précédent, nature Argile)"]
+    },
+    {
+      "titre": "Page Étalonnage — sonde dans l'air",
+      "champs": [],
+      "tables": [
+        "Barre info contextuelle : 📋 projet · 🔩 sonde + Vs · 📅 date · 🔧 gaine + a · 👤 opérateur (updateInfoBars)",
+        "Saisie : # | P (bar) | V 15s | V 30s | V 60s | Δ60/30 (calculé, coloré ok/big) | ✕"
+      ],
+      "figures": [
+        "chartEtal (Chart.js, après calcul) : points mesurés (orange), droite ajustée V=Vs+a×P (violet), ligne verticale Pe (rouge pointillé), ligne horizontale 1,2×Vs (teal pointillé), annotations texte « Pe=… bar (V=1,2×Vs=… cm³) » et « 1,2×Vs=… cm³ », légende Chart.js"
+      ],
+      "actions": [
+        "+ Ajouter un point (P préremplie = dernière + 1, scroll)",
+        "Calculer et appliquer les paramètres — calcEtalonnage() : régression V=Vs+a·P, Pe interpolé à V=1,2×Vs réel, R², résidus, RMS",
+        "Appliquer Vs et Pe dans les corrections — applyEtalonnage() : transfère p_v0/p_pe + toast + goPage('projet')"
+      ],
+      "resultatsAffiches": [
+        "Carte intro pédagogique violette : ① calibrage de volume vs ② étalonnage de résistance (formules Vc = Vr − a×Pr, Pc = Pr + Ph − Pe(Vr))",
+        "KPI kg4 : pente air (≠ a) cm³/MPa · Vs droite ajustée (+ Vs réel 1er palier) · Pe (à V=1,2×Vs) bar interpolé · R² + qualité (Excellent/Très bon/Acceptable/Mauvais)",
+        "Note 📌 « Pe = pression lue sur la courbe quand V = 1,2 × Vs » + « interpolée directement sur vos mesures »",
+        "Titre de courbe « Droite ajustée V60 = {Vs} + {a} × P » (valeurs numériques dans le titre)",
+        "Tableau des résidus : # | P (bar) | V mesuré (cm³) | V ajusté (cm³) | Résidu (cm³) coloré (>2 rouge, >0.5 ambre)",
+        "Hint « Erreur quadratique moyenne : … cm³ »",
+        "Encadré vert « Appliquer dans les corrections » : Vs, Pe, avertissement « la pente dans l'air n'est PAS le coefficient a »"
+      ]
+    },
+    {
+      "titre": "Page Calibrage — forage libre (tube indéformable)",
+      "champs": [],
+      "tables": [
+        "Barre info contextuelle identique à l'étalonnage",
+        "Saisie : # | P (bar) | V 15s | V 30s | V 60s | Δ60/30 | ✕"
+      ],
+      "figures": [
+        "chartCalib (Chart.js, après calcul) : points mesurés (orange) + courbe polynomiale deg 2 échantillonnée 60 pas (teal, remplissage), légende"
+      ],
+      "actions": [
+        "+ Ajouter un point",
+        "Calculer et visualiser la courbe de calibrage — calcCalibrage() : régression polynomiale deg 2 Pc=c0+c1·V+c2·V² (Gauss 3×3), R², RMS, résidus, a = pente linéaire dV/dP",
+        "Appliquer a dans les corrections — applyCalibrage() : a×10 → cm³/MPa dans p_a + toast + goPage('projet')"
+      ],
+      "resultatsAffiches": [
+        "Carte intro teal : définition du calibrage, avertissement « à ne pas confondre avec l'étalonnage »",
+        "KPI kg3 : c₀ (constante) · c₁ (×V) · c₂ (×V²) en notation exponentielle",
+        "Badge R² = … — qualité (Excellent > 0.999 / Bon > 0.99 / Vérifier) · RMS … bar + équation complète",
+        "Tableau des résidus : P (bar) | V60 mesuré (cm³) | V60 ajusté | Résidu coloré (>0.02 rouge, >0.005 ambre)",
+        "Encadré vert « Application — coefficient a » : a = pente dV/dP = … cm³/MPa, formule Vc = Vr − a×Pr"
+      ]
+    },
+    {
+      "titre": "Page Mesures — essai à la profondeur courante",
+      "champs": [
+        "🔵 p₀ — Début zone plate (select par ligne : « L{i}  P=… bar  V60=… » + « — Non défini — »)",
+        "🔴 p_f — Fin zone plate (idem)"
+      ],
+      "tables": [
+        "Grille mesures brutes : # | P (bar) | V 15s | V 30s | V 60s | Δ60/30 (coloré ok/big/bad) | ΔV/ΔP (colonne d'aide à l'identification de la phase pseudo-élastique) | ✕ — lignes p₀ et p_f SURLIGNÉES (classes pf/plm)"
+      ],
+      "figures": [
+        "seuilPreview (live) : Pf=P1 et PLM=P2 corrigés (bar), V1/V2, n paliers, ΔP, ΔV, E_M ≈ … MPa temps réel, ratio, suggestion automatique « Auto β=… : suggestion L…→L… » (autoDetectPhase §D.5.1) ; alerte rouge si P1 > P2"
+      ],
+      "actions": [
+        "+ Ajouter une ligne (P préremplie = dernière + 0.05, scroll bas)",
+        "Calculer — Dépouillement complet — doCalc() : validations (p₀ < p_f, ≥ 4 lignes complètes) avec toasts d'erreur, calcDepth, bascule page Résultats, toast « Dépouillement OK — {label} »"
+      ]
+    },
+    {
+      "titre": "Page Résultats — dépouillement (renderResults)",
+      "champs": [],
+      "tables": [
+        "Paramètres normalisés — table Pression : p_E | p₀ — début pseudo-élast. | p_f — fin zone plate | σ_h0 = K₀·σ′v0+u₀ (z=… m) | p_f* nette | p_L — pression limite | p_L* nette | p_L méthode (« … MPa (direct) » ou « extrapolé ») | P*_LM — toutes en MPa",
+        "Paramètres normalisés — table Volume : V_E — restitution | V(p₀) | V(p_f) — fluage | Vs+2×V(p₀) = V_Lim — cm³",
+        "Tableau des mesures corrigées : # | P brut | P corr. | V60 corr. | Δ60/30 | Phase (badge Recompression/Pseudo-élast./Plastique)"
+      ],
+      "figures": [
+        "chartPV (Chart.js dual-axe) : mesures V60 (orange, points), courbe inverse extrapolée (orange foncé), ligne Vs+2V1 (vert pointillé), courbe de fluage Δ60/30 (teal pointillé, axe droit) ; légende ; tooltips interactifs ; annotations post-render : lignes verticales ENCADRÉES p₁ / pf (p₂) / pLM + FLÈCHE horizontale E_M entre p₀ et p_f avec libellé « EM=… MPa »"
+      ],
+      "actions": [],
+      "resultatsAffiches": [
+        "Titre « Dépouillement — {label} · NF EN ISO 22476-4 »",
+        "Garde-fou rouge « ⚠ E_M = 0 — plage pseudo-élastique invalide » (si EM=0)",
+        "Garde-fou rouge « ⚠ Résultat non corrigé » : a=0 (calibrage non renseigné), a forcé à 0 (a×Pmax > 0.5×V60moy), Pe vide (étalonnage non appliqué)",
+        "Garde-fou ambre §A.2 « Appareillage : résistance propre élevée — p_el > limite » (p_el vs p_LM)",
+        "KPI kg4 ligne 1 : E_M (MPa) | p_L (limite) MPa | P_f MPa | E/P_LM + BADGE coloré Remanié (<5) / N.C. (<12) / Précons.",
+        "KPI kg4 ligne 2 : P*_LM (MPa net) | P*_f (MPa net) | α Ménard | E_y=E/α (MPa)",
+        "BANDEAU CATÉGORIE coloré A–E : grande lettre + nom (« Sol ferme (cat. C) ») + description (« Argile raide, sable. 0,6 ≤ pL < 2 MPa. »)",
+        "Carte Extrapolation §D.4.3 : A, B (exponentiel), p_LM à V=Vs+2·V(p₀), p_LM asymptote (réf.), ajustement moyen (cm³), ✓ si méthode retenue, hint direct/extrapolé",
+        "Bloc Synthèse : E_M · p_f · p_L (+ méthode) ; β = … · mE = … cm³/MPa · Plage auto L…→L… ; E_M/P_LM = … → consolidation ; α · E_y ; rappel corrections « a=… cm³/MPa · Ph=… bar · Pe=… bar · Vs=… cm³ »"
+      ]
+    },
+    {
+      "titre": "Page Profil — synthèse multi-profondeurs",
+      "champs": [],
+      "tables": [
+        "profTbl « Profil en profondeur — {sondage} » : Prof. (m) | E_M (MPa) | p_L (MPa) | p_f (MPa) | E/P | α | Cat. (badge)"
+      ],
+      "figures": [
+        "pressioLog : SVG drawPressioLog — LOG PRESSIOMÉTRIQUE COMBINÉ : piste lithologie (coupe du Log), pastilles rondes de catégorie A–E colorées, piste barres E_M (MPa) colorées par catégorie + valeur, piste barres p_L (MPa) + repère trait p_f, axe des profondeurs, nappe ; légende sols + catégories (A très mou → E roche)",
+        "chartEM : E_M vs profondeur (Chart.js, y inversé = profondeur, remplissage bleu)",
+        "chartPLM : P_LM et P_f vs profondeur (2 séries, p_f en pointillé rouge)",
+        "chartSpec : Diagramme spectral [log P*_LM , log E_M/P*_LM] — Baud (2005) : 4 isolignes E/P = 4 (remaniement) / 8 / 14 / 22 colorées + points essais orange, tooltips par essai, hint explicatif α Ménard-Rousseau"
+      ],
+      "actions": [
+        "Recalcul automatique à l'ouverture de l'onglet : renderProfil() dépouille toute profondeur non calculée (calcDepth local, instantané, sans action utilisateur)"
+      ]
+    },
+    {
+      "titre": "Page Export",
+      "champs": [],
+      "tables": [],
+      "figures": [],
+      "actions": [
+        "CSV — essai courant (exportCSV : en-tête sondage/profondeur + lignes N;P;V15;V30;V60;Δ + résultats EM/PLM/Pf/α)",
+        "CSV global — toutes profondeurs (exportAllCSV : table synthèse Profondeur;EM;PLM;Pf;ratio;α;Cat + toutes les mesures)",
+        "JSON complet (exportJSON : projet + depths + logLayers + etalRows + calibRows, fichier pressio_{sondage}.json)",
+        "Imprimer / PDF (window.print() + CSS @media print dédiée masquant nav/boutons)",
+        "Charger fichier JSON (importJSON : restaure tout l'état + recalcule chaque profondeur)",
+        "Carte « À propos » : PressioPro v3.2, périmètre fonctionnel, « Hors-ligne · Auto-sauvegarde »"
+      ]
+    }
+  ],
+  "workflows": [
+    "Appareillage : Étalonnage (saisie paliers sonde dans l'air → Calculer → Vs/Pe/R²/résidus/courbe → Appliquer Vs et Pe → retour Projet) puis Calibrage (paliers forage libre → Calculer → a/c0-c2/R²/courbe → Appliquer a → retour Projet)",
+    "Projet : identification complète + choix sonde (Vs auto) / gaine + corrections a/Ph/Pe/Vs/K₀/γ + calculateur Ph (Zs+Zc) + nappe (u₀ live) + vérification de cohérence des paramètres (alertes normatives)",
+    "Log : saisie de la coupe carottée (sols ISO normalisés, qualité contrainte par catégorie) → log de sondage SVG dessiné en direct + légende",
+    "Essai : barre de profondeurs (ajout par prompt) → Mesures (paliers P/V15/V30/V60, Δ60/30 et ΔV/ΔP live, seuils p₀/p_f manuels avec APERÇU E_M temps réel + suggestion auto β) → Calculer — Dépouillement complet → page Résultats (garde-fous, KPI, catégorie, courbe P–V corrigée annotée, extrapolation, paramètres normalisés, synthèse, mesures corrigées)",
+    "Profil : ouverture de l'onglet = dépouillement automatique de toutes les profondeurs → log pressiométrique combiné + table + 3 graphiques (EM, PLM/Pf, spectral Baud)",
+    "Sortie : Export CSV essai / CSV global / JSON complet / Imprimer-PDF ; Import JSON ; sauvegarde manuelle + auto-sauvegarde localStorage rechargée au démarrage",
+    "Démonstration : bouton 🧪 Exemple = jeu fictif complet (étalonnage + calibrage + 4 profondeurs B/C/D/D + coupe 5 couches) chargé et calculé en un clic"
+  ]
+}

@@ -1,0 +1,207 @@
+{
+  "outil": "Terzaghi — Fondations superficielles · NF P 94-261",
+  "source": "03-Moteurs-client/GeoSuite/source/tools/terzaghi_V13.html (référence gelée, v0.9.3 affichée dans le pied de note)",
+  "navigation": [
+    {
+      "type": "header",
+      "elements": [
+        "logo strates (SVG)",
+        "h1 « Terzaghi »",
+        "sous-titre « Fondations superficielles · NF P 94-261 »",
+        "champ texte libre « Nom du projet / affaire… » (projName)"
+      ]
+    },
+    {
+      "type": "actions-header",
+      "boutons": [
+        "Exemple fictif",
+        "Importer",
+        "Exporter",
+        "Calculer → (primaire)",
+        "Imprimer la note"
+      ]
+    },
+    {
+      "type": "segmented",
+      "id": "segEssai",
+      "label": "Méthode de calcul",
+      "options": ["Pressiomètre Ménard (défaut)", "Pénétromètre statique", "Méthode c–φ"]
+    },
+    {
+      "type": "segmented",
+      "id": "segProfil",
+      "label": "Lecture du profil",
+      "options": ["Couches (escalier) (défaut)", "Essais ponctuels (interpolé)"]
+    },
+    {
+      "type": "segmented",
+      "id": "segForme",
+      "label": "Forme de la semelle",
+      "options": ["Filante", "Carrée (défaut)", "Rectangulaire", "Circulaire"]
+    },
+    {
+      "type": "onglets-resultats",
+      "id": "tabs",
+      "options": ["Coupe (défaut)", "Vérifications", "Note de calcul"]
+    }
+  ],
+  "sections": [
+    {
+      "titre": "01 · Sondage in situ (hint : « profondeurs / TN »)",
+      "champs": [
+        "Méthode de calcul (seg 3 options : pressio / penetro / labo)",
+        "α Sanglerat (M = α·qc, tassement J.4.1) — champ texte, visible en mode pénétromètre uniquement, placeholder « ex. 2 »",
+        "case « α identique sur toute la hauteur : » + champ alphaConstVal (placeholder « ex. 0,33 ») — coché : la colonne α du tableau est désactivée et remplie",
+        "Lecture du profil (seg couches / essais)",
+        "Catégorie de terrain porteur (facteur kp) — select : Argiles et limons / Sables et graves (défaut) / Craies / Marnes et marno-calcaires / Roches altérées",
+        "Nappe (m / TN, vide = absente)",
+        "γ avant travaux (kN/m³)",
+        "γ après travaux (kN/m³)",
+        "Cohésion c′ sous fondation (kPa)",
+        "Angle de frottement φ′ (°)",
+        "Module d'Young E (MPa — raideurs)",
+        "Coefficient de Poisson ν (– — raideurs) — défaut VIDE",
+        "case « Portance par la méthode analytique c–φ (annexe F) » (masquée en mode labo, où c–φ devient la méthode principale)",
+        "Comportement — select : Automatique (φ′ > 0 → drainé) / Non drainé (c lu comme cu) / Drainé (c′ et φ′)",
+        "γ sous la base (kN/m³ — facultatif, placeholder « défaut : γ après travaux »)"
+      ],
+      "tables": [
+        "tblSondage : Prof. (m) | pl* (MPa) [→ qc (MPa) en pénétro] | E_M (MPa) [colonne masquée en pénétro] | α (–) avec bouton « ? » guide dans l'en-tête | colonne suppression (×) — 3 lignes vides par défaut ; TOUT le bloc sondage (table + ajout + α const + seg profil + subnotes) est MASQUÉ en mode labo"
+      ],
+      "figures": [],
+      "actions": [
+        "+ Ajouter une ligne",
+        "Guide α Sanglerat (ouvre modal J.2.3)",
+        "Guide de choix de α (bouton bas de bloc + bouton « ? » d'en-tête de colonne — ouvrent le modal H.2.1.1)",
+        "× suppression de ligne"
+      ],
+      "notes": [
+        "subnote Couches/Essais ponctuels : convention GEOFOND (log pl*, pl* et 1/E_M linéaires), extrapolation sous le dernier essai, De intégré à partir du premier essai",
+        "hintProfil DYNAMIQUE : pressio = « pl* = pression limite nette, E_M = module Ménard » ; pénétro = annexe E, écrêtage 1,3·qcm, De annexe C, Schmertmann §6.2 + variante Sanglerat",
+        "cphiHelp DYNAMIQUE : rôle de c′/φ′ (iδ, glissement), raideurs Kv/Kh/Kθ (Ménard §7.2.1 / Schmertmann §7.2.2 / Gazetas §7.3), E et ν = repli élastique J.3 ; version labo dédiée",
+        "subnote annexe F : tableaux F.3.2/F.3.3, Nq/Nc/Nγ base rugueuse, γ′ déjaugé/humide/interpolé selon nappe (0 à 1,5·B), réduction iβ près d'un talus (F.3.4)"
+      ]
+    },
+    {
+      "titre": "02 · Fondation",
+      "champs": [
+        "Forme de la semelle (seg 4 options)",
+        "Largeur B (m) — libellé DYNAMIQUE « Diamètre B (m) » en circulaire",
+        "Longueur L (m) — visible en rectangulaire seulement",
+        "Encastrement D (m / TN)",
+        "case « Présence d'un talus à proximité »",
+        "Pente du talus β (°)",
+        "Distance bord / talus d (m)",
+        "Inclinaison de la charge par rapport au talus — select : « Vers l'extérieur du talus — produit iδ·iβ (D.2.6) » / « Vers l'intérieur du talus — iδβ = min(iβ/iδ ; iδ) (D.2.6.1) »",
+        "Interface (glissement) — select : « Béton coulé en place — δa = φ′ » / « Préfabriqué lisse — δa = ⅔ φ′ »"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "03 · Cas de charge (hint DYNAMIQUE : « kN, kN·m » → « kN/ml, kN·m/ml » en filante)",
+      "champs": [
+        "État-limite par ligne — select 5 options, libellés : ELU fondamental / ELU accidentel / ELS caractéristique / ELS fréquent / ELS quasi-permanent"
+      ],
+      "tables": [
+        "tblCharges : État-limite | Fz | Fx | Fy | Mx | My | × — 1 ligne par défaut (ELS quasi-permanent, vide)"
+      ],
+      "figures": [],
+      "actions": ["+ Ajouter un cas de charge", "× suppression de cas"],
+      "notes": [
+        "subnote : Fz vertical (↓), Fx selon B, Fy selon L ; excentricités eB = |My|/Fz, eL = |Mx|/Fz ; filante : valeurs PAR MÈTRE LINÉAIRE"
+      ]
+    },
+    {
+      "titre": "Onglet Coupe (pane résultats, défaut)",
+      "champs": [],
+      "tables": [],
+      "figures": [
+        "SVG coupe in situ (recalculée LIVE à chaque saisie) : axe profondeur gradué (m/TN), bande schéma terrain (fond + lignes de couches pointillées), TN hachuré, semelle + poteau d'encastrement dessinés, cotes D et B, zone d'influence 1,5·B hachurée + libellé, cote De (« De = X m »), nappe en tirets bleus « ▽ nappe X m », grille LOG (MPa) avec courbes pl* (rouge) et E_M (bleu) — ou qc seule en pénétro — en escalier (mode couches) ou polyligne interpolée + extrapolation pointillée (mode essais), points de mesure en cercles",
+        "SVG coupe variante LABO : schéma terrain/semelle/nappe/zone 1,5·B + panneau de paramètres « Méthode c–φ » (c′, φ′, γ, E, ν) + rappels « Portance : annexe F » / « Tassement : annexe J.3.1 »",
+        "légende sous la coupe, DYNAMIQUE selon l'essai : pl* (MPa) / E_M (MPa) / nappe / zone p*le (1,5·B) — pénétro : qc (MPa) ; labo : nappe + zone d'influence seulement"
+      ],
+      "actions": []
+    },
+    {
+      "titre": "Onglet Vérifications",
+      "champs": [],
+      "tables": [
+        "encadré « Avertissements » (warnings moteur) en tête d'onglet",
+        "par cas de charge : panneau « Cas N — <état-limite> » + rappel des efforts (Fz, Fx, Fy, Mx, My avec unités /ml en filante)",
+        "grille de cartes-verdict (vcard ok/bad/warn/na) : Portance (taux %, qref ≤ qRvd, Vd ≤ Rvd) · Portance c–φ (F) si option · Excentrement (valeur, ≥ limite 1/15 etc., « non requis (ELU acc.) ») · Glissement (taux %, Hd ≤ Rhd) en ELU · Tassement (sf Ménard cm avec sc + sd, ou élastique J.3.1 avec cf/E/ν, ou Schmertmann §6.2 avec Iz;pic/E, ou œdométrique J.4.1 Sanglerat avec plage M)",
+        "déroulé pas-à-pas « caseSteps » avec formules ET valeurs substituées — groupe A · Capacité portante : 1. Géométrie et sollicitations (A) · 2. Excentrement et surface comprimée A′ (eB, eL, B′, L′, Meyerhof) · 3. Inclinaison de la charge (Hd, δd, iδ) · 4. Contraintes au niveau de la base (u, q0, σ′v0) · 5. Pression nette équivalente ple*/qce (hr = 1,5·B, table des valeurs mesurées dans la zone) · 6. Hauteur d'encastrement équivalente De, De/B · 7. Facteur de portance kp/kc AVEC FORMULE DE COURBE CHIFFRÉE (d + (a + b·x)·(1 − e^(−c·x))) par catégorie de sol et forme · 8. Coefficients de réduction iδ, iβ, iδβ · 9. Résistance nette qnet · 10. Contrainte de référence qref = Vd/A′ · 11. R0, Rv;d, qRv;d + verdict VÉRIFIÉE/NON VÉRIFIÉE (taux %) — variante labo/annexe F : Nq/Nc/Nγ, s, i, m, γ′, q′0",
+        "groupe complémentaire : Vérification c–φ (annexe F) si option cochée",
+        "groupe B · Glissement (ELU avec H) : Rh;d avec δa (interface) ou cu, verdict + taux",
+        "groupe C · Tassement : Δq = qref − σ′v0 · modules Ec/Ed (moyennes harmoniques) · αc/αd, λc/λd · sc · sd (B0 = 0,60 m) · sf = sc + sd — ou élastique (cf Giroud) / Schmertmann (C1, C2, C3, Iz;pic, E = k·qc, profondeur d'intégration) / œdo Sanglerat (M = α·qc, Mmin–Mmax)",
+        "groupe D · Raideurs équivalentes : Kv, Kh;B/Kh;L, Kθ;B/Kθ;L (MN/m, MN·m/rd, /ml en filante) + δv = Vd/Kv (cm)",
+        "notes normatives par cas (C.notes) en subnote",
+        "si AUCUN cas valide : panneau « Capacité portante de référence » (charge centrée verticale) — cartes Rv;d + qRv;d par état-limite (ELU fond., ELU acc., ELS car.) + carte Tassement sous qRv;d ELS + déroulé complet refCapSteps (mêmes étapes + table Rv;d par état-limite) + message pédagogique « Renseignez au moins Fz… »"
+      ],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Onglet Note de calcul (+ zone d'impression printArea)",
+      "champs": [],
+      "tables": [
+        "en-tête : « Terzaghi — note de calcul », « Semelle superficielle · <méthode> · NF P 94-261 », projet + date (fr-FR)",
+        "§1 · Hypothèses : table Fondation (forme, B, L, D, De/B, régime superficielle/semi-profonde) / Terrain porteur (catégorie, c′, φ′, interface δa, E, ν) / Profil (couches ou essais interpolés, convention GEOFOND) / Méthode (pressio annexe D · pénétro annexe E avec écrêtage · c–φ annexe F avec γR;d;v) / [Méthode c–φ complémentaire] / Poids volumiques + nappe (γw = 10) / [Talus β, d, direction]",
+        "table du sondage : z (m/TN) | pl* (MPa) | Em (MPa) | α (–) — ou z | qc (MPa) en pénétro ; absente en labo",
+        "§2 · Contraintes au niveau de la base : u, q0, σ′v0",
+        "§3(+i) · un chapitre PAR CAS avec le déroulé caseSteps complet — ou « §3 · Capacité portante de référence » (déroulé refCapSteps) si aucune charge saisie",
+        "§final · Synthèse : table Cas | État-limite | Portance (OK/NON + taux) | Excentr. | Glissement | sf (cm) · qref",
+        "encadré avertissements (si warnings)",
+        "pied : « Calculé par Terzaghi v0.9.3 — semelles superficielles, <méthode> NF P 94-261. Document d'étude à faire valider par un géotechnicien qualifié ; il ne se substitue pas à une mission d'ingénierie géotechnique (NF P 94-500). »"
+      ],
+      "figures": [
+        "à l'impression : figure « Coupe — profil de sol et fondation » (le SVG de l'onglet Coupe + sa légende) insérée en tête de note"
+      ],
+      "actions": ["Imprimer la note (window.print sur printArea)"]
+    },
+    {
+      "titre": "Modal « Choisir le coefficient rhéologique α » (guide H.2.1.1)",
+      "champs": [],
+      "tables": [
+        "table principale : État du terrain × (Tourbe / Argile / Limon / Sable / Grave) avec plages EM/pl et boutons-valeurs α (1, 2/3, 1/2, 1/3, 1/4) — 3 lignes d'état (surconsolidé/normalement consolidé/altéré-remanié)",
+        "table Rocher : Très peu fracturé 2/3 / Normalement fracturé 1/2 / Très fracturé 1/3 / Très altéré 2/3"
+      ],
+      "figures": [],
+      "actions": [
+        "clic sur une valeur α → applique la valeur décimale À TOUTE LA COLONNE α, coche « α identique sur toute la hauteur » et ferme le modal",
+        "fermeture : ×, clic hors modal, touche Échap"
+      ],
+      "notes": [
+        "intro : α estimé via EM/pl (NF P 94-261, tableaux H.2.1.1.1 et H.2.1.1.2)",
+        "pied : conversions décimales (2/3 → 0,67…) + conseil profil hétérogène (décocher α identique)"
+      ]
+    },
+    {
+      "titre": "Modal « Coefficient α de Sanglerat — module œdométrique M = α·qc » (guide J.2.3)",
+      "champs": [],
+      "tables": [
+        "table : Type de sol | qc (MPa) | α (plage) | Valeur (bouton) — 15 lignes (argile peu plastique ×3, limon peu plastique ×2, argile/limon très plastique ×2, limon très organique, tourbe/argile très org. ×3, craie ×2, sable ×2)"
+      ],
+      "figures": [],
+      "actions": [
+        "clic sur une valeur → renseigne le champ α Sanglerat et ferme le modal",
+        "fermeture : ×, clic hors modal, touche Échap"
+      ],
+      "notes": [
+        "intro : M = α·qc (tableau J.2.3), choix prudent = valeur basse majore le tassement",
+        "pied : Schmertmann en premier lieu (§6.2), variante J.4.1 intègre Iz(ζ)/M(ζ) sur 2,5·B (4·B en filante)"
+      ]
+    }
+  ],
+  "workflows": [
+    "Saisie → recalcul LIVE permanent : chaque frappe/changement (input/change) relance computeAll + redessine la coupe + régénère Vérifications et Note ; validation visuelle immédiate des champs invalides (classe bad-input : B, D, L, γ, lignes de sondage, Fz)",
+    "Bouton « Calculer → » : recalcule, bascule sur l'onglet Vérifications et scrolle le panneau en vue",
+    "Sans cas de charge valide : la plateforme montre quand même la capacité portante de référence (déroulé complet) + tassement sous qRv;d ELS, avec messages guidés (« Renseignez au moins une ligne de sondage… ou cliquez sur Exemple fictif »)",
+    "« Exemple fictif » : confirmation si saisie en cours, puis charge le cas de validation GEOFOND V1.22A « diarra sp1 » (31/07/2022, bâtiment R+5 — sondage 9 lignes, marnes, rect 6×10, D=4,5, ELS_QP 12240 kN, mode essais ponctuels)",
+    "« Exporter » : télécharge l'état complet en .json (nom terzaghi-<projet>.json) ; « Importer » : recharge un export .json (validation de format, alerte si illisible)",
+    "« Imprimer la note » : window.print — imprime figure de coupe + note de calcul complète",
+    "Guides normatifs cliquables : « ? » / « Guide de choix de α » → modal H.2.1.1 (application à toute la colonne) ; « Guide α Sanglerat » → modal J.2.3 (application au champ)",
+    "Bascules d'interface : mode pénétro (colonne qc, E_M masquée, boîte Sanglerat, légende/hints adaptés) ; mode labo (bloc sondage masqué, c–φ principale, champs comportement/γ sous base montrés, coupe remplacée par la variante paramètres) ; forme (L montrée en rect, libellé Diamètre en circ, hints /ml en filante) ; talus (champs conditionnels)"
+  ]
+}

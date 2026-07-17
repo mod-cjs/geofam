@@ -17,6 +17,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
+import { matchesDomain } from '@/lib/api/project-domain';
 import type {
   Project,
   EntitlementsResponse,
@@ -1401,7 +1402,7 @@ export default function PressioProPage() {
     if (!orgId) return;
     Promise.all([listProjects(orgId), getEntitlements(orgId)])
       .then(([projs, ent]) => {
-        const lb = projs.filter((p) => p.domain === 'LB');
+        const lb = projs.filter((p) => matchesDomain(p, 'LB'));
         setProjects(lb);
         setEnt(ent);
         if (lb.length === 1) setProjectId(lb[0].id);

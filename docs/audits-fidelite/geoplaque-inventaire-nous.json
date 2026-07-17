@@ -1,0 +1,35 @@
+{
+  "tabs": ["Modèle & sol", "Charges & ressorts", "Résultats & cartographie", "2D"],
+  "buttons": [
+    "Réduire la navigation",
+    "Rechercher…⌘K",
+    "Modèle & sol",
+    "Charges & ressorts",
+    "Résultats & cartographie",
+    "2D",
+    "+ Charge linéique",
+    "+ Ajouter une couche",
+    "Calculer (déformations planes) →",
+    "Calculer (axisymétrique) →",
+    "+ Ajouter un sommet",
+    "+ Charge répartie",
+    "+ Charge ponctuelle",
+    "Mailler & calculer (DKT) →"
+  ],
+  "labels": [
+    "Projet",
+    "Largeur B (m)",
+    "Épaisseur e (m)",
+    "Nb d'éléments",
+    "Module béton E (MPa)",
+    "ν béton",
+    "Décollement",
+    "Charge répartie q (kPa)",
+    "Profondeur d'assise D (m)",
+    "Rayon R (m)",
+    "Nb d'éléments annulaires",
+    "Charge centrale P (kN)",
+    "Taille maille cible (m²)",
+    "Charge répartie additionnelle q (kPa)"
+  ]
+}

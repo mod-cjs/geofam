@@ -29,6 +29,7 @@ import { useState, useCallback, useEffect, useId, useRef, Fragment } from 'react
 import { PvEmittedActions } from '@/components/pv/PvEmittedActions';
 import { ProjectPicker } from '@/components/ui/ProjectPicker';
 import { listProjects, runCalc, emitPv, getEntitlements } from '@/lib/api/client';
+import { matchesDomain } from '@/lib/api/project-domain';
 import type {
   Project,
   CalcResult,
@@ -1698,7 +1699,7 @@ export default function RoadsensPage() {
     setProjectsLoading(true);
     Promise.all([listProjects(orgId), getEntitlements(orgId)])
       .then(([projs, ent]) => {
-        const chProjects = projs.filter((p) => p.domain === 'CH');
+        const chProjects = projs.filter((p) => matchesDomain(p, 'CH'));
         setProjects(chProjects);
         setEntitlements(ent);
         if (chProjects.length === 1) setProjectId(chProjects[0].id);

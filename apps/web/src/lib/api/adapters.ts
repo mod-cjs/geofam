@@ -123,7 +123,8 @@ export interface PrismaProject {
   orgId: string;
   name: string;
   description?: string | null;
-  domain: string;
+  // Nullable : les projets legacy (avant la colonne) reviennent domain=null.
+  domain: string | null;
   createdAt: string;
   updatedAt: string;
   /**
@@ -1700,6 +1701,9 @@ export function adaptCalcResult(raw: PrismaCalcResult): CalcResult {
     params: (raw.input ?? {}) as Record<string, unknown>,
     // Sortie normalisée client-safe ({verdict, rows}) — fail-closed.
     output: normalizeOutput(raw.output),
+    // Sortie serveur whitelistée BRUTE, conservée pour les clones d'UI client (ADR
+    // 0015 §4). La page roadsens lit `output` normalisé ; seul ToolFrame lit ceci.
+    rawOutput: raw.output ?? undefined,
     pvId: raw.pvId ?? undefined,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt ?? raw.createdAt,
@@ -1748,6 +1752,10 @@ export function adaptPersistedCalcResult(
     status,
     params: context.params,
     output: normalizeOutput(raw.output),
+    // Sortie serveur whitelistée BRUTE (barrière §8 = contrat serveur) — livrée au
+    // clone d'UI par ToolFrame (ADR 0015 §4). `normalizeOutput` reste la forme lue
+    // par la page roadsens (comportement inchangé).
+    rawOutput: raw.output ?? undefined,
     pvId: undefined,
     createdAt: now,
     updatedAt: now,
@@ -1847,7 +1855,9 @@ export function adaptProject(raw: PrismaProject): Project {
     orgId: raw.orgId,
     name: raw.name,
     description: raw.description ?? undefined,
-    domain: raw.domain as ProjectDomain,
+    // domain null (projet legacy) préservé tel quel — le filtrage front le tolère
+    // (matchesDomain). Une chaîne connue est castée en ProjectDomain.
+    domain: raw.domain === null ? null : (raw.domain as ProjectDomain),
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
     // #8 — le champ réel est `createdById` (Prisma: created_by_id), pas `createdBy`

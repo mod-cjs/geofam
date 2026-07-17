@@ -1,0 +1,363 @@
+{
+  "title": "ROADSENS — Dimensionnement rationnel des chaussées · AGEROUTE Sénégal 2015",
+  "brand": "ROADSENS — Burmister exact · Transfer Matrix",
+  "calcButton": "Calculer",
+  "tabs": [
+    {
+      "tab": "s",
+      "label": "Structure",
+      "active": true
+    },
+    {
+      "tab": "t",
+      "label": "Trafic",
+      "active": false
+    },
+    {
+      "tab": "p",
+      "label": "Paramètres",
+      "active": false
+    },
+    {
+      "tab": "c",
+      "label": "Catalogue",
+      "active": false
+    },
+    {
+      "tab": "r",
+      "label": "Résultats",
+      "active": false
+    },
+    {
+      "tab": "d",
+      "label": "Détails calcul",
+      "active": false
+    }
+  ],
+  "panes": {
+    "pane-s": {
+      "sectionTitles": [
+        "Cas de validation du catalogue — dimensionnement pré-rempli",
+        "Couches — surface → fond",
+        "Plateforme support de chaussée (PSC)",
+        "Coupe transversale"
+      ],
+      "fields": [
+        {
+          "label": "Classe PFi",
+          "id": "pfcls",
+          "type": "select-one",
+          "value": "PF3"
+        },
+        {
+          "label": "E_PSC (MPa)",
+          "id": "pfE",
+          "type": "number",
+          "value": "120"
+        },
+        {
+          "label": "ν_PSC",
+          "id": "pfnu",
+          "type": "number",
+          "value": "0.35"
+        }
+      ],
+      "checkboxes": [
+        {
+          "label": "Module GNT automatique (catalogue p.79 : 3×E sous-jacent · plafond 360 GNT/GB · 600 GNT/GNT · base 600 · ν=0,35)",
+          "id": "gntAutoChk",
+          "checked": true
+        }
+      ],
+      "tableHeaders": [["#", "Matériau", "h (m)", "E (MPa)", "ν", "Nature", ""]],
+      "buttons": [
+        "Réinitialiser",
+        "↓",
+        "✕ Suppr.",
+        "↑",
+        "↓",
+        "✕ Suppr.",
+        "↑",
+        "✕ Suppr.",
+        "Ajouter couche"
+      ]
+    },
+    "pane-t": {
+      "sectionTitles": ["Données de trafic — AGEROUTE 2015", "Résumé"],
+      "fields": [
+        {
+          "label": "TMJA (PL/j/sens)",
+          "id": "tT",
+          "type": "number",
+          "value": "3066"
+        },
+        {
+          "label": "CAM — agressivité moyenne",
+          "id": "tCsel",
+          "type": "select-one",
+          "value": "0.9"
+        },
+        {
+          "label": "Durée n (ans)",
+          "id": "tN",
+          "type": "number",
+          "value": "20"
+        },
+        {
+          "label": "Taux τ (%/an)",
+          "id": "tTau",
+          "type": "number",
+          "value": "4.0"
+        },
+        {
+          "label": "f_dir",
+          "id": "tDir",
+          "type": "number",
+          "value": "1.0"
+        },
+        {
+          "label": "f_tv",
+          "id": "tTv",
+          "type": "number",
+          "value": "1.0"
+        }
+      ],
+      "checkboxes": [
+        {
+          "label": "NE cumulé — saisie directe",
+          "id": "neDirectChk",
+          "checked": false
+        }
+      ],
+      "tableHeaders": [],
+      "buttons": []
+    },
+    "pane-p": {
+      "sectionTitles": [
+        "Charge de référence AGEROUTE — essieu 130 kN",
+        "Risque",
+        "Coefficients LCPC — ε_t admissible",
+        "Lois de fatigue — bitumineux",
+        "Lois de fatigue — MTLH",
+        "Orniérage PSC",
+        "Moteur ROADSENS — Burmister multi-couche exact"
+      ],
+      "fields": [
+        {
+          "label": "Pression p₀ (MPa)",
+          "id": "pp",
+          "type": "number",
+          "value": "0.662"
+        },
+        {
+          "label": "Rayon a (m)",
+          "id": "pa",
+          "type": "number",
+          "value": "0.125"
+        },
+        {
+          "label": "Entre-axe d (m)",
+          "id": "pd",
+          "type": "number",
+          "value": "0.375"
+        },
+        {
+          "label": "Risque r (%)",
+          "id": "pr",
+          "type": "select-one",
+          "value": "auto"
+        },
+        {
+          "label": "Sh — dispersion d'épaisseur",
+          "id": "psh",
+          "type": "select-one",
+          "value": "auto"
+        },
+        {
+          "label": "ks — hétérogénéité du support",
+          "id": "pks",
+          "type": "select-one",
+          "value": "auto"
+        }
+      ],
+      "checkboxes": [],
+      "tableHeaders": [
+        ["Matériau", "ε₆ (μdef)", "b", "Kc", "Source"],
+        ["Matériau", "σ₆ (MPa)", "b", "Kc", "Source"]
+      ],
+      "buttons": []
+    },
+    "pane-c": {
+      "sectionTitles": ["Catalogue AGEROUTE Sénégal 2015"],
+      "fields": [
+        {
+          "label": "Famille",
+          "id": "catt",
+          "type": "select-one",
+          "value": "S1"
+        },
+        {
+          "label": "NE (×10⁶)",
+          "id": "catne",
+          "type": "number",
+          "value": ""
+        }
+      ],
+      "checkboxes": [],
+      "tableHeaders": [],
+      "buttons": []
+    },
+    "pane-r": {
+      "sectionTitles": [],
+      "fields": [],
+      "checkboxes": [],
+      "tableHeaders": [],
+      "buttons": ["Imprimer le rapport"]
+    },
+    "pane-d": {
+      "sectionTitles": [],
+      "fields": [],
+      "checkboxes": [],
+      "tableHeaders": [],
+      "buttons": []
+    }
+  },
+  "presets": [
+    {
+      "id": "s1",
+      "label": "1 — BBSG / GB2 (bitumineuse épaisse)"
+    },
+    {
+      "id": "s2",
+      "label": "2 — BBSG / GB3 (bitumineuse épaisse)"
+    },
+    {
+      "id": "s3",
+      "label": "3 — BBSG / GB2 / GNT1 (bitumineuse + assise GNT)"
+    },
+    {
+      "id": "s4",
+      "label": "4 — BBSG / GB3 / GNT1 (bitumineuse + assise GNT)"
+    },
+    {
+      "id": "s5",
+      "label": "5 — BBSG / EME2 (bitumineuse épaisse)"
+    },
+    {
+      "id": "s6",
+      "label": "6 — BBSG / GC-T3 / GC-T3 (semi-rigide)"
+    },
+    {
+      "id": "s7",
+      "label": "7 — BBSG / SC-T2 / SC-T2 (semi-rigide)"
+    },
+    {
+      "id": "s8",
+      "label": "8 — BBSG / GLc2 / GLc2 (semi-rigide, latérite ciment)"
+    },
+    {
+      "id": "s10",
+      "label": "10 — BBSG / GLc1 / GLc1 (semi-rigide, latérite ciment)"
+    },
+    {
+      "id": "s11",
+      "label": "11 — BBSG / BQc / BQc (semi-rigide, banco-coquillage)"
+    },
+    {
+      "id": "s13",
+      "label": "13 — BBSG / GNT1 (souple)"
+    },
+    {
+      "id": "s14",
+      "label": "14 — BBSG / GL1 / GL1 (souple, latérite)"
+    },
+    {
+      "id": "s16",
+      "label": "16 — BC5 / BC2 (rigide, béton)"
+    },
+    {
+      "id": "s17",
+      "label": "17 — BC5 goujonné / BC2 (rigide, béton)"
+    },
+    {
+      "id": "sa",
+      "label": "annexe — BBSG / GLa (souple, latérite améliorée — hors catalogue)"
+    },
+    {
+      "id": "sb",
+      "label": "annexe — BBSG / GL2 / GL2 (souple, latérite — hors catalogue)"
+    }
+  ],
+  "catalogueFamilies": [
+    {
+      "group": "Bitumineuses épaisses",
+      "value": "S1",
+      "label": "1 · BBSG / GB2"
+    },
+    {
+      "group": "Bitumineuses épaisses",
+      "value": "S2",
+      "label": "2 · BBSG / GB3"
+    },
+    {
+      "group": "Bitumineuses épaisses",
+      "value": "S3",
+      "label": "3 · BBSG / GB2 / GNT1"
+    },
+    {
+      "group": "Bitumineuses épaisses",
+      "value": "S4",
+      "label": "4 · BBSG / GB3 / GNT1"
+    },
+    {
+      "group": "Bitumineuses épaisses",
+      "value": "S5",
+      "label": "5 · BBSG3 / EME2"
+    },
+    {
+      "group": "Semi-rigides",
+      "value": "S6",
+      "label": "6 · BBSG / GC-T3"
+    },
+    {
+      "group": "Semi-rigides",
+      "value": "S7",
+      "label": "7 · BBSG / SC-T2"
+    },
+    {
+      "group": "Semi-rigides",
+      "value": "S8",
+      "label": "8 · BBSG / GLc2"
+    },
+    {
+      "group": "Semi-rigides",
+      "value": "S9",
+      "label": "9 · BBSG / GLc2 / GL2"
+    },
+    {
+      "group": "Semi-rigides",
+      "value": "S10",
+      "label": "10 · BBSG / GLc1"
+    },
+    {
+      "group": "Semi-rigides",
+      "value": "S11",
+      "label": "11 · BBSG / BQc"
+    },
+    {
+      "group": "Souples",
+      "value": "S13",
+      "label": "13 · BBSG / GNT1"
+    },
+    {
+      "group": "Souples",
+      "value": "S14",
+      "label": "14 · BBSG / GL1"
+    },
+    {
+      "group": "Souples",
+      "value": "S15",
+      "label": "15 · BBSG / GL2 / GL1"
+    }
+  ]
+}
