@@ -123,7 +123,8 @@ export interface PrismaProject {
   orgId: string;
   name: string;
   description?: string | null;
-  domain: string;
+  // Nullable : les projets legacy (avant la colonne) reviennent domain=null.
+  domain: string | null;
   createdAt: string;
   updatedAt: string;
   /**
@@ -273,6 +274,55 @@ function pushRow(
   const n = finiteOrNull(value);
   if (n === null) return; // valeur absente/null/NaN → ligne omise (jamais de "NaN" affiché)
   rows.push(status ? { label, value: n, unit, status } : { label, value: n, unit });
+}
+
+// --- Affichage RADIER / modes 2D GEOPLAQUE : COPIE des transformations d'affichage de
+// l'outil client GEOPLAQUE_V10 (décision titulaire 15/07, re-confirmée 17/07 : « zéro
+// écart absolu »). La sortie MOTEUR reste physiquement juste (tassements mm, distorsions
+// ‰) et le scellé serveur est INCHANGÉ ; SEULE la présentation reproduit les défauts de
+// l'outil : tassements ×1000 (sur-rapport) ; distorsions/pentes/rotations rendues CRUES
+// via ratio1 + valeur brute étiquetée « rad ». app ET PV ensemble (jamais l'un sans
+// l'autre). Réf. client : refreshResults l.2560-2598 + panneaux #ps-run/#ax-run/#tri-run.
+
+/** ratio1(n) = « 1/N » (fr-FR) — miroir exact de l'outil client. « — » si n ≤ 0. */
+function ratio1(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  return `1/${Math.round(1 / n)
+    .toLocaleString('fr-FR')
+    .replace(/\s/g, ' ')}`;
+}
+
+/** Notation scientifique fr-FR (mantisse localisée) — miroir de `v.toExponential(d)`. */
+function expFr(n: number, d: number): string {
+  return n.toExponential(d).replace('.', ',');
+}
+
+/** Tassement sur-rapporté ×1000 « mm » (défaut d'affichage de l'outil client COPIÉ). */
+function pushSettleMm(rows: CalcOutputRow[], label: string, v: unknown): void {
+  const n = finiteOrNull(v);
+  if (n === null) return;
+  rows.push({ label, value: n * 1000, unit: 'mm' });
+}
+
+/** Distorsion β CRUE — miroir de `ratio1(β) (β.toExponential(1) rad)`. */
+function pushBetaRad(rows: CalcOutputRow[], label: string, v: unknown): void {
+  const n = finiteOrNull(v);
+  if (n === null) return;
+  rows.push({ label, value: `${ratio1(n)} (${expFr(n, 1)} rad)`, unit: '' });
+}
+
+/** Distorsion/inclinaison CRUE, ratio1 SEUL — miroir de `ratio1(v)` (tilt / inter / charges). */
+function pushRatio(rows: CalcOutputRow[], label: string, v: unknown): void {
+  const n = finiteOrNull(v);
+  if (n === null) return;
+  rows.push({ label, value: ratio1(n), unit: '' });
+}
+
+/** Rotation/pente CRUE — miroir de `v.toExponential(2) rad (ratio1(v))` (Synthèse). */
+function pushRotRad(rows: CalcOutputRow[], label: string, v: unknown): void {
+  const n = finiteOrNull(v);
+  if (n === null) return;
+  rows.push({ label, value: `${expFr(n, 2)} rad (${ratio1(n)})`, unit: '' });
 }
 
 /**
@@ -915,48 +965,46 @@ function asStrList(v: unknown, max = 300): string[] {
  */
 function buildRadierRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
-  // UNITÉS radier — TRANCHÉ (preuve : physique + solveModel de référence identique au bit
-  // près à notre port + cohérence inter-cas). Le solveur sort ses déplacements
-  // NUMÉRIQUEMENT en mm (piège d'unité E-en-MPa × charges-en-kN × géométrie-en-m) → les
-  // tassements sont en mm et la distorsion (Δw/L) en ‰ (= 10⁻³ rad). Vérifié sur cas SANS
-  // singularité (radier 6×6, charge surfacique 50 kPa, limon E=8 MPa → wMax=6,25 mm ; 6,25 m
-  // ou 6251 mm seraient physiquement impossibles). NB : l'annotation « m/rad » du contrat
-  // décrit l'unité SI VISÉE, pas la sortie numérique ; l'outil GEOPLAQUE_V10 du client
-  // affiche wMax*1000 (sur-rapport ×1000) — on ne le copie pas.
+  // AFFICHAGE = COPIE de l'outil client GEOPLAQUE_V10 (décision titulaire 15/07,
+  // re-confirmée 17/07 : « zéro écart absolu »). La sortie MOTEUR reste juste (tassements
+  // NUMÉRIQUEMENT en mm, distorsion Δw/L en ‰) et le scellé serveur est INCHANGÉ ; SEULE
+  // la présentation reproduit les défauts de l'outil : tassements ×1000 (pushSettleMm),
+  // distorsions/pentes rendues CRUES via ratio1 + valeur brute « rad » (pushBetaRad /
+  // pushRotRad ; inclinaison ϖ = ratio1 SEUL — l'outil ne lui adjoint pas de « rad »).
+  // Détails du raisonnement d'unité : bandeau des helpers pushSettleMm/ratio1 ci-dessus.
   // COMPLÉTUDE : on affiche TOUS les diagnostics client-safe du RadierOutputSchema,
   // dans l'ordre du tableau EC7 de l'outil d'origine GEOPLAQUE_V10 (tassements →
   // distorsion gouvernante → intra → inclinaison → pente → inter-plaques → entre
   // charges → nombre). Les rangs inter-plaques / entre-charges ne s'affichent que
   // s'ils s'appliquent (comme l'outil d'origine).
-  pushRow(rows, 'Tassement maximal w_max', o.wMax, 'mm');
-  pushRow(rows, 'Tassement minimal w_min', o.wMin, 'mm');
-  pushRow(rows, 'Tassement différentiel', o.diff, 'mm');
-  pushRow(rows, 'Distorsion angulaire gouvernante β', o.betaGov, '‰');
-  pushRow(rows, 'Distorsion intra-plaque max', o.betaIntra, '‰');
-  pushRow(rows, "Inclinaison d'ensemble ϖ", o.tiltMax, '‰');
-  pushRow(rows, 'Pente locale max |∇w|', o.slopeMax, '‰');
+  pushSettleMm(rows, 'Tassement maximal w_max', o.wMax);
+  pushSettleMm(rows, 'Tassement minimal w_min', o.wMin);
+  pushSettleMm(rows, 'Tassement différentiel', o.diff);
+  pushBetaRad(rows, 'Distorsion angulaire gouvernante β', o.betaGov);
+  pushBetaRad(rows, 'Distorsion intra-plaque max', o.betaIntra);
+  pushRatio(rows, "Inclinaison d'ensemble ϖ", o.tiltMax);
+  pushRotRad(rows, 'Pente locale max |∇w|', o.slopeMax);
   const nRafts = finiteOrNull(o.nRafts);
   if (nRafts !== null && nRafts > 1) {
-    pushRow(rows, 'Distorsion entre plaques', o.betaInter, '‰');
-    pushRow(rows, 'Tassement différentiel inter-plaques', o.interDiff, 'mm');
+    pushRatio(rows, 'Distorsion entre plaques', o.betaInter);
+    pushSettleMm(rows, 'Tassement différentiel inter-plaques', o.interDiff);
   }
   const wlp = o.worstLoadPair;
   if (wlp != null && typeof wlp === 'object') {
-    pushRow(
+    pushRatio(
       rows,
       'Distorsion max entre charges voisines',
       (wlp as Record<string, unknown>).beta,
-      '‰',
     );
   }
   pushRow(rows, 'Nombre de radiers', o.nRafts, '');
   // SYNTHÈSE (bilans + extrêmes globaux) — panneau « Synthèse » de l'outil client
-  // GEOPLAQUE_V10 (ADR 0014). Ordre et libellés repris du HTML. Rotations/pentes en ‰
-  // (même convention que tiltMax/slopeMax ci-dessus). Les rangs conditionnels (Winkler,
-  // ressorts, décollement) ne s'affichent que si l'option est active : le contrat rend
-  // `null` sinon → pushRow OMET la ligne (comme l'outil d'origine).
-  pushRow(rows, 'Rotation θx max', o.txMax, '‰');
-  pushRow(rows, 'Rotation θy max', o.tyMax, '‰');
+  // GEOPLAQUE_V10 (ADR 0014). Ordre et libellés repris du HTML. Rotations rendues CRUES
+  // (format « Synthèse » de l'outil : `v.toExponential(2) rad (ratio1(v))`). Les rangs
+  // conditionnels (Winkler, ressorts, décollement) ne s'affichent que si l'option est
+  // active : le contrat rend `null` sinon → pushRow OMET la ligne (comme l'outil d'origine).
+  pushRotRad(rows, 'Rotation θx max', o.txMax);
+  pushRotRad(rows, 'Rotation θy max', o.tyMax);
   pushRow(rows, 'Réaction de sol min p_min', o.pMin, 'kPa');
   pushRow(rows, 'Réaction de sol max p_max', o.pMax, 'kPa');
   pushRow(rows, '|Mx| max', o.mxMax, 'kN·m/ml');
@@ -1102,9 +1150,9 @@ function buildProfils(profils: unknown): Record<string, ProfilData> | undefined 
  */
 function buildPlaneStrainRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
-  pushRow(rows, 'Tassement maximal w_max', o.wMax, 'mm');
-  pushRow(rows, 'Tassement minimal w_min', o.wMin, 'mm');
-  pushRow(rows, 'Tassement différentiel', o.diff, 'mm');
+  pushSettleMm(rows, 'Tassement maximal w_max', o.wMax);
+  pushSettleMm(rows, 'Tassement minimal w_min', o.wMin);
+  pushSettleMm(rows, 'Tassement différentiel', o.diff);
   pushRow(rows, 'Moment fléchissant maximal M_max', o.mMax, 'kN·m/m');
   pushRow(rows, 'Moment fléchissant minimal M_min', o.mMin, 'kN·m/m');
   pushRow(rows, 'Réaction de sol maximale p_max', o.pMax, 'kPa');
@@ -1125,12 +1173,12 @@ function buildPlaneStrainRows(o: Record<string, unknown>): CalcOutputRow[] {
  */
 function buildAxiRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
-  pushRow(rows, 'Tassement au centre w_c', o.wc, 'mm');
-  pushRow(rows, 'Tassement au bord w_bord', o.wEdge, 'mm');
-  pushRow(rows, 'Tassement maximal w_max', o.wMax, 'mm');
-  pushRow(rows, 'Tassement minimal w_min', o.wMin, 'mm');
+  pushSettleMm(rows, 'Tassement au centre w_c', o.wc);
+  pushSettleMm(rows, 'Tassement au bord w_bord', o.wEdge);
+  pushSettleMm(rows, 'Tassement maximal w_max', o.wMax);
+  pushSettleMm(rows, 'Tassement minimal w_min', o.wMin);
   // Tassement différentiel (wMax−wMin) — affiché par l'outil client (ADR 0014).
-  pushRow(rows, 'Tassement différentiel', o.diff, 'mm');
+  pushSettleMm(rows, 'Tassement différentiel', o.diff);
   pushRow(rows, 'Moment radial maximal M_r', o.mrMax, 'kN·m/m');
   pushRow(rows, 'Moment tangentiel maximal M_t', o.mtMax, 'kN·m/m');
   pushRow(rows, 'Réaction de sol maximale p_max', o.pMax, 'kPa');
@@ -1151,9 +1199,9 @@ function buildAxiRows(o: Record<string, unknown>): CalcOutputRow[] {
  */
 function buildTriRaftRows(o: Record<string, unknown>): CalcOutputRow[] {
   const rows: CalcOutputRow[] = [];
-  pushRow(rows, 'Tassement maximal w_max', o.wMax, 'mm');
-  pushRow(rows, 'Tassement minimal w_min', o.wMin, 'mm');
-  pushRow(rows, 'Tassement différentiel', o.diff, 'mm');
+  pushSettleMm(rows, 'Tassement maximal w_max', o.wMax);
+  pushSettleMm(rows, 'Tassement minimal w_min', o.wMin);
+  pushSettleMm(rows, 'Tassement différentiel', o.diff);
   pushRow(rows, 'Réaction de sol maximale', o.reactionMax, 'kPa');
   pushRow(rows, 'Charge verticale totale ΣFz', o.totalLoad, 'kN');
   pushRow(rows, 'Réaction de sol intégrée Σp·A', o.sumReact, 'kN');
@@ -1700,6 +1748,9 @@ export function adaptCalcResult(raw: PrismaCalcResult): CalcResult {
     params: (raw.input ?? {}) as Record<string, unknown>,
     // Sortie normalisée client-safe ({verdict, rows}) — fail-closed.
     output: normalizeOutput(raw.output),
+    // Sortie serveur whitelistée BRUTE, conservée pour les clones d'UI client (ADR
+    // 0015 §4). La page roadsens lit `output` normalisé ; seul ToolFrame lit ceci.
+    rawOutput: raw.output ?? undefined,
     pvId: raw.pvId ?? undefined,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt ?? raw.createdAt,
@@ -1748,6 +1799,10 @@ export function adaptPersistedCalcResult(
     status,
     params: context.params,
     output: normalizeOutput(raw.output),
+    // Sortie serveur whitelistée BRUTE (barrière §8 = contrat serveur) — livrée au
+    // clone d'UI par ToolFrame (ADR 0015 §4). `normalizeOutput` reste la forme lue
+    // par la page roadsens (comportement inchangé).
+    rawOutput: raw.output ?? undefined,
     pvId: undefined,
     createdAt: now,
     updatedAt: now,
@@ -1847,7 +1902,9 @@ export function adaptProject(raw: PrismaProject): Project {
     orgId: raw.orgId,
     name: raw.name,
     description: raw.description ?? undefined,
-    domain: raw.domain as ProjectDomain,
+    // domain null (projet legacy) préservé tel quel — le filtrage front le tolère
+    // (matchesDomain). Une chaîne connue est castée en ProjectDomain.
+    domain: raw.domain === null ? null : (raw.domain as ProjectDomain),
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
     // #8 — le champ réel est `createdById` (Prisma: created_by_id), pas `createdBy`

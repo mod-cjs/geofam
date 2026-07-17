@@ -1,0 +1,337 @@
+{
+  "_meta": {
+    "source": "03-Moteurs-client/GeoSuite/source/tools/GEOPLAQUE_V10.html (référence gelée, lecture seule)",
+    "date": "2026-07-16",
+    "structure": "{navigation, sections[{titre, champs, tables, figures, actions}], workflows}",
+    "note": "Inventaire v2 (matrice de complétude). L'inventaire v1 (geoplaque-inventaire-client.json, structure Playwright) est conservé tel quel."
+  },
+  "navigation": [
+    {
+      "zone": "header",
+      "marque": "GEOPLAQUE — plaques sur sol multicouche élastique (logo SVG strates)",
+      "menu": [
+        "Nouveau",
+        "Exemple",
+        "Importer coords…",
+        "Exporter .json",
+        "Ouvrir .json",
+        "Imprimer"
+      ],
+      "actionPrincipale": "Calculer (bouton accent, lance le solveur radier ACM)"
+    },
+    {
+      "zone": "tool-rail (gauche, verticale, 11 outils)",
+      "outils": [
+        "Sélection (Échap)",
+        "Plaque — polygone (R)",
+        "Charge ponctuelle (P)",
+        "Charge linéique (L)",
+        "Charge répartie sur plaque (A)",
+        "Charge extérieure sur le sol (E)",
+        "Ressort ponctuel (K)",
+        "Ressort linéique",
+        "Mesurer (M)",
+        "Panoramique (Espace)",
+        "Zoom étendu (Z)"
+      ]
+    },
+    {
+      "zone": "espace modèle (centre)",
+      "composants": [
+        "canvas #cv (dessin CAO : grille, entités, cartographie superposée, marqueurs critiques, indices P1/K1/KL1)",
+        "helpbar (aide contextuelle de l'outil actif)",
+        "hud (coordonnées curseur X/Y en direct)",
+        "legend (légende flottante : titre du champ + barre de couleur + graduations)"
+      ]
+    },
+    {
+      "zone": "inspecteur (droite)",
+      "onglets": ["Modèle", "Sol", "Propriétés", "Résultats", "2D"]
+    },
+    {
+      "zone": "barre de commande (bas)",
+      "composants": [
+        "ligne de commande « commande › ex: 10,5 · raft · zoom · ? » (coordonnées x,y ; outils raft/point/line/area/ext/spring/lspring ; zoom/zf ; solve/calc/go ; sample/exemple ; clear/new ; copy/paste/move/dup ; array cols rows dx dy ; ?/help/aide)",
+        "bascules de statut : ACCRO (F9), GRILLE, ORTHO (F8)"
+      ]
+    },
+    {
+      "zone": "notifications",
+      "composants": [
+        "toast (ok/err, ex. « Calcul terminé en Xs · N nœuds », « Plaque créée »)",
+        "spinner « Maillage… »"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "titre": "Onglet Modèle — Informations projet",
+      "champs": [
+        "Titre du projet (texte, placeholder « ex. Bâtiment R+4 — plaque générale »)",
+        "Client / Maître d'ouvrage (texte)",
+        "Affaire / N° (texte)",
+        "Auteur (texte)"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Onglet Modèle — Entités du projet",
+      "champs": [],
+      "tables": [
+        "Liste unifiée des entités (swatch couleur + nom résumé « Plaque 1 · 4 sommets · e=0.4 m », « Charge ponctuelle 1 · 1000 kN », « Ressort linéique 1 · 5 MN/m/m »…) ; clic = sélectionner (bascule vers Propriétés), ✕ = supprimer"
+      ],
+      "figures": [],
+      "actions": ["sélection d'entité", "suppression d'entité"]
+    },
+    {
+      "titre": "Onglet Sol — Couches de sol",
+      "champs": [
+        "Note : « Cote de référence = 0 en surface. Z_base négatif vers le bas. La couche la plus profonde repose sur un substratum rigide. »"
+      ],
+      "tables": [
+        "Couches : Nom | Z_base | E (kPa) | ν | ✕ — défaut : Couche 1 (z=-10, E=2e4 kPa, ν=0.33), Couche 2 (z=-30, E=5e4 kPa, ν=0.33)"
+      ],
+      "figures": [],
+      "actions": ["+ Ajouter une couche"]
+    },
+    {
+      "titre": "Onglet Sol — Stratigraphie non horizontale (pendage, §2.3.1)",
+      "champs": [
+        "Pendage ∂(prof.)/∂x (m/m), déf. 0",
+        "Pendage ∂(prof.)/∂y (m/m), déf. 0"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Onglet Sol — Interface plaque / sol",
+      "champs": [
+        "Autoriser le décollement (sans traction) — case",
+        "Seuil de plastification de l'interface q_lim (kPa) — 0 = désactivé, déf. 0"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Onglet Sol — Fondation en profondeur / fond de fouille (§2.3.2 + §2.3.4)",
+      "champs": [
+        "Profondeur d'assise D (m) — 0 = en surface, déf. 0",
+        "γ terres excavées (kN/m³), déf. 18",
+        "Rapport de recompression k = E_ur/E₀ — 1 = pas de recompression, déf. 1"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Onglet Sol — Mouvement du sol en champ libre (§2.3.3)",
+      "champs": [
+        "Tassement imposé g₀ (mm) — (+ vers le bas, − soulèvement), déf. 0",
+        "Gradient ∂g/∂x (mm/m), déf. 0",
+        "Gradient ∂g/∂y (mm/m), déf. 0"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Onglet Sol — Appuis répartis supplémentaires (ressorts de Winkler, §2.2.7)",
+      "champs": [
+        "Module de réaction additionnel k_w (kN/m³) — 0 = désactivé, déf. 0",
+        "Compression seule (décollement) — case",
+        "Plastification p_lim (kPa) — 0 = aucune, déf. 0"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Onglet Sol — Maillage",
+      "champs": ["Maillage — pas de la grille de calcul (m), déf. 0.8, min 0.3"],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Onglet Propriétés (édition de l'entité sélectionnée)",
+      "champs": [
+        "Plaque : Module d'Young E (kPa), Coef. Poisson ν, Épaisseur e (m)",
+        "Charge ponctuelle : X (m), Y (m), Effort vertical Fz (kN), Moment Mx (kN·m), Moment My (kN·m)",
+        "Ressort ponctuel (§2.2.7) : X, Y, Raideur verticale k (kN/m) + note explicative (pieu/micropieu/plot, R = k·w, nœud le plus proche)",
+        "Charge linéique : X₁ Y₁ X₂ Y₂, Densité q (kN/ml)",
+        "Ressort linéique (§2.2.7) : X₁ Y₁ X₂ Y₂, Raideur linéique k (kN/m par m) + note (longrine, voile…)",
+        "Charge répartie / extérieure : X₁ Y₁ X₂ Y₂, Densité q (kPa), select « Appliquée sur : la plaque / le sol (extérieur) »"
+      ],
+      "tables": ["Plaque — Sommets (m) : # | X | Y (édition directe des coordonnées)"],
+      "figures": [],
+      "actions": ["Copier", "Déplacer", "Coller en série", "Supprimer cette entité"]
+    },
+    {
+      "titre": "Onglet Résultats — Cartographie",
+      "champs": [
+        "Sélecteur de champ (9 boutons) : Tassement, Distorsion |∇w|, Rotation θx, Rotation θy, Réaction, Coef. réaction, Moment Mx, Moment My, Moment Mxy",
+        "Lignes d'isovaleurs — case",
+        "Remplissage par plages (paliers) — case",
+        "Nombre de niveaux — select 6/8/10/12/16/20/24",
+        "Marquer les points critiques (S max, β max) — case"
+      ],
+      "tables": [],
+      "figures": [
+        "Carte rendue SUR le canvas modèle (superposée au radier), palette turbo (champs positifs) / divergente bleu-blanc-rouge (champs signés θx/θy/Mx/My/Mxy), isovaleurs et paliers optionnels",
+        "Marqueurs : S max (blanc), S min (bleu), β max (rouge), segment pointillé Δs S max↔S min, couple de charges le plus défavorable P_i–P_j, indices P1…/K1…/KL1… aux charges et ressorts",
+        "Légende flottante : nom du champ + unité, barre de couleur, 4 à 8 graduations"
+      ],
+      "actions": [
+        "changement de champ",
+        "bascule iso/plages/niveaux/points critiques (re-cuisson immédiate)"
+      ]
+    },
+    {
+      "titre": "Onglet Résultats — Vérifications · EC7 annexe H",
+      "champs": [
+        "Tassement total max (mm) — pastille vert/orange/rouge (seuils 25/50 mm), note « repère ≈ 50 mm… point le plus bas en (x, y) »",
+        "Tassement différentiel (mm) — pastille (10/20 mm), note « repère ≈ 20 mm… segment S max↔S min tracé sur la carte (x,y)→(x,y) »",
+        "Distorsion angulaire β — format « 1/N (x.xe-x rad) », pastille (1/500, 1/150), note « limite ELS ≈ 1/500, ELU ≈ 1/150 · max en (x, y) »",
+        "Inclinaison d'ensemble ϖ — « 1/N », pastille, note « basculement rigide… visible vers 1/500 »",
+        "[si multi-plaques] Distorsion entre plaques — « 1/N · Δs x.x mm », pastille",
+        "[si ≥ 2 charges] Distorsion entre charges (max) — « 1/N · Δs x.x mm / L m », pastille, note « colonnes adjacentes les plus défavorables : charge i ↔ j »"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Onglet Résultats — Différentiel entre charges voisines",
+      "champs": [
+        "Note : « Chaque charge est confrontée à ses voisines (β = Δtassement / distance). Trié du plus défavorable au moins. Critère ELS 1/500, ELU 1/150. »"
+      ],
+      "tables": [
+        "Charges | Δs (mm) | L (m) | β (1/N coloré ok/warn/bad) — 8 pires paires + « … n autre(s) couple(s) · n charges au total »"
+      ],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Onglet Résultats — Synthèse",
+      "champs": [
+        "Nœuds de calcul (+ « · n plaques » si multi)",
+        "Tassement max / min (mm, ×1000 d'affichage)",
+        "Rotation θx max (rad exponentiel + 1/N)",
+        "Rotation θy max (rad + 1/N)",
+        "Pente locale max |∇w| (rad + 1/N)",
+        "Réaction p (min/max) (kPa)",
+        "|Mx| / |My| max (kN·m/ml)",
+        "|Mxy| max (torsion) (kN·m/ml)",
+        "Charge appliquée Σ (kN)",
+        "Σ réactions sol (kN)",
+        "[si Winkler] Σ réaction Winkler (kN) + compteurs décol./plast.",
+        "[si ressorts] Σ réaction ressorts (kN) + nb ponctuels/linéiques",
+        "[si Winkler ou ressorts] Σ résistances (équilibre) (kN + écart %)",
+        "[si décollement] Nœuds décollés (+ itérations)",
+        "[si q_lim] Nœuds plastifiés (+ seuil q_lim kPa)",
+        "[si D>0] Cote d'assise D (m, ⚠ si trop proche du substratum)",
+        "[si pendage] Pendage stratigraphie ∂/∂x · ∂/∂y",
+        "[si recompression] Recompression σv0 kPa · k",
+        "[si overCap] Encadré rouge « ⚠ Capacité de l'interface dépassée (poinçonnement) … »",
+        "Note d'hypothèses : θx = ∂w/∂y, θy = −∂w/∂x, distorsion/inclinaison, Kirchhoff, Steinbrenner + Boussinesq, substratum rigide, recompression, appuis en parallèle"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Onglet 2D — Déformations planes (§2.4.2)",
+      "champs": [
+        "Largeur B (m), déf. 10",
+        "Épaisseur e (m), déf. 0.5",
+        "E béton (kPa), déf. 3e7",
+        "ν béton, déf. 0.2",
+        "Charge répartie q (kPa) sur toute la largeur, déf. 100",
+        "Charges ponctuelles linéiques — TEXTAREA une par ligne « x P » (x en m, P en kN/m)",
+        "Nb d'éléments, déf. 60",
+        "Décollement — case",
+        "(le sol et la cote D sont ceux de l'onglet Sol — partagés)"
+      ],
+      "tables": [],
+      "figures": [
+        "SVG 3 bandes empilées : tassement w (mm, bleu), moment M (kN·m/m, orange), réaction p (kPa, vert) ; ligne de zéro pointillée ; axe « x (m) — 0 → B »"
+      ],
+      "actions": [
+        "Calculer (déformations planes) → stats : Tassement max / min, Tassement différentiel, Moment max (+/−), Réaction sol max, Charge / réaction Σ (+ « équilibre ✓ » ou écart %), [Cote d'assise D], [Décollement n nœuds · n itér.], Rigidité D (E·e³/12(1−ν²))"
+      ]
+    },
+    {
+      "titre": "Onglet 2D — Axisymétrie (§2.4.1)",
+      "champs": [
+        "Rayon R (m), déf. 6",
+        "Épaisseur e (m), déf. 0.4",
+        "E béton (kPa), déf. 3e7",
+        "ν béton, déf. 0.2",
+        "Charge répartie q (kPa), déf. 120",
+        "Charge centrale P (kN), déf. 0",
+        "Nb d'éléments (annulaires), déf. 50"
+      ],
+      "tables": [],
+      "figures": [
+        "SVG 4 bandes : tassement w (mm), moment M_r, moment M_t, réaction p ; axe « r (m) — axe 0 → bord R »"
+      ],
+      "actions": [
+        "Calculer (axisymétrique) → stats : Tassement centre / bord, Tassement différentiel, Moment radial M_r max, Moment tangentiel M_t max, Réaction sol max, Charge / réaction Σ (+ équilibre), [Cote d'assise D]"
+      ]
+    },
+    {
+      "titre": "Onglet 2D — Maillage triangulaire (DKT, §2.2.2)",
+      "champs": [
+        "Épaisseur e (m), déf. 0.5",
+        "Taille maille cible (m²), déf. 1.0",
+        "E béton (kPa), déf. 3e7",
+        "ν béton, déf. 0.2",
+        "Charge répartie additionnelle q (kPa), déf. 0",
+        "(utilise les PLAQUES et CHARGES dessinées dans l'onglet Modèle + le sol de l'onglet Sol)"
+      ],
+      "tables": [],
+      "figures": [
+        "SVG du maillage triangulaire RÉEL coloré par tassement (palette jet), légende « tassement — bleu x mm → rouge x mm »"
+      ],
+      "actions": [
+        "Mailler & calculer (DKT) → stats : Maillage (n plaques · N nœuds · nt triangles), Tassement max / min, Tassement différentiel, Réaction sol max, Charge / réaction Σ (+ équilibre), [Cote d'assise D]"
+      ]
+    },
+    {
+      "titre": "Note de calcul imprimable (menu Imprimer)",
+      "champs": [
+        "En-tête GEOPLAQUE + date/heure",
+        "Bandeau projet (titre, client, affaire, auteur)"
+      ],
+      "tables": [
+        "Modèle — fondations : Élément | Géométrie | Emprise X × Y | E (MPa) | ν | Épaisseur",
+        "Charges ponctuelles : # | Position | Fz | Mx / My",
+        "Charges linéiques : # | Tracé | q",
+        "[si présents] Ressorts ponctuels / linéiques : # | Position/Tracé | Raideur k",
+        "Charges réparties : # | Emprise | q | Sur",
+        "Profil de sol : Couche | Z base | E | ν",
+        "Paramètres de calcul : modèle de plaque (Kirchhoff ACM 12 DDL), modèle de sol (Steinbrenner + Boussinesq), pas de maillage, décollement, plastification, Winkler, ressorts, champ libre, pendage, recompression, niveau d'assise",
+        "Vérifications EC7 : Critère | Valeur (avec localisations) | Repère | Verdict CONFORME/ATTENTION/DÉPASSEMENT",
+        "[si ≥2 charges] Tassement différentiel entre charges voisines : Couple | Pos 1 | Pos 2 | Δs | L | β | EC7 (TOUTES les paires)",
+        "Synthèse des résultats (mêmes ~18 lignes que l'onglet Résultats)"
+      ],
+      "figures": ["Vue du modèle / cartographie (capture PNG du canvas)"],
+      "actions": ["Imprimer / PDF (window.print)"]
+    }
+  ],
+  "workflows": [
+    "Créer un modèle : outil Plaque (R) → cliquer les sommets sur le canvas (accrochage grille/ortho, coordonnées à la souris ou via la ligne de commande « x,y ») → Entrée/clic droit ferme le polygone → toast « Plaque créée »",
+    "Charger : outils P/L/A/E → clic(s) sur le canvas ; ressorts K / ressort linéique ; indices P1/K1/KL1 affichés",
+    "Éditer : clic Sélection → l'onglet Propriétés s'ouvre → modifier champs/sommets, Copier / Déplacer / Coller en série / Supprimer ; Ctrl+C/Ctrl+V/Ctrl+D ; commande « array cols rows dx dy » pour un réseau",
+    "Définir le sol : onglet Sol → couches (nom/z/E/ν) + options (pendage, décollement, q_lim, assise D/γ/k, champ libre, Winkler, pas de maillage)",
+    "Calculer : bouton Calculer (ou commande solve) → spinner « Maillage… » → bascule AUTOMATIQUE sur l'onglet Résultats → toast « Calcul terminé en Xs · N nœuds » → carte dessinée sur le modèle",
+    "Explorer les résultats : boutons de champ (9), isovaleurs/plages/niveaux, points critiques, vérifications EC7 à pastilles, tableau des paires de charges, synthèse ; toute modification du modèle INVALIDE les résultats",
+    "Modes 2D : onglet 2D → renseigner la bande (§2.4.2) / le radier circulaire (§2.4.1) / mailler les plaques du modèle (DKT §2.2.2) → stats + figures SVG par mode (sol PARTAGÉ avec l'onglet Sol)",
+    "Livrer : Imprimer → note de calcul navigateur complète (modèle + paramètres + figure + EC7 + synthèse + hypothèses) → Imprimer / PDF",
+    "Persister : Exporter .json / Ouvrir .json (fichier local) ; Importer coords… (X;Y par ligne → plaque) ; Exemple → cas préchargé 16×10 m, 12 poteaux 700/1000/1400 kN, e=0.35 m ; Nouveau → réinitialisation"
+  ]
+}

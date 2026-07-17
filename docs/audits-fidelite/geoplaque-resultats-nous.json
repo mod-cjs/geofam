@@ -1,0 +1,23 @@
+{
+  "rows": [
+    ["Grandeur", "Valeur", "Unité"],
+    ["Tassement maximal w_max", "8,744", "mm"],
+    ["Tassement minimal w_min", "7,262", "mm"],
+    ["Tassement différentiel", "1,482", "mm"],
+    ["Distorsion angulaire gouvernante β", "0,556", "‰"],
+    ["Distorsion intra-plaque max", "0,556", "‰"],
+    ["Inclinaison d'ensemble ϖ", "0", "‰"],
+    ["Pente locale max |∇w|", "0,556", "‰"],
+    ["Nombre de radiers", "1", ""],
+    ["Rotation θx max", "0,393", "‰"],
+    ["Rotation θy max", "0,393", "‰"],
+    ["Réaction de sol min p_min", "30,823", "kPa"],
+    ["Réaction de sol max p_max", "226,487", "kPa"],
+    ["|Mx| max", "39,926", "kN·m/ml"],
+    ["|My| max", "39,926", "kN·m/ml"],
+    ["|Mxy| max (torsion)", "2,411", "kN·m/ml"],
+    ["Charge appliquée Σ", "1 800", "kN"],
+    ["Σ réactions sol", "1 800", "kN"]
+  ],
+  "fieldButtons": []
+}

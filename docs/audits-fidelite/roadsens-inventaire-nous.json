@@ -1,0 +1,135 @@
+{
+  "tabs": [
+    "Structure",
+    "Trafic",
+    "Paramètres",
+    "Catalogue",
+    "Résultats",
+    "Détails calcul"
+  ],
+  "panes": {
+    "Structure": {
+      "headings": [],
+      "labels": [
+        "Épaisseur couche 1 (m)",
+        "Module E couche 1 (MPa)",
+        "Poisson couche 1",
+        "✕ Suppr.",
+        "Auto · colléeColléeSemi-colléeGlissante",
+        "Épaisseur couche 2 (m)",
+        "Module E couche 2 (MPa)",
+        "Poisson couche 2",
+        "Épaisseur couche 3 (m)",
+        "Module E couche 3 (MPa)",
+        "Poisson couche 3",
+        "Classe PFi",
+        "PF1 — 20 MPaPF2 — 50 MPaPF2qs — 80 MPaPF3 — 120 MPaPF4 — 200 MPaPersonnalisé",
+        "E_PSC (MPa)",
+        "Module PSC (MPa)",
+        "ν_PSC",
+        "Poisson PSC"
+      ],
+      "buttons": ["Réinitialiser", "✕ Suppr.", "+ Ajouter couche"]
+    },
+    "Trafic": {
+      "headings": [],
+      "labels": [
+        "TMJA (PL/j/sens)",
+        "TMJA poids lourds par jour et par sens",
+        "CAM — agressivité moyenne",
+        "CAM coefficient d'agressivité moyen",
+        "Durée n (ans)",
+        "Durée de service (ans)",
+        "Taux τ (%/an)",
+        "Taux de croissance annuel (%)",
+        "f_dir",
+        "Coefficient directionnel",
+        "f_tv",
+        "Coefficient de répartition transversale",
+        "Imposer le NE cumulé (essieux équivalents), sans passer par le TMJA",
+        "Imposer le NE cumulé directement"
+      ],
+      "buttons": []
+    },
+    "Paramètres": {
+      "headings": [
+        "Éq. 6a (σ_z)",
+        "Éq. 6b (τ_rz)",
+        "Éq. 6c (σ_r)",
+        "Éq. 6d (w)",
+        "Éq. 6e (u)",
+        "Propagateur 4×4",
+        "CL surface",
+        "Aucun Odemark"
+      ],
+      "labels": [
+        "Pression p₀ (MPa)",
+        "Pression de contact (MPa)",
+        "Rayon a (m)",
+        "Rayon de la surface chargée (m)",
+        "Entre-axe d (m)",
+        "Entre-axe du jumelage (m)",
+        "Risque r (%)",
+        "Sh — dispersion d'épaisseur",
+        "Auto — Tab. VI.2.4 (guide)1 cm1,5 cm2,5 cm3 cm (défaut Alizé)",
+        "ks — hétérogénéité du support",
+        "ε₆ BBSG classe 1 (µdef)",
+        "ε₆ BBSG classe 2/3 (µdef)",
+        "ε₆ BB Très Mince (BBTM) (µdef)",
+        "ε₆ BB Mince (BBM) (µdef)",
+        "ε₆ Grave Bitume GB2 (µdef)",
+        "ε₆ Grave Bitume GB3 (µdef)",
+        "ε₆ EME2 (µdef)",
+        "σ₆ Latérite ciment GLc1 (MPa)",
+        "σ₆ Latérite ciment GLc2 (MPa)",
+        "σ₆ Grave Ciment GC-T3 (MPa)",
+        "σ₆ Sable Ciment SC-T2 (MPa)",
+        "σ₆ Banco-coquillage (BQc) (MPa)",
+        "σ₆ Béton BC5 (MPa)",
+        "σ₆ Béton Maigre BC2 (MPa)",
+        "σ₆ Béton BC5 (dalle goujonnée) (MPa)"
+      ],
+      "buttons": []
+    },
+    "Catalogue": {
+      "headings": [],
+      "labels": [
+        "Famille",
+        "NE (×10⁶)",
+        "NE en millions",
+        "67821cm",
+        "61218cm",
+        "6915cm",
+        "6814cm",
+        "691025cm",
+        "68822cm",
+        "61420cm",
+        "61016cm",
+        "6121230cm",
+        "6101026cm",
+        "68923cm",
+        "69101035cm",
+        "6121331cm",
+        "6111128cm",
+        "810101139cm",
+        "8131435cm",
+        "8111231cm",
+        "810111140cm",
+        "89101037cm",
+        "811121243cm",
+        "813131347cm"
+      ],
+      "buttons": []
+    },
+    "Résultats": {
+      "headings": [],
+      "labels": [],
+      "buttons": []
+    },
+    "Détails": {
+      "headings": [],
+      "labels": [],
+      "buttons": []
+    }
+  }
+}

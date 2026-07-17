@@ -281,7 +281,7 @@ describe('Auth + RBAC + tenant (e2e)', () => {
       .post('/projects')
       .set('authorization', `Bearer ${access}`)
       .set('x-org-id', orgA)
-      .send({ name: 'Projet legitime' });
+      .send({ name: 'Projet legitime', domain: 'FD' });
     expect(res.status).toBe(201);
     const body = res.body as ProjectBody;
     expect(body.orgId).toBe(orgA);

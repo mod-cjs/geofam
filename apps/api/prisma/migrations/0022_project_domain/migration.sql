@@ -1,0 +1,42 @@
+-- =====================================================================
+--  ROADSEN — Migration 0022 : DOMAINE METIER DES PROJETS (CH/FD/LB)
+--
+--  INTENTION. Chaque logiciel de la plateforme ne liste que les projets de SON
+--  domaine metier (roadsens=CH, terzaghi/casagrande/geoplaque=FD,
+--  fastlab/pressiopro=LB). Le front cree deja les projets avec un `domain` et
+--  filtre dessus ; la colonne manquait cote base -> en mode reel `domain`
+--  revenait `undefined` et TOUTES les listes de projets etaient vides (bug de la
+--  famille « swap mock->reel »). Cette migration ajoute le type + la colonne.
+--
+--  CARACTERE ADDITIF / NON DESTRUCTIF :
+--    - CREATE TYPE "ProjectDomain" (nouveau type, aucune table touchee).
+--    - ALTER TABLE "projects" ADD COLUMN "domain" ... NULLABLE, SANS DEFAULT.
+--      NULLABLE A DESSEIN : les projets EXISTANTS (crees avant cette colonne) ont
+--      un domaine INCONNU. On refuse un defaut silencieusement faux (les classer
+--      tous « CH » serait un mensonge) : ils restent `domain = NULL` et le front
+--      les rend selectionnables dans TOUS les logiciels (domaine inconnu, honnete)
+--      plutot qu'invisibles partout. Un eventuel backfill (derive de
+--      calc_results.engine_id) est une decision separee, PAS faite ici.
+--    - Rien n'est supprime ni reecrit -> rollback = DROP COLUMN + DROP TYPE.
+--
+--  IMPACT RLS / ISOLATION : NUL.
+--    - La policy `tenant_isolation` de `projects` (0004) porte UNIQUEMENT sur
+--      `org_id` (USING/WITH CHECK org_id = app_current_org()). Ajouter une colonne
+--      non impliquee dans la policy ne change ni la visibilite ni l'ecriture
+--      cross-tenant. Aucune policy n'est modifiee.
+--    - Le GRANT runtime sur `projects` (0001) est au niveau TABLE
+--      (GRANT SELECT, INSERT, UPDATE, DELETE ON "projects" TO roadsen_app), il
+--      couvre automatiquement la nouvelle colonne -> AUCUN grant a ajouter.
+--    - `domain` n'est pas un discriminant de securite : c'est un critere
+--      d'affichage metier INTRA-tenant, l'isolation reste 100 % portee par org_id.
+--
+--  REVUE BINOME `ingenieur-securite` (regle multi-tenant) : colonne purement
+--  metier, aucune policy/grant touche, aucun chemin de donnees ne contourne le
+--  cloisonnement. Test d'isolation post-migration inchange (rls-isolation.e2e).
+-- =====================================================================
+
+-- CreateEnum
+CREATE TYPE "ProjectDomain" AS ENUM ('CH', 'FD', 'LB');
+
+-- AlterTable (additif, nullable, sans default)
+ALTER TABLE "projects" ADD COLUMN "domain" "ProjectDomain";

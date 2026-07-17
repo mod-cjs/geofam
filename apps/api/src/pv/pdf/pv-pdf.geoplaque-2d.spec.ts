@@ -2,18 +2,17 @@
  * Test SENTINELLE (CRITIQUE-1) — le PV d'un mode 2D GEOPLAQUE (plane-strain /
  * axi-plaque / radier-tri) ne doit PAS être un mur de nombres.
  *
- * CONTEXTE : ces trois modes n'ont pas de builder métier dédié dans buildBody ->
- * ils tombent dans le FALLBACK générique clé-valeur (buildKeyValueTable). Or
- * leur sortie porte désormais des CHAMPS D'AFFICHAGE volumineux — `profils`
- * (97 points × plusieurs courbes) et `champDeflexion` (grille jusqu'à 48×48 =
- * 2304 valeurs) — destinés au RENDU de l'app (carto design-sûre), pas à un
- * tableau clé-valeur. Aplatis récursivement, ils produisent des centaines à
- * des milliers de lignes : un PV scellé/numéroté imprésentable (DoD §5).
+ * CONTEXTE : ces trois modes ont désormais un CORPS MÉTIER DÉDIÉ (buildPlaneStrainBody
+ * / buildAxiBody / buildTriRaftBody), miroir des panneaux `#ps-run` / `#ax-run` /
+ * `#tri-run` de l'outil client. Leur sortie porte des CHAMPS D'AFFICHAGE volumineux —
+ * `profils` (97 points × plusieurs courbes) et `champDeflexion` (grille jusqu'à 48×48 =
+ * 2304 valeurs) — destinés au RENDU de l'app (carto design-sûre), JAMAIS listés en
+ * clé-valeur. Aplatis récursivement, ils produiraient des centaines à des milliers de
+ * lignes : un PV scellé/numéroté imprésentable (DoD §5).
  *
- * CORRECTION prouvée ici : le fallback STRIP ces clés de PURE VISUALISATION
- * AVANT flatten (uniquement au RENDU ; l'intégrité est intacte — elles restent
- * DANS input_canonical scellé). Les SCALAIRES métier (wMax, mMax, sumReact, EI,
- * diff…) restent, eux, rendus et lisibles.
+ * PROTECTION prouvée ici : le corps dédié ne rend QUE des scalaires whitelistés et
+ * n'énumère jamais `profils`/`champDeflexion` (l'intégrité est intacte — ils restent
+ * DANS input_canonical scellé). Volume BORNÉ + libellés métier.
  *
  * On construit un OfficialPv SCELLÉ en mémoire (sceau valide) — patron du spec
  * multipage : aucune base, aucun réseau.
@@ -171,19 +170,34 @@ describe('PV mode 2D GEOPLAQUE (fallback) — pas de mur de nombres (CRITIQUE-1)
     },
   );
 
-  it('conserve les SCALAIRES métier whitelistés (wMax/mMax/sumReact/EI/diff)', () => {
+  it('rend les diagnostics métier AVEC libellés (corps plane-strain dédié) et masque les champs d’affichage', () => {
     const pv = makeSealedPv('plane-strain', smallInput(), twoDOutput());
+    const def = buildPvDocDefinition(pv);
+    // Les grandeurs sont désormais LIBELLÉES (miroir du panneau `#ps-run`), plus de
+    // clés brutes « wMax »/« mMax »/« EI » : chaque valeur porte son unité.
+    expect(findRowValue(def.content, 'Tassement maximal w_max')?.value).toBe(
+      '12 340 mm', // wMax 12.34 -> *1000 comme l'outil client (défaut d'affichage copié)
+    );
+    expect(findRowValue(def.content, 'Moment fléchissant maximal')?.value).toBe(
+      '45,7 kN·m/m',
+    );
+    expect(findRowValue(def.content, 'Tassement différentiel')?.value).toBe(
+      '11 110 mm',
+    );
+    expect(findRowValue(def.content, 'Rigidité de flexion D')?.value).toMatch(
+      /kN·m$/,
+    );
+    expect(findRowValue(def.content, 'Charge / réaction Σ')?.value).toContain(
+      'kN/m',
+    );
     const text = collectPvPdfText(pv);
-    expect(text).toContain('wMax');
-    expect(text).toContain('12,34'); // valeur wMax formatée fr-FR
-    expect(text).toContain('mMax');
-    expect(text).toContain('45,67');
-    expect(text).toContain('sumReact');
-    expect(text).toContain('EI');
-    expect(text).toContain('diff');
-    // Les clés de PURE VISUALISATION ne sont PAS rendues clé-valeur.
+    // Aucune clé brute résiduelle (le fallback clé-valeur n'est plus emprunté).
+    expect(text).not.toContain('wMax');
+    expect(text).not.toContain('mMax');
+    // Les clés de PURE VISUALISATION ne sont JAMAIS rendues.
     expect(text).not.toContain('champDeflexion');
     expect(text).not.toContain('deflexion');
+    expect(text).not.toContain('profils');
   });
 
   it('produit un PDF réel de volume BORNÉ (≤ 2 pages, sceau valide)', async () => {
@@ -204,10 +218,50 @@ describe('PV mode 2D GEOPLAQUE (fallback) — pas de mur de nombres (CRITIQUE-1)
   it('l’intégrité est intacte : les champs d’affichage restent DANS le sceau', () => {
     const pv = makeSealedPv('plane-strain', smallInput(), twoDOutput());
     // input_canonical (scellé) contient toujours profils + champDeflexion : le
-    // strip ne concerne QUE le rendu clé-valeur, jamais la donnée scellée.
+    // corps dédié ne les liste jamais, mais la donnée scellée est intacte.
     expect(pv.inputCanonical).toContain('profils');
     expect(pv.inputCanonical).toContain('champDeflexion');
     // Le rendu ne throw pas et le hash imprimé recolle au sceau (fail-closed).
     expect(() => buildPvDocDefinition(pv)).not.toThrow();
   });
 });
+
+/** Lit la valeur (cellule d'index 1) de la ligne dont la 1re cellule = `label`. */
+function findRowValue(
+  content: unknown,
+  label: string,
+): { value: string } | null {
+  let found: { value: string } | null = null;
+  const cellText = (c: unknown): string =>
+    c &&
+    typeof c === 'object' &&
+    typeof (c as { text?: unknown }).text === 'string'
+      ? (c as { text: string }).text
+      : '';
+  const walk = (n: unknown): void => {
+    if (found || n == null) return;
+    if (Array.isArray(n)) {
+      n.forEach(walk);
+      return;
+    }
+    if (typeof n === 'object') {
+      const o = n as Record<string, unknown>;
+      const table = o.table as { body?: unknown[][] } | undefined;
+      if (table?.body) {
+        for (const row of table.body) {
+          if (
+            Array.isArray(row) &&
+            row.length >= 2 &&
+            cellText(row[0]) === label
+          ) {
+            found = { value: cellText(row[1]) };
+            return;
+          }
+        }
+      }
+      Object.values(o).forEach(walk);
+    }
+  };
+  walk(content);
+  return found;
+}

@@ -20,7 +20,12 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { computePieux, computeDowndrag, computeBeton } from './engine.js';
+import {
+  computePieux,
+  computeDowndrag,
+  computeBeton,
+  computePortanceCurve,
+} from './engine.js';
 import {
   PIEUX_BETON_FIXTURES,
   PIEUX_DOWNDRAG_FIXTURES,
@@ -50,6 +55,31 @@ describe('pieux — determinisme (meme entree -> meme sortie x100, egalite stric
     const first = JSON.stringify(computePieux(fx.input));
     const second = JSON.stringify(computePieux(fx.input));
     expect(second).toBe(first);
+  });
+});
+
+describe('pieux — COURBE DE PORTANCE déterministe (§8) — même entrée -> même sortie x100, égalité stricte', () => {
+  for (const fx of PIEUX_FIXTURES) {
+    it(`[${fx.id}] balayage de portance identique sur 100 appels`, () => {
+      const ref = JSON.stringify(computePortanceCurve(fx.input));
+      for (let i = 0; i < 100; i++) {
+        // Égalité STRICTE : le balayage (portanceCore/portanceCaps sur une grille de D)
+        // est purement arithmétique -> aucune dérive entre deux appels.
+        expect(JSON.stringify(computePortanceCurve(fx.input))).toBe(ref);
+      }
+    });
+  }
+
+  it('le balayage de portance ne MUTE pas l entrée (pénétrogramme cloné ; 2 appels identiques)', () => {
+    const fx = PIEUX_FIXTURES.find((f) => f.id === 'cpt-fore-da2');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const cptAvant = JSON.stringify(fx.input.cpt);
+    const first = JSON.stringify(computePortanceCurve(fx.input));
+    const second = JSON.stringify(computePortanceCurve(fx.input));
+    expect(second).toBe(first);
+    // Le pénétrogramme d'entrée est INCHANGÉ (clone local, pas de régénération sur state).
+    expect(JSON.stringify(fx.input.cpt)).toBe(cptAvant);
   });
 });
 

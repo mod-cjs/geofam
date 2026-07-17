@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Project } from '@prisma/client';
+import type { Project, ProjectDomain } from '@prisma/client';
 
 // Import VALEUR (et non `import type`) : NestJS s'appuie sur la metadonnee de
 // type du constructeur pour l'injection. Un `import type` est efface a la
@@ -31,11 +31,20 @@ export class ProjectsService {
     );
   }
 
-  create(input: { name: string; createdById: string }): Promise<Project> {
+  create(input: {
+    name: string;
+    domain: ProjectDomain;
+    createdById: string;
+  }): Promise<Project> {
     const orgId = requireOrgId();
     return this.prisma.withTenant(orgId, (tx) =>
       tx.project.create({
-        data: { orgId, name: input.name, createdById: input.createdById },
+        data: {
+          orgId,
+          name: input.name,
+          domain: input.domain,
+          createdById: input.createdById,
+        },
       }),
     );
   }

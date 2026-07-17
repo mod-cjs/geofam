@@ -38,12 +38,18 @@ describe('ProjectsController.create — forcing du proprietaire (#42)', () => {
     return { auth: { userId } } as unknown as AuthedRequest;
   }
 
-  it('given un body {name} : passe createdById = sub du JWT au service', async () => {
-    await controller.create({ name: 'Forage A' }, reqWithSub('user-jwt'));
+  it('given un body {name, domain} : passe name + domain + createdById = sub du JWT au service', async () => {
+    await controller.create(
+      { name: 'Forage A', domain: 'FD' },
+      reqWithSub('user-jwt'),
+    );
 
     expect(service.create).toHaveBeenCalledTimes(1);
+    // Le domaine metier (CH/FD/LB) est propage tel quel ; le proprietaire reste
+    // le sub du JWT (jamais une valeur cliente).
     expect(service.create).toHaveBeenCalledWith({
       name: 'Forage A',
+      domain: 'FD',
       createdById: 'user-jwt',
     });
   });
@@ -53,24 +59,29 @@ describe('ProjectsController.create — forcing du proprietaire (#42)', () => {
     // owner_user_id n'atteignent jamais le body. On passe le payload pollue par
     // le MEME pipe que la route, puis on appelle le controleur. Le service ne
     // doit voir QUE le sub du JWT comme proprietaire, jamais la valeur cliente.
-    const schema = z.object({ name: z.string().trim().min(1).max(200) });
+    const schema = z.object({
+      name: z.string().trim().min(1).max(200),
+      domain: z.enum(['CH', 'FD', 'LB']),
+    });
     const pipe = new ZodValidationPipe(schema);
     const polluted = pipe.transform({
       name: 'Forage B',
+      domain: 'FD',
       createdById: 'attaquant-uid',
       owner_user_id: 'attaquant-uid',
       ownerUserId: 'attaquant-uid',
     });
     // Preuve directe du stripping : la cle cliente n'a pas survecu a la validation.
-    expect(polluted).toEqual({ name: 'Forage B' });
+    expect(polluted).toEqual({ name: 'Forage B', domain: 'FD' });
     expect((polluted as Record<string, unknown>).createdById).toBeUndefined();
 
     await controller.create(polluted, reqWithSub('user-jwt'));
 
-    // Le service ne recoit QUE le name (du body strippe) + createdById = sub JWT.
+    // Le service ne recoit QUE name+domain (du body strippe) + createdById = sub JWT.
     // Jamais la valeur cliente 'attaquant-uid'.
     expect(service.create).toHaveBeenCalledWith({
       name: 'Forage B',
+      domain: 'FD',
       createdById: 'user-jwt',
     });
     expect(service.create).not.toHaveBeenCalledWith(

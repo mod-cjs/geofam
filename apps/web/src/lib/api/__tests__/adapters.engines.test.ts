@@ -374,14 +374,24 @@ describe('adaptCalcResult — pieux (fondation profonde)', () => {
 });
 
 describe('adaptCalcResult — radier (plaque/sol multicouche)', () => {
-  it('given betaGov/nRafts, when adapté, then verdict NA (analyse) + tassements en mm', () => {
+  it('given betaGov/nRafts, when adapté, then verdict NA + tassements ×1000 et angles crus « rad » (copie GEOPLAQUE_V10)', () => {
     const norm = normalizedOf('radier-plaque', REAL_RADIER);
     expect(norm.verdict).toBe('NA');
     expect(labels(norm)).toMatch(/Tassement maximal/);
-    const beta = (norm.rows as CalcOutputRow[]).find((r) =>
-      r.label.includes('Distorsion'),
+    // Tassements : sur-rapport ×1000 comme l'outil client (wMax 8,7895 -> 8789,5 mm).
+    // Décision titulaire 15/07 re-confirmée 17/07 (« zéro écart absolu ») : l'affichage
+    // COPIE le défaut de l'outil client ; la sortie moteur (8,7895 mm) reste juste.
+    const wmax = (norm.rows as CalcOutputRow[]).find(
+      (r) => r.label === 'Tassement maximal w_max',
     );
-    expect(beta?.unit).toBe('‰');
+    expect(wmax?.value).toBe(8.7895 * 1000);
+    expect(wmax?.unit).toBe('mm');
+    // Distorsion β : rendue CRUE `ratio1(β) (β.toExponential(1) rad)`, plus de ‰.
+    const beta = (norm.rows as CalcOutputRow[]).find((r) =>
+      r.label.includes('Distorsion angulaire'),
+    );
+    expect(beta?.unit).toBe('');
+    expect(beta?.value).toBe('1/1 (9,3e-1 rad)');
   });
 
   it('complétude : affiche TOUS les diagnostics client-safe (intra, inclinaison, pente)', () => {
@@ -522,7 +532,8 @@ describe('adaptCalcResult — axi (radier circulaire axisymétrique)', () => {
     const diff = (norm.rows as CalcOutputRow[]).find(
       (r) => r.label === 'Tassement différentiel',
     );
-    expect(diff?.value).toBe(4.09);
+    // ×1000 comme le panneau #ax-run de l'outil client (défaut d'affichage copié).
+    expect(diff?.value).toBe(4.09 * 1000);
     expect(diff?.unit).toBe('mm');
   });
 });

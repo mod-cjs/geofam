@@ -973,6 +973,222 @@ export function computePieux(state) {
 }
 
 // ===========================================================================
+// COURBE DE PORTANCE EN PROFONDEUR — extraction PURE de portanceCore/portanceCaps/
+// drawPortance() (casagrande_V5.html) : la SCIENCE du balayage capacite=f(D).
+// ===========================================================================
+//
+// Transcription FIDELE de portanceCore(D) + portanceCaps(c) + du balayage de
+// drawPortance(Dcur) du HTML d'origine. Seules differences (comme le calcul principal) :
+//   - geometrie/charges/profil/penetrogramme sont DEBALLES depuis `state` (pas de DOM) ;
+//   - on RETOURNE les rows brutes { D, c:{elufond,eluacc,elscar,elsqp} } au lieu de
+//     dessiner le SVG (drawPortance n'est PAS transcrit — c'est de la presentation) ;
+//   - le penetrogramme CPT est clone une fois (purete : jamais de mutation de state).
+// Aucune formule, aucun seuil, aucun ordre de sommation n'est modifie. Les facteurs de
+// resistance gR de portanceCaps sont les valeurs LITTERALES de l'outil (courbe
+// d'affichage) ; ils sont INDEPENDANTS des `coeffs` autoritatifs (aucune autorite).
+//
+// La RE-ECHANTILLONNAGE (grille D fixe decouplee) est faite en aval (index.ts), comme
+// pour les cartes radier : ici on produit le balayage a la resolution native.
+
+/** portanceCore(D) — capacites caracteristiques a la profondeur D. null si non calculable. */
+function portanceCoreAt(state, D, layers, cptClone) {
+  const z0 = state.g_z0;
+  if (!(D > z0)) return null;
+  const PG = pileGeom(state.geom);
+  const B = PG.B,
+    Ab = PG.Ab,
+    perim = PG.perim;
+  const pile = PILES.find((p) => p.cat == state.cat) || PILES[0];
+  const cls = pile.cls,
+    cat = pile.cat,
+    meth = state.meth,
+    traction = state.sens === 'trac';
+  const baseLayer = soilAt(D - 0.01, layers);
+  if (!baseLayer) return null;
+  const a = Math.max(B / 2, 0.5),
+    hInLayer = D - baseLayer.ztop,
+    b = Math.min(a, Math.max(hInLayer, 0.001));
+  let qb = 0;
+  const hD = 10 * B;
+  if (meth === 'pmt') {
+    let s = 0;
+    const w = b + 3 * a,
+      np = Math.max(40, Math.ceil(w / 0.05));
+    for (let i = 0; i < np; i++) {
+      const z = D - b + (w * (i + 0.5)) / np,
+        L = soilAt(Math.max(0, z), layers);
+      s += L ? L.pl : 0;
+    }
+    const ple = np ? s / np : 0;
+    const zlo = Math.max(0, D - hD),
+      Lw = D - zlo;
+    let integ = 0;
+    const ns = Math.max(20, Math.ceil(Lw / 0.1));
+    for (let i = 0; i < ns; i++) {
+      const z = zlo + (Lw * (i + 0.5)) / ns,
+        L = soilAt(z, layers);
+      integ += (L ? L.pl : 0) * (Lw / ns);
+    }
+    const Def = ple > 0 ? integ / ple : 0;
+    qb = pile.micro ? 0 : kpReduced(kpMax(cls, baseLayer.soil), Def / B) * ple * 1000;
+  } else if (meth === 'cpt') {
+    const qq = computeQce(D, a, b, cptClone);
+    const qce = qq.qce;
+    const zlo = Math.max(0, D - hD),
+      Lw = D - zlo;
+    let integ = 0;
+    const ns = Math.max(20, Math.ceil(Lw / 0.1));
+    for (let i = 0; i < ns; i++) {
+      const z = zlo + (Lw * (i + 0.5)) / ns;
+      integ += qcAt(z, cptClone) * (Lw / ns);
+    }
+    const Def = qce > 0 ? integ / qce : 0;
+    qb = pile.micro
+      ? 0
+      : kcReduced(kcMax(cls, baseLayer.soil), Def / B, baseLayer.soil) * qce * 1000;
+  } else {
+    const mR = mResist(state.da);
+    const phi = Math.atan(Math.tan((baseLayer.phi * Math.PI) / 180) / mR.phi),
+      c = baseLayer.c / mR.c;
+    const Nq =
+      Math.exp(Math.PI * Math.tan(phi)) * Math.pow(Math.tan(Math.PI / 4 + phi / 2), 2);
+    const Nc = Math.abs(phi) < 1e-6 ? 5.14 : (Nq - 1) / Math.tan(phi);
+    let sv = 0;
+    layers.forEach((L) => {
+      const dz = Math.min(L.zbot, D) - Math.min(L.ztop, D);
+      if (dz > 0) sv += L.gamma * dz;
+    });
+    const nappe = state.o_nappe;
+    qb = pile.micro
+      ? 0
+      : c * Nc + Math.max(sv - (D > nappe ? 9.81 * (D - nappe) : 0), 0) * Nq;
+  }
+  const Rb = qb * Ab;
+  let Rs = 0,
+    RsKsum = 0;
+  layers.forEach((L) => {
+    const top = Math.max(L.ztop, z0),
+      bot = Math.min(L.zbot, D);
+    if (bot <= top) return;
+    const dz = bot - top;
+    let qs = 0;
+    if (meth === 'pmt') {
+      const cu = PMT_CURVE[L.soil],
+        al = alphaPMT(cat, L.soil),
+        qsm = qsMaxOf(cat, L.soil);
+      if (al != null && qsm != null) {
+        const f = (cu.a * L.pl + cu.b) * (1 - Math.exp(-cu.c * L.pl));
+        qs = Math.min(al * f * 1000, qsm);
+      }
+    } else if (meth === 'cpt') {
+      const qsm = qsMaxOf(cat, L.soil);
+      if (alphaCPT(cat, L.soil) != null && qsm != null) {
+        const nss = Math.max(4, Math.ceil(dz / 0.2));
+        let acc = 0;
+        for (let i = 0; i < nss; i++) {
+          const z = top + (dz * (i + 0.5)) / nss;
+          acc += qsCPT(z, L.soil, cat, cptClone);
+        }
+        qs = acc / nss;
+      }
+    } else {
+      const mid = (top + bot) / 2;
+      let sv = 0;
+      layers.forEach((M) => {
+        const d2 = Math.min(M.zbot, mid) - Math.min(M.ztop, mid);
+        if (d2 > 0) sv += M.gamma * d2;
+      });
+      const nappe = state.o_nappe,
+        svEff = Math.max(sv - (mid > nappe ? 9.81 * (mid - nappe) : 0), 0),
+        mR = mResist(state.da),
+        phi = Math.atan(Math.tan((L.phi * Math.PI) / 180) / mR.phi);
+      qs = (1 - Math.sin(phi)) * Math.tan((phi * 2) / 3) * svEff + 0.7 * (L.c / mR.c);
+    }
+    const dRs = qs * perim * effLen(top, bot, D);
+    Rs += dRs;
+    RsKsum += dRs / gammaRd1(cat, L.soil, traction);
+  });
+  const Ce = Rs > Rb ? groupCe(B, state.grp) : 1; // Cₑ uniquement pieux flottants (J.2(3))
+  Rs *= Ce;
+  RsKsum *= Ce;
+  const Np = Math.max(1, Math.round(state.o_nprofil)),
+    xf = xiFactors(Np, state.o_surf, state.o_redis === 'oui'),
+    xi = Math.min(xf[0], xf[1]);
+  const grd = gammaRd1(cat, baseLayer.soil, traction);
+  return {
+    Qpk: Rb / (xi * grd),
+    Qsk: RsKsum / xi,
+    Qs: Rs,
+    refoule: pile.refoule,
+    traction,
+  };
+}
+
+/** portanceCaps(c) — capacites par etat-limite (kN). Verbatim (facteurs gR litteraux). */
+function portanceCapsOf(state, c) {
+  const tr = c.traction,
+    bs = 0.7,
+    bp = tr ? 0 : c.refoule ? 0.7 : 0.5;
+  const gR = tr
+    ? { qp: 1.5, car: 1.1, fond: 1.15, acc: 1.05 }
+    : { qp: 1.1, car: 0.9, fond: 1.1, acc: 1.0 };
+  const Qsk = c.Qsk,
+    Qpk = tr ? 0 : c.Qpk;
+  let elsqp = (bp * Qpk + bs * Qsk) / gR.qp;
+  if (tr && state.essais !== 'oui' && c.Qs != null) elsqp = Math.min(elsqp, 0.15 * c.Qs); // §4.3.3
+  return {
+    elsqp,
+    elscar: (bp * Qpk + bs * Qsk) / gR.car,
+    elufond: (Qpk + Qsk) / gR.fond,
+    eluacc: (Qpk + Qsk) / gR.acc,
+  };
+}
+
+/**
+ * Balaye la portance en fonction de la profondeur (drawPortance sans le dessin) et
+ * renvoie les rows brutes { D, elufond, eluacc, elscar, elsqp } a la resolution NATIVE.
+ * Renvoie null si non traçable (profil vide, Hsol <= z0, < 2 rows) — comme drawPortance.
+ * PUR : ne mute jamais `state` (penetrogramme clone). Le RE-ECHANTILLONNAGE d'affichage
+ * (grille fixe decouplee) est applique par index.ts.
+ */
+export function computePortanceCurve(state) {
+  try {
+    const s = state || {};
+    const layers = layerTops(s.layers);
+    if (!layers.length) return null;
+    const z0 = s.g_z0;
+    const Hsol = layers[layers.length - 1].zbot;
+    if (!(Hsol > z0)) return null;
+    // penetrogramme clone une fois (jamais de mutation de state ; CPT genere si vide).
+    const cptClone = {
+      step: s.cpt ? s.cpt.step : 0.2,
+      pts: s.cpt ? s.cpt.pts.slice() : [],
+    };
+    if (s.meth === 'cpt' && !cptClone.pts.length) genPenetrogram(s.layers, cptClone);
+    const Dmin = z0 + 0.3,
+      Dmax = Hsol,
+      step = Math.min(0.5, Math.max(0.1, (Dmax - Dmin) / 110));
+    const rows = [];
+    for (let D = Dmin; D <= Dmax + 1e-9; D += step) {
+      const core = portanceCoreAt(s, D, layers, cptClone);
+      if (!core) continue;
+      const c = portanceCapsOf(s, core);
+      rows.push({
+        D,
+        elufond: c.elufond,
+        eluacc: c.eluacc,
+        elscar: c.elscar,
+        elsqp: c.elsqp,
+      });
+    }
+    if (rows.length < 2) return null;
+    return { rows, Dmin, Dmax };
+  } catch {
+    return null;
+  }
+}
+
+// ===========================================================================
 // FROTTEMENT NEGATIF (downdrag) — extraction PURE de computeDowndrag() (#94)
 // ===========================================================================
 //

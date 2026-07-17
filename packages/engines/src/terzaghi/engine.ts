@@ -328,6 +328,26 @@ const KC: any = {
 function kpCurve(p: any, x: any) {
   return p[3] + (p[0] + p[1] * x) * (1 - Math.exp(-p[2] * x));
 }
+
+/**
+ * Surface les COEFFICIENTS DE COURBE k_p/k_c de la SEULE categorie utilisee (table
+ * publiee annexe D/E — ADR 0015 reco A : valeurs d'affichage du deroule pas-a-pas,
+ * pas la table complete). Lecture PURE des tables KP/KC ; ne touche PAS computeAll
+ * (l'equivalence-portage compare le R brut, inchange). Server-only (engine.ts).
+ * Renvoie null si categorie inconnue (fail-closed : rien a afficher).
+ */
+export function terzaghiKpCurveCoeffs(
+  cat: unknown,
+  essai: unknown,
+): { f: number[]; c: number[] } | null {
+  const table = essai === 'penetro' ? KC : KP;
+  const t = (cat != null && (table as Record<string, any>)[cat as string]) || null;
+  if (!t || !Array.isArray(t.f) || !Array.isArray(t.c)) return null;
+  const finite4 = (a: unknown[]): a is number[] =>
+    a.length === 4 && a.every((x) => typeof x === 'number' && Number.isFinite(x));
+  if (!finite4(t.f) || !finite4(t.c)) return null;
+  return { f: t.f.slice(), c: t.c.slice() };
+}
 function kcCalc(cat: any, forme: any, B: any, L: any, DeB: any) {
   const t = KC[cat] || KC.sables;
   const x = Math.min(Math.max(DeB, 0), 2);

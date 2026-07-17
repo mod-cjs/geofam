@@ -1,0 +1,1343 @@
+<!--
+  CLONE EXCISÉ — NE PAS ÉDITER À LA MAIN. Artefact généré par scripts/clone-tool.mjs.
+  Outil            : roadsens (chaussee-burmister)
+  Source (gelée)   : roadsens_burmister_definitive.html
+  sha256 source    : 42bb46aa5da085cd5605664ce125e361392c77fbc717f9abc4b8d5910f1546f2
+  Calcul           : EXCISÉ — exécuté côté serveur via bridge postMessage (ADR 0015, DoD §8).
+  Régénérer        : pnpm clone:tools   ·   Auditer : pnpm audit:excision
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROADSENS — Dimensionnement rationnel des chaussées · AGEROUTE Sénégal 2015</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root{
+  /* ── Marque (le navy est figé dans le JS/SVG : on le garde comme ancre) ── */
+  --brand:#1a4a7a; --brand-700:#143a61; --brand-300:#5b86b3;
+  --brand-tint:#e2ecf7;
+  --laterite:#bd6a30; --laterite-tint:#fbf1e8;   /* accent terre/latérite, usage parcimonieux */
+
+  /* ── Neutres ── */
+  --ink:#16212e; --ink-2:#4f6070;
+  --line:#ccd8e5; --line-2:#bac9da;
+  --surface:#dde6f1; --panel:#eaf1f9; --panel-2:#dde7f2; --field:#f4f8fc;
+
+  /* ── Sémantique ── */
+  --ok:#2f7d32; --ok-bg:#e8f3e2;
+  --bad:#b5392f; --bad-bg:#fbeae8;
+  --warn:#92600a; --warn-bg:#f7edd9;
+
+  /* ── Variables attendues par le balisage existant et le JS (mapping) ── */
+  --color-text-primary:var(--ink);
+  --color-text-secondary:var(--ink-2);
+  --color-border-tertiary:var(--line);
+  --color-border-secondary:var(--line-2);
+  --color-background-secondary:var(--panel-2);
+  --border-radius-md:10px;
+  --border-radius-lg:14px;
+
+  /* ── Typographie ── */
+  --f-display:'Space Grotesk',-apple-system,'Segoe UI',sans-serif;
+  --f-body:'Inter',-apple-system,'Segoe UI',sans-serif;
+  --f-mono:'JetBrains Mono','SF Mono',Menlo,monospace;
+
+  --sh-sm:0 1px 2px rgba(22,33,46,.04),0 1px 3px rgba(22,33,46,.05);
+  --sh-md:0 4px 18px -6px rgba(22,33,46,.10),0 1px 3px rgba(22,33,46,.05);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; font-family:var(--f-body); font-size:13px; line-height:1.5; color:var(--ink);
+  background:radial-gradient(1100px 460px at 82% -8%,var(--brand-tint),transparent 62%),var(--surface);
+  -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums;
+}
+.app{max-width:1080px;margin:0 auto;padding:24px 20px 56px}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+input,select,button{font-family:inherit}
+
+/* ── En-tête ── */
+.hd{
+  display:flex; align-items:center; gap:15px; flex-wrap:wrap;
+  margin-bottom:18px; padding:15px 19px;
+  background:linear-gradient(118deg,var(--panel),var(--panel) 52%,var(--brand-tint));
+  border:1px solid var(--line); border-radius:18px; box-shadow:var(--sh-md);
+}
+.logo{
+  width:46px; height:46px; flex-shrink:0; border-radius:14px;
+  display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;
+  background:linear-gradient(155deg,var(--brand-300),var(--brand) 46%,var(--brand-700));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.2),inset 0 -11px 13px -8px rgba(0,0,0,.45),0 7px 16px -7px rgba(26,74,122,.65);
+}
+.logo::after{ /* strates discrètes évoquant les couches de chaussée */
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent 0 9px,rgba(255,255,255,.07) 9px 10px);
+}
+.brand{flex:1; min-width:0}
+.brand-top{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.brand-name{font-family:var(--f-display); font-size:21px; font-weight:700; letter-spacing:-.01em; color:var(--ink)}
+.tag{
+  font-family:var(--f-mono); font-size:10px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--brand); background:var(--brand-tint); border:1px solid rgba(26,74,122,.22);
+  padding:3px 10px; border-radius:999px;
+}
+.brand-sub{font-size:11px; color:var(--ink-2); margin-top:3px}
+
+/* ── Navigation par onglets (segmented) ── */
+.tnav{
+  display:flex; gap:4px; flex-wrap:nowrap; overflow-x:auto;
+  background:var(--panel); border:1px solid var(--line); border-radius:14px;
+  padding:5px; margin-bottom:18px; box-shadow:var(--sh-sm);
+}
+.tbtn{
+  display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
+  padding:9px 14px; font-size:12.5px; font-weight:500; line-height:1;
+  border:none; background:transparent; color:var(--ink-2); border-radius:10px; cursor:pointer;
+  transition:background .15s,color .15s;
+}
+.tbtn:hover:not(.on){background:var(--panel-2); color:var(--ink)}
+.tbtn.on{background:var(--brand); color:#fff; box-shadow:0 3px 9px -3px rgba(26,74,122,.6)}
+
+/* ── Panneaux ── */
+.pane{display:none}
+.pane.on{
+  display:block; animation:rise .26s ease;
+  background:var(--panel); border:1px solid var(--line); border-radius:18px;
+  padding:22px 24px; box-shadow:var(--sh-md);
+}
+@keyframes rise{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+/* ── Titres de section ── */
+.sec{
+  font-family:var(--f-display); font-size:11px; font-weight:600; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--ink); margin:24px 0 13px; padding-left:12px; position:relative;
+}
+.sec::before{content:""; position:absolute; left:0; top:50%; transform:translateY(-50%); width:3px; height:13px; border-radius:2px; background:var(--brand)}
+.sec:first-child{margin-top:0}
+
+/* ── Tableaux ── */
+table{width:100%; border-collapse:separate; border-spacing:0; font-size:12.5px; background:var(--field); border:1px solid var(--line); border-radius:12px; overflow:hidden}
+th{text-align:left; padding:9px 11px; background:var(--panel-2); font-size:10px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-2); border-bottom:1px solid var(--line)}
+td{padding:8px 11px; border-bottom:1px solid var(--line); vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--panel-2)}
+td input[type=number]{width:66px; text-align:right}
+td select{max-width:100%}
+
+/* ── Champs de saisie ── */
+input[type=number],select{
+  padding:6px 9px; font-size:12.5px; color:var(--ink); background:var(--field);
+  border:1px solid var(--line-2); border-radius:8px; outline:none; font-variant-numeric:tabular-nums;
+  transition:border-color .15s,box-shadow .15s;
+}
+input[type=number]:focus,select:focus{border-color:var(--brand); box-shadow:0 0 0 3px rgba(26,74,122,.14)}
+
+/* ── Grilles & champs ── */
+.g3{display:grid; grid-template-columns:repeat(3,1fr); gap:14px}
+.g4{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
+.fld{display:flex; flex-direction:column; gap:5px}
+.fld label{font-size:11px; font-weight:500; color:var(--ink-2)}
+.lh{font-weight:400; color:var(--ink-2); font-size:10px}
+.cam-sel{font-size:11.5px}
+
+/* ── Boutons ── */
+.btn{display:inline-flex; align-items:center; gap:6px; padding:7px 13px; border-radius:9px; cursor:pointer; font-size:12px; font-weight:500; color:var(--ink-2); background:var(--panel); border:1px solid var(--line-2); transition:background .15s,color .15s,border-color .15s}
+.btn:hover{background:var(--panel-2); color:var(--ink); border-color:var(--ink-2)}
+.btna{color:var(--brand); border-color:rgba(26,74,122,.35); background:var(--brand-tint)}
+.btna:hover{background:#e2ecf6; border-color:var(--brand); color:var(--brand)}
+.btnc{
+  display:inline-flex; align-items:center; gap:7px; margin-left:auto;
+  background:linear-gradient(135deg,var(--brand),var(--brand-700)); color:#fff; border:none;
+  padding:11px 22px; font-size:13px; font-weight:600; letter-spacing:.01em; border-radius:12px; cursor:pointer;
+  box-shadow:0 7px 17px -7px rgba(26,74,122,.7); transition:transform .12s,box-shadow .15s,opacity .15s;
+}
+.btnc:hover{transform:translateY(-1px); box-shadow:0 11px 24px -9px rgba(26,74,122,.75)}
+.btnc:active{transform:translateY(0)}
+.btnc:disabled{opacity:.55; cursor:not-allowed; transform:none; box-shadow:none}
+.btnd{color:var(--bad); border-color:rgba(181,57,47,.3); background:transparent; font-size:10.5px; padding:4px 9px}
+.btnd:hover{background:var(--bad-bg); border-color:var(--bad)}
+
+/* ── Cartes métriques (chiffres en monospace tabulaire = signature) ── */
+.metric{position:relative; overflow:hidden; background:var(--field); border:1px solid var(--line); border-radius:12px; padding:13px 15px; box-shadow:var(--sh-sm)}
+.metric::before{content:""; position:absolute; left:0; top:11px; bottom:11px; width:3px; border-radius:2px; background:var(--brand); opacity:.85}
+.metric .ml{font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-2)}
+.metric .mv{font-family:var(--f-mono); font-size:20px; font-weight:600; color:var(--ink); margin-top:4px; line-height:1.15; letter-spacing:-.01em; font-variant-numeric:tabular-nums}
+.metric .ms{font-size:10.5px; color:var(--ink-2); margin-top:3px}
+
+/* ── Badges ── */
+.badge{display:inline-block; padding:3px 9px; border-radius:6px; font-family:var(--f-mono); font-size:10px; font-weight:600; letter-spacing:.03em}
+.bp{background:var(--ok-bg); color:var(--ok)}
+.bf{background:var(--bad-bg); color:var(--bad)}
+.bw{background:var(--warn-bg); color:var(--warn)}      /* MTLH */
+.bb{background:#e6eaef; color:#33414f}                  /* bitumineux — asphalte */
+.bg{background:var(--laterite-tint); color:var(--laterite)} /* granulaire — latérite */
+
+/* ── Encadrés ── */
+.note{font-size:11.5px; color:var(--ink-2); line-height:1.5; background:var(--panel-2); border:1px solid var(--line); border-left:3px solid var(--brand); border-radius:10px; padding:11px 14px; margin-top:12px}
+.note strong{color:var(--ink)}
+.note-a{border-left-color:var(--laterite); background:var(--laterite-tint)}
+.note-g{border-left-color:var(--ok); background:var(--ok-bg)}
+
+/* ── Barres de progression ── */
+.pb{height:7px; border-radius:4px; background:var(--panel-2); overflow:hidden; margin-top:7px; border:1px solid var(--line)}
+.pbf{height:100%; border-radius:4px; transition:width .5s ease}
+
+/* ── Spinner ── */
+.spin{display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; margin-right:4px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ── Responsive ── */
+@media (max-width:680px){ .g3,.g4{grid-template-columns:repeat(2,1fr)} }
+@media (max-width:560px){
+  .app{padding:16px 13px 44px}
+  .btnc{margin-left:0; flex-basis:100%; justify-content:center}
+  .pane.on{padding:18px 16px}
+}
+@media (max-width:440px){ .g3,.g4{grid-template-columns:1fr} }
+@media (prefers-reduced-motion:reduce){ .pane.on,.pbf,.btnc{animation:none; transition:none} }
+
+/* ── Barre d'impression (révélée après vérification) ── */
+.resbar{display:none; justify-content:flex-end; margin-bottom:16px}
+.resbar.ready{display:flex}
+
+/* ── Mise en page d'impression du rapport ── */
+@media print{
+  @page{margin:14mm}
+  html,body{background:#fff !important; height:auto !important; overflow:visible !important}
+  html{--surface:#fff !important; --panel:#fff !important; --panel-2:#fff !important; --field:#fff !important; --brand-tint:#fff !important; --line:#e6eaef !important; --line-2:#d2d8e1 !important}
+  .app{max-width:none; padding:0}
+  .tnav,.btnc,.resbar{display:none !important}
+  .hd{box-shadow:none; border:none; border-bottom:2px solid var(--brand); border-radius:0; background:#fff; padding:0 0 10px; margin-bottom:16px}
+  .pane{display:none !important}
+  /* Panneaux a imprimer : forces visibles, hauteur libre, sans rognage ni transformation */
+  .pane.printable{display:block !important; box-shadow:none; border:none; border-radius:0; padding:0; margin:0 0 18px;
+    overflow:visible !important; height:auto !important; max-height:none !important; position:static !important; transform:none !important; animation:none !important}
+  /* overflow:hidden (herite de .pane et de table) empeche la fragmentation d'un long tableau sur plusieurs pages : on retablit le debordement visible pour tout le contenu imprime */
+  .pane.printable, .pane.printable *{overflow:visible !important}
+  .pane.printable table{overflow:visible !important; border-radius:0}
+  .metric,.note,table{box-shadow:none}
+  /* Les blocs courts restent insecables ; les longs tableaux se repartissent librement sur les pages */
+  .metric,.note,tr{break-inside:avoid}
+  .pane.printable table,.pane.printable tbody{break-inside:auto}
+  .sec{break-after:avoid}
+}
+</style>
+</head>
+<body>
+<main class="app">
+<div style="padding:.25rem 0">
+
+<div class="hd">
+  <div class="logo"><i class="ti ti-road" style="color:#fff;font-size:21px;position:relative;z-index:1"></i></div>
+  <div class="brand">
+    <div class="brand-top">
+      <span class="brand-name">ROADSENS</span>
+      <span class="tag">Burmister exact · Transfer Matrix</span>
+    </div>
+    <div class="brand-sub">Solution exacte multi-couche (éq. 6a–6e · J. Appl. Phys. 1945) · AGEROUTE Sénégal 2015 · T_éq = 34 °C · Dual wheels · Aucun Odemark</div>
+  </div>
+  <button class="btnc" id="btnc" onclick="runCalc()"><i class="ti ti-calculator" style="font-size:16px"></i>Calculer</button>
+</div>
+
+<div class="tnav" id="tnav">
+  <button class="tbtn on" data-tab="s"><i class="ti ti-stack-2" style="vertical-align:-2px;margin-right:3px"></i>Structure</button>
+  <button class="tbtn" data-tab="t"><i class="ti ti-truck" style="vertical-align:-2px;margin-right:3px"></i>Trafic</button>
+  <button class="tbtn" data-tab="p"><i class="ti ti-adjustments" style="vertical-align:-2px;margin-right:3px"></i>Paramètres</button>
+  <button class="tbtn" data-tab="c"><i class="ti ti-book" style="vertical-align:-2px;margin-right:3px"></i>Catalogue</button>
+  <button class="tbtn" data-tab="r"><i class="ti ti-report-analytics" style="vertical-align:-2px;margin-right:3px"></i>Résultats</button>
+  <button class="tbtn" data-tab="d"><i class="ti ti-microscope" style="vertical-align:-2px;margin-right:3px"></i>Détails calcul</button>
+</div>
+
+<div class="pane on" id="pane-s">
+  <div class="sec">Cas de validation du catalogue <span style="font-weight:400;font-size:11px;color:var(--color-text-secondary)">— dimensionnement pré-rempli</span></div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:7px">
+    <select id="presetSel" onchange="loadPreset(this.value)" style="flex:1;min-width:300px;padding:7px 9px;font-size:12.5px"><option value="">— Charger une famille de structure validée —</option></select>
+    <button class="btn" onclick="loadPreset('')" style="font-size:11px"><i class="ti ti-rotate" style="font-size:11px;vertical-align:-1px"></i> Réinitialiser</button>
+  </div>
+  <div id="presetNote" style="font-size:11px;color:var(--color-text-secondary);margin-bottom:12px;line-height:1.5"></div>
+  <div class="sec">Couches — surface → fond</div>
+  <table><thead><tr><th style="width:22px">#</th><th style="min-width:190px">Matériau</th><th>h (m)</th><th>E (MPa)</th><th>ν</th><th>Nature</th><th></th></tr></thead>
+  <tbody id="lb"></tbody></table>
+  <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+    <button class="btn btna" onclick="addL()"><i class="ti ti-plus" style="font-size:11px;vertical-align:-1px"></i> Ajouter couche</button>
+    <span style="font-size:11px;color:var(--color-text-secondary)">Couche de roulement en position 1</span>
+    <div style="margin-top:9px;display:flex;align-items:flex-start;gap:7px;font-size:11px">
+      <input type="checkbox" id="gntAutoChk" checked onchange="toggleGntAuto(this.checked)" style="width:14px;height:14px;margin-top:1px">
+      <label for="gntAutoChk" style="color:var(--ink-2);cursor:pointer;line-height:1.4">Module GNT automatique <span style="color:var(--color-text-secondary)">(catalogue p.79 : 3&times;E sous-jacent &middot; plafond 360 GNT/GB &middot; 600 GNT/GNT &middot; base 600 &middot; &nu;=0,35)</span></label>
+    </div>
+  </div>
+  <div class="sec">Plateforme support de chaussée (PSC)</div>
+  <div class="g3" style="max-width:530px">
+    <div class="fld"><label>Classe PFi</label>
+      <select id="pfcls" onchange="onPF()">
+        <option value="PF1">PF1 — 20 MPa</option><option value="PF2">PF2 — 50 MPa</option>
+        <option value="PF2qs">PF2qs — 80 MPa</option><option value="PF3" selected>PF3 — 120 MPa</option>
+        <option value="PF4">PF4 — 200 MPa</option><option value="custom">Personnalisé</option>
+      </select></div>
+    <div class="fld"><label>E_PSC (MPa)</label><input type="number" id="pfE" value="120" min="10" max="500" step="5" onchange="pf.E=+this.value;renderL()"></div>
+    <div class="fld"><label>ν_PSC</label><input type="number" id="pfnu" value="0.35" min="0.1" max="0.5" step="0.05" onchange="pf.nu=+this.value;renderL()"></div>
+  </div>
+  <div class="sec">Coupe transversale</div>
+  <div id="sprev" style="border-radius:var(--border-radius-md);border:.5px solid var(--color-border-tertiary);overflow:hidden"></div>
+</div>
+
+<div class="pane" id="pane-t">
+  <div class="sec">Données de trafic — AGEROUTE 2015</div>
+  <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;margin-bottom:9px;padding:7px 10px;background:var(--card,#eef2f7);border-radius:7px;flex-wrap:wrap">
+    <input type="checkbox" id="neDirectChk" onchange="toggleNeDirect(this.checked)" style="width:14px;height:14px"><label for="neDirectChk" style="cursor:pointer">NE cumulé — saisie directe</label>
+    <input type="number" id="neDirectVal" value="30000000" min="1000" step="100000" style="width:135px" onchange="if(cp.neForce!=null){cp.neForce=+this.value;rTS();}"><span style="color:var(--color-text-secondary)">PL équivalents — court-circuite le calcul TMJA</span>
+  </div>
+  <div class="g3">
+    <div class="fld"><label>TMJA (PL/j/sens)</label><input type="number" id="tT" value="3066" min="5" max="10000" step="10" onchange="tr.T=+this.value;rTS()"></div>
+    <div class="fld"><label>CAM <span class="lh">— agressivité moyenne</span></label>
+      <select id="tCsel" class="cam-sel" onchange="if(this.value){var i=document.getElementById('tC');i.value=this.value;tr.C=+this.value;rTS();}">
+        <option value="">Valeur-guide du catalogue…</option>
+        <option value="0.5">0,50 — Voirie urbaine légère · PL peu chargés (&lt; 0,5)</option>
+        <option value="0.9" selected>0,90 — Chaussée souple / bitumineuse · et sol support</option>
+        <option value="1.3">1,30 — Chaussée en latérite traitée</option>
+        <option value="1.4">1,40 — Chaussée semi-rigide</option>
+        <option value="3">3,00 — Voirie lourde industrielle / portuaire · PL surchargés (&gt; 3)</option>
+      </select>
+      <input type="number" id="tC" value="0.90" min="0.1" max="15" step="0.05" onchange="tr.C=+this.value;rTS();var s=document.getElementById('tCsel');if(s){var m=[...s.options].find(o=>o.value&&+o.value===+this.value);s.value=m?m.value:'';}"></div>
+    <div class="fld"><label>Durée n (ans)</label><input type="number" id="tN" value="20" min="10" max="30" step="5" onchange="tr.N=+this.value;rTS()"></div>
+    <div class="fld"><label>Taux τ (%/an)</label><input type="number" id="tTau" value="4.0" min="0" max="10" step="0.5" onchange="tr.tau=+this.value;rTS()"></div>
+    <div class="fld"><label>f_dir</label><input type="number" id="tDir" value="1.0" min="0.5" max="1.0" step="0.05" onchange="tr.dir=+this.value;rTS()"></div>
+    <div class="fld"><label>f_tv</label><input type="number" id="tTv" value="1.0" min="0.5" max="1.0" step="0.05" onchange="tr.tv=+this.value;rTS()"></div>
+  </div>
+  <div class="note" style="font-size:10.5px">Le catalogue AGEROUTE 2015 ne fixe AUCUN CAM par défaut : sa valeur résulte du pesage des poids lourds (chapitre « Détermination de la classe de trafic NE », p.24) et est très sensible aux surcharges. Les valeurs de cette liste sont des ordres de grandeur indicatifs. À titre d'exemple, pour un même trafic, le catalogue (exemple de calcul, p.191) obtient CAM ≈ 0,90 (souple/bitumineuse), 10,4 (semi-rigide GC/SC/béton) et 11,4 (semi-rigide GLc). Si une campagne de pesage est disponible, calculez le CAM réel et saisissez-le — la case reste librement modifiable.</div>
+  <div class="sec">Résumé</div><div id="tsout"></div>
+</div>
+
+<div class="pane" id="pane-p">
+  <div class="sec">Charge de référence AGEROUTE — essieu 130 kN</div>
+  <div class="g3" style="max-width:530px">
+    <div class="fld"><label>Pression p₀ (MPa)</label><input type="number" id="pp" value="0.662" min="0.3" max="1.0" step="0.01" onchange="cp.p=+this.value"></div>
+    <div class="fld"><label>Rayon a (m)</label><input type="number" id="pa" value="0.125" min="0.05" max="0.3" step="0.005" onchange="cp.a=+this.value"></div>
+    <div class="fld"><label>Entre-axe d (m)</label><input type="number" id="pd" value="0.375" min="0.2" max="0.6" step="0.01" onchange="cp.d=+this.value"></div>
+  </div>
+  <div class="note" style="font-size:10.5px">Dual wheel : ε_t calculée en r=0 (sous roue) ET r=d/2 (entre roues par superposition ×2) — valeur max retenue</div>
+  <div class="sec">Risque</div>
+  <div class="fld" style="max-width:340px"><label>Risque r (%)</label>
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="pr" style="flex:1" onchange="onRisk(this.value)">
+        <option value="auto" selected>Auto — Tab. 70 (25 % si NE &lt; 3M, 5 % au-delà)</option>
+        <option value="5">r = 5 %</option><option value="10">r = 10 %</option>
+        <option value="15">r = 15 %</option><option value="25">r = 25 %</option>
+        <option value="50">r = 50 %</option>
+        <option value="custom">Personnalisé…</option>
+      </select>
+      <input type="number" id="prv" step="0.5" min="1" max="50" placeholder="r %" style="width:80px" oninput="onRiskInput(this.value)">
+    </div>
+    <div class="lh" id="prhint" style="margin-top:4px"></div></div>
+  <div class="sec">Coefficients LCPC — ε_t admissible</div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+  <div class="fld" style="max-width:280px"><label>Sh — dispersion d'épaisseur</label>
+    <select id="psh" onchange="cp.sh=this.value">
+      <option value="auto" selected>Auto — Tab. VI.2.4 (guide)</option>
+      <option value="1">1 cm</option><option value="1.5">1,5 cm</option>
+      <option value="2.5">2,5 cm</option><option value="3">3 cm (défaut MTLH)</option>
+    </select></div>
+  <div class="fld" style="max-width:280px"><label>ks — hétérogénéité du support</label>
+    <select id="pks" onchange="cp.ks=this.value">
+      <option value="auto" selected>Auto — Tab. VI.4.3 (couche sous-jacente)</option>
+      <option value="1">1 (E ≥ 120 MPa)</option>
+      <option value="0.9090909">1/1,1 (50 ≤ E &lt; 80)</option>
+      <option value="0.9389671">1/1,065 (80 ≤ E &lt; 120)</option>
+      <option value="0.8333333">1/1,2 (E &lt; 50)</option>
+    </select></div>
+  </div>
+  <div class="sec">Lois de fatigue — bitumineux</div>
+  <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:.4rem">ε_t_adm = ε₆ · kθ · (NE/10⁶)^b · kr · kc · ks — LCPC 1994 (VI.4.2) · kθ = √(E(10°C)/E(θ_éq=34°C))</div>
+  <table><thead><tr><th>Matériau</th><th>ε₆ (μdef)</th><th>b</th><th>Kc</th><th>Source</th></tr></thead><tbody id="fbt"></tbody></table>
+  <div class="sec">Lois de fatigue — MTLH</div>
+  <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:.4rem">σ_t_adm = σ₆ · (NE/10⁶)^b · kr · kc · ks [MPa] — LCPC 1994</div>
+  <table><thead><tr><th>Matériau</th><th>σ₆ (MPa)</th><th>b</th><th>Kc</th><th>Source</th></tr></thead><tbody id="frt"></tbody></table>
+  <div class="sec">Orniérage PSC</div>
+  <div class="note">ε_z_adm = 0,012 × NE^(−1/4,5) (NE &gt; 250 000) · 0,016 × NE^(−1/4,5) (NE ≤ 250 000) — catalogue p.124</div>
+  <div class="sec">Moteur ROADSENS — Burmister multi-couche exact</div>
+  <div class="note note-g">
+    Méthode de la matrice de transfert (Transfer Matrix / Propagator) — Burmister (1945) généralisé à n couches :<br>
+    · <strong>Éq. 6a (σ_z)</strong>, <strong>Éq. 6b (τ_rz)</strong>, <strong>Éq. 6c (σ_r)</strong>, <strong>Éq. 6d (w)</strong>, <strong>Éq. 6e (u)</strong> : fonctions de base de chaque couche<br>
+    · <strong>Propagateur 4×4</strong> : M_top × M_bot⁻¹ par couche — propagation bottom-up PSC → surface<br>
+    · <strong>CL surface</strong> : σ_z = −m·J₀(mr), τ_rz = 0 (éq. 8a–8b) — résolution 2×2 pour [B_s, D_s]<br>
+    · <strong>Aucun Odemark</strong> · Intégration Hankel 400 pts · Dual wheels · σ_z et σ_r exactes à chaque interface
+  </div>
+</div>
+
+<div class="pane" id="pane-c">
+  <div class="sec">Catalogue AGEROUTE Sénégal 2015</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;max-width:520px;margin-bottom:.75rem">
+    <div class="fld" style="flex:2"><label>Famille</label>
+      <select id="catt" onchange="rCat()">
+        <optgroup label="Bitumineuses épaisses">
+          <option value="S1">1 · BBSG / GB2</option>
+          <option value="S2">2 · BBSG / GB3</option>
+          <option value="S3">3 · BBSG / GB2 / GNT1</option>
+          <option value="S4">4 · BBSG / GB3 / GNT1</option>
+          <option value="S5">5 · BBSG3 / EME2</option>
+        </optgroup>
+        <optgroup label="Semi-rigides">
+          <option value="S6">6 · BBSG / GC-T3</option>
+          <option value="S7">7 · BBSG / SC-T2</option>
+          <option value="S8">8 · BBSG / GLc2</option>
+          <option value="S9">9 · BBSG / GLc2 / GL2</option>
+          <option value="S10">10 · BBSG / GLc1</option>
+          <option value="S11">11 · BBSG / BQc</option>
+        </optgroup>
+        <optgroup label="Souples">
+          <option value="S13">13 · BBSG / GNT1</option>
+          <option value="S14">14 · BBSG / GL1</option>
+          <option value="S15">15 · BBSG / GL2 / GL1</option>
+        </optgroup>
+      </select></div>
+    <div class="fld" style="flex:1"><label>NE (×10⁶)</label>
+      <input type="number" id="catne" placeholder="ex: 2.5" step="0.1" min="0.05" max="100" style="padding:5px 8px;font-size:12.5px" oninput="rCat()"></div>
+  </div>
+  <div id="catout"></div>
+  <div class="note" style="font-size:10.5px;margin-top:.65rem">CC1/0351/AGR — Egis/Ifsttar/Sénélabo · Épaisseurs en cm · T_éq=34°C · f=20Hz · r=10%</div>
+</div>
+
+<div class="pane" id="pane-r">
+  <div class="resbar" id="resbar"><button class="btn btna" onclick="printReport()"><i class="ti ti-printer" style="font-size:14px"></i>Imprimer le rapport</button></div>
+  <div id="resout">
+  <div style="padding:2.5rem;text-align:center;color:var(--color-text-secondary)">
+    <i class="ti ti-calculator" style="font-size:3rem;display:block;margin-bottom:.75rem;opacity:.2"></i>
+    <div style="font-size:13px;font-weight:500">Aucun calcul effectué</div>
+    <div style="font-size:12px;margin-top:.3rem">Cliquez sur <strong>Calculer</strong> pour lancer l'analyse Burmister exacte.</div>
+  </div>
+</div></div>
+
+<div class="pane" id="pane-d"><div id="detout" style="padding:2rem;text-align:center;color:var(--color-text-secondary)">Cliquez sur <strong>Calculer</strong> pour afficher les détails.</div></div>
+</div>
+
+<script>
+const M={
+  BBSG1:{n:'BBSG classe 1  (E = 1 512 MPa \u2014 T.54)',E:1512,nu:.45,bit:1,c:'#15171a'},
+  BBSG2:{n:'BBSG classe 2/3  (E = 1 896 MPa \u2014 T.54)',E:1896,nu:.45,bit:1,c:'#2b2f33'},
+  BBTM:{n:'BB Tr\u00e8s Mince (BBTM)',E:2500,nu:.45,bit:1,c:'#3a4046'},
+  BBM:{n:'BB Mince (BBM)',E:2500,nu:.45,bit:1,c:'#474e55'},
+  GB2:{n:'Grave Bitume GB2',E:2588,nu:.45,bit:1,c:'#3f617f'},
+  GB3:{n:'Grave Bitume GB3',E:2588,nu:.45,bit:1,c:'#2e4a63'},
+  EME2:{n:'EME2',E:6151,nu:.45,bit:1,c:'#1d6b6b'},
+  GL1:{n:'Lat\u00e9rite GL1',E:200,nu:.35,c:'#e0a23a'},
+  GL2:{n:'Lat\u00e9rite GL2',E:400,nu:.35,c:'#c1622b'},
+  GLli:{n:'Lat\u00e9rite litho-stabilis\u00e9e',E:400,nu:.35,c:'#cf8a44'},
+  GLa:{n:'Lat\u00e9rite am\u00e9lior\u00e9e (GLa)',E:400,nu:.35,c:'#d8b94e'},
+  GLc1:{n:'Lat\u00e9rite ciment GLc1',E:2500,nu:.25,rig:1,c:'#a99339'},
+  GLc2:{n:'Lat\u00e9rite ciment GLc2',E:3000,nu:.25,rig:1,c:'#7c6526'},
+  GNT1:{n:'GNT1',E:600,nu:.35,c:'#e0c887'},
+  GNT2:{n:'GNT2',E:600,nu:.35,c:'#d4b76e'},
+  GC3:{n:'Grave Ciment GC-T3',E:23000,nu:.25,rig:1,c:'#8fa58c'},
+  SC2:{n:'Sable Ciment SC-T2',E:12000,nu:.25,rig:1,c:'#9db4c2'},
+  BQc:{n:'Banco-coquillage (BQc)',E:10000,nu:.25,rig:1,c:'#cdb48a'},
+  BC5:{n:'B\u00e9ton BC5',E:35000,nu:.25,rig:1,c:'#e8e8de'},
+  BC2:{n:'B\u00e9ton Maigre BC2',E:20000,nu:.25,rig:1,c:'#d6d6cd'},
+  BC5g:{n:'B\u00e9ton BC5 (dalle goujonn\u00e9e)',E:35000,nu:.25,rig:1,c:'#e8e8de'},
+};
+const PFM={PF1:{E:20},PF2:{E:50},PF2qs:{E:80},PF3:{E:120},PF4:{E:200},custom:{E:50}};
+const CAT={
+  S1:{l:'BBSG / GB2',m:{top:'BBSG1',body:'GB2'},
+    C1:{PF1:[6,11,11],PF2:[6,8,9],PF2qs:[6,7,7],PF3:[6,11],PF4:[6,8]},
+    C2:{PF1:[6,13,13],PF2:[6,10,10],PF2qs:[6,8,9],PF3:[6,14],PF4:[6,11]},
+    C3:{PF1:[6,10,10,10],PF2:[6,12,13],PF2qs:[6,11,11],PF3:[6,9,9],PF4:[6,15]},
+    C4:{PF2:[6,9,10,10],PF2qs:[6,13,13],PF3:[6,11,12],PF4:[6,9,10]},
+    C5:{PF3:[8,10,10,10],PF4:[8,13,13]},
+    C6:{PF3:[8,11,12,12],PF4:[8,10,10,11]},
+    C7:{PF3:[8,12,13,13],PF4:[8,11,11,12]},
+    C8:{PF3:[8,14,14,14],PF4:[8,12,13,13]}},
+  S2:{l:'BBSG / GB3',m:{top:'BBSG1',body:'GB3'},
+    C1:{PF2:[6,7,8],PF2qs:[6,12],PF3:[6,9],PF4:[6,8]},
+    C2:{PF2:[6,9,10],PF2qs:[6,8,8],PF3:[6,14],PF4:[6,10]},
+    C3:{PF2:[6,12,12],PF2qs:[6,10,10],PF3:[6,8,9],PF4:[6,14]},
+    C4:{PF2:[6,9,10,10],PF2qs:[6,12,13],PF3:[6,11,11],PF4:[6,8,9]},
+    C5:{PF2qs:[8,10,10,11],PF3:[8,13,14],PF4:[8,11,12]},
+    C6:{PF3:[8,10,11,11],PF4:[8,9,10,10]},
+    C7:{PF3:[8,11,12,12],PF4:[8,10,10,11]},
+    C8:{PF3:[8,13,13,13],PF4:[8,11,12,12]}},
+  S3:{l:'BBSG / GB2 / GNT1',m:{top:'BBSG1',body:'GB2',tail:'GNT1'},
+    C2:{PF2:[6,7,8,25],PF2qs:[6,11,25],PF3:[6,8,15]},
+    C3:{PF2:[6,10,10,25],PF2qs:[6,7,8,25],PF3:[6,13,15]},
+    C4:{PF2:[6,12,12,25],PF2qs:[6,10,10,25],PF3:[6,9,9,15]},
+    C5:{PF2:[8,10,11,11,25],PF2qs:[8,14,14,25],PF3:[8,12,13,15]}},
+  S4:{l:'BBSG / GB3 / GNT1',m:{top:'BBSG1',body:'GB3',tail:'GNT1'},
+    C1:{PF2:[6,9,25]},
+    C2:{PF2:[6,14,25],PF2qs:[6,9,25],PF3:[6,8,15]},
+    C3:{PF2:[6,9,10,25],PF2qs:[6,14,25],PF3:[6,13,15]},
+    C4:{PF2:[6,12,12,25],PF2qs:[6,9,9,25],PF3:[6,8,9,15]},
+    C5:{PF2:[8,9,10,10,25],PF2qs:[8,12,13,15],PF3:[8,12,13,15]},
+    C6:{PF2qs:[8,10,10,11,25],PF3:[8,14,14,15]},
+    C7:{PF3:[8,10,10,11,15]}},
+  S5:{l:'BBSG3 / EME2',m:{top:'BBSG2',body:'EME2'},
+    C1:{PF2qs:[6,7]},
+    C2:{PF2qs:[6,11],PF3:[6,9],PF4:[6,7]},
+    C3:{PF2qs:[6,7,7],PF3:[6,12],PF4:[6,9]},
+    C4:{PF2qs:[6,9,9],PF3:[6,7,8],PF4:[6,12]},
+    C5:{PF2qs:[8,10,11],PF3:[8,9,9],PF4:[8,8,8]},
+    C6:{PF2qs:[8,12,13],PF3:[8,11,11],PF4:[8,10,10]},
+    C7:{PF2qs:[8,9,9,9],PF3:[8,12,12],PF4:[8,11,11]},
+    C8:{PF2qs:[8,10,10,10],PF3:[8,9,9,9],PF4:[8,12,12]}},
+  S6:{l:'BBSG / GC-T3',m:{top:'BBSG1',body:'GC3'},
+    C2:{PF2:[6,29],PF2qs:[6,27],PF3:[6,25],PF4:[6,22]},
+    C3:{PF2:[6,20,20],PF2qs:[6,29],PF3:[6,26],PF4:[6,25]},
+    C4:{PF2:[6,20,20],PF2qs:[6,30],PF3:[6,27],PF4:[6,25]},
+    C5:{PF2:[8,23,20],PF2qs:[8,21,20],PF3:[8,19,18],PF4:[8,18,15]},
+    C6:{PF2:[10,23,20],PF2qs:[10,21,20],PF3:[10,19,18],PF4:[10,18,15]},
+    C7:{PF2qs:[12,21,20],PF3:[12,19,18],PF4:[12,18,15]},
+    C8:{PF2qs:[14,21,20],PF3:[14,19,18],PF4:[14,18,15]}},
+  S7:{l:'BBSG / SC-T2',m:{top:'BBSG1',body:'SC2'},
+    C1:{PF2qs:[6,28],PF3:[6,25],PF4:[6,23]},
+    C2:{PF2qs:[6,30],PF3:[6,27],PF4:[6,24]},
+    C3:{PF2:[6,20,20],PF2qs:[6,20,20],PF3:[6,29],PF4:[6,26]},
+    C4:{PF2:[6,22,20],PF2qs:[6,20,20],PF3:[6,18,18],PF4:[6,28]}},
+  S8:{l:'BBSG / GLc2',m:{top:'BBSG1',body:'GLc2'},
+    C1:{PF2qs:[6,27],PF3:[6,22],PF4:[6,18]},
+    C2:{PF2qs:[6,29],PF3:[6,24],PF4:[6,20]},
+    C3:{PF2qs:[6,20,20],PF3:[6,27],PF4:[6,25]},
+    C4:{PF2:[6,22,20],PF2qs:[6,20,20],PF3:[6,29],PF4:[6,25]},
+    C5:{PF2:[8,27,24],PF2qs:[8,24,21],PF3:[8,20,18],PF4:[8,17,15]},
+    C6:{PF2qs:[10,23,22],PF3:[10,20,19],PF4:[10,17,17]},
+    C7:{PF2qs:[12,23,22],PF3:[12,20,19],PF4:[12,17,17]},
+    C8:{PF2qs:[14,23,22],PF3:[14,21,19],PF4:[14,18,17]}},
+  S9:{l:'BBSG / GLc2 / GL2',m:{top:'BBSG1',mid:'GLc2',body:'GL2'},
+    C1:{PF2:[6,26,25],PF2qs:[6,22,25]},
+    C2:{PF2:[6,29,25],PF2qs:[6,25,25]},
+    C3:{PF2:[6,30,30],PF2qs:[6,25,30]},
+    C4:{PF2qs:[6,28,30]}},
+  S10:{l:'BBSG / GLc1',m:{top:'BBSG1',body:'GLc1'},
+    C1:{PF2:[6,25,23],PF2qs:[6,23,21],PF3:[6,20,18],PF4:[6,16,15]},
+    C2:{PF2:[6,27,25],PF2qs:[6,24,22],PF3:[6,22,20],PF4:[6,18,17]},
+    C3:{PF2:[6,29,27],PF2qs:[6,26,24],PF3:[6,24,22],PF4:[6,19,19]},
+    C4:{PF2:[6,30,30],PF2qs:[6,28,26],PF3:[6,25,24],PF4:[6,22,20]},
+    C5:{PF4:[8,28,27]},
+    C6:{PF4:[10,29,28]}},
+  S11:{l:'BBSG / BQc',m:{top:'BBSG1',body:'BQc'},
+    C1:{PF2:[6,24,23],PF2qs:[6,23,21],PF3:[6,21,20],PF4:[6,19,18]},
+    C2:{PF2:[6,26,25],PF2qs:[6,24,23],PF3:[6,23,21],PF4:[6,21,19]},
+    C3:{PF2:[6,27,27],PF2qs:[6,26,24],PF3:[6,25,23],PF4:[6,22,21]},
+    C4:{PF2:[6,29,28],PF2qs:[6,28,26],PF3:[6,26,24],PF4:[6,24,22]},
+    C5:{PF4:[8,29,27]}},
+  S13:{l:'BBSG / GNT1',m:{top:'BBSG1',body:'GNT1'},
+    C1:{PF2:[6,30],PF2qs:[6,20],PF3:[6,15]},
+    C2:{PF2:[6,25,25],PF2qs:[6,15,20],PF3:[6,25]},
+    C3:{PF2:[6,25,30],PF2qs:[6,20,25],PF3:[6,15,20]},
+    C4:{PF2:[6,20,20,25],PF2qs:[6,25,30],PF3:[6,20,25]}},
+  S14:{l:'BBSG / GL1',m:{top:'BBSG1',body:'GL1'},
+    C1:{PF1:[6,15,25,25],PF2:[6,15,25],PF2qs:[6,15,15],PF3:[6,15,10]},
+    C2:{PF2:[6,20,20,20],PF2qs:[6,20,25],PF3:[6,20,15]}},
+  S15:{l:'BBSG / GL2 / GL1',m:{top:'BBSG1',mid:'GL2',body:'GL1'},
+    C1:{PF1:[6,15,20,25],PF2:[6,15,20],PF2qs:[6,15,10]},
+    C2:{PF2:[6,20,15,20],PF2qs:[6,20,20],PF3:[6,20,10]},
+    C3:{PF2:[6,20,20,25],PF2qs:[6,20,30],PF3:[6,20,20]},
+    C4:{PF2:[6,20,25,30],PF2qs:[6,20,20,20],PF3:[6,20,30]}}
+};
+const NL={C1:.1,C2:.3,C3:1,C4:3,C5:10,C6:30,C7:50,C8:100};
+
+// ÉTAT
+let ly=[{id:1,mat:'BBSG1',h:.08,E:1512,nu:.45,ifc:'auto'},{id:2,mat:'GB2',h:.30,E:2588,nu:.45,ifc:'auto'},{id:3,mat:'GNT1',h:.15,E:400,nu:.35,ifc:'auto'}];
+let pf={cls:'PF3',E:120,nu:.35};
+let tr={T:3066,C:.9,N:20,tau:4.0,dir:1.0,tv:1.0};
+let cp={p:.662,a:.125,d:.375,r:'auto',sh:'auto',ks:'auto',gntAuto:true,neForce:null};
+let nid=4;
+/* ===================== BRIDGE + MAPPING (injecté — clone excisé, ADR 0015) ===================== */
+(function(){
+  var TOOL_ID="roadsens", ENGINE_ID="chaussee-burmister";
+  var pending=Object.create(null), seq=0;
+  var ctx={ engineId:ENGINE_ID, orgSlug:null, projectLabel:null, readOnly:false };
+  function post(msg){ try{ window.parent.postMessage(msg,"*"); }catch(e){} }
+  window.addEventListener("message", function(ev){
+    if(ev.source !== window.parent) return;
+    var d=ev.data; if(!d || d.v!==1 || typeof d.type!=="string") return;
+    if(d.type==="init"){ ctx=Object.assign(ctx, d.payload||{}); return; }
+    if(d.type==="calc:response"){ var p=pending[d.id]; if(!p) return; delete pending[d.id]; p(d.payload||{ok:false,error:{message:"réponse vide"}}); return; }
+  });
+  window.__geofamBridge={
+    calc:function(params){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:ENGINE_ID,label:(params&&params.projet)||null,params:params}}); }); },
+    emitPv:function(calcResultId){ post({v:1,type:"pv:request",payload:{calcResultId:calcResultId}}); },
+    context:function(){ return ctx; }
+  };
+  post({v:1,type:"ready",payload:{toolId:TOOL_ID}});
+})();
+
+/* Echappement HTML minimal (messages d'erreur). */
+function _esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+/* Nombre fini de la sortie serveur, sinon NaN (affichage « — » côté renderers). */
+function _bn(v){ return (v===null||v===undefined||(typeof v==="number"&&(isNaN(v)||!isFinite(v))))?NaN:+v; }
+/* kPa (sortie serveur) -> MPa (unité interne des renderers ; ils ré-appliquent ×1000). */
+function _kpa2mpa(v){ return (v==null||isNaN(v))?NaN:(+v)/1000; }
+/* Fin du paquet lié (bitEnd) : 1er indice non lié — recalculé depuis le STATE via les
+   drapeaux bit/rig CONSERVÉS de M (aucune science ; classification de matériau publique). */
+function bitEndFromState(){ var be=ly.length; for(var i=0;i<ly.length;i++){ var m=M[ly[i].mat]; if(m&&!m.bit&&!m.rig){ be=i; break; } } return be; }
+
+/* PLAUSIBILITÉ (no-calc-initial) : bornes du contrat (Modulus/Poisson/Thickness). */
+function plausibleBurmister(){
+  if(typeof ly==="undefined" || !Array.isArray(ly) || ly.length<1) return false;
+  for(var i=0;i<ly.length;i++){ var l=ly[i]; if(!l) return false;
+    if(!(isFinite(l.E)&&+l.E>=1&&+l.E<=60000)) return false;
+    if(!(isFinite(l.nu)&&+l.nu>=0.1&&+l.nu<=0.5)) return false;
+    if(!(isFinite(l.h)&&+l.h>=0.001&&+l.h<=2)) return false; }
+  if(!(typeof pf!=="undefined"&&pf&&isFinite(pf.E)&&+pf.E>=1&&+pf.E<=60000)) return false;
+  if(!(isFinite(pf.nu)&&+pf.nu>=0.1&&+pf.nu<=0.5)) return false;
+  if(!(typeof cp!=="undefined"&&cp&&isFinite(cp.p)&&+cp.p>0&&isFinite(cp.a)&&+cp.a>0)) return false;
+  return true;
+}
+
+/* STATE (ly/pf/tr/cp) -> BurmisterInputSchema (nombres bornés ; overrides r/sh/ks
+   'auto' ou valeur ; iface imposée -> ifaceAuto=true ; NE direct -> neForce). Les E
+   GNT auto sont déjà résolus par runCalc (gntAuto NON transmis). */
+function buildBurmisterInput(){
+  var layers=ly.map(function(l){ var o={mat:String(l.mat),E:+l.E,nu:+l.nu,h:+l.h}; if(l.ifc&&l.ifc!=="auto") o.iface=l.ifc; return o; });
+  var subgrade={ E:+pf.E, nu:+pf.nu }; if(pf.cls) subgrade.cls=String(pf.cls);
+  var traffic={ T:+tr.T, C:+tr.C, N:+tr.N, tau:+tr.tau, dir:+tr.dir, tv:+tr.tv };
+  var load={ p:+cp.p, a:+cp.a, d:+cp.d };
+  if(cp.r!=null) load.r=(cp.r==="auto")?"auto":+cp.r;
+  if(cp.sh!=null) load.sh=(cp.sh==="auto")?"auto":+cp.sh;
+  if(cp.ks!=null) load.ks=(cp.ks==="auto")?"auto":+cp.ks;
+  if(ly.some(function(l){return l.ifc&&l.ifc!=="auto";})) load.ifaceAuto=true;
+  if(cp.neForce!=null && isFinite(cp.neForce) && +cp.neForce>0) load.neForce=+cp.neForce;
+  var inp={ layers:layers, subgrade:subgrade, traffic:traffic, load:load };
+  var pj=(typeof S!=="undefined"&&S&&S.projet)?S.projet:null; if(pj) inp.projet=String(pj);
+  return inp;
+}
+
+/* SORTIE WHITELISTÉE (BurmisterOutputSchema) -> objet global `_D` attendu par
+   renderDetails ET par renderRes (via rArgFromOutput). Aucune science : lecture de
+   champs whitelistés + rejeu du STATE. Les intermédiaires NON whitelistés (stC/stG,
+   axe/mid ε_z) restent `undefined` -> les renderers affichent « — » (résidu fermé). */
+function buildDFromOutput(out){
+  var det=out.details||{};
+  var fat=out.fatigue||null;
+  var orn=out.ornierage||null;
+  var ph2=out.fatiguePhase2||null;
+  var inv=out.fatigueInverse||null;
+  var useRig = fat ? (fat.rigide===true) : false;
+  /* etRequis (affiché renderDetails l.1518) DÉRIVÉ sans champ supplémentaire :
+     bitumineux -> fatigue.requis (= useRig||etReq, or useRig=false) ; mixte -> ph2.requis
+     (= D.etReq) ; rigide/semi-rigide/inverse/granulaire -> false (ε_t non exigé). */
+  var etReq;
+  if(fat && useRig===false) etReq = (fat.requis===true);
+  else if(ph2) etReq = (ph2.requis===true);
+  else etReq = false;
+  var s0={ sz:_kpa2mpa(det.sigmaZ_r0), sr:_kpa2mpa(det.sigmaR_r0) };
+  var sd2={ sz:_kpa2mpa(det.sigmaZ_d2), sr:_kpa2mpa(det.sigmaR_d2) };
+  var bz={ sz:_kpa2mpa(det.sigmaZ_psc_kpa), sr:_kpa2mpa(det.sigmaR_psc_kpa) };
+  var rigL=(Array.isArray(out.couchesTraitees)?out.couchesTraitees:[]).map(function(r){
+    return { i:(_bn(r.couche)>=1?r.couche-1:0), mode:r.mode, st:_bn(r.valeur), adm:_bn(r.admissible), stC:undefined, stG:undefined }; });
+  var ezL=(Array.isArray(out.couchesGranulaires)?out.couchesGranulaires:[]).map(function(r){
+    return { i:(_bn(r.couche)>=1?r.couche-1:0), val:_bn(r.valeur), axe:undefined, mid:undefined }; });
+  var gq = (Array.isArray(out.couchesGranulaires)&&out.couchesGranulaires.length) ? (out.couchesGranulaires[0].requis===true) : false;
+  _D={
+    NE:_bn(out.NE), H_bit:_bn(out.epaisseurLiee), H_tot:_bn(out.epaisseurTotale),
+    E1:(isFinite(det.E1_pond)?+det.E1_pond:0), nu1:(isFinite(det.nu1_pond)?+det.nu1_pond:0),
+    Eref:(isFinite(det.E_psc)?+det.E_psc:0), nuRef:(isFinite(det.nu_psc)?+det.nu_psc:0),
+    et:(fat&&fat.valeur!=null?+fat.valeur:null), etA:(fat&&fat.admissible!=null?+fat.admissible:null),
+    et0:(det.epsilonT_r0!=null?+det.epsilonT_r0:null), etM:(det.epsilonT_d2!=null?+det.epsilonT_d2:null),
+    s0:s0, sd2:sd2, bz:bz,
+    ez:_bn(orn?orn.valeur:det.epsilonZ), ez0:(det.epsilonZ_axe!=null?+det.epsilonZ_axe:null), ezM:(det.epsilonZ_mid!=null?+det.epsilonZ_mid:null),
+    ezA:_bn(orn?orn.admissible:det.epsilonZ_adm),
+    passT:(fat?fat.ok===true:true), passZ:(orn?orn.ok===true:false), PASS:(out.conforme===true), hasBit:!!fat,
+    e6:(fat&&fat.referenceCatalogue!=null)?+fat.referenceCatalogue:Infinity,
+    ub:(det.ub!=null?+det.ub:null), ukc:(det.kc!=null?+det.kc:null), usn:(det.sn!=null?+det.sn:null), ukth:(det.ktheta!=null?+det.ktheta:null), sig:(useRig?1:0),
+    kr:(det.kr!=null?+det.kr:null), sh:(det.sh_cm!=null?+det.sh_cm:null), ks:(det.ks!=null?+det.ks:null),
+    adm50:(det.adm_r50!=null?+det.adm_r50:null),
+    be:bitEndFromState(), ezL:ezL, gq:gq,
+    et2:(ph2?_bn(ph2.valeur):null), et2A:(ph2?_bn(ph2.admissible):null), et2i:(ph2&&_bn(ph2.couche)>=1?ph2.couche-1:-1),
+    st2:(inv?_bn(inv.valeur):null), st2A:(inv?_bn(inv.admissible):null), st2i:(inv&&_bn(inv.couche)>=1?inv.couche-1:-1),
+    rEff:(isFinite(det.risque_pct)?+det.risque_pct:0), fam:(typeof out.famille==="string"?out.famille:""), etReq:etReq, rigL:rigL,
+    lys:JSON.parse(JSON.stringify(ly)),
+    pfs:{cls:pf.cls,E:pf.E,nu:pf.nu},
+    cps:{p:cp.p,a:cp.a,d:cp.d,r:cp.r},
+    trs:{T:tr.T,C:tr.C,N:tr.N,tau:tr.tau}
+  };
+  return _D;
+}
+
+/* Argument de renderRes (mêmes noms que la déstructuration l.1334) — lu depuis `_D`
+   déjà reconstruit (buildDFromOutput doit précéder). */
+function rArgFromOutput(out){
+  var d=_D;
+  return { NE:d.NE, H_bit:d.H_bit, H_tot:d.H_tot, E1_eq:d.E1, nu1_eq:d.nu1,
+    et_val:d.et, et_adm:d.etA, et_r0:d.et0, et_rd2:d.etM, s0:d.s0, sd2:d.sd2,
+    ez_val:d.ez, ez_adm:d.ezA, passT:d.passT, passZ:d.passZ, PASS:d.PASS, hasBit:d.hasBit,
+    sig:d.sig, ezL:d.ezL, gq:d.gq, et2_val:d.et2, et2_adm:d.et2A, et2_i:d.et2i,
+    st2_val:d.st2, st2_adm:d.st2A, st2_i:d.st2i, fam:d.fam, etReq:d.etReq, rigL:d.rigL };
+}
+
+/* NO-CALC-INITIAL : structure invalide -> message local, AUCUN appel serveur. */
+function renderNeedInput(){
+  var el=document.getElementById('resout');
+  if(el) el.innerHTML='<div class="note note-a" style="margin-top:1rem">Renseignez une structure valide (couches avec E, \u03bd, h) et la plateforme support avant de lancer le calcul.</div>';
+  var d=document.getElementById('detout'); if(d) d.innerHTML='';
+}
+/* Erreur métier (402/403) ou de pont -> zone résultats (fidélité : affichée par l'outil). */
+function renderCalcError(err){
+  var msg=(err&&err.message)?err.message:"Calcul indisponible.";
+  var reason=(err&&err.reason)?" ("+err.reason+")":"";
+  var el=document.getElementById('resout');
+  if(el) el.innerHTML='<div class="note note-a" style="margin-top:1rem"><strong>Calcul indisponible.</strong><br>'+_esc(msg+reason)+'</div>';
+  var d=document.getElementById('detout'); if(d) d.innerHTML='';
+}
+function _restoreCalcBtn(){
+  var btn=document.getElementById('btnc');
+  if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-calculator" style="font-size:16px"></i>Calculer'; }
+}
+function _gotoResults(){
+  document.querySelectorAll('.tbtn').forEach(function(x){x.classList.remove('on');});
+  document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('on');});
+  var rb=document.querySelector('[data-tab="r"]'); if(rb) rb.classList.add('on');
+  var rp=document.getElementById('pane-r'); if(rp) rp.classList.add('on');
+}
+/* =================== FIN BRIDGE + MAPPING =================== */
+
+
+// UTILITAIRES
+const fmt=(v,d=0)=>isNaN(v)?'—':v.toLocaleString('fr-FR',{maximumFractionDigits:d});
+function sci(v){if(!v||isNaN(v))return'—';if(v>=1e8)return(v/1e8).toFixed(2)+'×10⁸';if(v>=1e7)return(v/1e7).toFixed(2)+'×10⁷';if(v>=1e6)return(v/1e6).toFixed(2)+'×10⁶';if(v>=1e5)return(v/1e5).toFixed(1)+'×10⁵';return v.toFixed(0);}
+function neC(x){const n=x/1e6;if(n<.1)return'C1';if(n<.3)return'C2';if(n<1)return'C3';if(n<3)return'C4';if(n<10)return'C5';if(n<30)return'C6';if(n<50)return'C7';return n<100?'C8':'>C8';}
+function tmjaC(T){if(T<25)return'T5';if(T<50)return'T4';if(T<150)return'T3';if(T<300)return'T2';if(T<750)return'T1';if(T<2000)return'T0';if(T<5000)return'TS';return'TEX';}
+function calcNE(){if(cp.neForce!=null&&!isNaN(cp.neForce)&&cp.neForce>0)return cp.neForce;const t=tr.tau/100,C=Math.abs(t)<1e-4?tr.N:(Math.pow(1+t,tr.N)-1)/t;return 365*tr.T*C*tr.C*tr.dir*tr.tv;}
+function toggleNeDirect(on){var v=document.getElementById('neDirectVal');if(on){cp.neForce=+v.value||1e6;}else{cp.neForce=null;}rTS();}
+
+// NAVIGATION
+document.getElementById('tnav').addEventListener('click',e=>{
+  const b=e.target.closest('.tbtn');if(!b)return;
+  document.querySelectorAll('.tbtn').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.pane').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');document.getElementById('pane-'+b.dataset.tab).classList.add('on');
+  if(b.dataset.tab==='t')rTS();if(b.dataset.tab==='p')rFT();if(b.dataset.tab==='c')rCat();
+});
+
+// ── Conditions d'interfaces (Tableau 68) — référence partagée moteur / UI / rapport ──
+function ifaceAuto(i){ const a=M[ly[i].mat], bel=(i+1<ly.length)?M[ly[i+1].mat]:null;
+  if(a&&bel&&a.rig&&bel.rig){ return (String(ly[i].mat).indexOf('BC')===0&&String(ly[i+1].mat).indexOf('BC')===0)?'glissante':'semi-collée'; }
+  return 'collée'; }
+function onIfc(id,mode){ const l=ly.find(x=>x.id===id); if(l){ l.ifc=mode; renderL(); } }
+
+// COUCHES
+// Module GNT automatique — fiche GNT catalogue p.79 : couche de base 600 MPa ; fondation = 3 x module sous-jacent
+// (par sous-couche de 25 cm max), plafonne a 600 MPa en structure GNT/GNT et 360 MPa en structure GNT/GB ; nu=0.35.
+// (La grave laterite GL suit une regle differente — facteur 2 — et reste donc en saisie manuelle.)
+function applyGntAuto(){
+  const surf=new Set(['BBSG1','BBSG2','BBM','BBTM']);
+  const hasBound=ly.some(l=>{const m=M[l.mat]||{};return m.rig||(m.bit&&!surf.has(l.mat));}); // GB/EME/MTLH = base liee
+  const capF=hasBound?360:600;
+  const isG=l=>(l.mat==='GNT1'||l.mat==='GNT2');
+  let topG=-1; for(let i=0;i<ly.length;i++){ if(isG(ly[i])){topG=i;break;} }
+  for(let i=ly.length-1;i>=0;i--){
+    if(!isG(ly[i])) continue;
+    const Eb=(i+1<ly.length)?ly[i+1].E:pf.E;
+    ly[i].E = (!hasBound && i===topG) ? 600 : Math.min(3*Eb, capF);
+    ly[i].nu = 0.35;
+  }
+}
+/* ===== Cas de validation du catalogue (dimensionnements pré-remplis — preuve) ===== */
+const PRESETS=[
+ {id:'s1', n:'1 — BBSG / GB2  (bitumineuse épaisse)', crit:'ε_t base bitumineux', pf:'PF3', ne:3e7, d:'Réf. catalogue : ε_t,adm = 83,96 µdef', ly:[['BBSG1',8],['GB2',35]]},
+ {id:'s2', n:'2 — BBSG / GB3  (bitumineuse épaisse)', crit:'ε_t base bitumineux', pf:'PF3', ne:3e7, d:'Réf. catalogue : ε_t,adm = 94,45 µdef', ly:[['BBSG1',8],['GB3',32]]},
+ {id:'s3', n:'3 — BBSG / GB2 / GNT1  (bitumineuse + assise GNT)', crit:'ε_t base bitumineux', pf:'PF3', ne:3e7, d:'Réf. catalogue : ε_t,adm = 83,96 µdef', ly:[['BBSG1',8],['GB2',30],['GNT1',15,400]]},
+ {id:'s4', n:'4 — BBSG / GB3 / GNT1  (bitumineuse + assise GNT)', crit:'ε_t base bitumineux', pf:'PF3', ne:3e7, d:'Réf. catalogue : ε_t,adm = 94,45 µdef', ly:[['BBSG1',8],['GB3',27],['GNT1',15,400]]},
+ {id:'s5', n:'5 — BBSG / EME2  (bitumineuse épaisse)', crit:'ε_t base bitumineux', pf:'PF2', ne:1e7, d:'Surface BBSG E = 1512 MPa (convention fichier) · Réf. catalogue : ε_t,adm = 94,67 µdef', ly:[['BBSG1',8],['EME2',24]]},
+ {id:'s6', n:'6 — BBSG / GC-T3 / GC-T3  (semi-rigide)', crit:'σ_t base traitées', pf:'PF3', ne:3e7, d:'Réf. catalogue : σ_t,adm = 0,596 MPa', ly:[['BBSG1',8],['GC3',19],['GC3',18]]},
+ {id:'s7', n:'7 — BBSG / SC-T2 / SC-T2  (semi-rigide)', crit:'σ_t base traitées', pf:'PF3', ne:1e7, d:'Réf. catalogue : σ_t,adm = 0,451 MPa', ly:[['BBSG1',8],['SC2',22],['SC2',18]]},
+ {id:'s8', n:'8 — BBSG / GLc2 / GLc2  (semi-rigide, latérite ciment)', crit:'σ_t base traitées', pf:'PF3', ne:1e7, d:'Réf. catalogue : σ_t,adm = 0,279 MPa', ly:[['BBSG1',8],['GLc2',20],['GLc2',18]]},
+ {id:'s10', n:'10 — BBSG / GLc1 / GLc1  (semi-rigide, latérite ciment)', crit:'σ_t base traitées', pf:'PF4', ne:1e7, d:'Réf. catalogue : σ_t,adm = 0,143 MPa', ly:[['BBSG1',8],['GLc1',28],['GLc1',27]]},
+ {id:'s11', n:'11 — BBSG / BQc / BQc  (semi-rigide, banco-coquillage)', crit:'σ_t base traitées', pf:'PF4', ne:1e7, d:'Réf. catalogue : σ_t,adm = 0,229 MPa', ly:[['BBSG1',8],['BQc',29],['BQc',27]]},
+ {id:'s13', n:'13 — BBSG / GNT1  (souple)', crit:'ε_z sol support', pf:'PF2', ne:1e5, d:'Contrôle ε_z indicatif (modèle GNT distinct) · Réf. catalogue : ε_z,adm = 1239 µdef', ly:[['BBSG1',6],['GNT1',26,400]]},
+ {id:'s14', n:'14 — BBSG / GL1 / GL1  (souple, latérite)', crit:'ε_z sol support', pf:'PF2', ne:1e5, d:'Latérite en sandwich (2×E plafonné à 200) · contrôle ε_z indicatif · Réf. : ε_z,adm = 1239 µdef', ly:[['BBSG1',6],['GL1',15,200],['GL1',24,100]]},
+ {id:'s16', n:'16 — BC5 / BC2  (rigide, béton)', crit:'σ_t dalles béton', pf:'PF3', ne:3e7, d:'Épaisseur catalogue · Réf. : σ_t,adm dalle = 1,196 MPa', ly:[['BC5',22],['BC2',20]]},
+ {id:'s17', n:'17 — BC5 goujonné / BC2  (rigide, béton)', crit:'σ_t dalles béton', pf:'PF3', ne:3e7, d:'Dalle goujonnée (kd = 1/1,47) · épaisseur catalogue · Réf. : σ_t,adm dalle = 1,383 MPa', ly:[['BC5g',22],['BC2',15]]},
+ {id:'sa', n:'annexe — BBSG / GLa  (souple, latérite améliorée — hors catalogue)', crit:'ε_z sol support', pf:'PF2', ne:1e5, d:'Hors catalogue · contrôle ε_z indicatif · Réf. : ε_z,adm = 1239 µdef', ly:[['BBSG1',6],['GLa',19,800]]},
+ {id:'sb', n:'annexe — BBSG / GL2 / GL2  (souple, latérite — hors catalogue)', crit:'ε_z sol support', pf:'PF2qs', ne:1e5, d:'Hors catalogue · latérite sandwich (2×E plafonné à 400) · Réf. : ε_z,adm = 1239 µdef', ly:[['BBSG1',6],['GL2',15,320],['GL2',10,160]]}
+];
+function populatePresets(){var sel=document.getElementById('presetSel');if(!sel)return;PRESETS.forEach(function(p){var o=document.createElement('option');o.value=p.id;o.textContent=p.n;sel.appendChild(o);});}
+function syncPresetUI(){var a=document.getElementById('pfcls');if(a)a.value=pf.cls;var b=document.getElementById('pfE');if(b)b.value=pf.E;var c=document.getElementById('pfnu');if(c)c.value=pf.nu;var g=document.getElementById('gntAutoChk');if(g)g.checked=cp.gntAuto;var n=document.getElementById('neDirectChk');if(n)n.checked=(cp.neForce!=null);var nv=document.getElementById('neDirectVal');if(nv&&cp.neForce!=null)nv.value=cp.neForce;var pr=document.getElementById('pr');if(pr)pr.value='auto';var prv=document.getElementById('prv');if(prv)prv.value='';var sh=document.getElementById('psh');if(sh)sh.value='auto';}
+function _trClass(ne){var t=[[1e5,'C1'],[3e5,'C2'],[1e6,'C3'],[3e6,'C4'],[1e7,'C5'],[3e7,'C6'],[1e8,'C7']];for(var i=0;i<t.length;i++){if(ne<=t[i][0]*1.7)return t[i][1];}return 'C8';}
+function _neFmt(ne){var e=Math.floor(Math.log10(ne)+1e-9);var m=ne/Math.pow(10,e);var sup='⁰¹²³⁴⁵⁶⁷⁸⁹';var es=String(e).split('').map(function(c){return sup[+c];}).join('');return m.toFixed(1).replace('.',',')+'×10'+es;}
+function _matLbl(k){return ({BBSG1:'BBSG',BBSG2:'BBSG 2/3',GNT1:'GNT',GNT2:'GNT',BC5g:'BC5 (goujonnée)'})[k]||k;}
+function _cRow(k,v){return '<tr><td style="padding:2px 9px 2px 0;vertical-align:top;color:var(--color-text-secondary);white-space:nowrap;font-weight:600">'+k+'</td><td style="padding:2px 0;vertical-align:top">'+v+'</td></tr>';}
+function buildPresetNote(p){var d=_D||{};var nu=String(p && pf.nu).replace('.',',');var rr=(d.rEff!=null?d.rEff:'')+' % '+(cp.r==='auto'?'(auto, Tableau 70)':'');var st='';for(var i=0;i<ly.length;i++){st+='<div>'+_matLbl(ly[i].mat)+' — '+Math.round(ly[i].h*100)+' cm · E = '+ly[i].E+' MPa</div>';if(i<ly.length-1){st+='<div style="color:#c1622b;font-size:10px;margin:1px 0 3px 12px">⇲ interface '+ifaceAuto(i)+'</div>';}}var rows=_cRow('Plateforme support',p.pf+' — E = '+pf.E+' MPa, ν = '+nu)+_cRow('Classe de trafic',_trClass(p.ne)+' — NE = '+_neFmt(p.ne)+' essieux équivalents')+_cRow('Risque de calcul',rr)+_cRow('Famille (LCPC 1994)',(d.fam||''))+_cRow('Structure (surface → support)',st);return '<div style="font-weight:700;color:var(--brand);margin-bottom:5px">Conditions du cas de validation</div>'+'<table style="border-collapse:collapse;font-size:11px;width:100%">'+rows+'</table>'+(p.d?'<div style="margin-top:6px;font-style:italic;color:var(--color-text-secondary)">'+p.d+'</div>':'');}
+function loadPreset(id){var sel=document.getElementById('presetSel');if(sel)sel.value=id||'';var note=document.getElementById('presetNote');
+ if(!id){nid=1;ly=[{id:nid++,mat:'BBSG1',h:.08,E:1512,nu:.45,ifc:'auto'},{id:nid++,mat:'GB2',h:.30,E:2588,nu:.45,ifc:'auto'},{id:nid++,mat:'GNT1',h:.15,E:400,nu:.35,ifc:'auto'}];pf={cls:'PF3',E:120,nu:.35};cp.neForce=null;cp.gntAuto=true;cp.r='auto';cp.sh='auto';syncPresetUI();renderL();if(note)note.innerHTML='';return;}
+ var p=PRESETS.find(function(x){return x.id===id;});if(!p)return;
+ nid=1;ly=p.ly.map(function(L){var m=M[L[0]];return{id:nid++,mat:L[0],h:L[1]/100,E:(L[2]!=null?L[2]:m.E),nu:m.nu,ifc:'auto'};});
+ pf={cls:p.pf,E:(PFM[p.pf]||{E:120}).E,nu:.35};
+ cp.neForce=p.ne;cp.gntAuto=false;cp.r='auto';cp.sh='auto';
+ syncPresetUI();renderL();
+ Promise.resolve(runCalc()).then(function(){ if(note)note.innerHTML=buildPresetNote(p); });
+ document.querySelectorAll('.tbtn').forEach(function(x){x.classList.remove('on');});
+ document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('on');});
+ var rb=document.querySelector('[data-tab="r"]');if(rb)rb.classList.add('on');
+ var rp=document.getElementById('pane-r');if(rp)rp.classList.add('on');}
+function renderL(){
+  if(cp.gntAuto) applyGntAuto();
+  const B=document.getElementById('lb');B.innerHTML='';
+  ly.forEach((l,i)=>{
+    const m=M[l.mat]||{};const nL=m.bit?'Bitumineux':m.rig?'MTLH':'Granulaire';const nC=m.bit?'bb':m.rig?'bw':'bg';
+    const isGNT=(l.mat==='GNT1'||l.mat==='GNT2');
+    const eCell=(cp.gntAuto&&isGNT)
+      ? `<td><input type="number" value="${l.E}" readonly title="Module calcule automatiquement — catalogue p.79" style="background:var(--brand-tint);color:var(--ink-2);font-weight:600"><span style="font-size:8.5px;color:#c1622b;margin-left:3px;font-weight:700">AUTO</span></td>`
+      : `<td><input type="number" value="${l.E}" min="10" max="50000" step="100" onchange="upL(${l.id},'E',+this.value)"></td>`;
+    const row=document.createElement('tr');
+    row.innerHTML=`<td style="color:var(--color-text-secondary);font-size:10.5px">${i+1}</td>
+      <td><select onchange="upL(${l.id},'mat',this.value)" style="width:100%">${Object.entries(M).map(([k,v])=>`<option value="${k}"${k===l.mat?' selected':''}>${v.n}</option>`).join('')}</select></td>
+      <td><input type="number" value="${l.h}" min="0.01" max="1.5" step="0.01" onchange="upL(${l.id},'h',+this.value)"></td>
+      ${eCell}
+      <td><input type="number" value="${l.nu}" min="0.1" max="0.5" step="0.05" onchange="upL(${l.id},'nu',+this.value)" style="width:60px"></td>
+      <td><span class="badge ${nC}" style="font-size:10px">${nL}</span></td>
+      <td style="white-space:nowrap">
+        ${i>0?`<button class="btn" style="padding:2px 6px;font-size:10.5px" onclick="mvL(${l.id},-1)">↑</button> `:''}
+        ${i<ly.length-1?`<button class="btn" style="padding:2px 6px;font-size:10.5px" onclick="mvL(${l.id},1)">↓</button> `:''}
+        <button class="btn btnd" onclick="delL(${l.id})" title="Supprimer la couche">✕ Suppr.</button>
+      </td>`;
+    B.appendChild(row);
+    { const lab=(i+1<ly.length)?('C'+(i+1)+' / C'+(i+2)):('C'+ly.length+' / PSC');
+      const au=ifaceAuto(i), cur=l.ifc||'auto';
+      const ir=document.createElement('tr');
+      ir.innerHTML='<td></td><td colspan="6" style="padding:3px 8px;border-top:1px dashed var(--line-2)">'
+        +'<span style="display:inline-flex;align-items:center;gap:8px;font-size:10.5px;color:var(--ink-2)">'
+        +'<span style="letter-spacing:.3px">⇲ interface '+lab+'</span>'
+        +'<select onchange="onIfc('+l.id+',this.value)" style="font-size:10.5px;padding:1px 4px">'
+        +'<option value="auto"'+(cur==='auto'?' selected':'')+'>Auto · '+au+'</option>'
+        +'<option value="collée"'+(cur==='collée'?' selected':'')+'>Collée</option>'
+        +'<option value="semi-collée"'+(cur==='semi-collée'?' selected':'')+'>Semi-collée</option>'
+        +'<option value="glissante"'+(cur==='glissante'?' selected':'')+'>Glissante</option>'
+        +'</select>'
+        +(cur!=='auto'?'<span style="color:#c1622b;font-weight:700;font-size:9.5px">IMPOSÉE</span>':'')
+        +'</span></td>';
+      B.appendChild(ir); }
+  });
+  rSec();
+}
+function upL(id,f,v){const l=ly.find(x=>x.id===id);if(!l)return;if(f==='mat'){const m=M[v];l.mat=v;l.E=m.E;l.nu=m.nu;}else l[f]=v;renderL();}
+function addL(){ly.push({id:nid++,mat:'GL1',h:.20,E:200,nu:.35,ifc:'auto'});renderL();}
+function toggleGntAuto(on){ cp.gntAuto=on; renderL(); }
+function delL(id){if(ly.length<=1)return;ly=ly.filter(x=>x.id!==id);renderL();}
+function mvL(id,d){const i=ly.findIndex(x=>x.id===id),j=i+d;if(j<0||j>=ly.length)return;[ly[i],ly[j]]=[ly[j],ly[i]];renderL();}
+
+function sectionSVG(mid){
+  mid=mid||'ra';
+  const W=560,PAD=165,RW=200,SH=.30;const tot=ly.reduce((s,l)=>s+l.h,0);const SC=200/(tot+SH*.7);
+  let cy=40,rc='',lb='';const AX=PAD+RW/2;
+  const ld=`<ellipse cx="${AX-19}" cy="15" rx="12" ry="6" fill="#1a4a7a" opacity=".8"/><ellipse cx="${AX+19}" cy="15" rx="12" ry="6" fill="#1a4a7a" opacity=".8"/>
+    <line x1="${AX-19}" y1="22" x2="${AX-19}" y2="33" stroke="#1a4a7a" stroke-width="1.5" marker-end="url(#${mid})"/>
+    <line x1="${AX+19}" y1="22" x2="${AX+19}" y2="33" stroke="#1a4a7a" stroke-width="1.5" marker-end="url(#${mid})"/>
+    <text x="${AX}" y="9" text-anchor="middle" font-size="9" fill="#1a4a7a" font-weight="500">130 kN · p=${cp.p} MPa · d=${cp.d}m</text>`;
+  ly.forEach((l,i)=>{
+    const m=M[l.mat]||{c:'#888'};const h=l.h*SC;const cum=ly.slice(0,i+1).reduce((s,x)=>s+x.h,0);const ym=cy+h/2;
+    rc+=`<rect x="${PAD}" y="${cy}" width="${RW}" height="${h}" fill="${m.c||'#888'}"/>`;
+    lb+=`<text x="${PAD-5}" y="${ym+3}" text-anchor="end" font-size="10" fill="var(--color-text-primary)" font-weight="500">${(m.n||l.mat).split(' ').slice(0,3).join(' ')}</text>
+      <text x="${PAD-5}" y="${ym+13}" text-anchor="end" font-size="8.5" fill="var(--color-text-secondary)">E=${fmt(l.E)} MPa · h=${(l.h*100).toFixed(0)} cm</text>
+      <line x1="${PAD+RW}" y1="${cy+h}" x2="${PAD+RW+12}" y2="${cy+h}" stroke="var(--color-border-secondary)" stroke-width=".5"/>
+      <text x="${PAD+RW+15}" y="${cy+h+4}" font-size="9.5" fill="var(--color-text-secondary)">${(cum*100).toFixed(0)} cm</text>`;
+    cy+=h;
+  });
+  const sh=SH*SC;rc+=`<rect x="${PAD}" y="${cy}" width="${RW}" height="${sh}" fill="#9b8060" opacity=".85"/>`;
+  lb+=`<text x="${PAD-5}" y="${cy+sh/2+3}" text-anchor="end" font-size="10" fill="var(--color-text-primary)" font-weight="500">${pf.cls} — Sol support</text>
+    <text x="${PAD-5}" y="${cy+sh/2+13}" text-anchor="end" font-size="8.5" fill="var(--color-text-secondary)">E=${pf.E} MPa · ν=${pf.nu}</text>`;
+  const TH=cy+sh+10;
+  return `<svg viewBox="0 0 ${W} ${TH}" width="100%" style="display:block">
+    <defs><marker id="${mid}" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#1a4a7a"/></marker></defs>
+    ${ld}<rect x="${PAD}" y="32" width="${RW}" height="${cy-32+sh}" fill="none" stroke="var(--color-border-secondary)" stroke-width=".5"/>
+    ${rc}${lb}
+    <line x1="${PAD}" y1="32" x2="${PAD}" y2="${cy+sh}" stroke="var(--color-border-secondary)" stroke-width=".5"/>
+    <line x1="${PAD+RW}" y1="32" x2="${PAD+RW}" y2="${cy+sh}" stroke="var(--color-border-secondary)" stroke-width=".5"/>
+  </svg>`;
+}
+function rSec(){ const el=document.getElementById('sprev'); if(!el)return; el.innerHTML=sectionSVG('ra'); }
+function onPF(){const c=document.getElementById('pfcls').value;pf.cls=c;const pfd=PFM[c]||{E:50};if(c!=='custom')pf.E=pfd.E;document.getElementById('pfE').value=pf.E;renderL();}
+// ── Risque : liste déroulante + saisie libre synchronisées (comme le CAM) ──
+function onRisk(v){
+  var inp=document.getElementById('prv');
+  if(v==='auto'){cp.r='auto';if(inp)inp.value='';}
+  else if(v==='custom'){if(inp){inp.focus();if(inp.value!==''&&!isNaN(+inp.value))cp.r=+inp.value;}}
+  else{cp.r=+v;if(inp)inp.value=v;}
+  riskHint();
+}
+function onRiskInput(v){
+  var sel=document.getElementById('pr');
+  if(v===''||isNaN(+v)){if(sel&&sel.value==='custom'){sel.value='auto';cp.r='auto';}riskHint();return;}
+  cp.r=+v;
+  if(sel){var m=[...sel.options].find(o=>o.value!=='auto'&&o.value!=='custom'&&+o.value===+v);sel.value=m?m.value:'custom';}
+  riskHint();
+}
+function riskHint(){
+  var h=document.getElementById('prhint');if(!h)return;
+  if(cp.r==='auto'){h.innerHTML='Mode auto : 25 % si NE &lt; 3M, sinon 5 % (Tab. 70)';}
+  else{var u=uRisk(+cp.r);h.innerHTML='r = '+(+cp.r)+' % &rarr; quantile u_r = '+u.toFixed(3);}
+}
+
+// TRAFIC
+function rTS(){
+  const NE=calcNE(),t=tr.tau/100,C=Math.abs(t)<1e-4?tr.N:(Math.pow(1+t,tr.N)-1)/t;
+  const el=document.getElementById('tsout');if(!el)return;
+  el.innerHTML=`<div class="g4">
+    <div class="metric"><div class="ml">NE</div><div class="mv">${sci(NE)}</div><div class="ms">Classe ${neC(NE)}</div></div>
+    <div class="metric"><div class="ml">NPL cumulé</div><div class="mv">${sci(365*tr.T*C*tr.dir*tr.tv)}</div><div class="ms">${tr.N} ans</div></div>
+    <div class="metric"><div class="ml">Ti (TMJA)</div><div class="mv">${tmjaC(tr.T)}</div><div class="ms">${tr.T} PL/j/s</div></div>
+    <div class="metric"><div class="ml">C (cumul)</div><div class="mv">${C.toFixed(2)}</div><div class="ms">τ=${tr.tau}%/an</div></div>
+  </div>
+  <div class="note" style="font-size:10.5px">NE = 365 × TMJA × C × CAM × f_dir × f_tv &nbsp;·&nbsp; C = [(1+τ)ⁿ − 1] / τ</div>`;
+}
+function rFT(){
+  function _rows(pred){ var out=""; for(var k in M){ if(!M.hasOwnProperty(k)) continue; var v=M[k]; if(!pred(v)) continue;
+    out+='<tr><td>'+_esc(v.n)+'</td><td colspan="3" style="font-size:10.5px;color:var(--color-text-secondary)">Param\u00e8tres de fatigue appliqu\u00e9s c\u00f4t\u00e9 serveur (catalogue AGEROUTE) \u2014 voir \u00ab D\u00e9tails calcul \u00bb</td></tr>'; } return out; }
+  var b=document.getElementById('fbt'); if(b) b.innerHTML=_rows(function(v){return v.bit;});
+  var r=document.getElementById('frt'); if(r) r.innerHTML=_rows(function(v){return v.rig;});
+}
+
+// CATALOGUE
+function catMat(m,i,L){ if(i===0)return m.top; if(m.tail&&i===L-1)return m.tail; if(m.mid&&i===1)return m.mid; return m.body; }
+function txtOn(hex){ const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16); return (0.299*r+0.587*g+0.114*b)>145?'rgba(18,22,28,.92)':'rgba(255,255,255,.96)'; }
+function rCat(){
+  const sel=document.getElementById('catt').value;
+  const neV=parseFloat(document.getElementById('catne')?.value)*1e6||null;
+  const S=CAT[sel];if(!S)return;
+  const pfs=['PF1','PF2','PF2qs','PF3','PF4'];const nes=['C1','C2','C3','C4','C5','C6','C7','C8'];
+  const legMats=[S.m.top,S.m.mid,S.m.body,S.m.tail].filter((v,i,a)=>v&&a.indexOf(v)===i);
+  let lg=`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:.65rem">`;
+  legMats.forEach(mk=>lg+=`<span style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:500"><span style="width:14px;height:14px;border-radius:3px;border:1.5px solid rgba(15,23,32,.5);background:${M[mk]?.c||'#888'};display:inline-block;flex-shrink:0"></span>${M[mk]?.n||mk}</span>`);
+  lg+=`</div>`;
+  let html=lg+`<div style="overflow-x:auto"><table style="min-width:500px"><thead><tr><th>NE (×10⁶)</th>${pfs.map(p=>`<th style="text-align:center">${p}<br><span style="font-size:9px;font-weight:400">${PFM[p]?.E||'—'}MPa</span></th>`).join('')}</tr></thead><tbody>`;
+  nes.forEach(ne=>{
+    const row=S[ne];const lim=NL[ne];const ni=nes.indexOf(ne);
+    const isR=neV&&(ni===0?(neV/1e6<.1):(neV/1e6<lim&&neV/1e6>=(NL[nes[ni-1]]||0)));
+    html+=`<tr style="${isR?'background:rgba(26,74,122,.04)':''}"><td style="font-weight:500;font-size:11px">${ne} <span style="font-weight:400;color:var(--color-text-secondary);font-size:9.5px">&lt;${lim}</span></td>`;
+    pfs.forEach(pk=>{
+      const e=row?.[pk];const isHL=isR&&pk===pf.cls;
+      if(!e){html+=`<td style="text-align:center;color:var(--color-text-secondary);font-size:10px">—</td>`;return;}
+      const tot=e.reduce((s,v)=>s+v,0);const cH=50,sc=cH/tot;let mr='';let cy2=0;
+      e.forEach((h,idx)=>{const ph=h*sc;const mk=catMat(S.m,idx,e.length);const col=M[mk]?.c||'#888';const tc=txtOn(col);
+        mr+=`<rect x="13" y="${cy2}" width="50" height="${ph}" fill="${col}" stroke="#ffffff" stroke-width="0.8"/>`;
+        if(ph>7)mr+=`<text x="38" y="${cy2+ph/2+3.5}" text-anchor="middle" font-size="7.5" fill="${tc}" font-weight="600">${h}</text>`;
+        cy2+=ph;});
+      html+=`<td style="text-align:center;padding:3px;${isHL?'outline:2px solid #1a4a7a;background:rgba(26,74,122,.07);border-radius:3px':''}">
+        <svg width="76" height="${cH}" viewBox="0 0 76 ${cH}" style="display:block;margin:0 auto">${mr}<text x="38" y="${cH-1}" text-anchor="middle" font-size="7.5" fill="var(--color-text-secondary)">${tot}cm</text></svg></td>`;
+    });html+=`</tr>`;
+  });
+  html+=`</tbody></table></div>`;document.getElementById('catout').innerHTML=html;
+}
+
+// ═══════════════════════════════════════════════════════════
+// ══════ MOTEUR BURMISTER EXACT — J.Appl.Phys. 16 (1945) ═══
+// ═══════════════════════════════════════════════════════════
+
+
+
+
+var U_RISK={5:1.645,10:1.282,15:1.036,25:0.674,50:0.0};
+// Loi normale inverse (algorithme d'Acklam, |erreur| < 1.2e-9) — fractile pour un risque quelconque
+function invNorm(p){
+  if(p<=0)return -Infinity; if(p>=1)return Infinity;
+  var a=[-3.969683028665376e1,2.209460984245205e2,-2.759285104469687e2,1.383577518672690e2,-3.066479806614716e1,2.506628277459239e0];
+  var b=[-5.447609879822406e1,1.615858368580409e2,-1.556989798598866e2,6.680131188771972e1,-1.328068155288572e1];
+  var c=[-7.784894002430293e-3,-3.223964580411365e-1,-2.400758277161838e0,-2.549732539343734e0,4.374664141464968e0,2.938163982698783e0];
+  var d=[7.784695709041462e-3,3.224671290700398e-1,2.445134137142996e0,3.754408661907416e0];
+  var pl=0.02425,ph=1-pl,q,r,x;
+  if(p<pl){q=Math.sqrt(-2*Math.log(p));x=(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);}
+  else if(p<=ph){q=p-0.5;r=q*q;x=(((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q/(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);}
+  else{q=Math.sqrt(-2*Math.log(1-p));x=-(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);}
+  return x;
+}
+// u_r associé au risque r (%) : valeurs catalogue exactes pour 5/10/15/25/50, calcul pour le reste
+function uRisk(r){var v=U_RISK[r];return v!==undefined?v:invNorm(1-r/100);}
+
+
+
+var _D={};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MOTEUR BURMISTER MULTI-COUCHE EXACT — MATRICE DE TRANSFERT (PROPAGATEUR)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Principe : pour chaque point d'intégration m, on exprime les contraintes
+// et déplacements dans chaque couche i sous la forme :
+//   {σ_z, τ_rz, w, u}_i = P_i(m, h_i, E_i, ν_i) · {A_i, B_i, C_i, D_i}
+//
+// Les coefficients {A,B,C,D} de chaque couche sont reliés à ceux de la couche
+// suivante par les conditions de continuité à l'interface (éq. 9a-9d, Burmister I).
+// On propage depuis la couche inférieure (semi-infinie → A=C=0) jusqu'à
+// la surface, puis on applique les CL de surface (σ_z=-m·J₀(mr), τ_rz=0).
+//
+// Implémentation : à chaque m, on construit un système 4×4 pour les 2 inconnues
+// {B_n, D_n} du semi-espace (couche N+1 = PSC) en résolvant la chaîne de
+// propagation. On obtient ainsi σ_z et σ_r à chaque interface exactement.
+//
+// Référence : Burmister, J.Appl.Phys. 16 (1945), éq. 6, 9, 10 ; généralisation
+// à n couches par matrices de transfert 4×4 (méthode multicouche/BISAR).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Algèbre matricielle minimale ─────────────────────────────────────────
+
+
+
+
+
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ε_z au sommet PSC par Burmister multi-couche (σ_z à la base de la dernière couche)
+// σ_r au sommet PSC : utiliser la loi d'élasticité dans le PSC (semi-infini)
+// ε_z = (σ_z - 2·ν_s·σ_r) / E_s
+// ─────────────────────────────────────────────────────────────────────────────
+// Calcul σ_r au sommet PSC : dans le demi-espace PSC (A=C=0),
+// σ_r = m·J₀·[B·m²+D·m(1+2ν)] - m·J₁/r·[B·m² - D·m]
+// On intègre séparément en passant la dernière interface (base couche n = sommet PSC).
+
+// -> On inclut le sommet PSC comme interface n (index n), à calculer séparément.
+
+// ──────────────────────────────────────────────────────────────────────────────
+// BURMISTER MULTI-COUCHE EXACT — version corrigée
+//
+// Convention : z=0 au SOMMET de chaque couche (z_local), z=h à la BASE.
+// Matrices P_local(0) et P_local(h) vérifient Y = P @ ABCD à l'interface.
+// État continu Y = [F_z, F_r, (1+ν)/E·G_w, (1+ν)/E·G_u].
+// Propagateur par couche : T_i = P_local(0) @ inv(P_local(h)).
+// PSC : A=C=0, colonnes B,D de P_local(0).
+// CL surface : F_z=1, F_r=0 → [Bs, Ds].
+// σ_z = +q·∫ kern·F_z·J₀(mr) dm  (compression positive, convention de référence)
+// σ_r = −q·∫ kern·(p0·J₀ − p1·J₁/r) dm  (signe validé vs Boussinesq)
+//
+// Superposition jumelage (2 roues distantes de d) :
+//   à r=0   : σ_total = σ_roue1(r=0) + σ_roue2(r=d)
+//   à r=d/2 : σ_total = 2·σ_roue1(r=d/2)
+// ──────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+async function runCalc(){
+  /* NO-CALC-INITIAL (ADR 0015) : etat vide/invalide -> message natif, AUCUN appel
+     serveur. Burmister ne recalcule PAS au chargement (init = renderL/rTS/…), mais
+     un clic « Calculer » sur une structure invalide ne doit pas solliciter le serveur. */
+  if(!plausibleBurmister()){ renderNeedInput(); return; }
+   
+  try{ if(typeof cp!=="undefined" && cp && cp.gntAuto && typeof applyGntAuto==="function"){ applyGntAuto(); if(typeof renderL==="function") renderL(); } }catch(e){}
+  var btn=document.getElementById('btnc');
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>Calcul Burmister\u2026'; }
+  var resp;
+  try{ resp = await window.__geofamBridge.calc(buildBurmisterInput()); }
+  catch(e){ renderCalcError({message:'Pont de calcul indisponible : '+((e&&e.message)||e)}); _restoreCalcBtn(); return; }
+  if(!resp || !resp.ok){ renderCalcError((resp&&resp.error)||{message:'R\u00e9ponse de calcul vide.'}); _restoreCalcBtn(); return; }
+  window.__roadsensLastCalcResultId = resp.calcResultId || null;
+  var out = resp.output || {};
+  if(out.erreur){ renderCalcError({message:out.erreur}); _restoreCalcBtn(); return; }
+  try{ buildDFromOutput(out); renderRes(rArgFromOutput(out)); }
+  catch(e){ var el=document.getElementById('resout'); if(el) el.innerHTML='<div class="note note-a" style="margin-top:1rem"><strong>Erreur de rendu :</strong> '+_esc(e&&e.message)+'</div>'; }
+  _restoreCalcBtn(); _gotoResults();
+}
+
+
+
+// ═══════════════════════════════════════
+// RENDU RÉSULTATS
+// ═══════════════════════════════════════
+function pbr(v,adm,pass){
+  if(v==null||adm==null)return'';
+  const pct=Math.round(v/adm*100);            // vrai pourcentage (ratio pur, non plafonné)
+  const barW=Math.min(100,pct);               // largeur de la barre bornée à 100 % (contrainte visuelle)
+  const col=pass?'#5a9e1f':'#d94040';
+  return`<div class="pb"><div class="pbf" style="width:${barW}%;background:${col}"></div></div>
+  <div style="font-size:10px;color:var(--color-text-secondary);margin-top:2px">${pct}% de la valeur admissible</div>`;
+}
+
+function renderRes(r){
+  const{NE,H_bit,H_tot,E1_eq,nu1_eq,et_val,et_adm,et_r0,et_rd2,s0,sd2,ez_val,ez_adm,passT,passZ,PASS,hasBit,sig,ezL,gq,et2_val,et2_adm,et2_i,st2_val,st2_adm,st2_i,fam,etReq,rigL}=r;
+  const uF=sig?' MPa':' μdef';const dF=sig?3:1;
+  const cls=neC(NE);const ti=tmjaC(tr.T);
+  let html=`
+  <div style="background:${PASS?'rgba(26,74,122,.08)':'rgba(190,50,50,.08)'};border-radius:var(--border-radius-md);padding:11px 16px;margin-bottom:1rem;display:flex;align-items:center;gap:12px;border:.5px solid ${PASS?'rgba(26,74,122,.2)':'rgba(190,50,50,.2)'}">
+    <i class="ti ti-${PASS?'circle-check':'circle-x'}" style="font-size:1.6rem;color:${PASS?'#1a4a7a':'#c03030'};flex-shrink:0"></i>
+    <div>
+      <div style="font-weight:500;font-size:13px;color:${PASS?'#1a4a7a':'#c03030'}">${PASS?'Structure satisfaisante — critères vérifiés':'Structure non satisfaisante — renforcement requis'}</div>
+      <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">NE = ${cls} · Ti = ${ti} · PSC ${pf.cls} (${pf.E} MPa) · Dual wheels d=${cp.d} m</div>
+    </div>
+  </div>
+
+  <div class="sec">Paramètres de la structure — Burmister multi-couche exact</div>
+  <div class="g4">
+    <div class="metric"><div class="ml">h paquet lié (réel)</div><div class="mv">${fmt(H_bit*100,1)} cm</div><div class="ms">épaisseur physique</div></div>
+    <div class="metric"><div class="ml">h total couches</div><div class="mv">${fmt(H_tot*100,1)} cm</div><div class="ms">sur PSC ${pf.cls}</div></div>
+    <div class="metric"><div class="ml">E₁ pond. / ν₁ pond.</div><div class="mv">${fmt(E1_eq)} MPa</div><div class="ms">ν = ${nu1_eq.toFixed(2)}</div></div>
+    <div class="metric"><div class="ml">Moteur</div><div class="mv" style="font-size:12px">Transfer Matrix</div><div class="ms">n couches exactes</div></div>
+  </div>
+
+  <div class="sec">Vérification des critères — Solution exacte de Burmister (1945)</div>
+  <div style="border-radius:var(--border-radius-lg);border:.5px solid var(--color-border-tertiary);overflow:hidden">
+  ${(sig||etReq)?`<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;border-bottom:.5px solid var(--color-border-tertiary)">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:12.5px;font-weight:500">${sig?'Fatigue assise traitée — σ_t':'Fatigue bitumineuse — ε_t'} <span style="font-weight:400;font-size:11px;color:var(--color-text-secondary)">(fond du paquet · famille : ${fam})</span></div>
+      <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">${sig?'Traction horizontale · σ_t_adm = σ₆·(NE/10⁶)^b·kr·kc·ks·kd (LCPC 1994 §4.3.3, kd=1 ≤ G3)':'Traction horizontale · ε_t_adm = ε₆·kθ·(NE/10⁶)^b·kr·kc·ks (LCPC 1994)'}</div>
+      ${et_val!=null&&et_adm!=null?pbr(et_val,et_adm,passT):'<div style="font-size:11px;color:var(--color-text-secondary);margin-top:4px">Pas de couche liée</div>'}
+      ${hasBit?`<div style="font-size:10.5px;color:var(--color-text-secondary);margin-top:4px">σ_z interface = ${fmt(s0.sz*1000,2)} kPa · σ_r = ${fmt(s0.sr*1000,2)} kPa <span style="margin-left:8px">r=0 : ε_t = ${fmt(et_r0,1)} μdef · r=d/2 : ε_t = ${fmt(et_rd2,1)} μdef</span></div>`:''}
+      ${et2_val!=null&&etReq?`<div style="font-size:10.5px;margin-top:4px;color:${et2_val<=et2_adm?'var(--color-text-secondary)':'#c03030'}">ε_t base bitumineux C${et2_i+1}, phase 2 : MTLH fissuré E/5 + interface glissante (§4.4.1) : ${fmt(et2_val,1)} / adm. ${fmt(et2_adm,1)} μdef — ${et2_val<=et2_adm?'satisfait':'NON SATISFAIT'}</div>`:''}
+      ${st2_val!=null?`<div style="font-size:10.5px;margin-top:4px;color:${st2_val<=st2_adm?'var(--color-text-secondary)':'#c03030'}">Structure inverse — σ_t base MTLH profond (couche ${st2_i+1}) : ${fmt(st2_val,3)} / adm. ${fmt(st2_adm,3)} MPa — ${st2_val<=st2_adm?'satisfait':'NON SATISFAIT'}</div>`:''}
+      ${rigL&&rigL.length?`<div style="font-size:10.5px;color:var(--color-text-secondary);margin-top:4px">Interface ${rigL[0].mode} (Tab. 68 AGEROUTE) — σ_t par couche traitée : ${rigL.map(x=>'C'+(x.i+1)+' = '+fmt(x.st,3)+'/'+fmt(x.adm,3)+' MPa'+(x.st<=x.adm?'':' ✗')).join(' · ')}</div>`:''}
+    </div>
+    <div style="text-align:right;margin-left:1rem;flex-shrink:0;min-width:140px">
+      ${et_val!=null?`<div style="font-size:15px;font-weight:500;color:${passT?'#1a4a7a':'#c03030'}">${fmt(et_val,dF)}${uF}</div>
+      <div style="font-size:10.5px;color:var(--color-text-secondary)">adm. ${et_adm!=null?fmt(et_adm,dF):'—'}${uF}</div>
+      <span class="badge ${passT?'bp':'bf'}" style="margin-top:4px">${passT?'SATISFAIT':'NON SATISFAIT'}</span>`:'<span class="badge bw">N/A</span>'}
+    </div>
+  </div>`:''}
+  <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:12.5px;font-weight:500">Orniérage plateforme — ε_z <span style="font-weight:400;font-size:11px;color:var(--color-text-secondary)">(max sommet PSC${ezL&&ezL.length&&gq?' + sommet GNT §4.1.2':''} · He=${fmt(H_tot*100,1)} cm)</span></div>
+      <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Compression verticale · ε_z_adm = ${NE<=250000?'0,016':'0,012'} × NE^(−1/4,5) (catalogue p.124${NE<=250000?', NE ≤ 250 000':''})</div>
+      ${pbr(ez_val,ez_adm,passZ)}
+      ${ezL&&ezL.length&&gq?`<div style="font-size:10.5px;color:var(--color-text-secondary);margin-top:4px">ε_z sommet couches non liées : ${ezL.map(x=>'C'+(x.i+1)+' = '+fmt(x.val,1)).join(' · ')} μdef</div>`:''}
+    </div>
+    <div style="text-align:right;margin-left:1rem;flex-shrink:0;min-width:140px">
+      <div style="font-size:15px;font-weight:500;color:${passZ?'#1a4a7a':'#c03030'}">${fmt(ez_val,1)} μdef</div>
+      <div style="font-size:10.5px;color:var(--color-text-secondary)">adm. ${fmt(ez_adm,1)} μdef</div>
+      <span class="badge ${passZ?'bp':'bf'}" style="margin-top:4px">${passZ?'SATISFAIT':'NON SATISFAIT'}</span>
+    </div>
+  </div>
+  </div>
+
+  <div class="sec">Diagnostic et recommandations</div>`;
+
+  // ── Recommandations ciblées sur les matériaux réellement présents dans la structure ──
+  const _sig=(k)=>k.startsWith('BBSG')?'BBSG':(k==='GC3'?'GC-T3':(k==='SC2'?'SC-T2':k));
+  const _uniq=(a)=>a.filter((v,i)=>a.indexOf(v)===i);
+  const _bound=(k)=>M[k]&&(M[k].bit||M[k].rig);
+  const _baseMats=_uniq(ly.slice(1).filter(l=>_bound(l.mat)).map(l=>_sig(l.mat)));   // assises liées (hors couche de roulement)
+  const _allBound=_uniq(ly.filter(l=>_bound(l.mat)).map(l=>_sig(l.mat)));
+  const _gran=_uniq(ly.filter(l=>M[l.mat]&&!M[l.mat].bit&&!M[l.mat].rig).map(l=>_sig(l.mat)));
+
+  if(!passT&&et_val!=null&&et_adm!=null){
+    const rat=(et_val/et_adm).toFixed(2);
+    const _lst=(_baseMats.length?_baseMats:_allBound);
+    const _cible=_lst.length?` (${_lst.join(' / ')})`:'';
+    const _quoi=sig?"l'épaisseur de l'assise traitée":"l'épaisseur de la base liée";
+    const _titre=sig?"Fatigue de l'assise traitée non satisfaite":"Fatigue bitumineuse non satisfaite";
+    html+=`<div class="note note-a"><strong>${_titre} (ratio ${rat}).</strong><br>→ Augmenter ${_quoi}${_cible}, ou choisir un matériau plus performant · Voir catalogue classe ${cls}/${pf.cls} (onglet Catalogue).</div>`;
+  }
+  if(!passZ){
+    const rat=(ez_val/ez_adm).toFixed(2);
+    const _cibleG=_gran.length?`augmenter l'épaisseur des couches non liées (${_gran.join(' / ')}) ou l'épaisseur totale`:`augmenter l'épaisseur totale de la chaussée`;
+    html+=`<div class="note note-a"><strong>Orniérage du support non satisfait (ratio ${rat}).</strong><br>→ Améliorer la portance du support (viser une PSC plus raide), ${_cibleG}.</div>`;
+  }
+  if(PASS){
+    html+=`<div class="note note-g"><strong>Structure conforme.</strong> Critères Burmister satisfaits pour NE=${sci(NE)} · PSC ${pf.cls} · Dual wheels d=${cp.d} m.</div>`;
+  }
+
+  html+=`<div class="note" style="font-size:10.5px;margin-top:.9rem">
+    <strong>Moteur ROADSENS — Burmister exact multi-couche (1945) — Transfer Matrix</strong><br>
+    ε_t : intégration Hankel 400 pts · éq. 6a/6b/6c (Burmister, J.Appl.Phys.16) · matrice de transfert 4×4 · n couches exactes · dual wheels superposition<br>
+    ε_z : formule 3D exacte [σ_z−ν(σ_xx+σ_yy)]/E · σ_θ analytique au sommet PSC (demi-espace) · Lois de fatigue et ε_z_adm : catalogue AGEROUTE Sénégal Nov. 2015 · Aucune réduction Odemark
+  </div>`;
+
+  document.getElementById('resout').innerHTML=html;
+  try{renderDetails();}catch(ex){console.warn('det:',ex.message);}
+}
+
+
+function renderDetails(){
+  var el=document.getElementById("detout");
+  if(!el||!_D||!_D.cps)return;
+  var d=_D;
+  var f=function(v,n){if(v==null||isNaN(v)||!isFinite(v))return"&mdash;";return Number(v).toFixed(n!=null?n:2);};
+  var fi=function(v){if(v==null||isNaN(v))return"&mdash;";return Math.round(v).toLocaleString("fr-FR");};
+  var fe=function(v){if(v==null||isNaN(v))return"&mdash;";return Number(v).toExponential(3);};
+  var BL="#1a4a7a",GR="#2d6a11",RD="#c04000";
+  var tau=d.trs?d.trs.tau/100:0;
+  var Cv=Math.abs(tau)<1e-4?(d.trs?d.trs.N:20):(Math.pow(1+tau,d.trs?d.trs.N:20)-1)/tau;
+  var UR={5:1.645,10:1.282,15:1.036,25:0.674,50:0.0};
+  var _rE=d.rEff!==undefined?d.rEff:(d.cps?d.cps.r:10);
+  var u_r=uRisk(_rE);
+  var Rpsc=Math.sqrt(d.H_tot*d.H_tot+(d.cps?d.cps.a*d.cps.a:0));
+  var zR=Rpsc>0?d.H_tot/Rpsc:0;
+
+  function row(l,v,u,c){
+    return "<tr>"
+      +"<td style='padding:5px 10px;font-size:11px;color:#444;width:38%;border-bottom:.5px solid #eee'>"+l+"</td>"
+      +"<td style='padding:5px 10px;font-size:11.5px;font-weight:600;font-family:monospace;color:"+BL+";border-bottom:.5px solid #eee'>"+v+(u?" <span style='font-weight:400;font-size:10px;color:#888'>"+u+"</span>":"")+"</td>"
+      +"<td style='padding:5px 10px;font-size:10px;color:#888;font-style:italic;border-bottom:.5px solid #eee'>"+(c||"")+"</td>"
+      +"</tr>";
+  }
+  function sec(t){return "<tr><td colspan='3' style='padding:7px 10px 3px;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#fff;background:"+BL+"'>"+t+"</td></tr>";}
+  function fml(t){return "<tr><td colspan='3' style='padding:3px 12px 5px;font-family:monospace;font-size:10.5px;background:#f0f0f8;color:#333;border-bottom:.5px solid #ddd'>"+t+"</td></tr>";}
+
+  var ok="<span style='color:"+GR+";font-weight:700'>&#10003; SATISFAIT</span>";
+  var no="<span style='color:"+RD+";font-weight:700'>&#10007; NON SATISFAIT</span>";
+
+  var h="<div style='padding:5px 0 8px;border-bottom:2px solid "+BL+";margin-bottom:8px;display:flex;justify-content:space-between;align-items:center'>"
+    +"<div><strong style='color:"+BL+"'>ROADSENS &mdash; Rapport d&#233;taill&#233;</strong>"
+    +"<span style='font-size:10px;color:#888;margin-left:8px'>Burmister Transfer Matrix (n couches exactes) &middot; AGEROUTE S&#233;n&#233;gal 2015</span></div>"
+    +"<strong style='color:"+(d.PASS?GR:RD)+"'>"+(d.PASS?"&#10003; CONFORME":"&#10007; NON CONFORME")+"</strong>"
+    +"</div>"
+    +"<div style='margin:10px 0 14px;padding:11px 13px;border:.5px solid #ddd;border-radius:6px;background:#fbfcfe'>"
+    +"<div style='font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:"+BL+";margin-bottom:7px'>Coupe transversale de la structure</div>"
+    +"<div style='max-width:440px;margin:0 auto'>"+sectionSVG('R')+"</div></div>"
+    +"<table style='width:100%;border-collapse:collapse;border:.5px solid #ddd'>";
+
+  h+=sec("1. Donn&#233;es d&#39;entr&#233;e");
+  h+=row("Pression p0",f(d.cps.p,3),"MPa","Essieu 130 kN");
+  h+=row("Rayon a",f(d.cps.a*100,1),"cm","");
+  h+=row("Entre-axe d",f(d.cps.d*100,0),"cm","");
+  h+=row("Risque r",_rE,"%",(d.cps&&d.cps.r==='auto'?"auto — Tableau 70":""));
+  h+=row("Plateforme "+d.pfs.cls,fi(d.pfs.E),"MPa","nu="+d.pfs.nu);
+
+  h+=sec("2. Trafic NE");
+  h+=fml("NE = 365 x TMJA x C x CAM x f_dir x f_tv   avec   C = [(1+tau)^n - 1] / tau");
+  h+=row("TMJA",d.trs.T,"PL/j/sens","");
+  h+=row("CAM",f(d.trs.C,2),"","");
+  h+=row("Dur&#233;e n",d.trs.N,"ans","");
+  h+=row("Taux tau",f(d.trs.tau,1),"%/an","");
+  h+=row("C cumulatif",f(Cv,3),"","");
+  h+=row("NE",fe(d.NE),"essieux","Classe "+neC(d.NE));
+  h+=row("ez_adm catalogue",f(d.ezA,1),"&mu;def",(d.NE<=250000?"0,016":"0,012")+" x NE^(-1/4,5) — "+(d.NE<=250000?"NE&le;250 000":"NE&gt;250 000")+" (p.124)");
+
+  h+=sec("3. Structure des couches");
+  h+=fml("Moteur : Burmister multi-couche exact — matrice de transfert 4x4 — aucune reduction Odemark");
+  if(d.lys){
+    for(var i=0;i<d.lys.length;i++){
+      var l=d.lys[i],m=M[l.mat]||{n:l.mat};
+      h+=row("Couche "+(i+1)+" &mdash; "+m.n,
+        (l.h*100).toFixed(0)+" cm &nbsp; E="+fi(l.E)+" MPa &nbsp; &nu;="+l.nu.toFixed(2),
+        "",i<d.be?"paquet li&#233;":"non li&#233;");
+    }
+  }
+  h+=row("h paquet li&#233; (r&#233;el)",f(d.H_bit*100,2),"cm","&#233;paisseur physique");
+  h+=row("h total couches",f(d.H_tot*100,2),"cm","");
+  h+=row("E&#772; pond&#233;r&#233;e paquet li&#233;",fi(d.E1),"MPa","moy. pond&#233;r&#233;e sur h");
+  h+=row("&#957;&#772; pond&#233;r&#233;e paquet li&#233;",f(d.nu1,3),"","");
+
+  h+=sec("4. Matrice de transfert Burmister");
+  h+=fml("Pour chaque m : etat_sommet = [M_top x M_bot^{-1}] x etat_base (4x4 par couche)");
+  h+=fml("Propagation bottom-up : PSC semi-infini -> couche N -> ... -> couche 1 -> CL surface");
+  h+=row("Int&#233;gration Hankel","400 pts midpoint","","mMax="+f(100/Math.max(d.H_tot||.01,d.cps.a),1)+" m&#8315;&#185;");
+  h+=row("CL surface","&sigma;_z=-m&middot;J&#8320;(mr) &nbsp; &tau;_rz=0","","&#233;q. 8a-8b Burmister I");
+  h+=row("Interface critiques",d.be>0?(d.be+" couche"+(d.be>1?"s":"")+"/PSC lue(s)"):"aucune","","");
+
+  h+=sec("5. Contraintes &agrave; l'interface critique (base paquet li&#233;) — &#201;q. 6a, 6c Burmister I");
+  if(d.s0){
+    h+=row("sigma_z r=0",f(d.s0.sz*1000,2),"kPa","sous roue (sup. jumelage)");
+    h+=row("sigma_r r=0",f(d.s0.sr*1000,2),"kPa","compression + / traction -");
+  }
+  if(d.sd2){
+    h+=row("sigma_z r=d/2 (x2)",f(d.sd2.sz*1000,2),"kPa","entre roues (×2)");
+    h+=row("sigma_r r=d/2 (x2)",f(d.sd2.sr*1000,2),"kPa","");
+  }
+
+  h+=sec("6. D&#233;formation et &mdash; Fatigue");
+  h+=fml("et = [sigma_r(1-nu_i) - nu_i.sigma_z] / E_i   [&mu;def]   (couche i = dernier bitumineux)");
+  h+=row("et r=0",f(d.et0,2),"&mu;def","");
+  h+=row("et r=d/2",f(d.etM,2),"&mu;def","dual wheel");
+  h+=row("et retenue (max)",f(d.et,2),"&mu;def",(d.et0||0)>=(d.etM||0)?"critique: r=0":"critique: r=d/2");
+  h+=row("Famille de structure",d.fam,"","crit&egrave;re &epsilon;_t "+(d.etReq?"EXIG&Eacute;":"informatif/non exig&eacute;")+" (&sect;4.2-4.5)");
+  if(d.e6<Infinity)h+=row("Mat&#233;riau dimensionnant",(d.sig?"&sigma;6="+f(d.e6,2)+" MPa":"e6="+fi(d.e6)+" &mu;def"),"","base du paquet li&#233; &middot; 1/b="+d.ub+"  kc="+d.ukc+"  SN="+d.usn+(d.sig?"":"  k&theta;="+f(d.ukth,3)));
+
+  // ── Conditions d'interfaces réellement utilisées par le moteur ──
+  h+=sec("Conditions d'interfaces &mdash; Tableau 68 AGEROUTE");
+  (function(){
+    var nLy=ly.length;
+    var nonC={};var modeNC=null;
+    if(d.rigL&&d.rigL.length){
+      modeNC=d.rigL[0].mode;
+      for(var k=0;k<d.rigL.length-1;k++){if(d.rigL[k+1].i===d.rigL[k].i+1)nonC[d.rigL[k].i]=modeNC;}
+    }
+    for(var i=0;i<nLy;i++){
+      var nom="C"+(i+1)+" / "+(i+1<nLy?("C"+(i+2)):"PSC");
+      var ov=(ly[i]&&ly[i].ifc&&ly[i].ifc!=='auto')?ly[i].ifc:null;
+      var au=ifaceAuto(i);
+      var cond=(ov||au).replace(/é/g,"&#233;");
+      var note;
+      if(ov){ note="impos&#233;e par le concepteur (auto&nbsp;: "+au.replace(/é/g,"&#233;")+")"; }
+      else if(au==='glissante'){ note="BC5/BC2 &mdash; Tab. 68 (auto)"; }
+      else if(au==='semi-collée'){ note="MTLH/MTLH &mdash; Tab. 68 (auto, demi-somme coll&#233;+glissant)"; }
+      else if(i+1>=nLy){ note="fondation / support &mdash; Tab. 68 (auto)"; }
+      else{ note="Tab. 68 (auto)"; }
+      h+=row("Interface "+nom,cond,"",note);
+    }
+    if(d.et2!=null)h+=row("Phase 2 mixte (&sect;4.4.1)","glissante","","interface C"+(d.et2i+1)+"/C"+(d.et2i+2)+" + MTLH E/5 &mdash; pour le crit&egrave;re &epsilon;t phase 2 uniquement");
+  })();
+
+  h+=sec("7. D&#233;formation admissible &mdash; formule LCPC 1994 (VI.4.2)");
+  h+=fml(d.sig?"sigma_t_adm = sigma6 x (NE/10^6)^b x kr x kc x ks x kd   [MPa]   (kd=1 pour classes <= G3)":"et_adm = e6(10C,25Hz) x k_theta x (NE/10^6)^b x kr x kc x ks");
+  h+=fml("k_theta = [E(10C)/E(theta_eq)]^0.5     kr = 10^(-u.b.delta)     delta = [SN^2 + (c^2/b^2).Sh^2]^0.5     c = 0,02 cm^-1");
+  h+=row("k&theta; temp&#233;rature",f(d.ukth,3),"","&radic;(E(10&deg;C)/E(&theta;eq)) &mdash; &theta;_&#233;q=34&deg;C (AGEROUTE)");
+  h+=row("Risque r",_rE,"%","quantile u_r = "+f(u_r,3)+(d.cps&&d.cps.r==='auto'?" &middot; auto Tab. 70":""));
+  h+=row("SN",f(d.usn,2),"","&#233;cart-type essais fatigue");
+  h+=row("Sh",f(d.sh,2),"cm",(cp.sh!=='auto'?"manuel":"auto — Tab. VI.2.4 / 3 cm MTLH"));
+  var dlt=Math.sqrt(d.usn*d.usn+Math.pow(0.02*d.ub*d.sh,2));
+  h+=row("&delta;",f(dlt,4),"","&radic;(SN&sup2; + (0,02&middot;Sh/|b|)&sup2;)");
+  h+=row("kr risque",f(d.kr,4),"","10^(-"+f(u_r,3)+"&times;"+f(dlt,4)+"/"+d.ub+")");
+  h+=row("kc calage",f(d.ukc,2),"","VI.4.2 : GB=1,3 &middot; BB=1,1 &middot; EME=1,0 &middot; MTLH=1,4-1,5");
+  h+=row("ks support",f(d.ks,4),"",(cp.ks!=='auto'?"manuel":"auto — Tab. 69 : &lt;50&rarr;1/1,2 &middot; 50-80&rarr;1/1,1 &middot; 80-120&rarr;1/1,065 &middot; &ge;120&rarr;1"));
+  var e50=(d.adm50!=null?d.adm50:null);
+  h+=row((d.sig?"st_adm":"et_adm")+" r=50%",e50!=null?f(e50,d.sig?3:2):"N/A",d.sig?"MPa":"&mu;def","kr=1 (u=0)");
+  h+=row((d.sig?"st_adm":"et_adm")+" r="+_rE+"%",f(d.etA,d.sig?3:2),d.sig?"MPa":"&mu;def","avec kr="+f(d.kr,4));
+  if(d.et2!=null){h+=row("Phase 2 : et base bitumineux (C"+(d.et2i+1)+")",f(d.et2,2),"&mu;def","MTLH fissur&#233; E/5 + interface glissante &#233;mul&#233;e (&sect;4.4.1)"+(d.etReq?"":" &middot; informatif"));
+    h+=row("Phase 2 : et_adm bitumineux",f(d.et2A,2),"&mu;def","");}
+  if(d.st2!=null){h+=row("Inverse : st base MTLH profond (C"+(d.st2i+1)+")",f(d.st2,3),"MPa","&sect;4.5");
+    h+=row("Inverse : st_adm",f(d.st2A,3),"MPa","");}
+  if(d.rigL&&d.rigL.length){for(var ri=0;ri<d.rigL.length;ri++){var rg=d.rigL[ri];
+    h+=row("st base C"+(rg.i+1)+" ("+rg.mode+")",f(rg.st,3),"MPa","coll&#233;="+f(rg.stC,3)+" &middot; glissant="+f(rg.stG,3)+(rg.mode==="semi-collée"?" &middot; demi-somme":"")+" &middot; adm="+f(rg.adm,3));}}
+
+  h+=sec("8. D&#233;formation ez &mdash; Orni&#233;rage PSC (Burmister multi-couche exact)");
+  h+=fml("ez = [sigma_z - nu_PSC.(sigma_xx + sigma_yy)] / E_PSC   — au sommet PSC, max(axe roue, entre-jumelage)");
+  h+=row("h total couches",f(d.H_tot*100,2),"cm","&#233;paisseur r&#233;elle (sans Odemark)");
+  if(d.bz){
+    h+=row("sigma_z PSC",f(d.bz.sz*1000,2),"kPa","sommet PSC — Burmister exact");
+    h+=row("sigma_r PSC",f(d.bz.sr*1000,2),"kPa","");
+  }
+  h+=row("ez axe roue",f(d.ez0,2),"&mu;def","");
+  h+=row("ez entre-jumelage",f(d.ezM,2),"&mu;def","");
+  if(d.ezL&&d.ezL.length)for(var gi=0;gi<d.ezL.length;gi++){var g=d.ezL[gi];
+    h+=row("ez sommet couche "+(g.i+1)+" (non li&#233;e)",f(g.val,2),"&mu;def","axe="+f(g.axe,1)+" &middot; e-jum="+f(g.mid,1)+(d.gq?" &middot; &sect;4.1.2":" &middot; informatif (NE&lt;250 000)"));}
+  h+=row("ez retenue (max)",f(d.ez,2),"&mu;def","PSC"+(d.ezL&&d.ezL.length&&d.gq?" + sommets GNT":"")+" &middot; max axe/entre-jumelage");
+  h+=row("ez admissible",f(d.ezA,2),"&mu;def",(d.NE<=250000?"0,016":"0,012")+" x NE^(-1/4,5) (p.124)");
+
+  h+=sec("9. Synth&#232;se des crit&#232;res");
+  h+=row("Fatigue et",f(d.et,2)+" / "+f(d.etA,2),"&mu;def","Ratio="+f(d.et/d.etA,3)+" &rarr; "+(d.passT?ok:no));
+  h+=row("Orni&#233;rage ez",f(d.ez,2)+" / "+f(d.ezA,2),"&mu;def","Ratio="+f(d.ez/d.ezA,3)+" &rarr; "+(d.passZ?ok:no));
+  h+=row("Verdict",d.PASS?"CONFORME":"NON CONFORME","",d.PASS?"Les deux crit&#232;res sont satisfaits":"Au moins un crit&#232;re non satisfait");
+
+  h+="</table><div style='margin-top:8px;padding:6px 10px;background:#f5f5f5;font-size:10px;color:#888;border-left:3px solid "+BL+"'>"
+    +"Burmister J.Appl.Phys.16 (1945) &middot; Transfer Matrix 4&#215;4 multi-couche &middot; LCPC/SETRA &middot; AGEROUTE S&#233;n&#233;gal Nov.2015 (CC1/0351/AGR)"
+    +"</div>";
+
+  el.innerHTML=h;
+}
+
+// ══ INITIALISATION ════════════════════════════════════════
+renderL();rTS();riskHint();populatePresets();
+</script>
+<script>
+// ── Module présentation : impression du rapport (additif, sans impact sur le moteur) ──
+(function(){
+  var resout=document.getElementById('resout');
+  var bar=document.getElementById('resbar');
+  var paneR=document.getElementById('pane-r');
+  var paneD=document.getElementById('pane-d');
+  if(!resout||!bar||!paneR||!paneD) return;
+
+  // Révèle « Imprimer » uniquement quand un résultat de vérification est rendu
+  function refresh(){ bar.classList.toggle('ready', !!resout.querySelector('.metric')); }
+  new MutationObserver(refresh).observe(resout,{childList:true,subtree:true});
+  refresh();
+
+  // Imprime Résultats + Détails de calcul sur la même sortie
+  window.printReport=function(){
+    paneR.classList.add('printable');
+    paneD.classList.add('printable');
+    window.print();
+  };
+  function restore(){ paneR.classList.remove('printable'); paneD.classList.remove('printable'); }
+  window.addEventListener('afterprint',restore);
+})();
+</script>
+
+</main>
+</body>
+</html>

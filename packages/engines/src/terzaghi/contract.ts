@@ -147,6 +147,113 @@ const RefCapStateSchema = z
   .strict();
 
 /**
+ * DETAIL PAS-A-PAS terzaghi — grandeurs intermediaires PUBLIQUES (ADR 0015 §Excision,
+ * avis expert reco A du 16/07). Toutes normatives/textbook (NF P 94-261 annexes D/F/J/H ;
+ * Ménard, Giroud, Schmertmann, Sanglerat) et deja affichees par l'outil desktop du client
+ * a ses licencies. Exposees comme VALEURS D'AFFICHAGE (le CODE moteur reste serveur, DoD §8).
+ * Allowlist NOMINATIVE fail-closed (.strict()) : aucun champ hors liste ne traverse.
+ *
+ * Sous-objet tassement de Ménard (methode pressiometrique, annexe H) : modules pondérés
+ * E_c/E_d, coefficients rhéologiques α et de forme λ, decomposition s_c + s_d = s_f.
+ */
+const TassMenardSchema = z
+  .object({
+    /** Module pressiometrique de consolidation E_c (MPa). */
+    Ec: z.number().finite().optional(),
+    /** Module pressiometrique deviatorique E_d (MPa). */
+    Ed: z.number().finite().optional(),
+    /** Coefficient rhéologique de consolidation α_c (–). */
+    alc: z.number().finite().optional(),
+    /** Coefficient rhéologique deviatorique α_d (–). */
+    ald: z.number().finite().optional(),
+    /** Coefficient de forme λ_c (–). */
+    lc: z.number().finite().optional(),
+    /** Coefficient de forme λ_d (–). */
+    ld: z.number().finite().optional(),
+    /** Libellé de forme (« carré », « L/B = … »…). */
+    lamLib: z.string().max(40).optional(),
+    /** Libellé du mode de renormalisation E_d (formule H.2.1.2.x). */
+    mode: z.string().max(80).optional(),
+    /** Accroissement net de contrainte Δq (kPa). */
+    dq: z.number().finite().optional(),
+    /** Tassement de consolidation s_c (m). */
+    sc: z.number().finite().optional(),
+    /** Tassement deviatorique s_d (m). */
+    sd: z.number().finite().optional(),
+    /** Tassement total s_f = s_c + s_d (m). */
+    sf: z.number().finite().optional(),
+  })
+  .strict();
+
+/** Sous-objet tassement elastique (annexe J.3.1, Giroud) — methode c–φ labo. */
+const TassElastSchema = z
+  .object({
+    /** Coefficient de tassement c_f (Giroud). */
+    cf: z.number().finite().optional(),
+    /** Libellé de forme du coefficient c_f. */
+    cfLib: z.string().max(40).optional(),
+    /** Module d'Young E (MPa). */
+    E: z.number().finite().optional(),
+    /** Coefficient de Poisson ν (–). */
+    nu: z.number().finite().optional(),
+    /** Accroissement net Δq (kPa). */
+    dq: z.number().finite().optional(),
+    /** Tassement elastique s (m). */
+    s: z.number().finite().optional(),
+    /** Message normatif borne si incalculable. */
+    err: z.string().max(300).optional(),
+  })
+  .strict();
+
+/** Sous-objet tassement de Schmertmann (§6.2 / annexe I) — methode penetrometrique. */
+const TassSchmSchema = z
+  .object({
+    /** Facteur d'encastrement C_1 (–). */
+    C1: z.number().finite().optional(),
+    /** Facteur de fluage C_2 (–). */
+    C2: z.number().finite().optional(),
+    /** Facteur de forme C_3 (–). */
+    C3: z.number().finite().optional(),
+    /** Facteur d'influence pic I_z;pic (–). */
+    Izp: z.number().finite().optional(),
+    /** Facteur module E = Efac·q_c (–). */
+    Efac: z.number().finite().optional(),
+    /** Module minimal sur la zone (MPa). */
+    Emin: z.number().finite().optional(),
+    /** Module maximal sur la zone (MPa). */
+    Emax: z.number().finite().optional(),
+    /** Profondeur d'integration en nombre de B (z_I / B). */
+    zfac: z.number().finite().optional(),
+    /** Profondeur d'integration z_I (m). */
+    zI: z.number().finite().optional(),
+    /** Tassement s (m). */
+    s: z.number().finite().optional(),
+    /** Message normatif borne si incalculable. */
+    err: z.string().max(300).optional(),
+  })
+  .strict();
+
+/** Sous-objet tassement oedometrique (variante Sanglerat J.4.1) — methode penetrometrique. */
+const TassOedSchema = z
+  .object({
+    /** Coefficient α de Sanglerat (M = α·q_c). */
+    alphaSang: z.number().finite().optional(),
+    /** Module oedometrique minimal (MPa). */
+    Mmin: z.number().finite().optional(),
+    /** Module oedometrique maximal (MPa). */
+    Mmax: z.number().finite().optional(),
+    /** Libellé de la zone d'influence. */
+    zlbl: z.string().max(60).optional(),
+    /** Profondeur de la zone (m). */
+    depth: z.number().finite().optional(),
+    /** Tassement s (m). */
+    s: z.number().finite().optional(),
+    /** Message normatif borne si incalculable. */
+    err: z.string().max(300).optional(),
+  })
+  .strict();
+
+/**
  * Verdict + grandeurs finales pour un cas de charge saisi. NaN possible
  * (domaine non couvert) : le contrat l'exclut via SafeNumber (finite). On rend
  * donc OPTIONNELS les champs qui peuvent ne pas etre calcules (cas invalide,
@@ -159,6 +266,18 @@ const CaseResultSchema = z
     etat: z.enum(['ELU_F', 'ELU_A', 'ELS_C', 'ELS_F', 'ELS_QP']),
     /** Cas rejete a la saisie (Fz<=0, A'=0...) : message borne, sans valeur interne. */
     invalide: z.boolean(),
+
+    // --- Grandeurs de DEMANDE affichees (clone UI, ADR 0014/0015) ---
+    // Ces valeurs sont AFFICHEES par l'outil client dans chaque carte de verdict
+    // (« V_d ≤ R_v;d », « q_ref ≤ q_Rv;d », « H_d ≤ R_h;d ») et dans la synthese.
+    // Elles sont cote DEMANDE : q_ref = V_d / A' et H_d = √(F_x²+F_y²) se
+    // re-derivent des efforts SAISIS par l'utilisateur et de la geometrie via la
+    // regle de Meyerhof (surface effective) — aucune divulgation de la METHODE de
+    // portance confidentielle (k_p/k_c/q_ce/p_le*/D_e/N_q/N_c/N_γ restent SERVEUR).
+    /** Contrainte de reference appliquee q_ref = V_d / A' (kPa). */
+    qref: z.number().finite().optional(),
+    /** Charge horizontale resultante de calcul H_d = √(F_x²+F_y²) (kN ou kN/ml). */
+    Hd: z.number().finite().optional(),
 
     // --- Portance (si calculee) ---
     /** Resistance totale de calcul R_tot (kN ou kN/ml). */
@@ -224,6 +343,83 @@ const CaseResultSchema = z
     tassementElastique: z.number().finite().optional(),
     /** Deplacement vertical sous la charge (m), via raideur Kv. */
     deplacementVertical: z.number().finite().optional(),
+
+    // --- DETAIL PAS-A-PAS (ADR 0015 reco A) — grandeurs d'affichage du deroule ---
+    // Geometrie effective (Meyerhof) : re-derivable des efforts SAISIS (M/F_z) et de la
+    // geometrie B/L — meme rationale que qref/Hd (surface effective A'), pas la METHODE.
+    /** Aire d'appui A (m², ou largeur en filante). */
+    A: z.number().finite().optional(),
+    /** Surface comprimee de Meyerhof A' (m²). */
+    Ap: z.number().finite().optional(),
+    /** Excentrement transversal e_B (m). */
+    eB: z.number().finite().optional(),
+    /** Excentrement longitudinal e_L (m). */
+    eL: z.number().finite().optional(),
+    /** Largeur effective B' (m). */
+    Bp: z.number().finite().optional(),
+    /** Longueur effective L' (m). */
+    Lp: z.number().finite().optional(),
+    /** Angle d'inclinaison de la charge δ_d (°). */
+    delta: z.number().finite().optional(),
+    // Coefficients de portance / reduction (annexes D/E) — table publiee, reco A.
+    /** Hauteur de moyenne h_r (m). */
+    hr: z.number().finite().optional(),
+    /** h_r reduite par excentrement fort ? */
+    hrRed: z.boolean().optional(),
+    /** Pression nette equivalente p_le* (pressio) / q_ce (penetro) (MPa). */
+    ple: z.number().finite().optional(),
+    /** Hauteur d'encastrement equivalente D_e (m). */
+    De: z.number().finite().optional(),
+    /** Rapport D_e/B (–). */
+    DeB: z.number().finite().optional(),
+    /** Abscisse de courbe x = min(D_e/B, 2) (–). */
+    kpx: z.number().finite().optional(),
+    /** Facteur de portance base filante k_f (–). */
+    kf: z.number().finite().optional(),
+    /** Facteur de portance base carree k_c (–). */
+    kc: z.number().finite().optional(),
+    /** Facteur de portance k_p (–). */
+    kp: z.number().finite().optional(),
+    /**
+     * Coefficients de la courbe k_p base filante [a, b, c, d] (table publiee annexe D,
+     * reco A). VALEURS D'AFFICHAGE de la formule substituee (curveStr) — pas la table
+     * complete (une seule categorie, celle du calcul). Bornes : 4 nombres finis.
+     */
+    coefCourbeF: z.array(z.number().finite()).length(4).optional(),
+    /** Coefficients de la courbe k_p base carree [a, b, c, d] (table publiee annexe D). */
+    coefCourbeC: z.array(z.number().finite()).length(4).optional(),
+    /** Coefficient d'inclinaison i_δ (–). */
+    idel: z.number().finite().optional(),
+    /** Coefficient de talus i_β (–). */
+    ibet: z.number().finite().optional(),
+    /** Coefficient combine i_δβ (–). */
+    idb: z.number().finite().optional(),
+    /** Resistance nette du sol q_net (kPa). */
+    qnet: z.number().finite().optional(),
+    /** Surcharge laterale R_0 = A·q_0 (kN ou kN/ml). */
+    R0: z.number().finite().optional(),
+    /** Coefficient partiel de resistance γ_R;v (–). */
+    gRv: z.number().finite().optional(),
+    /** Coefficient de modele γ_R;d;v (–). */
+    gRdv: z.number().finite().optional(),
+    // Glissement (ELU) — angle d'interface + coefficients partiels (textbook).
+    /** Angle de frottement d'interface δ_a (°). */
+    da: z.number().finite().optional(),
+    /** Coefficient partiel γ_R;h (–). */
+    gRh: z.number().finite().optional(),
+    /** Coefficient de modele γ_R;d;h (–). */
+    gRdh: z.number().finite().optional(),
+    /** Libellé du mode de glissement (drainé / non drainé). */
+    glisMode: z.string().max(120).optional(),
+    // Tassements — sous-objets detailles (un seul present selon la methode).
+    /** Tassement de Ménard detaillé (pressio). */
+    tass: TassMenardSchema.optional(),
+    /** Tassement elastique detaillé (labo c–φ). */
+    elast: TassElastSchema.optional(),
+    /** Tassement de Schmertmann detaillé (penetro). */
+    schm: TassSchmSchema.optional(),
+    /** Tassement oedometrique detaillé (penetro). */
+    oed: TassOedSchema.optional(),
   })
   .strict();
 
@@ -256,6 +452,24 @@ export const TerzaghiOutputSchema = z
     warnings: z.array(z.string().max(500)).max(50),
     /** Regime d'encastrement classifie (annexe C), si determinable. */
     regime: z.enum(['superficielle', 'semi-profonde']).optional(),
+    /**
+     * Contraintes au niveau de la base — grandeurs d'OVERBURDEN elementaires
+     * AFFICHEES par la note de calcul (§2 « Contraintes au niveau de la base ») :
+     * u (pression interstitielle), q_0 = γ_ap·D (totale, apres travaux), σ'_v0 =
+     * γ_av·D − u (effective, avant travaux). Textbook (hydrostatique + poids des
+     * terres) : ne revele AUCUNE methode de portance confidentielle.
+     */
+    contraintesBase: z
+      .object({
+        /** Pression interstitielle a la base u (kPa). */
+        u: z.number().finite(),
+        /** Contrainte verticale totale apres travaux q_0 = γ_ap·D (kPa). */
+        q0: z.number().finite(),
+        /** Contrainte verticale effective avant travaux σ'_v0 (kPa). */
+        sv0: z.number().finite(),
+      })
+      .strict()
+      .optional(),
     /** Capacite portante de reference (charge centree verticale), par etat-limite. */
     capaciteReference: z
       .object({
@@ -265,6 +479,72 @@ export const TerzaghiOutputSchema = z
         /** Surcharge laterale R0 = A·q0 (kN). */
         R0: z.number().finite(),
         states: z.array(RefCapStateSchema).max(3),
+        // --- DETAIL PAS-A-PAS refCap (charge centree) — memes grandeurs publiques ---
+        /** Methode de dimensionnement (« pressiométrique »/« pénétrométrique »/« c–φ »). */
+        method: z.string().max(40).optional(),
+        /** Resultats par ml (semelle filante) ? */
+        perML: z.boolean().optional(),
+        /** Contrainte totale q_0 (kPa). */
+        q0: z.number().finite().optional(),
+        /** Hauteur de moyenne h_r (m). */
+        hr: z.number().finite().optional(),
+        /** Pression nette equivalente p_le* / q_ce (MPa). */
+        ple: z.number().finite().optional(),
+        /** Hauteur d'encastrement equivalente D_e (m). */
+        De: z.number().finite().optional(),
+        /** Rapport D_e/B (–). */
+        DeB: z.number().finite().optional(),
+        /** Abscisse de courbe x (–). */
+        kpx: z.number().finite().optional(),
+        /** Facteur base filante k_f (–). */
+        kf: z.number().finite().optional(),
+        /** Facteur base carree k_c (–). */
+        kc: z.number().finite().optional(),
+        /** Facteur de portance k_p (–). */
+        kp: z.number().finite().optional(),
+        /** Coefficients courbe filante [a,b,c,d] (table publiee annexe D). */
+        coefCourbeF: z.array(z.number().finite()).length(4).optional(),
+        /** Coefficients courbe carree [a,b,c,d] (table publiee annexe D). */
+        coefCourbeC: z.array(z.number().finite()).length(4).optional(),
+        /** Coefficient de talus i_β (–). */
+        ib: z.number().finite().optional(),
+        /** Resistance nette q_net (kPa). */
+        qnet: z.number().finite().optional(),
+        /** Coefficient de modele γ_R;d;v (–). */
+        gRdv: z.number().finite().optional(),
+        /** Contrainte de reference retenue pour le tassement q_Tass (kPa). */
+        qTass: z.number().finite().optional(),
+        /** Tassement de Ménard detaillé (pressio). */
+        tass: TassMenardSchema.optional(),
+        /** Tassement elastique detaillé (labo c–φ). */
+        elast: TassElastSchema.optional(),
+        /** Tassement de Schmertmann detaillé (penetro). */
+        schm: TassSchmSchema.optional(),
+        /** Tassement oedometrique detaillé (penetro). */
+        oed: TassOedSchema.optional(),
+      })
+      .strict()
+      .optional(),
+    /**
+     * Raideurs equivalentes du sol support (annexe J.3 / Gazetas) — K_v/K_h/K_θ (reco A).
+     * Grandeurs de dimensionnement affichees par le deroule ; le CODE (ratios) reste serveur.
+     */
+    raideurs: z
+      .object({
+        /** Raideur verticale K_v (MN/m ou MN/m/ml). */
+        Kv: z.number().finite(),
+        /** Raideur horizontale selon B, K_h;B (MN/m). */
+        KhB: z.number().finite().optional(),
+        /** Raideur horizontale selon L, K_h;L (MN/m). */
+        KhL: z.number().finite().optional(),
+        /** Raideur de rotation selon B, K_θ;B (MN·m/rd). */
+        KtB: z.number().finite().optional(),
+        /** Raideur de rotation selon L, K_θ;L (MN·m/rd). */
+        KtL: z.number().finite().optional(),
+        /** Libellé de la methode (« Ménard, §7.2.1 »…). */
+        methodLib: z.string().max(60).optional(),
+        /** Raideurs par ml (semelle filante) ? */
+        perML: z.boolean().optional(),
       })
       .strict()
       .optional(),

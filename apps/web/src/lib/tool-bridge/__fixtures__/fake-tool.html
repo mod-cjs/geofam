@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<!--
+  Fixture de test — outil client FACTICE conforme au protocole bridge v1
+  (ADR 0015). Sert à développer/tester `ToolFrame.tsx` en isolation, AVANT
+  que le clone réel `terzaghi.html` (produit par `scripts/clone-tool.mjs`,
+  agent integrateur-moteurs) ne soit disponible. Ne pas confondre avec un
+  vrai clone : ce fichier ne reproduit aucune UI, il exerce uniquement le
+  protocole (handshake, calc, store, pv, erreurs).
+
+  Expose l'historique des messages reçus sur `window.__received` (array) et
+  un compteur `window.__readyEmitted` pour les assertions de test — ceci est
+  un artefact de TEST, pas un pattern à reproduire dans un clone livré.
+-->
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Fixture outil factice — bridge v1</title>
+</head>
+<body>
+  <div id="app">Fixture chargée.</div>
+  <script>
+    (function () {
+      window.__received = [];
+
+      function send(message) {
+        window.parent.postMessage(message, '*');
+      }
+
+      window.addEventListener('message', function (event) {
+        // Handshake origine opaque : on ne valide QUE event.source (event.origin
+        // vaut 'null' en sandbox sans allow-same-origin) — miroir du côté hôte.
+        if (event.source !== window.parent) return;
+        var msg = event.data;
+        if (!msg || msg.v !== 1) return;
+        window.__received.push(msg);
+
+        if (msg.type === 'init') {
+          window.__init = msg.payload;
+        }
+      });
+
+      // Émission du handshake au chargement.
+      send({ v: 1, type: 'ready', payload: { toolId: 'fake-tool' } });
+
+      // Helpers pilotés depuis le test (le "faux" comportement utilisateur).
+      window.__sendCalcRequest = function (id, engineId, label, params) {
+        send({ v: 1, type: 'calc:request', id: id, payload: { engineId: engineId, label: label, params: params } });
+      };
+      window.__sendStoreGet = function (key) {
+        send({ v: 1, type: 'store:get', payload: { key: key } });
+      };
+      window.__sendStoreSet = function (key, value) {
+        send({ v: 1, type: 'store:set', payload: { key: key, value: value } });
+      };
+      window.__sendPvRequest = function (calcResultId) {
+        send({ v: 1, type: 'pv:request', payload: { calcResultId: calcResultId } });
+      };
+      // Message hors-protocole (pour prouver le rejet fail-closed du parseur).
+      window.__sendMalformed = function () {
+        window.parent.postMessage({ not: 'a bridge message' }, '*');
+      };
+    })();
+  </script>
+</body>
+</html>

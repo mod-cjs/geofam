@@ -1,0 +1,412 @@
+{
+  "preset": "s2",
+  "resPanel": {
+    "metrics": [
+      {
+        "label": "h paquet lié (réel)",
+        "value": "40 cm",
+        "sub": "épaisseur physique"
+      },
+      {
+        "label": "h total couches",
+        "value": "40 cm",
+        "sub": "sur PSC PF3"
+      },
+      {
+        "label": "E₁ pond. / ν₁ pond.",
+        "value": "2 373 MPa",
+        "sub": "ν = 0.45"
+      },
+      {
+        "label": "Moteur",
+        "value": "Transfer Matrix",
+        "sub": "n couches exactes"
+      }
+    ],
+    "badges": ["SATISFAIT", "SATISFAIT"],
+    "sections": [
+      "Paramètres de la structure — Burmister multi-couche exact",
+      "Vérification des critères — Solution exacte de Burmister (1945)",
+      "Diagnostic et recommandations"
+    ],
+    "textLen": 1421
+  },
+  "detailSections": [
+    "1. Données d'entrée",
+    "2. Trafic NE",
+    "3. Structure des couches",
+    "4. Matrice de transfert Burmister",
+    "5. Contraintes à l'interface critique (base paquet lié) — Éq. 6a, 6c Burmister I",
+    "6. Déformation et — Fatigue",
+    "Conditions d'interfaces — Tableau 68 AGEROUTE",
+    "7. Déformation admissible — formule LCPC 1994 (VI.4.2)",
+    "8. Déformation ez — Orniérage PSC (Burmister multi-couche exact)",
+    "9. Synthèse des critères"
+  ],
+  "detailRows": [
+    {
+      "section": "1. Données d'entrée",
+      "label": "Pression p0",
+      "value": "0.662",
+      "unit": "MPa",
+      "comment": "Essieu 130 kN"
+    },
+    {
+      "section": "1. Données d'entrée",
+      "label": "Rayon a",
+      "value": "12.5",
+      "unit": "cm",
+      "comment": ""
+    },
+    {
+      "section": "1. Données d'entrée",
+      "label": "Entre-axe d",
+      "value": "38",
+      "unit": "cm",
+      "comment": ""
+    },
+    {
+      "section": "1. Données d'entrée",
+      "label": "Risque r",
+      "value": "5",
+      "unit": "%",
+      "comment": "auto — Tableau 70"
+    },
+    {
+      "section": "1. Données d'entrée",
+      "label": "Plateforme PF3",
+      "value": "120",
+      "unit": "MPa",
+      "comment": "nu=0.35"
+    },
+    {
+      "section": "2. Trafic NE",
+      "label": "TMJA",
+      "value": "3066",
+      "unit": "PL/j/sens",
+      "comment": ""
+    },
+    {
+      "section": "2. Trafic NE",
+      "label": "CAM",
+      "value": "0.90",
+      "unit": "",
+      "comment": ""
+    },
+    {
+      "section": "2. Trafic NE",
+      "label": "Durée n",
+      "value": "20",
+      "unit": "ans",
+      "comment": ""
+    },
+    {
+      "section": "2. Trafic NE",
+      "label": "Taux tau",
+      "value": "4.0",
+      "unit": "%/an",
+      "comment": ""
+    },
+    {
+      "section": "2. Trafic NE",
+      "label": "C cumulatif",
+      "value": "29.778",
+      "unit": "",
+      "comment": ""
+    },
+    {
+      "section": "2. Trafic NE",
+      "label": "NE",
+      "value": "3.000e+7",
+      "unit": "essieux",
+      "comment": "Classe C7"
+    },
+    {
+      "section": "2. Trafic NE",
+      "label": "ez_adm catalogue",
+      "value": "261.6",
+      "unit": "μdef",
+      "comment": "0,012 x NE^(-1/4,5) — NE>250 000 (p.124)"
+    },
+    {
+      "section": "3. Structure des couches",
+      "label": "Couche 1 — BBSG classe 1  (E = 1 512 MPa — T.54)",
+      "value": "8 cm   E=1 512 MPa   ν=0.45",
+      "unit": "",
+      "comment": "paquet lié"
+    },
+    {
+      "section": "3. Structure des couches",
+      "label": "Couche 2 — Grave Bitume GB3",
+      "value": "32 cm   E=2 588 MPa   ν=0.45",
+      "unit": "",
+      "comment": "paquet lié"
+    },
+    {
+      "section": "3. Structure des couches",
+      "label": "h paquet lié (réel)",
+      "value": "40.00",
+      "unit": "cm",
+      "comment": "épaisseur physique"
+    },
+    {
+      "section": "3. Structure des couches",
+      "label": "h total couches",
+      "value": "40.00",
+      "unit": "cm",
+      "comment": ""
+    },
+    {
+      "section": "3. Structure des couches",
+      "label": "Ē pondérée paquet lié",
+      "value": "2 373",
+      "unit": "MPa",
+      "comment": "moy. pondérée sur h"
+    },
+    {
+      "section": "3. Structure des couches",
+      "label": "ν̄ pondérée paquet lié",
+      "value": "0.450",
+      "unit": "",
+      "comment": ""
+    },
+    {
+      "section": "4. Matrice de transfert Burmister",
+      "label": "Intégration Hankel",
+      "value": "400 pts midpoint",
+      "unit": "",
+      "comment": "mMax=250.0 m⁻¹"
+    },
+    {
+      "section": "4. Matrice de transfert Burmister",
+      "label": "CL surface",
+      "value": "σ_z=-m·J₀(mr)   τ_rz=0",
+      "unit": "",
+      "comment": "éq. 8a-8b Burmister I"
+    },
+    {
+      "section": "4. Matrice de transfert Burmister",
+      "label": "Interface critiques",
+      "value": "2 couches/PSC lue(s)",
+      "unit": "",
+      "comment": ""
+    },
+    {
+      "section": "5. Contraintes à l'interface critique (base paquet lié) — Éq. 6a, 6c Burmister I",
+      "label": "sigma_z r=0",
+      "value": "30.46",
+      "unit": "kPa",
+      "comment": "sous roue (sup. jumelage)"
+    },
+    {
+      "section": "5. Contraintes à l'interface critique (base paquet lié) — Éq. 6a, 6c Burmister I",
+      "label": "sigma_r r=0",
+      "value": "-306.28",
+      "unit": "kPa",
+      "comment": "compression + / traction -"
+    },
+    {
+      "section": "5. Contraintes à l'interface critique (base paquet lié) — Éq. 6a, 6c Burmister I",
+      "label": "sigma_z r=d/2 (x2)",
+      "value": "32.03",
+      "unit": "kPa",
+      "comment": "entre roues (×2)"
+    },
+    {
+      "section": "5. Contraintes à l'interface critique (base paquet lié) — Éq. 6a, 6c Burmister I",
+      "label": "sigma_r r=d/2 (x2)",
+      "value": "-322.07",
+      "unit": "kPa",
+      "comment": ""
+    },
+    {
+      "section": "6. Déformation et — Fatigue",
+      "label": "et r=0",
+      "value": "-62.44",
+      "unit": "μdef",
+      "comment": ""
+    },
+    {
+      "section": "6. Déformation et — Fatigue",
+      "label": "et r=d/2",
+      "value": "-93.85",
+      "unit": "μdef",
+      "comment": "dual wheel"
+    },
+    {
+      "section": "6. Déformation et — Fatigue",
+      "label": "et retenue (max)",
+      "value": "93.85",
+      "unit": "μdef",
+      "comment": "critique: r=0"
+    },
+    {
+      "section": "6. Déformation et — Fatigue",
+      "label": "Famille de structure",
+      "value": "bitumineuse épaisse (§4.2)",
+      "unit": "",
+      "comment": "critère ε_t EXIGÉ (§4.2-4.5)"
+    },
+    {
+      "section": "6. Déformation et — Fatigue",
+      "label": "Matériau dimensionnant",
+      "value": "e6=90 μdef",
+      "unit": "",
+      "comment": "base du paquet lié · 1/b=5  kc=1.3  SN=0.3  kθ=2.143"
+    },
+    {
+      "section": "Conditions d'interfaces — Tableau 68 AGEROUTE",
+      "label": "Interface C1 / C2",
+      "value": "collée",
+      "unit": "",
+      "comment": "Tab. 68 (auto)"
+    },
+    {
+      "section": "Conditions d'interfaces — Tableau 68 AGEROUTE",
+      "label": "Interface C2 / PSC",
+      "value": "collée",
+      "unit": "",
+      "comment": "fondation / support — Tab. 68 (auto)"
+    },
+    {
+      "section": "7. Déformation admissible — formule LCPC 1994 (VI.4.2)",
+      "label": "kθ température",
+      "value": "2.143",
+      "unit": "",
+      "comment": "√(E(10°C)/E(θeq)) — θ_éq=34°C (AGEROUTE)"
+    },
+    {
+      "section": "7. Déformation admissible — formule LCPC 1994 (VI.4.2)",
+      "label": "Risque r",
+      "value": "5",
+      "unit": "%",
+      "comment": "quantile u_r = 1.645 · auto Tab. 70"
+    },
+    {
+      "section": "7. Déformation admissible — formule LCPC 1994 (VI.4.2)",
+      "label": "SN",
+      "value": "0.30",
+      "unit": "",
+      "comment": "écart-type essais fatigue"
+    },
+    {
+      "section": "7. Déformation admissible — formule LCPC 1994 (VI.4.2)",
+      "label": "Sh",
+      "value": "2.50",
+      "unit": "cm",
+      "comment": "auto — Tab. VI.2.4 / 3 cm MTLH"
+    },
+    {
+      "section": "7. Déformation admissible — formule LCPC 1994 (VI.4.2)",
+      "label": "δ",
+      "value": "0.3905",
+      "unit": "",
+      "comment": "√(SN² + (0,02·Sh/|b|)²)"
+    },
+    {
+      "section": "7. Déformation admissible — formule LCPC 1994 (VI.4.2)",
+      "label": "kr risque",
+      "value": "0.7439",
+      "unit": "",
+      "comment": "10^(-1.645×0.3905/5)"
+    },
+    {
+      "section": "7. Déformation admissible — formule LCPC 1994 (VI.4.2)",
+      "label": "kc calage",
+      "value": "1.30",
+      "unit": "",
+      "comment": "VI.4.2 : GB=1,3 · BB=1,1 · EME=1,0 · MTLH=1,4-1,5"
+    },
+    {
+      "section": "7. Déformation admissible — formule LCPC 1994 (VI.4.2)",
+      "label": "ks support",
+      "value": "1.0000",
+      "unit": "",
+      "comment": "auto — Tab. 69 : <50→1/1,2 · 50-80→1/1,1 · 80-120→1/1,065 · ≥120→1"
+    },
+    {
+      "section": "7. Déformation admissible — formule LCPC 1994 (VI.4.2)",
+      "label": "et_adm r=50%",
+      "value": "126.97",
+      "unit": "μdef",
+      "comment": "kr=1 (u=0)"
+    },
+    {
+      "section": "7. Déformation admissible — formule LCPC 1994 (VI.4.2)",
+      "label": "et_adm r=5%",
+      "value": "94.45",
+      "unit": "μdef",
+      "comment": "avec kr=0.7439"
+    },
+    {
+      "section": "8. Déformation ez — Orniérage PSC (Burmister multi-couche exact)",
+      "label": "h total couches",
+      "value": "40.00",
+      "unit": "cm",
+      "comment": "épaisseur réelle (sans Odemark)"
+    },
+    {
+      "section": "8. Déformation ez — Orniérage PSC (Burmister multi-couche exact)",
+      "label": "sigma_z PSC",
+      "value": "30.46",
+      "unit": "kPa",
+      "comment": "sommet PSC — Burmister exact"
+    },
+    {
+      "section": "8. Déformation ez — Orniérage PSC (Burmister multi-couche exact)",
+      "label": "sigma_r PSC",
+      "value": "3.65",
+      "unit": "kPa",
+      "comment": ""
+    },
+    {
+      "section": "8. Déformation ez — Orniérage PSC (Burmister multi-couche exact)",
+      "label": "ez axe roue",
+      "value": "239.16",
+      "unit": "μdef",
+      "comment": ""
+    },
+    {
+      "section": "8. Déformation ez — Orniérage PSC (Burmister multi-couche exact)",
+      "label": "ez entre-jumelage",
+      "value": "251.88",
+      "unit": "μdef",
+      "comment": ""
+    },
+    {
+      "section": "8. Déformation ez — Orniérage PSC (Burmister multi-couche exact)",
+      "label": "ez retenue (max)",
+      "value": "251.88",
+      "unit": "μdef",
+      "comment": "PSC · max axe/entre-jumelage"
+    },
+    {
+      "section": "8. Déformation ez — Orniérage PSC (Burmister multi-couche exact)",
+      "label": "ez admissible",
+      "value": "261.58",
+      "unit": "μdef",
+      "comment": "0,012 x NE^(-1/4,5) (p.124)"
+    },
+    {
+      "section": "9. Synthèse des critères",
+      "label": "Fatigue et",
+      "value": "93.85 / 94.45",
+      "unit": "μdef",
+      "comment": "Ratio=0.994 → ✓ SATISFAIT"
+    },
+    {
+      "section": "9. Synthèse des critères",
+      "label": "Orniérage ez",
+      "value": "251.88 / 261.58",
+      "unit": "μdef",
+      "comment": "Ratio=0.963 → ✓ SATISFAIT"
+    },
+    {
+      "section": "9. Synthèse des critères",
+      "label": "Verdict",
+      "value": "CONFORME",
+      "unit": "",
+      "comment": "Les deux critères sont satisfaits"
+    }
+  ]
+}

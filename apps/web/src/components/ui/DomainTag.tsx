@@ -33,7 +33,10 @@ const PROJECT_DOMAIN_TO_DOMAIN: Record<ProjectDomain, Domain> = {
  * Config d'affichage par clé sémantique.
  * Exhaustif sur Domain — si Domain s'étend, TypeScript force la mise à jour.
  */
-const domainConfig: Record<Domain, { prefix: string; label: string; bg: string; tx: string }> = {
+const domainConfig: Record<
+  Domain,
+  { prefix: string; label: string; bg: string; tx: string }
+> = {
   road: {
     prefix: 'CH.',
     label: 'Chaussées',
@@ -55,8 +58,11 @@ const domainConfig: Record<Domain, { prefix: string; label: string; bg: string; 
 };
 
 interface DomainTagProps {
-  /** Accepte les clés sémantiques (road/foundation/lab) ou les codes data (CH/FD/LB). */
-  domain: Domain | ProjectDomain;
+  /**
+   * Accepte les clés sémantiques (road/foundation/lab), les codes data (CH/FD/LB),
+   * ou `null` pour un projet LEGACY sans domaine (rendu neutre « Non renseigné »).
+   */
+  domain: Domain | ProjectDomain | null;
   /** Afficher en mode compact (liste calculs) ou standalone (bibliothèque) */
   size?: 'compact' | 'normal';
   className?: string;
@@ -77,13 +83,19 @@ function toDomain(domain: Domain | ProjectDomain): Domain | null {
 }
 
 export function DomainTag({ domain, size = 'normal', className }: DomainTagProps) {
-  const key = toDomain(domain);
+  const key = domain === null ? null : toDomain(domain);
 
-  // Fallback défensif : valeur inconnue → libellé brut sur fond neutre.
-  // Un domaine non encore mappé ne crashe jamais la page.
-  const cfg = key !== null
-    ? domainConfig[key]
-    : { prefix: '', label: String(domain), bg: 'var(--alt)', tx: 'var(--text-sec)' };
+  // Fallback défensif : domaine null (projet legacy) → « Non renseigné » ; valeur
+  // inconnue → libellé brut. Fond neutre dans les deux cas, jamais d'exception.
+  const cfg =
+    key !== null
+      ? domainConfig[key]
+      : {
+          prefix: '',
+          label: domain === null ? 'Non renseigné' : String(domain),
+          bg: 'var(--alt)',
+          tx: 'var(--text-sec)',
+        };
 
   const isCompact = size === 'compact';
 
@@ -124,9 +136,7 @@ export function DomainTag({ domain, size = 'normal', className }: DomainTagProps
       />
 
       {/* Libellé complet en variante normale */}
-      {!isCompact && (
-        <span style={{ fontWeight: 500 }}>{cfg.label}</span>
-      )}
+      {!isCompact && <span style={{ fontWeight: 500 }}>{cfg.label}</span>}
     </span>
   );
 }

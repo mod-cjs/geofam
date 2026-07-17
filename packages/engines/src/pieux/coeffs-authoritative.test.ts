@@ -15,6 +15,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { PIEUX_DEFAULT_COEFFS, PieuxInputSchema } from './contract.js';
+
 import { runPieux } from './index.js';
 
 // Pieu volontairement SOUS-DIMENSIONNE (charge elevee / resistance modeste) : FAIL normatif.
@@ -75,7 +76,9 @@ describe('pieux — coeffs de securite autoritatifs serveur (anti-falsification)
   });
 
   it('les coeffs NORMATIFS passent et l input parse conserve exactement PIEUX_DEFAULT_COEFFS', () => {
-    const parsed = PieuxInputSchema.parse(BASE) as { coeffs: typeof PIEUX_DEFAULT_COEFFS };
+    const parsed = PieuxInputSchema.parse(BASE) as {
+      coeffs: typeof PIEUX_DEFAULT_COEFFS;
+    };
     expect(parsed.coeffs).toEqual(PIEUX_DEFAULT_COEFFS);
   });
 
@@ -87,9 +90,20 @@ describe('pieux — coeffs de securite autoritatifs serveur (anti-falsification)
   // front (apps/web/src/lib/engine-descriptors.ts, coeffs CASAGRANDE).
   it('les 14 coeffs normatifs sont FIGES (miroir a maintenir avec le front CASAGRANDE)', () => {
     expect(PIEUX_DEFAULT_COEFFS).toEqual({
-      k_gG: 1.35, k_gQ: 1.5, k_gb: 1.1, k_gs: 1.1, k_gst: 1.15, k_psi2: 0.3,
-      cr_b_b: 0.7, cr_b_s: 0.7, cr_f_b: 0.5, cr_f_s: 0.7,
-      cr_car: 0.9, cr_qp: 1.1, cr_car_t: 1.1, cr_qp_t: 1.5,
+      k_gG: 1.35,
+      k_gQ: 1.5,
+      k_gb: 1.1,
+      k_gs: 1.1,
+      k_gst: 1.15,
+      k_psi2: 0.3,
+      cr_b_b: 0.7,
+      cr_b_s: 0.7,
+      cr_f_b: 0.5,
+      cr_f_s: 0.7,
+      cr_car: 0.9,
+      cr_qp: 1.1,
+      cr_car_t: 1.1,
+      cr_qp_t: 1.5,
     });
   });
 
@@ -101,6 +115,52 @@ describe('pieux — coeffs de securite autoritatifs serveur (anti-falsification)
     expect(env.ok).toBe(true);
     if (!env.ok) return;
     expect(env.output.allOk).toBe(false);
+    expect(env.output.tauxGouvernant).toBeCloseTo(6.7423, 3);
+    expect(env.output.RcD).toBeCloseTo(678.5517, 3);
+  });
+
+  // GARDE-FOU RECLASSIFICATION §8 : les champs d'AFFICHAGE (Rb/Rs/ple/qce/kfac/kmax/Def/
+  // xi3/xi4/gammaRd1/Ce/fric + courbes) sont display-only -> SORTIE PURE. Ils ne peuvent
+  // PAS entrer : l'InputSchema reste .strict() (toute cle non declaree = 400). On prouve
+  // qu'une tentative d'injection en ENTREE est REJETEE, donc sans aucune influence sur le
+  // verdict scelle (affichage != autorite).
+  it('les champs display ne sont PAS des entrees : injection en entree REJETEE (.strict())', () => {
+    for (const key of [
+      'Rb',
+      'Rs',
+      'ple',
+      'qce',
+      'kfac',
+      'kmax',
+      'Def',
+      'xi3',
+      'gammaRd1',
+      'Ce',
+      'fric',
+      'courbePortance',
+      'courbeTassement',
+      'profilsDowndrag',
+    ]) {
+      const r = PieuxInputSchema.safeParse({ ...BASE, [key]: 999 });
+      expect(
+        r.success,
+        `la cle display '${key}' ne doit pas etre acceptee en entree`,
+      ).toBe(false);
+      // Et le calcul echoue (400) plutot que d'ingerer une valeur d'affichage falsifiee.
+      expect(() => runPieux({ ...BASE, [key]: 999 })).toThrow();
+    }
+  });
+
+  // Corollaire : le verdict/taux/RcD ne DEPEND PAS des champs display (ils sont derives,
+  // pas consommes). Le calcul servi (sans injection) est identique au golden fige.
+  it('les valeurs display n influencent AUCUN resultat de dimensionnement (sortie pure)', () => {
+    const env = runPieux(BASE);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    // Les scalaires display sont presents (chemin PMT) MAIS le verdict reste celui du
+    // calcul normatif : tauxGouvernant/RcD identiques au golden (aucune retro-action).
+    expect(Number.isFinite(env.output.Rb as number)).toBe(true);
+    expect(Number.isFinite(env.output.kfac as number)).toBe(true);
     expect(env.output.tauxGouvernant).toBeCloseTo(6.7423, 3);
     expect(env.output.RcD).toBeCloseTo(678.5517, 3);
   });

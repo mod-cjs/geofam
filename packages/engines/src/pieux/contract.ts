@@ -285,10 +285,13 @@ export const PieuxInputSchema = z
     // (expert + STARFIRE) avec disclosure au PV.
     coeffs: CoeffsSchema.refine(
       (c) =>
-        (Object.keys(PIEUX_DEFAULT_COEFFS) as Array<keyof typeof PIEUX_DEFAULT_COEFFS>).every(
-          (k) => c[k] === PIEUX_DEFAULT_COEFFS[k],
-        ),
-      { message: 'coefficients partiels non normatifs : autoritatifs serveur (valeurs reglementaires imposees)' },
+        (
+          Object.keys(PIEUX_DEFAULT_COEFFS) as Array<keyof typeof PIEUX_DEFAULT_COEFFS>
+        ).every((k) => c[k] === PIEUX_DEFAULT_COEFFS[k]),
+      {
+        message:
+          'coefficients partiels non normatifs : autoritatifs serveur (valeurs reglementaires imposees)',
+      },
     ),
     /** Profil de couches (>= 1). */
     layers: z.array(LayerSchema).min(1).max(100),
@@ -322,11 +325,134 @@ const CheckSchema = z
   })
   .strict();
 
+// ---------------------------------------------------------------------------
+// AFFICHAGE DETAILLE (display-only) — RECLASSIFICATION §8 (directive titulaire
+// « tolerance 0 : tout ce que l'outil client affiche doit s'afficher », avis
+// expert A / rapport casagrande).
+// ---------------------------------------------------------------------------
+//
+// --- POURQUOI ces champs sortent DESORMAIS (rupture avec l'ancien regime) ---
+// L'ancien contrat gardait SERVEUR les intermediaires de la methode NF P 94-262
+// (Rb/Rs bruts, p*le/qce equivalents, facteurs de portance kp/kc appliques et max,
+// hauteur d'encastrement equivalente Def, facteurs de correlation xi3/xi4, coef de
+// modele gammaR;d1, effet de groupe Ce, detail de frottement par couche, courbes de
+// portance/tassement/frottement negatif). La directive titulaire (memoire
+// « details-transparents-rescope-s8 ») tranche : le CONFIDENTIEL est le CODE moteur
+// (les formules/abaques/l'ordre de calcul), PAS les VALEURS que l'outil client
+// affiche deja a l'ecran. On expose donc ces VALEURS, en display-only :
+//   - elles n'ont AUCUNE autorite : le verdict scelle au PV reste pilote par les
+//     grandeurs de dimensionnement (RbK/RsK/RcK/RcD/fluages) et les coefficients
+//     partiels AUTORITATIFS serveur (coeffs.refine == PIEUX_DEFAULT_COEFFS) ;
+//   - ce sont des SORTIES : elles ne re-rentrent jamais dans le calcul (aucun champ
+//     d'entree ajoute ; l'InputSchema reste .strict()).
+//
+// --- CE QUI RESTE SERVEUR (le CODE, pas les valeurs) ---
+// Les abaques/tables (KP_MAX/KC_MAX/ALPHA_*/PMT_CURVE/QSMAX), l'ordre des sommations,
+// les objets de solveur bruts (qceDetail : clipped/mean0/cap/raw ; settle : rigidites
+// t-z ktau/kq/EM ; downdrag : KtanD/Hc/s0/wTip et le profil HAUTE RESOLUTION), le
+// terme de pointe nu `qb`, la chaine `qbDetail`, les facteurs partiels par combinaison
+// (Rbf/Rsf/comb). Ces champs ne figurent PAS dans la whitelist et sont re-strippes.
+
+/** Une ligne de la courbe de portance en profondeur (capacites par etat-limite a la
+ *  profondeur D). Formes/cles dictees par le clone (`courbePortance.rows`). kN. */
+const PortanceRowSchema = z
+  .object({
+    /** Profondeur de base D (m). */
+    D: z.number().finite(),
+    /** Capacite ELU fondamentales (kN). */
+    elufond: z.number().finite(),
+    /** Capacite ELU accidentelles (kN). */
+    eluacc: z.number().finite(),
+    /** Capacite ELS caracteristiques (kN). */
+    elscar: z.number().finite(),
+    /** Capacite ELS quasi-permanentes (kN). */
+    elsqp: z.number().finite(),
+  })
+  .strict();
+
+/** Courbe de portance en profondeur — SERIE DE POINTS RE-ECHANTILLONNEE cote serveur
+ *  (grille D fixe DECOUPLEE de la resolution interne du balayage, patron radier/geoplaque). */
+const CourbePortanceSchema = z
+  .object({
+    rows: z.array(PortanceRowSchema).max(200),
+  })
+  .strict();
+
+/** Un point de la courbe charge-tassement (effort F en kN, tassement s en mm). */
+const TassementPointSchema = z
+  .object({
+    F: z.number().finite(),
+    s: z.number().finite(),
+  })
+  .strict();
+
+/** Courbe charge-tassement — SERIE DE POINTS RE-ECHANTILLONNEE cote serveur (nombre de
+ *  points fixe, DECOUPLE de la discretisation t-z interne). */
+const CourbeTassementSchema = z
+  .object({
+    pts: z.array(TassementPointSchema).max(200),
+    /** Effort maximal de la courbe (kN) — borne d'affichage. */
+    Fmax: z.number().finite(),
+  })
+  .strict();
+
+/** Un point d'un profil de frottement negatif en profondeur. Cles dictees par le clone
+ *  (`profilsDowndrag.prof`). z/w/g en m, f/qsP/qsN en kPa, N en kN. */
+const DowndragProfilePointSchema = z
+  .object({
+    /** Cote z (m). */
+    z: z.number().finite(),
+    /** Tassement du pieu w (m). */
+    w: z.number().finite(),
+    /** Tassement libre du sol g (m). */
+    g: z.number().finite(),
+    /** Frottement axial mobilise f (kPa, signe). */
+    f: z.number().finite(),
+    /** Frottement positif limite qsP (kPa). */
+    qsP: z.number().finite(),
+    /** Frottement negatif qsN (kPa, signe). */
+    qsN: z.number().finite(),
+    /** Effort axial N (kN). */
+    N: z.number().finite(),
+  })
+  .strict();
+
+/** Profils de frottement negatif en profondeur — SERIE DE POINTS RE-ECHANTILLONNEE cote
+ *  serveur (grille z fixe DECOUPLEE de la segmentation de marche interne). */
+const ProfilsDowndragSchema = z
+  .object({
+    /** Tassement en tete du pieu (mm) — repere d'affichage. */
+    wHead: z.number().finite(),
+    prof: z.array(DowndragProfilePointSchema).max(200),
+  })
+  .strict();
+
+/** Une ligne du tableau de frottement lateral par couche (affiche par l'outil). */
+const FricRowSchema = z
+  .object({
+    /** Nature de sol de la couche. */
+    soil: SoilEnum,
+    /** Cote haute de la couche dans l'emprise du pieu (m). */
+    top: z.number().finite(),
+    /** Cote basse de la couche dans l'emprise du pieu (m). */
+    bot: z.number().finite(),
+    /** Epaisseur mobilisee dz (m). */
+    dz: z.number().finite(),
+    /** Frottement unitaire qs applique (kPa). */
+    qs: z.number().finite(),
+    /** Contribution au frottement total dRs (kN). */
+    dRs: z.number().finite(),
+    /** Frottement unitaire plafond qsmax (kPa) ; null si non couvert par la norme. */
+    qsm: z.number().finite().nullable(),
+    /** Longueur d'ancrage reduite (couche degradee proche de la pointe). */
+    deg: z.boolean(),
+  })
+  .strict();
+
 /**
  * Sortie client-safe du moteur pieux. Les grandeurs FINALES de dimensionnement +
- * le verdict de verification. Aucun terme de pointe brut, aucun facteur de portance,
- * aucun detail de frottement par couche, aucune courbe de mobilisation, aucun
- * facteur partiel intermediaire.
+ * le verdict de verification, PLUS les valeurs d'AFFICHAGE detaillees (display-only,
+ * cf. bloc ci-dessus) reproduisant le panneau Resultats et les figures de l'outil.
  */
 export const PieuxOutputSchema = z
   .object({
@@ -372,6 +498,47 @@ export const PieuxOutputSchema = z
     tauxGouvernant: z.number().finite(),
     /** Tassement ELS estime sous charge caracteristique (mm). null si non calculable. */
     tassementELS: z.number().finite().nullable(),
+    // --- AFFICHAGE DETAILLE (display-only, RECLASSIFICATION §8) ---
+    // Valeurs affichees par le panneau Resultats de l'outil client. AUCUNE autorite
+    // (le verdict/PV ne les consomme pas ; ce sont des sorties, pas des entrees).
+    // null = non calculable pour ce jeu (ex. ple null hors methode pressiometrique).
+    /** Resistance de pointe BRUTE Rb (kN). */
+    Rb: z.number().finite().nullable(),
+    /** Resistance de frottement BRUTE Rs (kN). */
+    Rs: z.number().finite().nullable(),
+    /** Pression limite nette equivalente p*le (MPa). null hors methode pressiometrique. */
+    ple: z.number().finite().nullable(),
+    /** Resistance de pointe equivalente q_ce (MPa). null hors methode penetrometrique. */
+    qce: z.number().finite().nullable(),
+    // RESERVE EXPERT (avis A) : les tables kp/kc (Tableaux F.4.2.1/G.4.2.1) sont
+    // PRESUMEES reproduire la norme verbatim, A CONFIRMER par STARFIRE. On expose ici
+    // la VALEUR APPLIQUEE (kfac) et son PLAFOND (kmax) — mode A. Bascule en mode B
+    // (masquer kmax, ne garder que kfac) = one-liner : passer `kmax` a `null` dans la
+    // projection (index.ts, shapeOutput) — aucun autre changement.
+    /** Facteur de portance APPLIQUE kp (pmt) / kc (cpt) / Nq (c-φ) — sans dimension. */
+    kfac: z.number().finite().nullable(),
+    /** Plafond du facteur de portance kp,max / kc,max. null en c-φ (pas de plafond tabule). */
+    kmax: z.number().finite().nullable(),
+    /** Hauteur d'encastrement equivalente D_ef (m). */
+    Def: z.number().finite().nullable(),
+    /** Rapport d'encastrement D_ef/B (sans dimension). */
+    debR: z.number().finite().nullable(),
+    /** Facteur de correlation ξ₃ (nombre de profils / surface investiguee). */
+    xi3: z.number().finite().nullable(),
+    /** Facteur de correlation ξ₄. */
+    xi4: z.number().finite().nullable(),
+    /** Coefficient de modele γ_R;d1 (annexe D). */
+    gammaRd1: z.number().finite().nullable(),
+    /** Coefficient d'effet de groupe C_e applique sur Rs (§4.3.2). */
+    Ce: z.number().finite().nullable(),
+    /** Tableau de frottement lateral par couche (comme l'onglet Resultats). null si vide. */
+    fric: z.array(FricRowSchema).max(100).nullable(),
+    /** Courbe de portance en profondeur (serie re-echantillonnee). null si non traçable. */
+    courbePortance: CourbePortanceSchema.nullable(),
+    /** Courbe charge-tassement (serie re-echantillonnee). null si non calculable. */
+    courbeTassement: CourbeTassementSchema.nullable(),
+    /** Profils de frottement negatif en profondeur (serie re-echantillonnee). null si non demande. */
+    profilsDowndrag: ProfilsDowndragSchema.nullable(),
     // --- FROTTEMENT NEGATIF (downdrag, #94) — null si non demande / garde du moteur ---
     /** Charge de frottement negatif G_sn (kN) = max(0, Nmax − Q) — resultat livrable. */
     Gsn: z.number().finite().nullable(),

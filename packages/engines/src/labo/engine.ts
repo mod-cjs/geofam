@@ -193,20 +193,25 @@ function rsq(pts, reg) {
 // Les lignes `$(...).textContent=...`, `chip(...)`, `setv(...)`, `draw*(...)`,
 // `$(...).innerHTML=...` (PRESENTATION) sont OMISES : aucun effet sur D.
 
-function calcW(state, D, num) {
+function calcW(state, D, num, DET) {
   let s = 0,
     n = 0;
+  const rows = [];
   for (let i = 1; i <= 3; i++) {
     const w = wcalc(num('w_t' + i), num('w_h' + i), num('w_s' + i));
+    rows.push(w);
     if (w != null) {
       s += w;
       n++;
     }
   }
   D.wn = n ? s / n : null;
+  // DETAIL (miroir des ECRITURES DOM du HTML calcW L.1009 : $('w_r'+i)=w.toFixed(2)) —
+  // valeurs deja calculees, aucune science ajoutee. Alimente le rendu par ligne du clone.
+  if (DET) DET.w = { rows, moy: D.wn, n };
 }
 
-function granuloPts(state, num) {
+function granuloPts(state, num, rec) {
   const M = num('gr_M');
   const pts = [];
   let cum = 0;
@@ -216,6 +221,11 @@ function granuloPts(state, num) {
       cum += rp;
       const pass = 100 - (cum / M) * 100;
       pts.push([sv, Math.max(0, pass)]);
+      // DETAIL : miroir de $('.gr_cum'/'.gr_pass') du HTML granuloPts L.1012 (cum brut,
+      // pass = 100-cum/M*100 NON borne, exactement comme le DOM). Aucune science ajoutee.
+      if (rec) rec.push({ s: sv, cum, pass });
+    } else if (rec) {
+      rec.push({ s: sv, cum: null, pass: null });
     }
   }
   pts.sort((a, b) => a[0] - b[0]);
@@ -251,8 +261,9 @@ function dAt(pts, pass) {
   }
   return null;
 }
-function calcGranulo(state, D, num) {
-  const pts = granuloPts(state, num);
+function calcGranulo(state, D, num, DET) {
+  const rec = DET ? [] : null;
+  const pts = granuloPts(state, num, rec);
   D.granPts = pts;
   D.p80 = interpP(pts, 0.08);
   D.p2 = interpP(pts, 2);
@@ -293,14 +304,20 @@ function calcGranulo(state, D, num) {
   }
   D.mf = mf;
   D.mfq = mf == null ? null : mf <= 2.2 ? 'très fin' : mf <= 2.8 ? 'idéal' : 'grossier';
+  // DETAIL granulo : colonnes par tamis (refus cumule + passant) + SERIE de la courbe
+  // (D.granPts, deja la, echelle log). Les chips (dmax/p80/p2/Cu/Cc/mf/mfq) sortent deja
+  // en agregats. Aucune science ajoutee : on expose ce que le HTML AFFICHE.
+  if (DET) DET.gran = { rows: rec, pts };
 }
 
-function calcAtt(state, D, num, chk) {
+function calcAtt(state, D, num, chk, DET) {
   const pts = [],
     raw = [];
+  const llw = [];
   for (let i = 1; i <= 5; i++) {
     const N = num('ll_x' + i),
       w = wcalc(num('ll_t' + i), num('ll_h' + i), num('ll_s' + i));
+    llw.push(w);
     if (N != null && w != null && N > 0) {
       pts.push([Math.log10(N), w]);
       raw.push([N, w]);
@@ -312,27 +329,84 @@ function calcAtt(state, D, num, chk) {
   const wL = wLraw != null ? Math.round(wLraw) : null; // arrondi entier (§6.1)
   D.wl = wL;
   D.wl_raw = wLraw;
+  // Controles de validite NF P 94-051 §5.2.3 / §6.1 — TRANSCRITS VERBATIM du HTML calcAtt
+  // (L.1039-1052) ; le moteur les DROPPAIT (warnings: [] fige). Aucune science ajoutee :
+  // ces alertes sont l'encart « Controles NF P 94-051 » AFFICHE par l'outil client.
+  const warns = [];
+  if (DET) {
+    const Ns = raw.map((p) => p[0]);
+    if (raw.length > 0 && raw.length < 4)
+      warns.push(`Seulement ${raw.length} point(s) — minimum 4 requis.`);
+    if (Ns.some((n) => n < 15 || n > 35))
+      warns.push('Au moins un N hors plage 15–35 chocs.');
+    if (Ns.length >= 2 && !(Math.min(...Ns) <= 25 && Math.max(...Ns) >= 25))
+      warns.push('Les N doivent encadrer 25 chocs.');
+    if (Ns.length >= 2) {
+      const sorted = [...Ns].sort((a, b) => a - b);
+      for (let i = 1; i < sorted.length; i++)
+        if (sorted[i] - sorted[i - 1] > 10) {
+          warns.push('Écart entre deux N consécutifs > 10.');
+          break;
+        }
+    }
+    if (reg) {
+      for (const [N, w] of raw) {
+        const wc = reg.a * Math.log10(N) + reg.b;
+        if (Math.abs(w - wc) > 3) {
+          warns.push('Écart w mesuré/calculé > 3 % sur un point — refaire une mesure.');
+          break;
+        }
+      }
+    }
+  }
   // plasticite (rouleau Ø3 mm, 2 determinations)
   let wp = [],
     np = chk('pl_np');
+  const plw = [];
   for (let i = 1; i <= 2; i++) {
     const w = wcalc(num('pl_t' + i), num('pl_h' + i), num('pl_s' + i));
+    plw.push(w);
     if (w != null) wp.push(w);
   }
   let wPmean = wp.length ? wp.reduce((a, b) => a + b, 0) / wp.length : null;
   let wP = np ? null : wPmean != null ? Math.round(wPmean) : null; // arrondi entier (§6.2)
   D.wp = wP;
+  if (DET && !np && wp.length === 2 && Math.abs(wp[0] - wp[1]) > 2)
+    warns.push(
+      'Écart entre les 2 limites de plasticité > 2 % — refaire un essai (§6.2).',
+    );
   let ip = wL != null && wP != null ? wL - wP : null;
   if (np) ip = null;
   D.ip = ip;
   // indice de consistance Ic = (wL - w)/Ip
   let ic = ip != null && ip > 0 && D.wn != null ? (wL - D.wn) / ip : null;
   D.ic = ic;
+  // Nature vis-a-vis de la ligne A (chip « Nature » de l'onglet, HTML L.1058).
+  let nature = null;
+  if (ip != null && wL != null) {
+    const aline = 0.73 * (wL - 20);
+    nature =
+      ip > aline ? 'Argile (au-dessus ligne A)' : 'Limon / sol organique (sous ligne A)';
+  }
+  if (DET)
+    DET.att = {
+      llw, // teneur en eau par point de liquidite (5) — $('ll_w'+i)
+      plw, // teneur en eau par determination de plasticite (2) — $('pl_w'+i)
+      pente: reg ? reg.a : null, // pente de la droite d'ajustement (chip)
+      wLraw, // wL NON arrondi (ordonnee de la droite a 25 chocs) — trace canvas llcurve
+      points: raw.length,
+      valide: warns.length === 0, // chip Validite ✓/✗
+      warns, // encart « Controles NF P 94-051 »
+      nature,
+      raw, // SERIE de la droite de liquidite (couples N,w) — canvas llcurve
+    };
 }
 
-function calcVbs(state, D, num) {
+function calcVbs(state, D, num, DET) {
   const C = num('v_conc') || 10;
   const vsol = [];
+  const rows = [];
+  let lowV = false;
   for (let i = 1; i <= 2; i++) {
     const prise = num('v_prise' + i),
       frac = num('v_frac' + i),
@@ -342,12 +416,23 @@ function calcVbs(state, D, num) {
     const Mb = V != null ? (V * C) / 1000 : null;
     const v05 = Mb != null && M1 ? (Mb / M1) * 100 : null;
     const vs = v05 != null ? v05 * ((frac != null ? frac : 100) / 100) : null;
+    rows.push({ M1, Mb, v05, vs });
     if (vs != null) vsol.push(vs);
+    if (V != null && V <= 10) lowV = true; // controle NF P 94-068 art. 7 (HTML L.1104)
   }
   const moy = vsol.length ? vsol.reduce((a, b) => a + b, 0) / vsol.length : null;
   const man = num('v_manual');
   const vbs = man != null ? man : moy != null ? +moy.toFixed(2) : null;
   D.vbs = vbs;
+  if (DET)
+    DET.vbs = {
+      rows, // lignes M1 / Mb / VBS 0/5 / VBS du sol par essai (HTML L.1099-1102)
+      moy, // VBS du sol (moyenne) — chip
+      retenue: vbs, // VBS retenue — chip
+      essais: vsol.length,
+      manual: man, // saisie directe prioritaire
+      lowV, // alerte « V ≤ 10 cm³ → recommencer »
+    };
 }
 
 function rhoWaterT(T) {
@@ -435,7 +520,7 @@ function fitPar(pts) {
   if (a >= 0) return null;
   return { a, b, c, wopn: -b / (2 * a), rdmax: c - (b * b) / (4 * a) };
 }
-function calcProctor(state, D, num, modes) {
+function calcProctor(state, D, num, modes, DET) {
   // setMould() du HTML : si pr_d/pr_hh absents, writeForm les derive de MOULES[pr_mould]
   // (`if(!o||!o.pr_d)setMould()` -> setv pr_d/pr_hh = MOULES[mould]). On reproduit ce
   // defaut ICI pour la fidelite du chemin UI : un echantillon ne saisit que pr_mould.
@@ -452,6 +537,7 @@ function calcProctor(state, D, num, modes) {
   let V = null;
   if (d && h) V = (Math.PI / 4) * d * d * h;
   const pts = [];
+  const rows = [];
   for (let i = 1; i <= 7; i++) {
     const mh = num('pr_mh' + i),
       w = wcalc(num('pr_t' + i), num('pr_h' + i), num('pr_s' + i));
@@ -460,6 +546,7 @@ function calcProctor(state, D, num, modes) {
       rd = mh / V / (1 + w / 100);
       pts.push([w, rd]);
     }
+    rows.push({ w, rd }); // $('pr_w'+i) / $('pr_rd'+i) du HTML L.1179
   }
   const fit = fitPar(pts);
   let wopn = null,
@@ -475,6 +562,27 @@ function calcProctor(state, D, num, modes) {
   }
   D.wopn = wopn;
   D.rdmax = rdmax;
+  if (DET) {
+    // Controle d'energie normatif EN 13286-2 Tableau 5 — TRANSCRIT VERBATIM du HTML
+    // calcProctor L.1171-1173 (energie calculee vs cible P.E ± 8 %). Cle = prType+moule.
+    let energy = null;
+    const key = (modes.prType || 'n') + '_' + (state['pr_mould'] || 'A');
+    const P = PRPROC[key] || null;
+    if (P && V) {
+      const E = (P.m * 9.81 * (P.h / 1000) * P.N * P.L) / (V / 1e6) / 1e6;
+      energy = { E, cible: P.E, ok: Math.abs(E - P.E) / P.E < 0.08 };
+    }
+    DET.proctor = {
+      V, // volume du moule (cm³ apres *… ; ici V en cm³ = π/4·d·d·h avec d,h en cm)
+      rows, // teneur en eau + ρd par point de compactage (7)
+      fit: fit ? { a: fit.a, b: fit.b, c: fit.c } : null, // parabole (canvas pcurve)
+      wopn,
+      rdmax,
+      points: pts.length,
+      energy, // controle d'energie (spec) ou null si combinaison hors Tableau 5
+      horsTableau: P == null, // moule + dame hors Tableau 5 (avertissement du HTML)
+    };
+  }
 }
 
 function calcCbr(state, D, num, modes) {
@@ -1009,7 +1117,7 @@ function classify(state, D, CFG, forcedState) {
 // ENTREE PURE DU MODULE — extraction de recalc() (memes appels, meme ordre)
 // ===========================================================================
 
-function computeLaboCore(state) {
+function computeLaboCore(state, detail) {
   const num = makeNum(state);
   const chk = makeChk(state);
   // Toggles de mode. Defauts = ceux de `writeForm()` du HTML (chemin REEL : un
@@ -1039,13 +1147,19 @@ function computeLaboCore(state) {
     }
   }
   const D = {};
+  // DET = accumulateur de DETAIL d'affichage (par ligne / series de courbe / alertes
+  // normatives), separe de D. Optionnel : `computeLabo` ne le demande PAS (l'equivalence-
+  // portage compare {D, cls} bit a bit) ; `computeLaboDetail` le construit pour le serveur.
+  // Les kernels n'y ecrivent QUE des valeurs DEJA calculees (miroir des ecritures DOM du
+  // HTML) — aucune science ajoutee, aucun effet sur D/cls.
+  const DET = detail ? {} : null;
   // ORDRE VERBATIM de recalc() — CBR depend de D.rdmax/D.wopn (Proctor avant CBR).
-  calcW(state, D, num);
-  calcGranulo(state, D, num);
-  calcAtt(state, D, num, chk);
-  calcVbs(state, D, num);
+  calcW(state, D, num, DET);
+  calcGranulo(state, D, num, DET);
+  calcAtt(state, D, num, chk, DET);
+  calcVbs(state, D, num, DET);
   calcRhos(state, D, num, modes);
-  calcProctor(state, D, num, modes);
+  calcProctor(state, D, num, modes, DET);
   calcCbr(state, D, num, modes);
   calcCisail(state, D, num, modes);
   calcDens(state, D, num, modes);
@@ -1061,7 +1175,7 @@ function computeLaboCore(state) {
   calcRho(state, D, num);
   calcSulf(state, D, num);
   const cls = classify(state, D, CFG, modes.forcedState);
-  return { D, cls };
+  return DET ? { D, cls, det: DET } : { D, cls };
 }
 
 /**
@@ -1076,7 +1190,23 @@ function computeLaboCore(state) {
  */
 export function computeLabo(state) {
   try {
-    return computeLaboCore(state || {});
+    return computeLaboCore(state || {}, false);
+  } catch (e) {
+    return { err: e && e.message ? String(e.message) : 'Erreur de calcul' };
+  }
+}
+
+/**
+ * Variante RICHE : identique a computeLabo mais renvoie EN PLUS `det` (detail
+ * d'affichage par ligne / series de courbe / alertes normatives). Sert au SERVEUR
+ * (index.ts runLabo) pour renvoyer au clone TOUT ce que l'outil client AFFICHE
+ * (colonnes calculees, chips, canvas, encarts). AUCUNE science supplementaire :
+ * `det` est un miroir des ecritures DOM des kernels ; `{D, cls}` est bit a bit
+ * identique a computeLabo (l'equivalence-portage compare cette forme-la).
+ */
+export function computeLaboDetail(state) {
+  try {
+    return computeLaboCore(state || {}, true);
   } catch (e) {
     return { err: e && e.message ? String(e.message) : 'Erreur de calcul' };
   }

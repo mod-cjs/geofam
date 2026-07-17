@@ -68,7 +68,9 @@ export interface Project {
   orgId: string;
   name: string;
   description?: string;
-  domain: ProjectDomain;
+  // `null` = projet LEGACY créé avant la colonne domaine (domaine inconnu) —
+  // sélectionnable dans tous les logiciels. Un projet neuf porte toujours CH/FD/LB.
+  domain: ProjectDomain | null;
   createdAt: string;
   updatedAt: string;
   createdBy: string;
@@ -276,6 +278,16 @@ export interface CalcResult {
   status: CalcStatus;
   params: Record<string, unknown>;
   output: unknown | null;
+  /**
+   * Sortie serveur WHITELISTÉE BRUTE (telle que renvoyée par le moteur côté serveur,
+   * projetée sur son contrat de sortie — barrière §8, ADR 0015 §4). Conservée À CÔTÉ
+   * de `output` (forme normalisée UI). Consommée UNIQUEMENT par les clones d'UI client
+   * (ToolFrame → bridge → `mapOutputToR`), qui lisent la structure brute du moteur
+   * (`output.cas`, `output.capaciteReference`, `output.contraintesBase`…). La page
+   * roadsens (reconstruction React) continue de lire `output` normalisé : comportement
+   * INCHANGÉ. Absent en mode mock (pas de sortie serveur whitelistée).
+   */
+  rawOutput?: unknown;
   createdAt: string;
   updatedAt: string;
   pvId?: string; // défini si un PV a été émis

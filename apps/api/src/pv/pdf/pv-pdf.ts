@@ -246,6 +246,27 @@ function buildBody(sealed: SealedContent): Content[] {
   if (engineId === 'pressiometre-menard') {
     return buildPressiometreBody(sealed);
   }
+  // Modes 2D GEOPLAQUE — RÉSULTATS de calcul EF (déformée), miroir des panneaux
+  // `#ps-run` / `#ax-run` / `#tri-run` de l'outil client (statistiques + figure,
+  // sans verdict de conformité). Les champs d'affichage volumineux (`profils`,
+  // `champDeflexion`) restent SERVEUR (jamais listés) : on ne rend que les scalaires.
+  if (engineId === 'plane-strain') {
+    return buildPlaneStrainBody(sealed);
+  }
+  if (engineId === 'axi-plaque') {
+    return buildAxiBody(sealed);
+  }
+  if (engineId === 'radier-tri') {
+    return buildTriRaftBody(sealed);
+  }
+  // Corrections métrologiques pressiométriques — miroir de `renderEtalResult` /
+  // `renderCalibResult` de l'outil client (coefficients + qualité + résidus).
+  if (engineId === 'pressio-etalonnage') {
+    return buildPressioEtalonnageBody(sealed);
+  }
+  if (engineId === 'pressio-calibrage') {
+    return buildPressioCalibrageBody(sealed);
+  }
   // FALLBACK générique : table clé-valeur propre (sans lignes-bruit), input puis output.
   return [
     sectionTitle('Données d’entrée'),
@@ -374,6 +395,59 @@ function fdnFirstFinite(...vals: unknown[]): number | null {
   for (const v of vals)
     if (typeof v === 'number' && Number.isFinite(v)) return v;
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Affichage RADIER / modes 2D GEOPLAQUE — COPIE des transformations d'affichage de
+// l'outil client GEOPLAQUE_V10 (décision titulaire 15/07, re-confirmée 17/07 :
+// « zéro écart absolu »). La sortie MOTEUR reste physiquement juste (tassements en mm,
+// distorsions en ‰) et le SCELLÉ canonique est INCHANGÉ ; SEULE la couche de
+// PRÉSENTATION reproduit les défauts d'affichage de l'outil client : tassements ×1000
+// (sur-rapport), grandeurs angulaires rendues CRUES (`ratio1` + valeur brute étiquetée
+// « rad »). Appliqué app ET PV ensemble (jamais l'un sans l'autre — leçon pressio
+// MAJEUR-1). Exception à faire valider par STARFIRE (inverse la décision du 01/07 qui
+// affichait mm/‰ « justes »). Réf. client : `refreshResults` l.2560-2598 (radier) ;
+// panneaux `#ps-run`/`#ax-run`/`#tri-run` l.2237-2333 (2D). Typographie fr-FR maison
+// (séparateur décimal « , », mantisse de la notation scientifique localisée).
+// ---------------------------------------------------------------------------
+
+function radierNum(v: unknown): number | null {
+  const n =
+    typeof v === 'number'
+      ? v
+      : typeof v === 'string' && v.trim() !== ''
+        ? Number(v)
+        : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Tassement sur-rapporté ×1000 « mm » — miroir de `(d.wMax*1000).toFixed(1)+' mm'`. */
+function fdnSettleMm(v: unknown): string {
+  const n = radierNum(v);
+  return n === null ? '—' : fdnNum(n * 1000, 1, 'mm');
+}
+
+/** `ratio1(v)` = « 1/N » (fr-FR) — miroir exact de l'outil client. « — » si v ≤ 0 / non fini. */
+function ratio1(v: unknown): string {
+  const n = radierNum(v);
+  if (n === null || n <= 0) return '—';
+  return `1/${Math.round(1 / n)
+    .toLocaleString('fr-FR')
+    .replace(/\s/g, ' ')}`;
+}
+
+/** Distorsion β CRUE — miroir de `ratio1(β)+'  ('+β.toExponential(1)+' rad)'`. */
+function fdnBetaRad(v: unknown): string {
+  const n = radierNum(v);
+  if (n === null) return '—';
+  return `${ratio1(n)} (${n.toExponential(1).replace('.', ',')} rad)`;
+}
+
+/** Rotation / pente CRUE — miroir de `v.toExponential(2)+' rad  ('+ratio1(v)+')'` (Synthèse). */
+function fdnRotRad(v: unknown): string {
+  const n = radierNum(v);
+  if (n === null) return '—';
+  return `${n.toExponential(2).replace('.', ',')} rad (${ratio1(n)})`;
 }
 
 function fdnSubTitle(label: string): Content {
@@ -1124,34 +1198,39 @@ function buildRadierBody(sealed: SealedContent): Content[] {
 
   body.push(sectionTitle('Déflexions & distorsions'));
   const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
-  // Moteur radier : tassements en mm, distorsion en ‰ — TRANCHÉ (physique + solveModel
-  // de référence identique au bit près + cohérence inter-cas). Le solveur sort ses
-  // déplacements numériquement en mm (piège d'unité E-MPa × charges-kN × géométrie-m) ;
-  // l'annotation « m/rad » du contrat vise l'unité SI, pas la sortie numérique. Voir le
-  // commentaire détaillé dans apps/web adapters.ts (buildRadierRows).
+  // AFFICHAGE = COPIE de l'outil client GEOPLAQUE_V10 (`refreshResults`, décision
+  // titulaire 15/07 re-confirmée 17/07 : « zéro écart absolu »). La sortie MOTEUR reste
+  // juste (tassements en mm, distorsions en ‰) et le scellé est INCHANGÉ ; seule la
+  // PRÉSENTATION reproduit les défauts de l'outil : tassements ×1000 (fdnSettleMm),
+  // distorsions/pentes rendues CRUES via ratio1 + valeur brute « rad » (fdnBetaRad /
+  // fdnRotRad). Inclinaison ϖ = `ratio1(tilt)` SEUL (l'outil client ne lui adjoint pas de
+  // « rad »). Détails du raisonnement d'unité : bandeau des helpers ci-dessus.
   // COMPLÉTUDE : tous les diagnostics client-safe (RadierOutputSchema), ordre GEOPLAQUE_V10.
-  fdnKvRow(t, 'Tassement maximal w_max', fdnNum(o.wMax, 2, 'mm'));
-  fdnKvRow(t, 'Tassement minimal w_min', fdnNum(o.wMin, 2, 'mm'));
-  fdnKvRow(t, 'Tassement différentiel', fdnNum(o.diff, 2, 'mm'));
-  fdnKvRow(t, 'Distorsion angulaire gouvernante β', fdnNum(o.betaGov, 2, '‰'));
-  fdnKvRow(t, 'Distorsion intra-plaque max', fdnNum(o.betaIntra, 2, '‰'));
-  fdnKvRow(t, "Inclinaison d'ensemble ϖ", fdnNum(o.tiltMax, 2, '‰'));
-  fdnKvRow(t, 'Pente locale max |∇w|', fdnNum(o.slopeMax, 2, '‰'));
+  fdnKvRow(t, 'Tassement maximal w_max', fdnSettleMm(o.wMax));
+  fdnKvRow(t, 'Tassement minimal w_min', fdnSettleMm(o.wMin));
+  fdnKvRow(t, 'Tassement différentiel', fdnSettleMm(o.diff));
+  fdnKvRow(t, 'Distorsion angulaire gouvernante β', fdnBetaRad(o.betaGov));
+  fdnKvRow(t, 'Distorsion intra-plaque max', fdnBetaRad(o.betaIntra));
+  fdnKvRow(t, "Inclinaison d'ensemble ϖ", ratio1(o.tiltMax));
+  fdnKvRow(t, 'Pente locale max |∇w|', fdnRotRad(o.slopeMax));
   const nRafts = typeof o.nRafts === 'number' ? o.nRafts : 0;
   if (nRafts > 1) {
-    fdnKvRow(t, 'Distorsion entre plaques', fdnNum(o.betaInter, 2, '‰'));
+    // Inter-plaques : l'outil client affiche `ratio1(interBeta)  · Δs (interDiff*1000)`
+    // — distorsion CRUE (ratio1 seul) + différentiel ×1000.
+    fdnKvRow(t, 'Distorsion entre plaques', ratio1(o.betaInter));
     fdnKvRow(
       t,
       'Tassement différentiel inter-plaques',
-      fdnNum(o.interDiff, 2, 'mm'),
+      fdnSettleMm(o.interDiff),
     );
   }
   const wlp = o.worstLoadPair;
   if (wlp != null && typeof wlp === 'object') {
+    // Entre charges : l'outil client affiche `ratio1(w.beta)  · Δs …` (ratio1 seul).
     fdnKvRow(
       t,
       'Distorsion max entre charges voisines',
-      fdnNum((wlp as Record<string, unknown>).beta, 2, '‰'),
+      ratio1((wlp as Record<string, unknown>).beta),
     );
   }
   fdnKvRow(t, 'Nombre de radiers', fdnNum(o.nRafts, 0));
@@ -1175,8 +1254,10 @@ function buildRadierBody(sealed: SealedContent): Content[] {
   fdnKvRow(s, 'Σ réactions du sol', fdnNum(o.sumReact, 1, 'kN'));
   fdnKvRow(s, 'Σ réaction de Winkler', fdnNum(o.sumWink, 1, 'kN'));
   fdnKvRow(s, 'Σ réaction des ressorts', fdnNum(o.sumSpr, 1, 'kN'));
-  fdnKvRow(s, 'Rotation θx max', fdnNum(o.txMax, 2, '‰'));
-  fdnKvRow(s, 'Rotation θy max', fdnNum(o.tyMax, 2, '‰'));
+  // Rotations : format « Synthèse » de l'outil client (`v.toExponential(2)+' rad  ('+
+  // ratio1(v)+')'`) — rendues CRUES, plus de ‰.
+  fdnKvRow(s, 'Rotation θx max', fdnRotRad(o.txMax));
+  fdnKvRow(s, 'Rotation θy max', fdnRotRad(o.tyMax));
   fdnKvRow(s, 'Réaction de sol minimale', fdnNum(o.pMin, 1, 'kPa'));
   fdnKvRow(s, 'Réaction de sol maximale', fdnNum(o.pMax, 1, 'kPa'));
   fdnKvRow(s, 'Moment |Mx| max', fdnNum(o.mxMax, 1, 'kN·m/ml'));
@@ -1519,6 +1600,330 @@ function buildPressiometreBody(sealed: SealedContent): Content[] {
     }
   }
   return body;
+}
+
+// ---------------------------------------------------------------------------
+// Présentations « déformée 2D » GEOPLAQUE (déformations planes / axisymétrique /
+// radier triangulaire) — RÉSULTATS de calcul EF, SANS verdict de conformité :
+// pour ces modes l'outil client (`#ps-run` / `#ax-run` / `#tri-run`) n'affiche que
+// des STATISTIQUES + une figure. Clés NOMMÉES (fail-closed, DoD §8). Les tassements
+// sont sur-rapportés ×1000 (fdnSettleMm) pour COPIER l'affichage de l'outil client
+// (`(R.wMax*1000).toFixed(1)+' mm'` des panneaux #ps-run/#ax-run/#tri-run) — décision
+// titulaire 15/07 re-confirmée 17/07 (« zéro écart absolu ») ; sortie moteur et scellé
+// INCHANGÉS (cf. bandeau des helpers radier + mémoire roadsen-radier-units).
+// ---------------------------------------------------------------------------
+
+/** Cellule de tableau alignée à droite (valeur numérique). */
+function cellRight(text: string): TableCell {
+  return { text, style: 'cell', alignment: 'right' };
+}
+
+/**
+ * « Charge / réaction Σ » — ligne COMBINÉE de l'outil client (`st('Charge / réaction
+ * Σ', total/react (équilibre …))`). `totalLoad` et `sumReact` sont whitelistés ;
+ * l'écart d'équilibre est un simple DÉRIVÉ (front pur, aucune méthode EF exposée).
+ * FAIL-CLOSED : « — » si l'une des deux grandeurs manque. `unit` = kN/m (coupe
+ * unitaire, plane-strain) ou kN (axi / tri).
+ */
+function fmtChargeReaction(
+  total: unknown,
+  react: unknown,
+  unit: string,
+): string {
+  const t = typeof total === 'number' && Number.isFinite(total) ? total : null;
+  const r = typeof react === 'number' && Number.isFinite(react) ? react : null;
+  if (t === null || r === null) return '—';
+  const eqp = t !== 0 ? (Math.abs(r - t) / Math.abs(t)) * 100 : 0;
+  const eq = eqp < 0.01 ? 'équilibre ✓' : `${fdnNum(eqp, 2)} %`;
+  return `${fdnNum(t, 0)} / ${fdnNum(r, 0)} ${unit} (${eq})`;
+}
+
+/**
+ * Erreur de calcul (garde moteur / science) + avertissements des modes 2D. Une
+ * `erreur` non vide = résultats invalides -> encadré d'alerte proéminent (miroir
+ * du bloc d'erreur du client). Les `warnings` sont déjà rédigés/whitelistés côté
+ * moteur. Absents -> rien (fail-closed, jamais de section vide).
+ */
+function build2DErreurWarnings(o: Record<string, unknown>): Content[] {
+  const out: Content[] = [];
+  if (typeof o.erreur === 'string' && o.erreur.trim() !== '') {
+    out.push(buildRadierAlertBox(o.erreur.trim()));
+  }
+  const warnings = (Array.isArray(o.warnings) ? o.warnings : []).filter(
+    (w): w is string => typeof w === 'string',
+  );
+  if (warnings.length > 0) {
+    out.push(fdnSubTitle('Avertissements'));
+    out.push({
+      text: warnings.join(' · '),
+      style: 'cellMuted',
+      color: COLORS.accent,
+      margin: [0, 2, 0, 4],
+    });
+  }
+  return out;
+}
+
+/** Rend un tableau Grandeur/Valeur (≥1 ligne de donnée), sinon rien. */
+function pushKvTable(body: Content[], rows: TableCell[][]): void {
+  if (rows.length > 1) {
+    body.push({
+      table: { headerRows: 1, widths: ['*', 'auto'], body: rows },
+      layout: FINE_TABLE_LAYOUT,
+      margin: [0, 2, 0, 4],
+    });
+  }
+}
+
+function buildPlaneStrainBody(sealed: SealedContent): Content[] {
+  const o = (sealed.output ?? {}) as Record<string, unknown>;
+  const input = (sealed.input ?? {}) as Record<string, unknown>;
+  const opts = isPlainObject(input.opts) ? input.opts : {};
+  const body: Content[] = [];
+  body.push(buildAnalyseBanner());
+
+  body.push(sectionTitle('Résultats — coupe en déformations planes'));
+  // Ordre & libellés du panneau `#ps-run` de GEOPLAQUE_V10 (tranche unitaire).
+  const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
+  fdnKvRow(t, 'Tassement maximal w_max', fdnSettleMm(o.wMax));
+  fdnKvRow(t, 'Tassement minimal w_min', fdnSettleMm(o.wMin));
+  fdnKvRow(t, 'Tassement différentiel', fdnSettleMm(o.diff));
+  fdnKvRow(t, 'Moment fléchissant maximal', fdnNum(o.mMax, 1, 'kN·m/m'));
+  fdnKvRow(t, 'Moment fléchissant minimal', fdnNum(o.mMin, 1, 'kN·m/m'));
+  fdnKvRow(t, 'Réaction de sol maximale', fdnNum(o.pMax, 1, 'kPa'));
+  fdnKvRow(
+    t,
+    'Charge / réaction Σ',
+    fmtChargeReaction(o.totalLoad, o.sumReact, 'kN/m'),
+  );
+  // Cote d'assise & décollement : affichés par le client seulement si l'option est
+  // ACTIVE (foundD>0 / décollement coché) — lu dans l'ENTRÉE scellée (fidélité exacte,
+  // pas de ligne « 0 » parasite quand l'option est inactive).
+  if (typeof opts.foundD === 'number' && opts.foundD > 0) {
+    fdnKvRow(t, "Cote d'assise D", fdnNum(o.z0, 2, 'm'));
+  }
+  if (opts.decol === true) {
+    fdnKvRow(t, 'Nœuds décollés (contact unilatéral)', fdnNum(o.decolN, 0));
+  }
+  // Rigidité de flexion D = E·e³/12(1−ν²) — affichée EN PERMANENCE par le client
+  // (notation scientifique). Forme fermée des SEULES entrées publiques E/e/ν (ADR 0014) :
+  // aucun intermédiaire de maillage, à distinguer du pas `dx` (SERVEUR).
+  fdnKvRow(t, 'Rigidité de flexion D', fdnExp(o.EI, 'kN·m'));
+  pushKvTable(body, t);
+
+  body.push(...build2DErreurWarnings(o));
+  return body;
+}
+
+function buildAxiBody(sealed: SealedContent): Content[] {
+  const o = (sealed.output ?? {}) as Record<string, unknown>;
+  const input = (sealed.input ?? {}) as Record<string, unknown>;
+  // L'entrée axi porte les options sous la clé `o` (handler `#ax-run`).
+  const opts = isPlainObject(input.o) ? input.o : {};
+  const body: Content[] = [];
+  body.push(buildAnalyseBanner());
+
+  body.push(sectionTitle('Résultats — plaque axisymétrique'));
+  // Ordre & libellés du panneau `#ax-run` : centre/bord + différentiel (le client
+  // n'affiche PAS wMax/wMin isolés — ils sont AGRÉGÉS dans « Tassement différentiel »).
+  const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
+  fdnKvRow(t, 'Tassement au centre w_c', fdnSettleMm(o.wc));
+  fdnKvRow(t, 'Tassement au bord w_bord', fdnSettleMm(o.wEdge));
+  fdnKvRow(t, 'Tassement différentiel', fdnSettleMm(o.diff));
+  fdnKvRow(t, 'Moment radial M_r max', fdnNum(o.mrMax, 1, 'kN·m/m'));
+  fdnKvRow(t, 'Moment tangentiel M_t max', fdnNum(o.mtMax, 1, 'kN·m/m'));
+  fdnKvRow(t, 'Réaction de sol maximale', fdnNum(o.pMax, 1, 'kPa'));
+  fdnKvRow(
+    t,
+    'Charge / réaction Σ',
+    fmtChargeReaction(o.totalLoad, o.sumReact, 'kN'),
+  );
+  if (typeof opts.foundD === 'number' && opts.foundD > 0) {
+    fdnKvRow(t, "Cote d'assise D", fdnNum(o.z0, 2, 'm'));
+  }
+  pushKvTable(body, t);
+  // NB : le contrat axi n'expose ni `erreur` ni `warnings` (aucun à rendre).
+  return body;
+}
+
+function buildTriRaftBody(sealed: SealedContent): Content[] {
+  const o = (sealed.output ?? {}) as Record<string, unknown>;
+  const input = (sealed.input ?? {}) as Record<string, unknown>;
+  const opts = isPlainObject(input.opts) ? input.opts : {};
+  const body: Content[] = [];
+  body.push(buildAnalyseBanner());
+
+  body.push(sectionTitle('Résultats — radier maillé (triangulaire)'));
+  const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
+  // « Maillage » du client = « n plaques · N nœuds · nt triangles » ; N/nt sont la
+  // DENSITÉ DE MAILLAGE (méthode EF) NON whitelistée (§8) -> on ne rend que le nb de
+  // plaques (donnée de modèle, client-safe).
+  fdnKvRow(t, 'Nombre de plaques modélisées', fdnNum(o.nRaft, 0));
+  fdnKvRow(t, 'Tassement maximal w_max', fdnSettleMm(o.wMax));
+  fdnKvRow(t, 'Tassement minimal w_min', fdnSettleMm(o.wMin));
+  fdnKvRow(t, 'Tassement différentiel', fdnSettleMm(o.diff));
+  fdnKvRow(t, 'Réaction de sol maximale', fdnNum(o.reactionMax, 1, 'kPa'));
+  fdnKvRow(
+    t,
+    'Charge / réaction Σ',
+    fmtChargeReaction(o.totalLoad, o.sumReact, 'kN'),
+  );
+  if (typeof opts.foundD === 'number' && opts.foundD > 0) {
+    fdnKvRow(t, "Cote d'assise D", fdnNum(o.z0, 2, 'm'));
+  }
+  pushKvTable(body, t);
+
+  body.push(...build2DErreurWarnings(o));
+  return body;
+}
+
+// ---------------------------------------------------------------------------
+// Corrections métrologiques pressiométriques (étalonnage / calibrage) — miroir de
+// `renderEtalResult` / `renderCalibResult` de pressiometre__1_.html : coefficients
+// d'appareillage + qualité d'ajustement (R²/RMS) + table des résidus. Analyse SANS
+// verdict de conformité. Clés NOMMÉES (fail-closed, DoD §8). L'unité d'affichage du
+// coefficient est le cm³/MPa (= valeur BRUTE cm³/bar ×10, comme l'outil client).
+// ---------------------------------------------------------------------------
+
+/**
+ * Label QUALITÉ de l'ajustement d'étalonnage — seuils EXACTS de `renderEtalResult`
+ * (ensemble FERMÉ). Fail-closed : R² non fini -> pas de label.
+ */
+function etalQualite(r2: unknown): string {
+  if (typeof r2 !== 'number' || !Number.isFinite(r2)) return '';
+  if (r2 > 0.9999) return 'Excellent';
+  if (r2 > 0.999) return 'Très bon';
+  if (r2 > 0.99) return 'Acceptable';
+  return 'Mauvais — vérifier les données';
+}
+
+/** Label QUALITÉ du calibrage — seuils EXACTS de `renderCalibResult`. */
+function calibQualite(r2: unknown): string {
+  if (typeof r2 !== 'number' || !Number.isFinite(r2)) return '';
+  if (r2 > 0.999) return 'Excellent';
+  if (r2 > 0.99) return 'Bon';
+  return 'Vérifier';
+}
+
+function buildPressioEtalonnageBody(sealed: SealedContent): Content[] {
+  const o = (sealed.output ?? {}) as Record<string, unknown>;
+  const body: Content[] = [];
+  body.push(buildAnalyseBanner());
+
+  body.push(sectionTitle('Étalonnage de la sonde (sonde dans l’air)'));
+  const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
+  // Pente d'air affichée ×10 en cm³/MPa par le client (a brut = cm³/bar) — la mention
+  // « ≠ coefficient a » reprend l'avertissement du client (ce n'est PAS le coeff. de
+  // correction de volume, qui vient du CALIBRAGE).
+  const aMpa =
+    typeof o.a === 'number' && Number.isFinite(o.a) ? o.a * 10 : null;
+  fdnKvRow(t, 'Pente d’air (≠ coefficient a)', fdnNum(aMpa, 1, 'cm³/MPa'));
+  fdnKvRow(t, 'Vs (droite ajustée)', fdnNum(o.Vs, 1, 'cm³'));
+  fdnKvRow(t, 'Vs réel (1er palier mesuré)', fdnNum(o.vsReel, 1, 'cm³'));
+  fdnKvRow(t, 'Pe (à V = 1,2 × Vs)', fdnNum(o.Pe, 3, 'bar'));
+  fdnKvRow(t, 'Volume cible V_pe = 1,2 × Vs', fdnNum(o.vPe, 0, 'cm³'));
+  const r2 = fdnNum(o.R2, 6);
+  const q = etalQualite(o.R2);
+  fdnKvRow(
+    t,
+    'Coefficient de détermination R²',
+    r2 !== '—' && q ? `${r2} (${q})` : r2,
+  );
+  fdnKvRow(t, 'Erreur quadratique moyenne (RMS)', fdnNum(o.rms, 3, 'cm³'));
+  pushKvTable(body, t);
+
+  body.push(...buildPressioResidus(o, 'V mesuré (cm³)', 'V ajusté (cm³)'));
+  return body;
+}
+
+function buildPressioCalibrageBody(sealed: SealedContent): Content[] {
+  const o = (sealed.output ?? {}) as Record<string, unknown>;
+  const body: Content[] = [];
+  body.push(buildAnalyseBanner());
+
+  body.push(sectionTitle('Calibrage de volume (tube indéformable)'));
+  const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
+  // a = pente dV/dP, affichée ×10 en cm³/MPa par le client (a brut = cm³/bar). C'est
+  // LE coefficient de correction de volume réutilisable (Vc = Vr − a·Pr).
+  const aMpa =
+    typeof o.a === 'number' && Number.isFinite(o.a) ? o.a * 10 : null;
+  fdnKvRow(t, 'Coefficient a (pente dV/dP)', fdnNum(aMpa, 3, 'cm³/MPa'));
+  // Coefficients de la courbe polynomiale Pc = c0 + c1·V + c2·V² (notation
+  // scientifique, comme les KPI `renderCalibResult`).
+  fdnKvRow(t, 'c₀ (constante)', fdnExp(o.c0));
+  fdnKvRow(t, 'c₁ (coefficient de V)', fdnExp(o.c1));
+  fdnKvRow(t, 'c₂ (coefficient de V²)', fdnExp(o.c2));
+  const r2 = fdnNum(o.R2, 6);
+  const q = calibQualite(o.R2);
+  fdnKvRow(
+    t,
+    'Coefficient de détermination R²',
+    r2 !== '—' && q ? `${r2} (${q})` : r2,
+  );
+  fdnKvRow(t, 'Erreur quadratique moyenne (RMS)', fdnNum(o.rms, 4, 'bar'));
+  pushKvTable(body, t);
+
+  // Équation de la courbe (miroir du client) — seulement si les 3 coeffs sont finis.
+  const c0 = fdnExp(o.c0);
+  const c1 = fdnExp(o.c1);
+  const c2 = fdnExp(o.c2);
+  if (c0 !== '—' && c1 !== '—' && c2 !== '—') {
+    body.push({
+      text: `Équation ajustée : Pc = ${c0} + ${c1} × V + ${c2} × V²`,
+      style: 'cellMuted',
+      margin: [0, 2, 0, 4],
+    });
+  }
+
+  body.push(...buildPressioResidus(o, 'V60 mesuré (cm³)', 'V60 ajusté (cm³)'));
+  return body;
+}
+
+/**
+ * Table des résidus (étalonnage / calibrage) — colonnes EXACTES du client
+ * (P / V mesuré / V ajusté / Résidu). Chaque ligne est un objet {p, vMesure|v60Mesure,
+ * vAjuste|v60Ajuste, residu} whitelisté au contrat ; lecture par clés NOMMÉES avec
+ * repli étalonnage↔calibrage. Absente si aucun résidu (fail-closed).
+ */
+function buildPressioResidus(
+  o: Record<string, unknown>,
+  labelMesure: string,
+  labelAjuste: string,
+): Content[] {
+  const residus = (Array.isArray(o.residus) ? o.residus : []).filter(
+    isPlainObject,
+  );
+  if (residus.length === 0) return [];
+  const rb: TableCell[][] = [
+    [
+      fdnHead('P (bar)', 'right'),
+      fdnHead(labelMesure, 'right'),
+      fdnHead(labelAjuste, 'right'),
+      fdnHead('Résidu', 'right'),
+    ],
+  ];
+  for (const r of residus) {
+    const mesure = r.vMesure ?? r.v60Mesure;
+    const ajuste = r.vAjuste ?? r.v60Ajuste;
+    rb.push([
+      cellRight(fdnNum(r.p, 2)),
+      cellRight(fdnNum(mesure, 1)),
+      cellRight(fdnNum(ajuste, 1)),
+      cellRight(fdnNum(r.residu, 2)),
+    ]);
+  }
+  return [
+    fdnSubTitle('Tableau des résidus'),
+    {
+      table: {
+        headerRows: 1,
+        widths: ['*', '*', '*', '*'],
+        body: rb,
+      },
+      layout: FINE_TABLE_LAYOUT,
+      margin: [0, 2, 0, 4],
+    },
+  ];
 }
 
 // ---------------------------------------------------------------------------

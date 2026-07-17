@@ -329,6 +329,123 @@ const ClassSchema = z
   })
   .strict();
 
+// ---------------------------------------------------------------------------
+// DETAIL D'AFFICHAGE (par ligne / series de courbe / alertes normatives)
+// ---------------------------------------------------------------------------
+/**
+ * `detail` = tout ce que l'outil client AFFICHE EN PLUS des agregats : colonnes calculees
+ * par ligne (w % par prise, refus/passant cumules par tamis, ρd par point Proctor…), les
+ * SERIES des courbes (granulo, Proctor, droite de liquidite) et les alertes normatives par
+ * feuille. TOUT est client-safe (le module labo est integralement le LIVRABLE, ADR 0014) :
+ * on l'expose NOMINATIVEMENT, en `.strict()` fail-closed (une cle inconnue est rejetee).
+ * Chaque sous-objet reflete le miroir DOM d'un kernel (cf. engine.ts DET.*).
+ *
+ * PORTEE PILOTE (#56) : essais wires a ce jour = teneur en eau, granulometrie, Atterberg,
+ * VBS, Proctor (les representatifs : par-ligne + 3 courbes + 3 encarts normatifs). Les
+ * autres essais sortent leurs AGREGATS (champs plats ci-dessous) ; leur detail par ligne
+ * suit le meme patron (RESIDU documente). `.strict()` empeche toute cle non declaree.
+ */
+/** Couple (x, y) d'une serie de courbe (fini des deux cotes). */
+const Point2 = z.tuple([z.number().finite(), z.number().finite()]);
+
+const DetailSchema = z
+  .object({
+    /** Teneur en eau : w % par prise (3), moyenne, nb de prises valides. */
+    w: z
+      .object({
+        rows: z.array(NumOrNull).max(3),
+        moy: NumOrNull,
+        n: z.number().int().min(0).max(3),
+      })
+      .strict()
+      .optional(),
+    /** Granulometrie : refus cumule + passant cumule par tamis + serie de la courbe. */
+    gran: z
+      .object({
+        rows: z
+          .array(
+            z
+              .object({
+                s: z.number().finite(),
+                cum: NumOrNull,
+                pass: NumOrNull,
+              })
+              .strict(),
+          )
+          .max(20),
+        pts: z.array(Point2).max(20),
+      })
+      .strict()
+      .optional(),
+    /** Atterberg : w par point (5 liquidite + 2 plasticite), pente, validite + encart. */
+    att: z
+      .object({
+        llw: z.array(NumOrNull).max(5),
+        plw: z.array(NumOrNull).max(2),
+        pente: NumOrNull,
+        wLraw: NumOrNull,
+        points: z.number().int().min(0).max(5),
+        valide: z.boolean(),
+        warns: z.array(z.string().max(200)).max(10),
+        nature: z.string().max(60).nullable(),
+        raw: z.array(Point2).max(5),
+      })
+      .strict()
+      .optional(),
+    /** VBS : M1 / Mb / VBS 0/5 / VBS du sol par essai + moyenne/retenue + alerte V≤10. */
+    vbs: z
+      .object({
+        rows: z
+          .array(
+            z
+              .object({
+                M1: NumOrNull,
+                Mb: NumOrNull,
+                v05: NumOrNull,
+                vs: NumOrNull,
+              })
+              .strict(),
+          )
+          .max(2),
+        moy: NumOrNull,
+        retenue: NumOrNull,
+        essais: z.number().int().min(0).max(2),
+        manual: NumOrNull,
+        lowV: z.boolean(),
+      })
+      .strict()
+      .optional(),
+    /** Proctor : ρd/w par point (7), parabole d'ajustement, volume, controle d'energie. */
+    proctor: z
+      .object({
+        V: NumOrNull,
+        rows: z.array(z.object({ w: NumOrNull, rd: NumOrNull }).strict()).max(7),
+        fit: z
+          .object({
+            a: z.number().finite(),
+            b: z.number().finite(),
+            c: z.number().finite(),
+          })
+          .strict()
+          .nullable(),
+        wopn: NumOrNull,
+        rdmax: NumOrNull,
+        points: z.number().int().min(0).max(7),
+        energy: z
+          .object({
+            E: z.number().finite(),
+            cible: z.number().finite(),
+            ok: z.boolean(),
+          })
+          .strict()
+          .nullable(),
+        horsTableau: z.boolean(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 /**
  * Sortie client-safe FASTLAB : l'ensemble des resultats d'essais (le `D` projete) + la
  * classification GTR. Tous les resultats numeriques sont nullable (null = essai non
@@ -426,6 +543,11 @@ export const LaboOutputSchema = z
     natureLigneA: z.string().max(60).nullable(),
     // --- Classification GTR ---
     classe: ClassSchema,
+    /**
+     * DETAIL d'affichage (colonnes par ligne / series de courbe / alertes normatives) —
+     * ce que l'outil client AFFICHE en plus des agregats. `null` en cas d'erreur de calcul.
+     */
+    detail: DetailSchema.nullable(),
   })
   .strict();
 export type LaboOutput = z.infer<typeof LaboOutputSchema>;

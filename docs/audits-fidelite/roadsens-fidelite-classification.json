@@ -1,0 +1,66 @@
+{
+  "case": "CAS_REF (BBSG1/GB3/GL1 sur PF2, T=150)",
+  "refRows": 55,
+  "ourRows": 55,
+  "valuesOk": 55,
+  "uncoveredClient": [],
+  "uncoveredOurs": [],
+  "omitted": [],
+  "masked": [],
+  "mismatch": [],
+  "residualsClosed": [
+    "S7 st base C{i} : composantes collée (stC) / glissante (stG) — « — » côté clone (non whitelistées) ; NON sollicitées par CAS_REF (aucune couche traitée, rigL vide).",
+    "S8 ez sommet couche (non liée) : décomposition axe/e-jum — « — » côté clone (non whitelistées) ; la VALEUR ε_z sommet reste whitelistée et FIDÈLE."
+  ],
+  "familleRedaction": {
+    "reference": "bitumineuse épaisse (§4.2)",
+    "clone": "bitumineuse épaisse",
+    "note": "Le clone affiche le libellé NU d’allowlist (sanitizeFamille) ; la référence y ajoute « (§x.y) »/« K=… » (confidentiel) — redaction VOULUE, comparée hors ces éléments."
+  },
+  "refVerdict": "non satisfaisante",
+  "ourVerdict": "non satisfaisante",
+  "refMetrics": [
+    {
+      "label": "h paquet lié (réel)",
+      "value": "16 cm",
+      "sub": "épaisseur physique"
+    },
+    {
+      "label": "h total couches",
+      "value": "41 cm",
+      "sub": "sur PSC PF2"
+    },
+    {
+      "label": "E₁ pond. / ν₁ pond.",
+      "value": "2 185 MPa",
+      "sub": "ν = 0.45"
+    },
+    {
+      "label": "Moteur",
+      "value": "Transfer Matrix",
+      "sub": "n couches exactes"
+    }
+  ],
+  "ourMetrics": [
+    {
+      "label": "h paquet lié (réel)",
+      "value": "16 cm",
+      "sub": "épaisseur physique"
+    },
+    {
+      "label": "h total couches",
+      "value": "41 cm",
+      "sub": "sur PSC PF2"
+    },
+    {
+      "label": "E₁ pond. / ν₁ pond.",
+      "value": "2 185 MPa",
+      "sub": "ν = 0.45"
+    },
+    {
+      "label": "Moteur",
+      "value": "Transfer Matrix",
+      "sub": "n couches exactes"
+    }
+  ]
+}

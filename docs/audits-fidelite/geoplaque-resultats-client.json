@@ -1,0 +1,84 @@
+{
+  "sections": ["Cartographie", "Vérifications · EC7 annexe H", "Synthèse"],
+  "fieldButtons": [
+    "w=Tassement",
+    "slope=Distorsion |∇w|",
+    "tx=Rotation θx",
+    "ty=Rotation θy",
+    "p=Réaction",
+    "kr=Coef. réaction",
+    "Mx=Moment Mx",
+    "My=Moment My",
+    "Mxy=Moment Mxy"
+  ],
+  "ec7Rows": [
+    {
+      "label": "",
+      "value": "8818.1 mm",
+      "comment": ""
+    },
+    {
+      "label": "",
+      "value": "3338.7 mm",
+      "comment": ""
+    },
+    {
+      "label": "",
+      "value": "1/1 (9.3e-1 rad)",
+      "comment": ""
+    },
+    {
+      "label": "",
+      "value": "1/639 141 599 907",
+      "comment": ""
+    }
+  ],
+  "synthese": [
+    {
+      "label": "Nœuds de calcul",
+      "value": "81"
+    },
+    {
+      "label": "Tassement max / min",
+      "value": "8818.1 / 5479.4 mm"
+    },
+    {
+      "label": "Rotation θx max",
+      "value": "7.96e-1 rad (1/1)"
+    },
+    {
+      "label": "Rotation θy max",
+      "value": "7.96e-1 rad (1/1)"
+    },
+    {
+      "label": "Pente locale max |∇w|",
+      "value": "9.30e-1 rad (1/1)"
+    },
+    {
+      "label": "Réaction p (min/max)",
+      "value": "20.716 / 64.847 kPa"
+    },
+    {
+      "label": "|Mx| / |My| max",
+      "value": "164.9 / 164.9 kN·m/ml"
+    },
+    {
+      "label": "|Mxy| max (torsion)",
+      "value": "23.2 kN·m/ml"
+    },
+    {
+      "label": "Charge appliquée Σ",
+      "value": "1000 kN"
+    },
+    {
+      "label": "Σ réactions sol",
+      "value": "1000 kN"
+    }
+  ],
+  "toggles": [
+    "Lignes d'isovaleurs",
+    "Remplissage par plages (paliers)",
+    "Marquer les points critiques (S max, β max)"
+  ],
+  "fullTextLen": 1766
+}

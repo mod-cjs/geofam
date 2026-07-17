@@ -1,0 +1,449 @@
+{
+  "outil": "FASTLAB — Traitement des essais & classification GTR (NF P 11-300)",
+  "source": "03-Moteurs-client/GeoSuite/source/tools/FASTLAB7.html (gelé, 1658 lignes)",
+  "navigation": [
+    {
+      "groupe": "IDENTIFICATION",
+      "entrees": [{ "id": "ident", "libelle": "Identification" }]
+    },
+    {
+      "groupe": "SOLS",
+      "entrees": [
+        { "id": "w", "libelle": "Teneur en eau" },
+        { "id": "gran", "libelle": "Granulométrie" },
+        { "id": "att", "libelle": "Atterberg" },
+        { "id": "vbs", "libelle": "Bleu (VBS)" },
+        { "id": "rhos", "libelle": "Masse vol. grains" },
+        { "id": "dens", "libelle": "Masse vol. apparente" },
+        { "id": "proctor", "libelle": "Proctor" },
+        { "id": "cbr", "libelle": "CBR / IPI" },
+        { "id": "cisail", "libelle": "Cisaillement direct" },
+        { "id": "oedo", "libelle": "Œdomètre" },
+        { "id": "ucs", "libelle": "Compression simple" },
+        { "id": "triuu", "libelle": "Triaxial UU" },
+        { "id": "tricu", "libelle": "Triaxial CU/CD" },
+        { "id": "perm", "libelle": "Perméabilité" }
+      ]
+    },
+    {
+      "groupe": "GRANULATS",
+      "entrees": [
+        { "id": "es", "libelle": "Équivalent de sable" },
+        { "id": "la", "libelle": "Los Angeles" },
+        { "id": "sz", "libelle": "Fragmentation SZ" },
+        { "id": "mde", "libelle": "Micro-Deval" },
+        { "id": "rho", "libelle": "Masse vol. & absorption" },
+        { "id": "sulf", "libelle": "Sulfates" }
+      ]
+    },
+    {
+      "groupe": "SYNTHÈSE",
+      "entrees": [
+        { "id": "class", "libelle": "★ Classification GTR" },
+        { "id": "seuils", "libelle": "Seuils" },
+        { "id": "db", "libelle": "Enregistrés" }
+      ]
+    },
+    {
+      "note": "Sidebar verticale sticky ; pastille verte « done » par essai renseigné (updateDots) ; 24 entrées en 4 groupes."
+    }
+  ],
+  "header": {
+    "logo": "FASTLAB",
+    "sous_titre": "Traitement des essais & classification GTR · NF P 11-300",
+    "boutons": [
+      "＋ Nouvel essai (newSample)",
+      "🧪 Exemple fictif (loadDemo)",
+      "💾 Enregistrer (saveSample)",
+      "🖨 PV (printPV)"
+    ],
+    "bandeau_info": "Saisie 100 % numérique — explication CBR/IPI, cisaillement, ρ apparente, bouton PV"
+  },
+  "sections": [
+    {
+      "titre": "Identification de l'échantillon (tag EN-TÊTE PV)",
+      "champs": [
+        "Référence (m_ref)",
+        "Chantier / Projet (m_chantier)",
+        "Client / Maître d'ouvrage (m_client)",
+        "N° de dossier (m_dossier)",
+        "Localisation / PK (m_pk)",
+        "Profondeur (m_prof)",
+        "Date de prélèvement (m_date, type=date)",
+        "Date d'essai (m_dessai, type=date)",
+        "Technicien (m_op)",
+        "Ingénieur chargé de l'étude (visa) (m_ing)",
+        "Laboratoire (m_labo)",
+        "Nature présumée (m_nature)",
+        "Famille géologique (rocheux) (m_geo : — / R1 Craies / R2 Calcaires / R3 Roches argileuses / R4 Roches siliceuses / R5 Roches salines / R6 Magmatiques-métamorphiques)",
+        "Observations (m_obs, textarea)"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": []
+    },
+    {
+      "titre": "Teneur en eau — NF EN ISO 17892-1",
+      "champs": [],
+      "tables": [
+        "3 prises : Tare (g) | Humide+tare (g) | Sec+tare (g) | w (%) [calculée live]"
+      ],
+      "figures": [],
+      "actions": [
+        "Readout chips : w moyenne (%), Nb prises ; hint : w_n sert d'état hydrique"
+      ]
+    },
+    {
+      "titre": "Analyse granulométrique — NF EN ISO 17892-4 / EN 933-1",
+      "champs": [
+        "Masse sèche totale M (g) (gr_M)",
+        "Refus en fond de colonne (g, info) (gr_fond)"
+      ],
+      "tables": [
+        "18 tamis (100/80/63/50/40/31,5/20/16/10/8/6,3/5/4/2/1/0,5/0,2/0,08 mm) : Refus partiel (g, saisi) | Refus cumulé (g, calc) | Passant cumulé (%, calc)"
+      ],
+      "figures": [
+        "canvas gcurve 900×300 : courbe granulométrique log (passant % vs Ø), repères 80 µm et 2 mm en pointillés"
+      ],
+      "actions": [
+        "Readout chips : Dmax (mm), P 80µm (%), P 2mm (%), Cu, Cc, Module finesse + qualificatif sable (si sableux)"
+      ]
+    },
+    {
+      "titre": "Limites d'Atterberg — NF P 94-051",
+      "champs": ["Checkbox « Sol non plastique (rouleaux Ø3 mm impossibles) » (pl_np)"],
+      "tables": [
+        "Limite de liquidité (Casagrande) 5 points : Nombre de chocs N | Tare | Humide+tare | Sec+tare | w (%) [calc]",
+        "Limite de plasticité 2 déterminations : Tare | Humide+tare | Sec+tare | w_P (%) [calc]"
+      ],
+      "figures": [
+        "canvas llcurve 800×280 : droite (lg N, w) + repère w_L à 25 chocs",
+        "canvas plastchart 700×320 : diagramme de plasticité avec ligne A (Ip = 0,73(wL−20)) + point (wL, Ip)"
+      ],
+      "actions": [
+        "specbox LLSPEC (méthode Casagrande, contrôles §6.1)",
+        "hint : N encadrent 25, 15–35, écart ≤10, écart w ≤3 %",
+        "Readout chips 1 : wL, Points, Pente droite, Validité ✓/✗",
+        "Readout chips 2 : wL, wP (ou NP), Ip, Ic, Nature (Argile au-dessus / Limon sous ligne A)",
+        "Alerte warn « Contrôles NF P 94-051 » (points de non-conformité listés live)"
+      ]
+    },
+    {
+      "titre": "Valeur de Bleu de méthylène (VBS) — NF P 94-068",
+      "champs": [
+        "Concentration C (g/L, défaut 10) (v_conc)",
+        "Saisie directe VBS (prioritaire) (v_manual)"
+      ],
+      "tables": [
+        "Table transposée 2 essais × 8 lignes : Masse prise (g) | Fraction 0/5 dans 0/D (%) | Teneur en eau w (%) | Masse sèche M₁ (g) [calc] | Volume bleu V (mL) | Masse bleu M_b (g) [calc] | VBS fraction 0/5 [calc] | VBS du sol [calc]"
+      ],
+      "figures": [],
+      "actions": [
+        "Readout chips : VBS du sol (moyenne), VBS retenue, Essais, Saisie directe ; alerte warn si V ≤ 10 cm³ (art. 7 : recommencer)"
+      ]
+    },
+    {
+      "titre": "Masse volumique des particules solides ρs — NF EN ISO 17892-3",
+      "champs": [
+        "Pills préparation : Méthode A (étuve) / Méthode B (humide)",
+        "Liquide d'essai (eau / autre) (rs_liq)",
+        "Température T (°C, défaut 20) (rs_T)",
+        "ρL liquide (Mg/m³, auto si eau) (rs_rL)",
+        "ρw(T) calculée (readonly) (rs_rwT)"
+      ],
+      "tables": [
+        "Pesées 3 déterminations : m₀ pycno sec | m₁ pycno+liquide | m₂ pycno+sol sec (ou m₄ en méthode B, entête dynamique) | m₃ pycno+sol+liquide | m_d (g) [calc] | ρs (Mg/m³) [calc]"
+      ],
+      "figures": [],
+      "actions": [
+        "Readout chips : ρL utilisée, Déterminations, ρs moyenne, Écart, Concordance ✓≤0,03 / ✗ répéter"
+      ]
+    },
+    {
+      "titre": "Essai Proctor — NF EN 13286-2",
+      "champs": [
+        "Pills type : Proctor normal (2,5 kg) / Modifié (4,5 kg) / Modifié (15 kg)",
+        "Moule (A Ø101,6×h116,4 / B Ø152×h116,4 / C Ø250×h200) (pr_mould)",
+        "Ø moule (cm) (pr_d)",
+        "Hauteur (cm) (pr_hh)",
+        "Volume V (cm³, calculé, readonly) (pr_V)"
+      ],
+      "tables": [
+        "7 points de compactage : Masse humide nette (g) | Tare | Hum.+tare | Sec+tare | w (%) [calc] | ρd (t/m³) [calc]"
+      ],
+      "figures": [
+        "canvas pcurve 800×300 : courbe Proctor (ρd vs w), parabole ajustée, repère optimum"
+      ],
+      "actions": [
+        "specbox : mode opératoire normatif (dame/chute/couches/coups Tableau 5) + énergie calculée MJ/m³ ✓ conforme / ⚠ écart >8 %",
+        "Readout chips : wOPN, ρd max, Points, Volume"
+      ]
+    },
+    {
+      "titre": "Indice CBR — à différentes énergies — NF P 94-078",
+      "champs": [
+        "Pills type : CBR après immersion (4 j) / IPI portance immédiate",
+        "ρd max OPM (Mg/m³, vide = Proctor) (cb_ydmax)",
+        "wOPM (%, vide = Proctor) (cb_wopt)",
+        "Compacité cible (% OPM, défaut 95) (cb_cible)",
+        "ρd du CBR (Mg/m³, calc, readonly) (cb_ydcbr)",
+        "Réf. 2,5 mm (kN, défaut 13,35) (cb_s25)",
+        "Réf. 5,0 mm (kN, défaut 20) (cb_s5)",
+        "Constante anneau K (défaut 1) (cb_K)",
+        "hint cb_opmsrc : rappel OPM repris du Proctor"
+      ],
+      "tables": [
+        "Mise en place 3 moules (55/25/10 coups) : Poids total humide | Poids moule | Poids net [calc] | Volume moule (cm³) | w moulage (%) | ρh (t/m³) [calc] | ρd (t/m³) [calc] | Compacité (%) [calc]",
+        "Imbibition (mode CBR seulement) : H₀ éprouvette (mm) | Gonflement ΔH (mm) | Gonflement (%) [calc] | w après immersion (%) (cb_wimm)",
+        "Poinçonnement 10 enfoncements (0,25/0,5/0,75/1/1,5/2/2,5/3/4/5 mm) × 3 moules + pied : CBR 2,5 mm [calc] | CBR 5,0 mm [calc] | CBR maxi [calc] | Compacité (%) [calc]"
+      ],
+      "figures": [
+        "canvas cb_pen 460×320 : courbes de poinçonnement (effort vs enfoncement, 3 moules, repères 2,5/5 mm)",
+        "canvas cb_var 460×320 : droite CBR/compacité + interpolation I.CBR à la cible"
+      ],
+      "actions": [
+        "Readout chips : I.CBR (ou IPI) à X %, ρd du CBR, Moules valides, CBR par moule @compacité, Gonflement maxi, note ≥2 moules"
+      ]
+    },
+    {
+      "titre": "Cisaillement direct (c′, φ′) — NF EN ISO 17892-10",
+      "champs": [
+        "Pills dispositif : Boîte / Annulaire",
+        "Forme éprouvette (carrée/circulaire) (ci_shape)",
+        "Côté / Ø (mm) (ci_dim)",
+        "Aire A (cm², calc, readonly) (ci_A)",
+        "Rayon extérieur Ra (mm) (ci_Ra)",
+        "Rayon intérieur Ri (mm) (ci_Ri)",
+        "Aire annulaire (calc) (ci_Aring)",
+        "ρs grains (Mg/m³) (ci_rs)"
+      ],
+      "tables": [
+        "4 éprouvettes : Force verticale N (kN) | Force cisaill. pic P (kN) [ou Couple pic Mt N·m, entête dynamique] | Force résiduelle [ou Couple résiduel] | σ′v (kPa) [calc] | τ_pic (kPa) [calc] | τ_R (kPa) [calc]",
+        "Identification 4 éprouvettes : ρ (kg/m³) | ρd (kg/m³) [calc] | W (%) | e [calc] | S_R (%) [calc] | Nature de l'échantillon"
+      ],
+      "figures": [
+        "canvas cicurve 820×330 : droites de Coulomb pic + résiduel (τ vs σ′v) avec équation, R², c′/φ′ annotés"
+      ],
+      "actions": [
+        "specbox (formules 9-11, vitesses max)",
+        "Readout chips : c′, φ′, Éprouvettes, R², φ′R, c′R, note min. 3 éprouvettes",
+        "resbox Résultats : C′ (kPa) | φ′ (°)"
+      ]
+    },
+    {
+      "titre": "Masse volumique apparente ρ — NF EN ISO 17892-2",
+      "champs": [
+        "Pills méthode : Mesures linéaires / Immersion dans un fluide / Déplacement de fluide",
+        "Pills forme (linéaire) : Prisme rectangulaire / Cylindre",
+        "Prisme : L, W, H (mm), masse m (g)",
+        "Cylindre : d, L (mm), masse m (g)",
+        "Immersion : m, m_f, m_c, m_g (g), ρ_fl (défaut 0,998), ρ_p enrobage (défaut 0,9)",
+        "Déplacement : m, m_f, m_c, m₁, m₂ (g), ρ_fl, ρ_p",
+        "Teneur en eau w (%, vide = w moyen de la feuille Teneur en eau) (d_w)"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [
+        "specbox formules par méthode",
+        "Readout chips : Volume V (cm³), ρ apparente, ρd sèche, w utilisée, note V < 50 cm³"
+      ]
+    },
+    {
+      "titre": "Essai œdométrique par paliers — NF EN ISO 17892-5",
+      "champs": [
+        "Hauteur initiale H₀ (mm) (oe_H0)",
+        "Diamètre anneau D (mm) (oe_D)",
+        "Masse sèche m_d (g) (oe_md)",
+        "ρs grains (Mg/m³) (oe_rs)",
+        "Section A (mm², calc, readonly) (oe_A)",
+        "ρd initiale (calc) (oe_rd)",
+        "Hs solides (mm, calc) (oe_Hs)",
+        "e₀ (ou saisie directe) (oe_e0)"
+      ],
+      "tables": [
+        "12 paliers : σ′ (kPa) | ΔH cumulé (mm) | H_f (mm) [calc] | ε_v (%) [calc] | indice des vides e [calc]"
+      ],
+      "figures": ["canvas ocurve 800×300 : courbe œdométrique e vs σ′ (log)"],
+      "actions": ["Readout chips : e₀, ρd, Hs, Cc, Cs, Paliers, note min. 7 paliers"]
+    },
+    {
+      "titre": "Compression simple (Rc / cu) — NF EN ISO 17892-7",
+      "champs": [
+        "Diamètre d₀ (mm) (uc_d)",
+        "Hauteur h₀ (mm) (uc_h)",
+        "Force à la rupture F (kN) (uc_f)",
+        "Raccourcissement ΔL (mm) (uc_dl)"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": ["Readout chips : q_u (MPa), c_u (kPa)"]
+    },
+    {
+      "titre": "Triaxial UU — NF EN ISO 17892-8",
+      "champs": [],
+      "tables": [
+        "3 éprouvettes : σ₃ (kPa) | Déviateur rupture (kPa) | σ₁ (kPa) [calc] | c_u (kPa) [calc]"
+      ],
+      "figures": [],
+      "actions": ["Readout chips : c_u moyen, φ_u ≈ 0, Éprouvettes"]
+    },
+    {
+      "titre": "Triaxial CU / CD — NF EN ISO 17892-9",
+      "champs": [],
+      "tables": [
+        "3 éprouvettes : σ′₃ (kPa) | σ′₁ rupture (kPa) | s′ (kPa) [calc] | t (kPa) [calc]"
+      ],
+      "figures": [],
+      "actions": ["Readout chips : c′, φ′, Éprouvettes"]
+    },
+    {
+      "titre": "Perméabilité k — NF EN ISO 17892-11",
+      "champs": [
+        "Pills mode : Charge constante / Charge variable",
+        "Constante : V (cm³), L (cm), A (cm²), Δh (cm), t (s)",
+        "Variable : a (cm²), L, A, t, h₁, h₂ (cm)"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": ["Readout chips : k (cm/s) ET k (m/s)"]
+    },
+    {
+      "titre": "Équivalent de sable — NF EN 933-8",
+      "champs": [],
+      "tables": ["2 essais : h₁ total (mm) | h₂ sable (mm) | SE (%) [calc]"],
+      "figures": [],
+      "actions": ["Readout chip : SE moyen (%)"]
+    },
+    {
+      "titre": "Los Angeles (LA) — NF EN 1097-2",
+      "champs": [
+        "Pills variante : Standard 10/14 (5000 g) / Ballast 31,5/50 — LARB / Autre fraction (Annexe B)",
+        "Masse initiale M (g) (la_M, auto 5000/10000)",
+        "Refus > 1,6 mm m (g) (la_m)",
+        "Nombre de boulets (la_nb, auto 11/12)",
+        "Masse charge boulets (g) (la_charge)",
+        "details « Conformité granulaire » : Tamis intermédiaire (mm, défaut 12,5) (la_ti), % passant mesuré (la_pi), alerte ✓/✗ plage 60–70 % à 12,5 / 30–40 % à 11,2"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [
+        "specbox LASPEC par variante",
+        "Readout chips : LA (ou LARB, arrondi entier), Prise M"
+      ]
+    },
+    {
+      "titre": "Fragmentation par impact (SZ) — NF EN 1097-2 §6",
+      "champs": ["Masse initiale M (g) (sz_M)"],
+      "tables": [
+        "5 tamis (8/5/2/0,63/0,2 mm) : Masse refus (g) | % refus [calc] | % passant [calc]"
+      ],
+      "figures": [],
+      "actions": ["Readout chips : Σ passant (%), SZ (%)"]
+    },
+    {
+      "titre": "Micro-Deval (MDE) — NF EN 1097-1",
+      "champs": [
+        "Pills présentation : Norme — 2 éprouvettes / Campagne CAFEC — MDS×2 + MDE×2",
+        "Pills variante : Standard 10/14 (500 g) / Ballast 31,5/50 — MDE_RB / Autre classe (Annexe C)",
+        "Pills condition : Humide (MDE) / Sec (MDS)",
+        "Select classe granulaire Annexe C : 4/6,3 · 4/8 · 6,3/10 · 8/11,2 · 11,2/16 mm (mde_class)",
+        "Charge billes (g, Annexe C, auto) (mde_charge)",
+        "Volume d'eau (L, auto) (mde_eau)",
+        "Nombre de tours (auto) (mde_tours)",
+        "details « Conformité granulaire » : Tamis intermédiaire (readonly) (mde_ti), % passant mesuré (mde_pi), alerte ✓/✗",
+        "details « Tableau C.1 » : table statique classes granulaires alternatives (6 lignes : classe, tamis interm., % passant, charge abrasive)"
+      ],
+      "tables": [
+        "Mode norme, 2 éprouvettes : Masse initiale M (g) | Refus > 1,6 mm m (g) | Coefficient [calc]",
+        "Mode CAFEC, 4 essais (MDS1/MDS2/MDE1/MDE2) transposé : Classe granulaire (mc_cls) | Charge billes (mc_ch) | Nombre de rotations (mc_rot) | Poids initial A (mc_A) | Refus 1,6 mm B (mc_B) | Perte (A−B)/A ×100 (%) [calc]"
+      ],
+      "figures": [],
+      "actions": [
+        "specbox par variante/condition",
+        "Readout chips norme : MDE/MDS/MDE_RB (arrondi entier), Éprouvettes, note 2 éprouvettes requises",
+        "resbox norme : MDE = valeur",
+        "Readout chips CAFEC : CMDS, CMDE, CMD, MDE retenu ; resbox CMDS (%) | CMDE (%) | CMD (%)"
+      ]
+    },
+    {
+      "titre": "Masse volumique & absorption des granulats — NF EN 1097-6",
+      "champs": [
+        "M₁ surface sèche SSD (g) (ra_M1)",
+        "M₂ pycno+granulat+eau (ra_M2)",
+        "M₃ pycno+eau (ra_M3)",
+        "M₄ séché à l'étuve (ra_M4)",
+        "ρw (Mg/m³, défaut 0,998) (ra_rw)"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": ["Readout chips : ρa, ρrd, ρssd (Mg/m³), WA24 (%)"]
+    },
+    {
+      "titre": "Teneur en sulfates — NF EN 1744-1",
+      "champs": [
+        "Précipité BaSO₄ (g) (su_ba)",
+        "Prise d'essai (g) (su_M)",
+        "Facteur BaSO₄→SO₃ (défaut 0,343) (su_f)",
+        "Type : Solubles acide (AS) [1re option = défaut] / Solubles eau (SS) (su_type)"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": ["Readout chips : SO₃ (%), SO₄ (%)"]
+    },
+    {
+      "titre": "Classification GTR (SYNTHÈSE) + Fiche de synthèse",
+      "champs": [
+        "Pills état hydrique — forcer : Auto / ts / s / m / h / th (forcedState)"
+      ],
+      "tables": [
+        "Fiche de synthèse (recap) 33 lignes : Classe GTR, Dmax, Passant 80 µm, Passant 2 mm, Module de finesse, WL, WP, Ip, Ic, VBS, wn, wOPN, ρd max, I.CBR à 95 % OPM, Gonflement, ρ apparente, ρs grains, ES, LA, SZ, MDE, WA24, SO₃, qu, c′/φ′ cisaillement, c'/φ' triaxial, cu UU, e₀/Cc/Cs œdo, k"
+      ],
+      "figures": [],
+      "actions": [
+        "Verdict : classbadge (classe complète, ex. « A2 h ») + Famille X — code + description + état hydrique",
+        "pathbox « Chemin de décision » (liste ordonnée)",
+        "Alerte warn « Points à vérifier » (classify().warn)",
+        "Alerte info « Assistant famille R (rocheux) » (famille géologique + LA/MDE)",
+        "Alerte info « En attente de données » si classement impossible"
+      ]
+    },
+    {
+      "titre": "Seuils de classification (PARAMÉTRABLE)",
+      "champs": [
+        "13 seuils éditables : A_fines, C_dmax, A_ip (3 val.), A_vbs (3 val.), B_p2, B_fines, B_vbs01, B_vbs56, D_fines, D_vbs, st (4 bornes wn/wOPN), FR, DG",
+        "Checkbox « Router insensibles (VBS ≤ 0,1 & fines ≤ 12 %) vers famille D » (cfg_routeD)"
+      ],
+      "tables": [],
+      "figures": [],
+      "actions": [
+        "Bouton ↺ Valeurs par défaut (resetThresholds) ; recalcul live à chaque édition"
+      ]
+    },
+    {
+      "titre": "Échantillons enregistrés (DB)",
+      "champs": [],
+      "tables": [
+        "Liste des échantillons : badge classe | référence | chantier · date | boutons Ouvrir / Suppr."
+      ],
+      "figures": [],
+      "actions": [
+        "⬇ Exporter (.json) (exportAll : DB + seuils)",
+        "⬆ Importer (.json) (importAll)",
+        "état vide « Aucun échantillon enregistré »"
+      ]
+    }
+  ],
+  "workflows": [
+    "Recalcul LIVE : chaque saisie (input .save) déclenche recalc() → toutes les colonnes calculées, chips, alertes de conformité et 8 canvas se mettent à jour immédiatement, sans bouton",
+    "Nouvel essai : newSample() vide le formulaire (défauts DEF conservés) → onglet Identification",
+    "Exemple fictif : loadDemo() charge un échantillon complet (limon argileux A2 : eau, granulo, Atterberg, VBS, Proctor, cisaillement, œdo) → onglet Classification",
+    "Enregistrer : saveSample() exige m_ref, classe l'échantillon, l'ajoute à la DB persistée (window.storage/localStorage) avec toast « Enregistré : réf (classe) »",
+    "Ouvrir/Supprimer un échantillon depuis l'onglet Enregistrés (writeForm(rec.o))",
+    "Export/Import .json de toute la base + seuils",
+    "PV imprimable : printPV() → markPV() sélectionne UNIQUEMENT les feuilles renseignées + identification + classification, injecte en-tête labo (laboratoire/banner PV/norme/client + méta 8 champs) et bloc visa « L'ingénieur chargé de l'étude » par feuille, puis window.print() (PDF navigateur)",
+    "Pastilles de progression : point vert par essai renseigné dans la sidebar (updateDots)",
+    "Toasts de confirmation (enregistré, chargé, import réussi, seuils réinitialisés)",
+    "Seuils GTR ajustables live (CFG) avec reset ; option routeD",
+    "Footer disclaimer : « aide au traitement des essais … à valider par un géotechnicien »"
+  ]
+}
