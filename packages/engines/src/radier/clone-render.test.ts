@@ -16,9 +16,13 @@
  * serveur (aucune recomputation cote client).
  *
  * UNITE : l'UI d'origine stocke E en kPa ; le contrat serveur attend des MPa. Le
- * clone divise E par 1000 a la frontiere -> la sortie tassement est en mm-echelle,
- * AFFICHEE SANS le x1000 de l'outil d'origine (decision radier-units). Le test
- * peuple donc `state` avec E x1000 (kPa) pour refleter la saisie de l'outil.
+ * clone divise E par 1000 a la frontiere -> la sortie tassement est en mm-echelle.
+ * AFFICHAGE = COPIE DE L'OUTIL CLIENT (decision titulaire 15/07 re-confirmee 17/07,
+ * RENVERSE le 01/07) : les tassements sont AFFICHES AVEC le x1000 de l'outil d'origine
+ * (sur-rapport COPIE, defaut inclus). La valeur SERVEUR reste inchangee ; SEUL l'affichage
+ * applique le x1000. Les assertions attendent donc `output.w*1000`. La GRILLE (carto)
+ * reste FIDELE aux valeurs serveur brutes (aucun x1000 sur les cellules). Le test peuple
+ * `state` avec E x1000 (kPa) pour refleter la saisie de l'outil.
  *
  * jsdom n'implemente pas le canvas 2D : on le STUB (le clone est defensif — bakeField
  * calcule quand meme R.grid/fmin/fmax). Skip BRUYANT si le clone est absent.
@@ -174,9 +178,9 @@ d(
       expect(resbody).not.toContain('Lance un calcul');
       expect(resbody).toContain('Synthèse');
       expect(resbody).toContain('EC7 annexe H');
-      // 2. valeurs serveur FIDELES (tassement mm SANS x1000 ; réaction p_min/p_max scalaires).
+      // 2. valeurs serveur FIDELES, AFFICHEES ×1000 (copie du sur-rapport de l'outil client).
       expect(resbody).toContain(
-        output.wMax.toFixed(1) + ' / ' + output.wMin.toFixed(1) + ' mm',
+        (output.wMax * 1000).toFixed(1) + ' / ' + (output.wMin * 1000).toFixed(1) + ' mm',
       );
       expect(resbody).toContain(output.totalLoad.toFixed(0) + ' kN');
       expect(resbody).toContain(
@@ -292,8 +296,8 @@ d(
       expect(sentEngineId).toBe('plane-strain');
       const out = win.document.getElementById('ps-out')?.innerHTML ?? '';
       expect(out).toContain('Tassement max / min');
-      // Tassement affiché SANS x1000 (mm-échelle serveur).
-      expect(out).toContain(output.wMax.toFixed(1));
+      // Tassement affiché AVEC x1000 (copie du sur-rapport de l'outil client).
+      expect(out).toContain((output.wMax * 1000).toFixed(1));
       // psPlot rendu (SVG avec 3 bandes -> au moins un <path>).
       expect(out).toContain('<svg');
       expect(out).toContain('<path');
@@ -348,7 +352,8 @@ d(
       expect(sentEngineId).toBe('axi');
       const out = win.document.getElementById('ax-out')?.innerHTML ?? '';
       expect(out).toContain('Tassement centre / bord');
-      expect(out).toContain(output.wc.toFixed(1));
+      // Tassement affiché AVEC x1000 (copie du sur-rapport de l'outil client).
+      expect(out).toContain((output.wc * 1000).toFixed(1));
       expect(out).toContain('<svg');
       expect(out).not.toContain('undefined');
       expect(/\bNaN\b/.test(out)).toBe(false);
@@ -413,7 +418,8 @@ d(
       expect(sentEngineId).toBe('tri-raft');
       const out = win.document.getElementById('tri-out')?.innerHTML ?? '';
       expect(out).toContain('Tassement max / min');
-      expect(out).toContain(output.wMax.toFixed(1));
+      // Tassement affiché AVEC x1000 (copie du sur-rapport de l'outil client).
+      expect(out).toContain((output.wMax * 1000).toFixed(1));
       // La carte est la grille d'affichage 48×48 — jamais le rendu triangulé réel.
       if (output.champDeflexion) {
         expect(out).toContain('<svg');

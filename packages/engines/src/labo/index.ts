@@ -36,7 +36,7 @@ import {
   type LaboInput,
   type LaboOutput,
 } from './contract.js';
-import { computeLabo } from './engine.js';
+import { computeLaboDetail } from './engine.js';
 
 export {
   LABO_ENGINE_ID,
@@ -187,6 +187,145 @@ function nn(x: unknown): number | null {
 function sn(x: unknown): string | null {
   return typeof x === 'string' ? x : null;
 }
+/** Booleen strict (defaut false). */
+function bo(x: unknown): boolean {
+  return x === true;
+}
+/** Entier fini borne (defaut 0) — pour les compteurs de lignes du detail. */
+function iv(x: unknown): number {
+  return fin(x) ? Math.trunc(x) : 0;
+}
+/** Tableau de chaines (filtre). */
+function strs(a: unknown): string[] {
+  return Array.isArray(a) ? a.filter((s): s is string => typeof s === 'string') : [];
+}
+/** Serie de couples (x, y) FINIS (les non-finis sont ecartes — parite courbe). */
+function points2(a: unknown): [number, number][] {
+  if (!Array.isArray(a)) return [];
+  const out: [number, number][] = [];
+  for (const p of a) {
+    if (Array.isArray(p) && p.length >= 2 && fin(p[0]) && fin(p[1])) {
+      out.push([p[0], p[1]]);
+    }
+  }
+  return out;
+}
+function rec(x: unknown): Record<string, unknown> {
+  return x && typeof x === 'object' ? (x as Record<string, unknown>) : {};
+}
+
+/**
+ * PROJETTE le detail d'affichage BRUT (`R.det`, miroir DOM des kernels) sur la whitelist
+ * `DetailSchema` — champ a champ, NaN/Infinity -> null (parite JSON), aucune cle non
+ * declaree. Tout est client-safe (livrable), la whitelist borne la FORME. `null` si le
+ * moteur n'a pas produit de detail (ne devrait pas arriver hors erreur).
+ */
+function shapeDetail(det: unknown): unknown {
+  if (!det || typeof det !== 'object') return null;
+  const d = det as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  if (d.w) {
+    const w = rec(d.w);
+    out.w = {
+      rows: (Array.isArray(w.rows) ? w.rows : []).map(nn),
+      moy: nn(w.moy),
+      n: iv(w.n),
+    };
+  }
+  if (d.gran) {
+    const g = rec(d.gran);
+    out.gran = {
+      rows: (Array.isArray(g.rows) ? g.rows : []).map((r) => {
+        const rr = rec(r);
+        return { s: fin(rr.s) ? rr.s : 0, cum: nn(rr.cum), pass: nn(rr.pass) };
+      }),
+      pts: points2(g.pts),
+    };
+  }
+  if (d.att) {
+    const a = rec(d.att);
+    out.att = {
+      llw: (Array.isArray(a.llw) ? a.llw : []).map(nn),
+      plw: (Array.isArray(a.plw) ? a.plw : []).map(nn),
+      pente: nn(a.pente),
+      wLraw: nn(a.wLraw),
+      points: iv(a.points),
+      valide: bo(a.valide),
+      warns: strs(a.warns),
+      nature: sn(a.nature),
+      raw: points2(a.raw),
+    };
+  }
+  if (d.vbs) {
+    const v = rec(d.vbs);
+    out.vbs = {
+      rows: (Array.isArray(v.rows) ? v.rows : []).map((r) => {
+        const rr = rec(r);
+        return { M1: nn(rr.M1), Mb: nn(rr.Mb), v05: nn(rr.v05), vs: nn(rr.vs) };
+      }),
+      moy: nn(v.moy),
+      retenue: nn(v.retenue),
+      essais: iv(v.essais),
+      manual: nn(v.manual),
+      lowV: bo(v.lowV),
+    };
+  }
+  if (d.proctor) {
+    const p = rec(d.proctor);
+    const fitR = p.fit ? rec(p.fit) : null;
+    const enR = p.energy ? rec(p.energy) : null;
+    out.proctor = {
+      V: nn(p.V),
+      rows: (Array.isArray(p.rows) ? p.rows : []).map((r) => {
+        const rr = rec(r);
+        return { w: nn(rr.w), rd: nn(rr.rd) };
+      }),
+      fit:
+        fitR && fin(fitR.a) && fin(fitR.b) && fin(fitR.c)
+          ? { a: fitR.a, b: fitR.b, c: fitR.c }
+          : null,
+      wopn: nn(p.wopn),
+      rdmax: nn(p.rdmax),
+      points: iv(p.points),
+      energy:
+        enR && fin(enR.E) && fin(enR.cible)
+          ? { E: enR.E, cible: enR.cible, ok: bo(enR.ok) }
+          : null,
+      horsTableau: bo(p.horsTableau),
+    };
+  }
+  return out;
+}
+
+/**
+ * Collecte les ALERTES normatives par feuille (ce que l'outil client AFFICHE dans ses
+ * encarts « Controles… ») a partir du detail, pour alimenter le `warnings` de tete
+ * (auparavant FIGE a []). Textes normatifs client-safe (aucune valeur secrete) ; passes
+ * ensuite dans la redaction fail-closed par coherence. Prefixes par feuille.
+ */
+function collectWarnings(det: unknown): string[] {
+  if (!det || typeof det !== 'object') return [];
+  const d = det as Record<string, unknown>;
+  const w: string[] = [];
+  const att = rec(d.att);
+  for (const s of strs(att.warns)) w.push(`Atterberg — ${s}`);
+  const vbs = rec(d.vbs);
+  if (vbs.lowV === true)
+    w.push(
+      'VBS — Volume de bleu V ≤ 10 cm³ (NF P 94-068 art. 7) : recommencer avec une prise de masse superieure.',
+    );
+  const pr = rec(d.proctor);
+  const en = pr.energy ? rec(pr.energy) : null;
+  if (en && en.ok === false)
+    w.push(
+      'Proctor — energie de compactage hors tolerance ± 8 % (EN 13286-2 Tableau 5).',
+    );
+  if (pr.horsTableau === true)
+    w.push(
+      'Proctor — combinaison moule + dame hors Tableau 5 (EN 13286-2) : la dame 15 kg s emploie avec le moule C.',
+    );
+  return w;
+}
 
 /**
  * Re-FORME le resultat brut { D, cls } en la SORTIE whitelistee. On CONSTRUIT un objet
@@ -255,6 +394,7 @@ function shapeOutput(R: Record<string, unknown>): unknown {
       k: null,
       natureLigneA: null,
       classe: emptyClasse,
+      detail: null,
     };
   }
 
@@ -280,9 +420,12 @@ function shapeOutput(R: Record<string, unknown>): unknown {
       }
     : emptyClasse;
 
+  const det = R.det;
   return {
     erreur: null,
-    warnings: [],
+    // ALERTES normatives par feuille (encart « Controles… » du client) — auparavant FIGE
+    // a [] ; alimente depuis le detail, redacte fail-closed par coherence (§8).
+    warnings: redactConfidentialWarnings(collectWarnings(det)),
     wn: nn(D.wn),
     dmax: nn(D.dmax),
     p80: nn(D.p80),
@@ -323,6 +466,7 @@ function shapeOutput(R: Record<string, unknown>): unknown {
     k: nn(D.k),
     natureLigneA: natureLigneA(D.wl, D.ip),
     classe,
+    detail: shapeDetail(det),
   };
 }
 
@@ -367,7 +511,7 @@ function resolveMeta(): {
  */
 export function runLabo(rawInput: unknown): EngineResultEnvelope<LaboOutput> {
   const input: LaboInput = LaboInputSchema.parse(rawInput);
-  const rawResult = computeLabo(input) as Record<string, unknown>;
+  const rawResult = computeLaboDetail(input) as Record<string, unknown>;
   const shaped = shapeOutput(rawResult);
   const output = projectEngineOutput(LaboOutputSchema, shaped);
   return { ok: true, meta: resolveMeta(), output };

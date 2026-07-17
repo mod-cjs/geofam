@@ -23,46 +23,43 @@ import { runPieux } from './index.js';
 
 /**
  * Cles d'INTERMEDIAIRES qui ne doivent JAMAIS apparaitre dans la sortie client.
- * Couvre : terme de pointe, resistances/pressions equivalentes, facteurs de portance,
- * hauteur d'encastrement, detail de frottement, courbe de tassement, facteurs de
- * correlation, facteurs partiels intermediaires, et les champs internes de `R`.
+ *
+ * RECLASSIFICATION §8 (directive titulaire « tolerance 0 » + avis expert A) : les VALEURS
+ * affichees par l'outil client sont DESORMAIS exposees en display-only — Rb/Rs bruts,
+ * p*le/qce equivalents, facteurs de portance appliques kfac(kp/kc) et plafond kmax,
+ * hauteur d'encastrement Def/debR, correlations xi3/xi4, modele gammaR;d1, effet de
+ * groupe Ce, tableau de frottement `fric`, et les courbes portance/tassement/downdrag
+ * (re-echantillonnees). Ces cles sont donc RETIREES de la liste ci-dessous.
+ *
+ * Ce qui reste INTERDIT = le CODE / les objets de solveur bruts, jamais affiches :
+ * terme de pointe nu `qb`, chaine `qbDetail`, objet d'interpolation `qceDetail`, objet
+ * `settle` brut et ses rigidites t-z (ktau/kq), facteurs partiels par combinaison
+ * (Rbf/Rsf/comb/crit), decomposition RbD/RsD, geometrie interne (Ab/perim/Bsurf/hInLayer),
+ * profil de couches brut (layers/baseLayer/ztop/zbot/pl/em), `pile`, `cls`, RsKsum, CeF,
+ * floating, et le NOM BRUT `grd` (expose seulement sous `gammaRd1`).
  */
 const FUITES_INTERDITES = [
-  // Terme de pointe et pressions/resistances equivalentes (methode F.4.2 / G.4.2).
+  // Terme de pointe nu + chaines/objets de solveur (jamais affiches tels quels).
   'qb',
-  'Rb',
-  'ple',
-  'qce',
-  // Facteurs de portance (Tableaux F.4.2.1 / G.4.2.1) + hauteur d'encastrement.
-  'kfac',
-  'kmax',
-  'Def',
-  'debR',
-  'cls',
-  // Detail de frottement par couche (revele courbes F.5.2.2 / α annexes F/G).
-  'fric',
-  'qs',
-  'qsm',
-  'dRs',
-  'deg',
-  'RsKsum',
-  // Chaines d'affichage qui interpolent des intermediaires.
   'qbDetail',
   'qceDetail',
-  // Courbe de mobilisation du tassement + ses coefficients.
+  // Objet de mobilisation du tassement BRUT + ses coefficients t-z (seule la courbe
+  // re-echantillonnee `courbeTassement.{pts,Fmax}` sort, pas l'objet `settle`).
   'settle',
-  'pts',
   'ktau',
   'kq',
-  'Fmax',
-  // Facteurs de correlation / modele / partiels par combinaison.
-  'xi3',
-  'xi4',
-  'grd',
+  // Facteurs partiels par combinaison + decomposition de resistance.
+  'RsKsum',
   'Rbf',
   'Rsf',
   'comb',
   'crit',
+  'RbD',
+  'RsD',
+  // Nom BRUT du coef de modele (expose uniquement sous `gammaRd1`) + classe/famille.
+  'grd',
+  'cls',
+  'pile',
   // Profil de couches brut (cotes ztop/zbot, parametres de sol).
   'layers',
   'baseLayer',
@@ -70,10 +67,7 @@ const FUITES_INTERDITES = [
   'zbot',
   'pl',
   'em',
-  'pile',
-  // Decomposition de resistance / geometrie intermediaire.
-  'RbD',
-  'RsD',
+  // Geometrie intermediaire (reconstruite cote clone depuis la saisie publique).
   'hInLayer',
   'Bsurf',
   'Ab',
@@ -116,20 +110,16 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     });
   }
 
-  // --- FROTTEMENT NÉGATIF (#94) : seuls Gsn/Nmax/pointNeutre sortent -----------------
-  // Le résultat BRUT du downdrag porte un profil DÉTAILLÉ (prof[] segment par segment :
-  // z/w/g/f/qsP/qsN/N), les rigidités t-z, les tassements tête/pointe wHead/wTip, la
-  // cote brute zN, la zone zt/zb, KtanD/Hc/s0... Tout cela révèle la MÉTHODE (courbes
-  // de mobilisation, coefficient de F.N.) et reste SERVEUR. Seuls Gsn, Nmax et
-  // pointNeutre (résultats de dimensionnement) sont whitelistés.
+  // --- FROTTEMENT NÉGATIF (#94) : Gsn/Nmax/pointNeutre + profils re-échantillonnés -----
+  // RECLASSIFICATION §8 : le profil re-échantillonné (`profilsDowndrag.{wHead,prof[{z,w,
+  // g,f,qsP,qsN,N}]}`) est DÉSORMAIS exposé display-only (il est tracé par l'outil). Ce
+  // qui reste SERVEUR = les objets/coefficients BRUTS jamais affichés : rigidités t-z,
+  // efforts de pointe intermédiaires (Ntip/qbM), tassement de pointe wtip/wTip, cote
+  // BRUTE zN (exposée sous 'pointNeutre'), zone zt/zb, coefficient de F.N. KtanD/Hc/s0.
   const DOWNDRAG_FUITES_INTERDITES = [
-    'prof',
-    'qsN',
-    'qsP',
     'Ntip',
     'qbM',
     'wtip',
-    'wHead',
     'wTip',
     'zN', // la cote du point neutre est exposée sous le nom 'pointNeutre', jamais 'zN'
     'zt',
@@ -137,8 +127,6 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     'KtanD',
     'Hc',
     's0',
-    'w',
-    'g',
   ];
 
   const ddFixtures = PIEUX_DOWNDRAG_FIXTURES.filter((f) => !f.horsDomaine);
@@ -332,8 +320,7 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
   });
 
   it('le dimensionnement expose Rc;k / Rc;d / fluage (resultats d ingenierie du PV)', () => {
-    // Sanity positive : un cas nominal produit bien les grandeurs FINALES exposees,
-    // et la sortie ne contient PAS le detail de frottement ni les facteurs de portance.
+    // Sanity positive : un cas nominal produit bien les grandeurs FINALES exposees.
     const fx = PIEUX_FIXTURES.find((f) => f.id === 'pmt-fore-da2-comp');
     expect(fx).toBeDefined();
     if (!fx) return;
@@ -344,10 +331,66 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     expect(Number.isFinite(env.output.RcD)).toBe(true);
     expect(Number.isFinite(env.output.RcrK)).toBe(true);
     expect(env.output.verifications.length).toBeGreaterThan(0);
-    // Le detail de frottement et les facteurs de portance ne doivent jamais sortir.
-    expect(JSON.stringify(env.output)).not.toMatch(
-      /"(fric|qb|ple|qce|kfac|kmax|Def|qbDetail|settle|xi3|comb)"\s*:/,
-    );
+    // RECLASSIFICATION §8 : les intermediaires d'AFFICHAGE (kfac/ple/qce/Def/xi3/fric)
+    // SONT desormais exposes display-only. Ce qui reste INTERDIT = les objets/chaines de
+    // solveur BRUTS jamais affiches : `qb` nu, `qbDetail`, `qceDetail`, l'objet `settle`,
+    // les facteurs par combinaison `comb`, le nom brut `grd`.
+    const s = JSON.stringify(env.output);
+    expect(s).not.toMatch(/"(qb|qbDetail|qceDetail|settle|comb|grd)"\s*:/);
+  });
+
+  it('§8 reclassification : les valeurs d affichage traversent avec les valeurs REELLES du moteur', () => {
+    // Chemin POSITIF de la reclassification : chaque nouveau champ display porte la
+    // valeur BRUTE du moteur (pas un placeholder). Compare a la source de verite R.
+    const fx = PIEUX_FIXTURES.find((f) => f.id === 'pmt-fore-da2-comp');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const R = computePieux(fx.input) as Record<string, unknown>;
+    const rn = (k: string): number => R[k] as number; // accesseur typé (source de vérité brute)
+    const env = runPieux(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    const o = env.output;
+    // Scalaires : egalite stricte avec le brut R (aucune transformation).
+    expect(o.Rb).toBeCloseTo(rn('Rb'), 9);
+    expect(o.Rs).toBeCloseTo(rn('Rs'), 9);
+    expect(o.ple).toBeCloseTo(rn('ple'), 9); // fixture PMT -> ple defini
+    expect(o.qce).toBeNull(); // pas de qce en methode pressiometrique
+    expect(o.kfac).toBeCloseTo(rn('kfac'), 9);
+    expect(o.kmax).toBeCloseTo(rn('kmax'), 9);
+    expect(o.Def).toBeCloseTo(rn('Def'), 9);
+    expect(o.debR).toBeCloseTo(rn('debR'), 9);
+    expect(o.xi3).toBeCloseTo(rn('xi3'), 9);
+    expect(o.xi4).toBeCloseTo(rn('xi4'), 9);
+    expect(o.gammaRd1).toBeCloseTo(rn('grd'), 9); // R.grd -> gammaRd1
+    expect(o.Ce).toBeCloseTo(rn('Ce'), 9);
+    // Tableau de frottement : une ligne par couche, qs/dRs reels.
+    const fricR = R.fric as Array<{ qs: number; dRs: number }>;
+    expect(o.fric).not.toBeNull();
+    expect(o.fric!.length).toBe(fricR.length);
+    expect(o.fric![0]!.qs).toBeCloseTo(fricR[0]!.qs, 9);
+    expect(o.fric![0]!.dRs).toBeCloseTo(fricR[0]!.dRs, 9);
+    // Courbes re-echantillonnees : nombre de points FIXE (decouple de l interne),
+    // extremites finies et coherentes avec le balayage/settle bruts.
+    expect(o.courbePortance).not.toBeNull();
+    expect(o.courbePortance!.rows.length).toBe(48);
+    expect(o.courbeTassement).not.toBeNull();
+    expect(o.courbeTassement!.pts.length).toBe(48);
+    expect(o.courbeTassement!.pts[0]!.F).toBe(0); // la courbe part de F=0
+    const settle = (R.settle ?? null) as { Fmax: number } | null;
+    expect(o.courbeTassement!.Fmax).toBeCloseTo(settle!.Fmax, 9);
+    // Toutes les valeurs de courbe sont finies (fail-closed : jamais de NaN).
+    const allNums = [
+      ...o.courbePortance!.rows.flatMap((r) => [
+        r.D,
+        r.elufond,
+        r.eluacc,
+        r.elscar,
+        r.elsqp,
+      ]),
+      ...o.courbeTassement!.pts.flatMap((p) => [p.F, p.s]),
+    ];
+    expect(allNums.every((n) => Number.isFinite(n))).toBe(true);
   });
 
   it('chaque verification expose le verdict (taux, ok) sans la formule de combinaison', () => {

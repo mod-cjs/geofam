@@ -60,7 +60,16 @@ export interface ToolFrameProps {
   engineAllowlist?: string[];
   orgId: string | null;
   orgSlug: string;
-  projectId: string;
+  /**
+   * Correction UX/fidélité (17/07) : l'outil s'affiche désormais AVANT toute
+   * sélection de projet (fidélité UI — le placeholder du shell a disparu,
+   * cf. les 5 pages logiciels). `null` = aucun projet choisi. Le CHARGEMENT
+   * du clone (fetch `/api/tools/:toolId`) ne dépend que d'`orgId` ; seuls le
+   * calcul (`calc:request`) et l'émission de PV (`pv:request`) restent
+   * bloqués tant qu'aucun projet n'est sélectionné (contrôle porté ici, le
+   * clone lui-même l'ignore).
+   */
+  projectId: string | null;
   projectLabel: string;
   readOnly?: boolean;
   /** Dernier calcResultId connu — pour le bouton « Émettre PV » du shell. */
@@ -172,6 +181,9 @@ export function ToolFrame({
 
         case 'calc:request': {
           const payload = msg.payload;
+          // projectId absent (aucun projet sélectionné) : l'outil reste
+          // affiché (fidélité UI) mais le calcul est bloqué — message
+          // explicite affiché dans la zone d'erreur NATIVE du clone.
           if (!payload || !orgId || !projectId) {
             post({
               v: TOOL_BRIDGE_PROTOCOL_VERSION,
@@ -179,7 +191,10 @@ export function ToolFrame({
               id: msg.id,
               payload: {
                 ok: false,
-                error: apiErrorFrom({ message: 'Contexte projet indisponible.' }),
+                error: apiErrorFrom({
+                  message:
+                    "Sélectionnez un projet (bandeau au-dessus de l'outil) avant de lancer le calcul.",
+                }),
               },
             });
             break;
@@ -297,7 +312,22 @@ export function ToolFrame({
 
         case 'pv:request': {
           const calcResultId = msg.payload?.calcResultId;
-          if (!calcResultId || !orgId || !projectId) break;
+          if (!calcResultId) break; // requête malformée — rien à corréler, ignorée
+          if (!orgId || !projectId) {
+            // Même règle que calc:request : pas de projet sélectionné → pas
+            // d'émission de PV (le calcResultId ne peut de toute façon pas
+            // exister sans avoir d'abord réussi un calcul, mais on couvre le
+            // cas d'un clone qui invoquerait pv:request de façon autonome).
+            post({
+              v: TOOL_BRIDGE_PROTOCOL_VERSION,
+              type: 'error',
+              payload: {
+                message:
+                  "Sélectionnez un projet (bandeau au-dessus de l'outil) avant d'émettre le PV.",
+              },
+            });
+            break;
+          }
           emitPv(orgId, projectId, { calcResultId })
             .then((pv) => onPvEmitted?.(pv))
             .catch((err: unknown) => {

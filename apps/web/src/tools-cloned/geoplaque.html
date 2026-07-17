@@ -1302,7 +1302,7 @@ function printReport(){
   var lspr=state.lineSprings.map(function(l,i){ return "<tr><td>KL"+(i+1)+"</td><td>"+num(l.x1)+";"+num(l.y1)+" → "+num(l.x2)+";"+num(l.y2)+"</td><td>"+num(l.k,0)+" kN/m/m</td></tr>"; }).join("");
   var ly=state.layers.map(function(c,i){ return "<tr><td>"+esc(c.name||("Couche "+(i+1)))+"</td><td>"+num(c.zBase,1)+" m</td><td>"+(c.E/1000).toFixed(0)+" MPa</td><td>"+c.nu+"</td></tr>"; }).join("");
   var resHtml='<p style="color:#a33">Aucun calcul effectué — lance le calcul avant d\u2019imprimer pour inclure les résultats.</p>';
-  if(R && R.diag){ var d=R.diag; var wmaxmm=d.wMax, diffmm=d.diff;
+  if(R && R.diag){ var d=R.diag; var wmaxmm=d.wMax*1000, diffmm=d.diff*1000;
     var verdict=function(l){ return {ok:'<b style="color:#1a7f37">CONFORME</b>',warn:'<b style="color:#b07a12">ATTENTION</b>',bad:'<b style="color:#b3261e">DÉPASSEMENT</b>'}[l]; };
     var decol=document.getElementById("opt-decol").checked;
     resHtml=""
@@ -1313,13 +1313,13 @@ function printReport(){
     +"<tr><td>Tassement différentiel</td><td>"+diffmm.toFixed(1)+" mm</td><td>≈ 20 mm</td><td>"+verdict(lvlDiff(diffmm))+"</td></tr>"
     +"<tr><td>Distorsion angulaire β (rotation relative)</td><td>"+ratio1(d.betaGov)+" ("+d.betaGov.toExponential(1)+" rad)</td><td>ELS 1/500 · ELU 1/150</td><td>"+verdict(lvlBeta(d.betaGov))+"</td></tr>"
     +"<tr><td>Inclinaison d\u2019ensemble ϖ (basculement)</td><td>"+ratio1(d.tiltMax)+"</td><td>visible ≈ 1/500</td><td>"+verdict(d.tiltMax<=1/500?"ok":d.tiltMax<=1/150?"warn":"bad")+"</td></tr>"
-    +(d.nRafts>1?"<tr><td>Distorsion entre plaques</td><td>"+ratio1(d.interBeta)+" · Δs "+(d.interDiff).toFixed(1)+" mm</td><td>ELS 1/500</td><td>"+verdict(lvlBeta(d.interBeta))+"</td></tr>":"")
-    +(d.loadPairs&&d.loadPairs.worst?"<tr><td>Distorsion entre charges (max) — P"+d.loadPairs.worst.ki+"↔P"+d.loadPairs.worst.kj+"</td><td>"+ratio1(d.loadPairs.worst.beta)+" · Δs "+(d.loadPairs.worst.ds).toFixed(1)+" mm / "+d.loadPairs.worst.L.toFixed(2)+" m</td><td>ELS 1/500 · ELU 1/150</td><td>"+verdict(lvlBeta(d.loadPairs.worst.beta))+"</td></tr>":"")
+    +(d.nRafts>1?"<tr><td>Distorsion entre plaques</td><td>"+ratio1(d.interBeta)+" · Δs "+(d.interDiff*1000).toFixed(1)+" mm</td><td>ELS 1/500</td><td>"+verdict(lvlBeta(d.interBeta))+"</td></tr>":"")
+    +(d.loadPairs&&d.loadPairs.worst?"<tr><td>Distorsion entre charges (max) — P"+d.loadPairs.worst.ki+"↔P"+d.loadPairs.worst.kj+"</td><td>"+ratio1(d.loadPairs.worst.beta)+" · Δs "+(d.loadPairs.worst.ds*1000).toFixed(1)+" mm / "+d.loadPairs.worst.L.toFixed(2)+" m</td><td>ELS 1/500 · ELU 1/150</td><td>"+verdict(lvlBeta(d.loadPairs.worst.beta))+"</td></tr>":"")
     +"</table>"
     +"<h2>Synthèse des résultats</h2>"
     +'<table class="syn">'
     +(d.nRafts>1?"<tr><td>Plaques modélisées</td><td>"+d.nRafts+"</td></tr>":"")
-    +"<tr><td>Tassement max / min</td><td>"+wmaxmm.toFixed(1)+" / "+(d.wMin).toFixed(1)+" mm</td></tr>"
+    +"<tr><td>Tassement max / min</td><td>"+wmaxmm.toFixed(1)+" / "+(d.wMin*1000).toFixed(1)+" mm</td></tr>"
     +"<tr><td>Tassement différentiel</td><td>"+diffmm.toFixed(1)+" mm</td></tr>"
     +"<tr><td>Rotation θx max</td><td>"+d.txMax.toExponential(2)+" rad ("+ratio1(d.txMax)+")</td></tr>"
     +"<tr><td>Rotation θy max</td><td>"+d.tyMax.toExponential(2)+" rad ("+ratio1(d.tyMax)+")</td></tr>"
@@ -1490,8 +1490,8 @@ document.getElementById('ps-run').onclick=async function(){
   var R=resp.output||{}; if(R.erreur){ out.innerHTML='<div class="empty" style="color:var(--err)">'+_esc(R.erreur)+"</div>"; return; }
   window.__geoplaqueLastCalcResultId=resp.calcResultId||null;
   var st=function(a,v){ return '<div class="stat"><span>'+a+'</span><b>'+v+'</b></div>'; };
-  var h=st("Tassement max / min",(R.wMax).toFixed(1)+" / "+(R.wMin).toFixed(1)+" mm");
-  h+=st("Tassement différentiel",(R.diff).toFixed(1)+" mm");
+  var h=st("Tassement max / min",(R.wMax*1000).toFixed(1)+" / "+(R.wMin*1000).toFixed(1)+" mm");
+  h+=st("Tassement différentiel",(R.diff*1000).toFixed(1)+" mm");
   h+=st("Moment max (+/−)",(R.mMax).toFixed(1)+" / "+(R.mMin).toFixed(1)+" kN·m/m");
   h+=st("Réaction sol max",(R.pMax).toFixed(1)+" kPa");
   h+=st("Charge / réaction Σ",(R.totalLoad).toFixed(0)+" / "+(R.sumReact).toFixed(0)+" kN/m"+_eqSuffix(R.totalLoad,R.sumReact));
@@ -1516,7 +1516,8 @@ function psPlot(R){
       +'<text x="'+(pad+2)+'" y="'+(top+11)+'" fill="'+col+'" font-size="10" font-family="var(--mono)">'+label+'</text>'
       +'<text x="'+(W-pad-2)+'" y="'+(top+11)+'" fill="var(--ink-dim,#789)" font-size="9" text-anchor="end" font-family="var(--mono)">'+(Math.max(Math.abs(mn),Math.abs(mx))).toFixed(0)+" "+unit+'</text></g>'; }
   var s='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;margin-top:12px;background:transparent" xmlns="http://www.w3.org/2000/svg">';
-  s+=band(wD.x,wD.v,pad,"#5ea9ff","tassement w","mm");
+  var wmm=wD.v.map(function(v){ return v*1000; });
+  s+=band(wD.x,wmm,pad,"#5ea9ff","tassement w","mm");
   if(mD&&mD.v) s+=band(mD.x,mD.v,pad+ph+gap,"#ffb454","moment M","kN·m/m");
   if(pD&&pD.v) s+=band(pD.x,pD.v,pad+2*(ph+gap),"#3fb6a8","réaction p","kPa");
   s+='<text x="'+(W/2)+'" y="'+(H-4)+'" fill="var(--ink-dim,#789)" font-size="9" text-anchor="middle" font-family="var(--mono)">x (m) — 0 \u2192 '+xmax.toFixed(1)+'</text>';
@@ -1540,8 +1541,8 @@ document.getElementById('ax-run').onclick=async function(){
   var R=resp.output||{}; if(R.erreur){ out.innerHTML='<div class="empty" style="color:var(--err)">'+_esc(R.erreur)+"</div>"; return; }
   window.__geoplaqueLastCalcResultId=resp.calcResultId||null;
   var st=function(a,v){ return '<div class="stat"><span>'+a+'</span><b>'+v+'</b></div>'; };
-  var h=st("Tassement centre / bord",(R.wc).toFixed(1)+" / "+(R.wEdge).toFixed(1)+" mm");
-  h+=st("Tassement différentiel",(R.diff).toFixed(1)+" mm");
+  var h=st("Tassement centre / bord",(R.wc*1000).toFixed(1)+" / "+(R.wEdge*1000).toFixed(1)+" mm");
+  h+=st("Tassement différentiel",(R.diff*1000).toFixed(1)+" mm");
   h+=st("Moment radial M_r max",(R.mrMax).toFixed(1)+" kN·m/m");
   h+=st("Moment tangentiel M_t max",(R.mtMax).toFixed(1)+" kN·m/m");
   h+=st("Réaction sol max",(R.pMax).toFixed(1)+" kPa");
@@ -1565,7 +1566,8 @@ function axiPlot(R){
       +'<text x="'+(pad+2)+'" y="'+(top+11)+'" fill="'+col+'" font-size="10" font-family="var(--mono)">'+label+'</text>'
       +'<text x="'+(W-pad-2)+'" y="'+(top+11)+'" fill="var(--ink-dim,#789)" font-size="9" text-anchor="end" font-family="var(--mono)">'+(Math.max(Math.abs(mn),Math.abs(mx))).toFixed(0)+" "+unit+'</text></g>'; }
   var s='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;margin-top:12px;background:transparent" xmlns="http://www.w3.org/2000/svg">';
-  s+=band(wD.x,wD.v,pad,"#5ea9ff","tassement w","mm");
+  var wmm=wD.v.map(function(v){ return v*1000; });
+  s+=band(wD.x,wmm,pad,"#5ea9ff","tassement w","mm");
   if(mrD&&mrD.v) s+=band(mrD.x,mrD.v,pad+ph+gap,"#ffb454","moment M_r","kN·m/m");
   if(mtD&&mtD.v) s+=band(mtD.x,mtD.v,pad+2*(ph+gap),"#c58cf0","moment M_t","kN·m/m");
   if(pD&&pD.v) s+=band(pD.x,pD.v,pad+3*(ph+gap),"#3fb6a8","réaction p","kPa");
@@ -1596,8 +1598,8 @@ document.getElementById('tri-run').onclick=async function(){
   window.__geoplaqueLastCalcResultId=resp.calcResultId||null;
   var st=function(a,v){ return '<div class="stat"><span>'+a+'</span><b>'+v+'</b></div>'; };
   var h=st("Maillage",(R.nRaft)+" plaque"+(R.nRaft>1?"s":"")+" · maillage triangulaire (serveur)");
-  h+=st("Tassement max / min",(R.wMax).toFixed(1)+" / "+(R.wMin).toFixed(1)+" mm");
-  h+=st("Tassement différentiel",(R.diff).toFixed(1)+" mm");
+  h+=st("Tassement max / min",(R.wMax*1000).toFixed(1)+" / "+(R.wMin*1000).toFixed(1)+" mm");
+  h+=st("Tassement différentiel",(R.diff*1000).toFixed(1)+" mm");
   h+=st("Réaction sol max",(R.reactionMax).toFixed(1)+" kPa");
   h+=st("Charge / réaction Σ",(R.totalLoad).toFixed(0)+" / "+(R.sumReact).toFixed(0)+" kN"+_eqSuffix(R.totalLoad,R.sumReact));
   if(foundD>0) h+=st("Cote d\u2019assise D",(R.z0).toFixed(2)+" m");
@@ -1617,7 +1619,7 @@ function triMeshSvg(R){
     var x=g.x0+i*cwx-cwx/2, y=g.y0+j*cwy-cwy/2;
     var rx=sx(x), ry=sy(y+cwy);
     s+='<rect x="'+rx.toFixed(1)+'" y="'+ry.toFixed(1)+'" width="'+(cwx*sc+0.6).toFixed(1)+'" height="'+(cwy*sc+0.6).toFixed(1)+'" fill="'+jetc((v-wmn)/rng)+'" />'; } }
-  s+='<text x="'+(W/2)+'" y="'+(Hh-3)+'" fill="var(--ink-dim,#789)" font-size="9" text-anchor="middle" font-family="var(--mono)">tassement — bleu '+wmn.toFixed(1)+' mm \u2192 rouge '+wmx.toFixed(1)+' mm · grille d\u2019affichage 48×48</text>';
+  s+='<text x="'+(W/2)+'" y="'+(Hh-3)+'" fill="var(--ink-dim,#789)" font-size="9" text-anchor="middle" font-family="var(--mono)">tassement — bleu '+(wmn*1000).toFixed(1)+' mm \u2192 rouge '+(wmx*1000).toFixed(1)+' mm · grille d\u2019affichage 48×48</text>';
   s+="</svg>"; return s;
 }
 async function doSolve(){
@@ -1800,21 +1802,21 @@ function refreshResults(){
   h+='<label class="field" style="display:flex;align-items:center;gap:8px;margin:4px 0 2px"><span style="margin:0;flex:1">Nombre de niveaux</span><select id="opt-nlev" style="width:78px">'+[6,8,10,12,16,20,24].map(function(v){return '<option value="'+v+'" '+(iso.n===v?"selected":"")+'>'+v+'</option>';}).join("")+'</select></label>';
   h+='<label class="toggle" style="margin:6px 0 2px"><input type="checkbox" id="opt-crit" '+(R.showCrit===false?"":"checked")+'> Marquer le couple de charges le plus défavorable</label>';
   var d=R.diag;
-  var wmaxmm=d.wMax, diffmm=d.diff;
+  var wmaxmm=d.wMax*1000, diffmm=d.diff*1000;
   var betaGov=d.betaGov, tilt=d.tiltMax;
   h+='<div class="secth" style="margin-top:14px">Vérifications · EC7 annexe H</div>';
   h+=chk("Tassement total max", wmaxmm.toFixed(1)+" mm", lvlSettle(wmaxmm), "repère \u2248 50 mm pour fondations isolées");
   h+=chk("Tassement différentiel", diffmm.toFixed(1)+" mm", lvlDiff(diffmm), "repère \u2248 20 mm entre appuis adjacents");
   h+=chk("Distorsion angulaire β", ratio1(betaGov)+"  ("+betaGov.toExponential(1)+" rad)", lvlBeta(betaGov), "rotation relative · limite ELS \u2248 1/500, ELU \u2248 1/150");
   h+=chk("Inclinaison d\u2019ensemble ϖ", ratio1(tilt), tilt<=1/500?"ok":tilt<=1/150?"warn":"bad", "basculement rigide (séparé de la distorsion) · visible vers 1/500");
-  if(d.nRafts>1) h+=chk("Distorsion entre plaques", ratio1(d.interBeta)+"  · Δs "+(d.interDiff).toFixed(1)+" mm", lvlBeta(d.interBeta), "rotation relative entre centres de plaques voisines");
+  if(d.nRafts>1) h+=chk("Distorsion entre plaques", ratio1(d.interBeta)+"  · Δs "+(d.interDiff*1000).toFixed(1)+" mm", lvlBeta(d.interBeta), "rotation relative entre centres de plaques voisines");
   var lp=d.loadPairs;
   if(lp && lp.worst){ var w=lp.worst;
-    h+=chk("Distorsion entre charges (max)", ratio1(w.beta)+"  · Δs "+(w.ds).toFixed(1)+" mm / "+w.L.toFixed(2)+" m", lvlBeta(w.beta), "colonnes adjacentes les plus défavorables : charge "+w.ki+" \u2194 "+w.kj); }
+    h+=chk("Distorsion entre charges (max)", ratio1(w.beta)+"  · Δs "+(w.ds*1000).toFixed(1)+" mm / "+w.L.toFixed(2)+" m", lvlBeta(w.beta), "colonnes adjacentes les plus défavorables : charge "+w.ki+" \u2194 "+w.kj); }
   h+='<div class="secth" style="margin-top:16px">Synthèse</div>';
   var st=function(a,v){ return '<div class="stat"><span>'+a+'</span><b>'+v+'</b></div>'; };
   if(d.nRafts>1) h+=st("Plaques modélisées", d.nRafts);
-  h+=st("Tassement max / min", wmaxmm.toFixed(1)+" / "+(d.wMin).toFixed(1)+" mm");
+  h+=st("Tassement max / min", wmaxmm.toFixed(1)+" / "+(d.wMin*1000).toFixed(1)+" mm");
   h+=st("Rotation θx max", d.txMax.toExponential(2)+" rad  ("+ratio1(d.txMax)+")");
   h+=st("Rotation θy max", d.tyMax.toExponential(2)+" rad  ("+ratio1(d.tyMax)+")");
   h+=st("Pente locale max |∇w|", d.slopeMax.toExponential(2)+" rad  ("+ratio1(d.slopeMax)+")");

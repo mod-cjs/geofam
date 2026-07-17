@@ -1803,12 +1803,7 @@ function validateInputs(){
 }
 async function recalc(){
   var R={ err:null, warn:[], cases:[], refCap:null, ctx:buildCtxFromState(S,null) };
-  /* NO-CALC-INITIAL (ADR 0015) : au chargement (ou sur etat vide/invalide) l'outil
-     d'origine lance recalc sur un state VIDE (blankState : sondage sans z, B vide).
-     On NE contacte PAS le serveur dans ce cas : la validation locale CONSERVEE
-     (parsedSondage) rend le message natif « Renseignez… » comme le ferait computeAll,
-     puis on sort. Un appel serveur ne part que sur un state PLAUSIBLE (>=1 ligne de
-     sondage valide, ou mode labo). Idem : validateInputs() marque les champs. */
+   
   var __rows=(typeof parsedSondage==="function")?parsedSondage(S):[];
   var __labo=(S&&S.essai==="labo");
   if(!__labo && (!__rows || __rows.length===0)){

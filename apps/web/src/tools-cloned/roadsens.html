@@ -643,6 +643,7 @@ function buildDFromOutput(out){
     e6:(fat&&fat.referenceCatalogue!=null)?+fat.referenceCatalogue:Infinity,
     ub:(det.ub!=null?+det.ub:null), ukc:(det.kc!=null?+det.kc:null), usn:(det.sn!=null?+det.sn:null), ukth:(det.ktheta!=null?+det.ktheta:null), sig:(useRig?1:0),
     kr:(det.kr!=null?+det.kr:null), sh:(det.sh_cm!=null?+det.sh_cm:null), ks:(det.ks!=null?+det.ks:null),
+    adm50:(det.adm_r50!=null?+det.adm_r50:null),
     be:bitEndFromState(), ezL:ezL, gq:gq,
     et2:(ph2?_bn(ph2.valeur):null), et2A:(ph2?_bn(ph2.admissible):null), et2i:(ph2&&_bn(ph2.couche)>=1?ph2.couche-1:-1),
     st2:(inv?_bn(inv.valeur):null), st2A:(inv?_bn(inv.admissible):null), st2i:(inv&&_bn(inv.couche)>=1?inv.couche-1:-1),
@@ -985,7 +986,7 @@ var _D={};
 // Calcul σ_r au sommet PSC : dans le demi-espace PSC (A=C=0),
 // σ_r = m·J₀·[B·m²+D·m(1+2ν)] - m·J₁/r·[B·m² - D·m]
 // On intègre séparément en passant la dernière interface (base couche n = sommet PSC).
-// Le résultat est déjà dans sr_acc[n-1] du burIntegrateML si on indexe correctement.
+
 // -> On inclut le sommet PSC comme interface n (index n), à calculer séparément.
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1018,10 +1019,7 @@ async function runCalc(){
      serveur. Burmister ne recalcule PAS au chargement (init = renderL/rTS/…), mais
      un clic « Calculer » sur une structure invalide ne doit pas solliciter le serveur. */
   if(!plausibleBurmister()){ renderNeedInput(); return; }
-  /* Module GNT automatique : l'outil d'origine (doCalc) applique applyGntAuto AVANT
-     de calculer et affiche les E resolus. On fait de meme LOCALEMENT (fonction publique
-     conservee) puis on envoie les E RESOLUS (gntAuto non transmis) : le serveur calcule
-     sur ces memes E -> equivalence preservee, affichage fidele. */
+   
   try{ if(typeof cp!=="undefined" && cp && cp.gntAuto && typeof applyGntAuto==="function"){ applyGntAuto(); if(typeof renderL==="function") renderL(); } }catch(e){}
   var btn=document.getElementById('btnc');
   if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>Calcul Burmister\u2026'; }
@@ -1276,7 +1274,7 @@ function renderDetails(){
   h+=row("kr risque",f(d.kr,4),"","10^(-"+f(u_r,3)+"&times;"+f(dlt,4)+"/"+d.ub+")");
   h+=row("kc calage",f(d.ukc,2),"","VI.4.2 : GB=1,3 &middot; BB=1,1 &middot; EME=1,0 &middot; MTLH=1,4-1,5");
   h+=row("ks support",f(d.ks,4),"",(cp.ks!=='auto'?"manuel":"auto — Tab. 69 : &lt;50&rarr;1/1,2 &middot; 50-80&rarr;1/1,1 &middot; 80-120&rarr;1/1,065 &middot; &ge;120&rarr;1"));
-  var e50=d.e6<Infinity?d.e6*d.ukth*Math.pow(1e6/d.NE,1/d.ub)*d.ukc*d.ks:null;
+  var e50=(d.adm50!=null?d.adm50:null);
   h+=row((d.sig?"st_adm":"et_adm")+" r=50%",e50!=null?f(e50,d.sig?3:2):"N/A",d.sig?"MPa":"&mu;def","kr=1 (u=0)");
   h+=row((d.sig?"st_adm":"et_adm")+" r="+_rE+"%",f(d.etA,d.sig?3:2),d.sig?"MPa":"&mu;def","avec kr="+f(d.kr,4));
   if(d.et2!=null){h+=row("Phase 2 : et base bitumineux (C"+(d.et2i+1)+")",f(d.et2,2),"&mu;def","MTLH fissur&#233; E/5 + interface glissante &#233;mul&#233;e (&sect;4.4.1)"+(d.etReq?"":" &middot; informatif"));

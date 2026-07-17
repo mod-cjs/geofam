@@ -1,0 +1,1481 @@
+<!--
+  CLONE EXCISÉ — NE PAS ÉDITER À LA MAIN. Artefact généré par scripts/clone-tool.mjs.
+  Outil            : fastlab (labo)
+  Source (gelée)   : FASTLAB7.html
+  sha256 source    : 3271287e551448ea5ce8396a2e9687e38c7245a3c49259a02a5f4f393f48599a
+  Calcul           : EXCISÉ — exécuté côté serveur via bridge postMessage (ADR 0015, DoD §8).
+  Régénérer        : pnpm clone:tools   ·   Auditer : pnpm audit:excision
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FASTLAB — Traitement des essais & classification GTR (NF P 11-300)</title>
+<style>
+  :root{
+    --ink:#16212e;--ink2:#33414f;--muted:#6b7886;
+    --paper:#fff;--panel:#f5f7f9;--panel2:#eef2f5;
+    --line:#d3dbe2;--line2:#e6ebf0;
+    --blue:#1f5f8b;--blue-d:#15466a;--blue-l:#e6f0f6;
+    --ok:#2f7d4f;--ok-l:#e7f3ec;--warn:#a86a18;--warn-l:#fbf2e3;
+    --bad:#b03a3a;--bad-l:#f8eaea;--badge:#f3c41b;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+    --sans:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:var(--sans);color:var(--ink);background:var(--panel);font-size:14px;line-height:1.45}
+  h1,h2,h3{margin:0;font-weight:650;letter-spacing:-.01em}
+  header{background:var(--ink);color:#fff;padding:9px 16px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:30}
+  header .logo{font-weight:800;font-size:16px}.logo b{color:var(--badge)}
+  header .sub{color:#9fb0c0;font-size:11.5px}
+  header .spacer{flex:1}
+  header button{background:#26384a;color:#fff;border:1px solid #3a4f63;padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer}
+  header button:hover{background:#314558}
+  .app{display:flex;max-width:1200px;margin:0 auto}
+  aside.side{width:215px;flex:none;background:#fff;border-right:1px solid var(--line);padding:10px 8px;position:sticky;top:42px;height:calc(100vh - 42px);overflow:auto}
+  .side .grp{font:700 10px var(--sans);text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:13px 10px 4px}
+  .side a{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:7px 10px;border-radius:7px;font-size:13px;color:var(--ink2);cursor:pointer}
+  .side a:hover{background:var(--panel)}
+  .side a.active{background:var(--blue-l);color:var(--blue-d);font-weight:600}
+  .side a .dot{width:7px;height:7px;border-radius:50%;background:var(--line);flex:none}
+  .side a.done .dot{background:var(--ok)}
+  main{flex:1;min-width:0;padding:20px 22px 90px}
+  @media(max-width:820px){
+    .app{flex-direction:column}
+    aside.side{width:auto;height:auto;position:sticky;top:42px;z-index:20;display:flex;flex-wrap:nowrap;overflow-x:auto;border-right:none;border-bottom:1px solid var(--line);padding:6px}
+    .side .grp{display:none}.side a{white-space:nowrap}.side a .dot{display:none}
+    main{padding:16px}
+  }
+  .tab{display:none}.tab.active{display:block}
+  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:18px}
+  .card>h2{font-size:15.5px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .card>h2 .tag{font:600 10px var(--sans);background:var(--blue-l);color:var(--blue-d);padding:2px 7px;border-radius:20px;letter-spacing:.03em}
+  .card>p.norme{color:var(--muted);font-size:12px;margin:.35em 0 14px}
+  .grid{display:grid;gap:12px 16px}
+  .g2{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:720px){.g2,.g3,.g4{grid-template-columns:1fr 1fr}}
+  @media(max-width:460px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink2)}
+  label.f .u{color:var(--muted);font-weight:400}
+  input,select,textarea{font-family:inherit;font-size:13.5px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);width:100%}
+  input[type=number]{font-family:var(--mono)}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--blue-l);border-color:var(--blue)}
+  input[readonly]{background:var(--panel);font-weight:600;color:var(--ink)}
+  .btn{display:inline-flex;align-items:center;gap:7px;background:var(--blue);color:#fff;border:none;padding:8px 14px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .btn:hover{background:var(--blue-d)}.btn.sec{background:#fff;color:var(--blue);border:1px solid var(--blue)}.btn.sec:hover{background:var(--blue-l)}
+  .btn.ghost{background:#fff;color:var(--ink2);border:1px solid var(--line)}.btn.ghost:hover{background:var(--panel)}
+  .btn.sm{padding:5px 9px;font-size:12px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{border:1px solid var(--line2);padding:5px 7px;text-align:center}
+  th{background:var(--panel2);font-weight:600;color:var(--ink2);font-size:11.5px}
+  td.lab{background:var(--panel2);font-weight:600;color:var(--ink2);text-align:left;white-space:nowrap}
+  td input{border:none;border-radius:0;text-align:center;padding:5px;background:transparent}
+  td input:focus{outline:1.5px solid var(--blue)}
+  td.calc{background:var(--panel);font-family:var(--mono);font-weight:600}
+  .readout{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}
+  .chip{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 12px;min-width:88px}
+  .chip .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .chip .v{font-size:16px;font-weight:700;font-family:var(--mono);color:var(--ink)}
+  .chip .v small{font-size:10.5px;color:var(--muted);font-weight:400}
+  .chip.hot{background:var(--ok-l);border-color:#bcdcc8}.chip.hot .v{color:var(--ok)}
+  .verdict{display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:linear-gradient(180deg,#fff,var(--panel));border:1px solid var(--line);border-radius:12px;padding:18px}
+  .classbadge{font:800 36px/1 var(--mono);background:var(--ink);color:var(--badge);padding:16px 22px;border-radius:12px;min-width:115px;text-align:center}
+  .verdict .desc{flex:1;min-width:200px}.verdict .desc h3{font-size:17px}.verdict .desc p{margin:4px 0 0;color:var(--ink2)}
+  .pathbox{margin-top:14px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .pathbox .h{background:var(--panel2);padding:7px 12px;font-size:12px;font-weight:600;color:var(--ink2)}
+  .pathbox ol{margin:0;padding:10px 12px 10px 30px;font-size:13px;color:var(--ink2)}.pathbox li{margin:3px 0}
+  .alert{border-radius:8px;padding:10px 13px;font-size:12.5px;margin-top:10px;border:1px solid}
+  .alert.warn{background:var(--warn-l);border-color:#e8cf9a;color:#6b4310}
+  .alert.info{background:var(--blue-l);border-color:#bcd6e6;color:var(--blue-d)}
+  .alert.ok{background:var(--ok-l);border-color:#bcdcc8;color:#1f5536}
+  .alert b{display:block;margin-bottom:2px}
+  .sub{font-size:12px;color:var(--muted)}.hint{font-size:11.5px;color:var(--muted);margin-top:6px}
+  canvas{max-width:100%;background:#fff;border:1px solid var(--line2);border-radius:8px}
+  .pillrow{display:flex;gap:6px;flex-wrap:wrap}
+  .pill{padding:5px 11px;border:1px solid var(--line);border-radius:20px;font-size:12px;cursor:pointer;background:#fff}
+  .pill.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+  details{border:1px solid var(--line);border-radius:9px;margin-top:12px;background:#fff}
+  details>summary{padding:9px 13px;cursor:pointer;font-weight:600;font-size:13px;color:var(--ink2)}
+  details[open]>summary{border-bottom:1px solid var(--line2)}details .body{padding:14px}
+  .slist{display:flex;flex-direction:column;gap:8px}
+  .sitem{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:9px;padding:10px 14px}
+  .sitem .mini{font:700 14px var(--mono);background:var(--ink);color:var(--badge);padding:5px 9px;border-radius:7px;min-width:66px;text-align:center}
+  .sitem .meta{flex:1}.sitem .meta b{font-size:13.5px}.sitem .meta span{display:block;color:var(--muted);font-size:11.5px}
+  .empty{color:var(--muted);text-align:center;padding:28px;border:1px dashed var(--line);border-radius:10px}
+  .recap{width:100%}.recap td,.recap th{text-align:left}.recap td:last-child{text-align:right;font-family:var(--mono);font-weight:600}
+  .specbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--ink2);margin-bottom:14px}
+  .specbox b{color:var(--ink)}
+  footer{text-align:center;color:var(--muted);font-size:11px;padding:18px}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;opacity:0;transition:.25s;z-index:60;pointer-events:none}
+  .toast.show{opacity:1}
+  /* encadré Résultats (style fiche) */
+  .resbox{margin-top:16px;display:flex;justify-content:center}
+  .restab{width:auto;border-collapse:collapse;min-width:340px}
+  .restab th{background:var(--ok-l);color:#1f5536;font-size:12px;padding:8px 22px;border:1px solid #bcdcc8;letter-spacing:.02em}
+  .restab td{padding:10px 22px;font-family:var(--mono);font-weight:700;font-size:16px;border:1px solid #bcdcc8;color:var(--ink);text-align:center;background:#fafdfb}
+  .restab td.lab{background:var(--ok-l);color:#1f5536;font-family:var(--sans);font-size:12.5px}
+  /* ===== PV (procès-verbal) : en-tête labo + visa, masqués à l'écran ===== */
+  .pvonly{display:none}
+  @media print{
+    @page{margin:12mm 12mm 14mm}
+    header,aside.side,.noprint,footer{display:none!important}
+    main{padding:0}
+    .tab{display:none!important}
+    .tab.pv-show{display:block!important;break-before:page}
+    .tab.pv-show:first-of-type{break-before:auto}
+    .card{break-inside:avoid;border-color:#c2cdd7;box-shadow:none}
+    details,canvas,table,.readout{break-inside:avoid}
+    .pill:not(.on){display:none!important}
+    .hint,#topnote{display:none!important}
+    .pvonly{display:block}
+    /* lettre-en-tête répétée en tête de chaque fiche */
+    .pv-head{border:1.6px solid var(--ink);border-radius:7px;margin:0 0 12px;overflow:hidden}
+    .pvh-top{display:flex;align-items:stretch}
+    .pvh-top>div{padding:7px 11px;display:flex;flex-direction:column;justify-content:center}
+    .pvh-lab{width:27%;border-right:1.6px solid var(--ink);align-items:center;text-align:center}
+    .pvh-labname{font-weight:800;font-size:16px;letter-spacing:.01em;color:var(--ink);line-height:1.05}
+    .pvh-labsub{font-size:8.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;margin-top:2px}
+    .pvh-mid{flex:1;align-items:center;text-align:center;gap:1px}
+    .pvh-banner{font-size:8.5px;letter-spacing:.16em;color:var(--muted);text-transform:uppercase}
+    .pvh-sub{font-weight:700;font-size:13.5px;color:var(--ink);margin:1px 0}
+    .pvh-norm{font-size:10px;color:var(--ink2)}
+    .pvh-cli{width:23%;border-left:1.6px solid var(--ink);align-items:center;text-align:center}
+    .pvh-clilab{font-size:8.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.09em}
+    .pvh-cliname{font-weight:700;font-size:12.5px;color:var(--ink);margin-top:2px}
+    .pvh-meta{display:flex;flex-wrap:wrap;gap:2px 18px;border-top:1.6px solid var(--ink);padding:5px 11px;background:var(--panel)}
+    .pvh-meta span{font-size:10.5px;color:var(--ink2)}
+    .pvh-meta b{color:var(--ink)}
+    /* bloc visa / signature en pied de fiche */
+    .pv-foot{margin-top:16px;display:flex;justify-content:flex-end}
+    .pvf-sig{text-align:center;min-width:240px;border:1px solid var(--line);border-radius:7px;padding:7px 14px 10px}
+    .pvf-role{font-size:10.5px;color:var(--ink2)}
+    .pvf-name{font-weight:700;font-size:13px;color:var(--ink);margin-top:26px;border-top:1px dotted var(--line);padding-top:4px}
+    .card>p.norme{font-size:10px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">FAST<b>LAB</b></div>
+  <div class="sub">Traitement des essais & classification GTR · NF&nbsp;P&nbsp;11-300</div>
+  <div class="spacer"></div>
+  <button onclick="newSample()">＋ Nouvel essai</button>
+  <button onclick="loadDemo()" title="Charger un échantillon fictif de démonstration">🧪 Exemple fictif</button>
+  <button onclick="saveSample()">💾 Enregistrer</button>
+  <button onclick="printPV()">🖨 PV</button>
+</header>
+
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <main id="main">
+
+  <div class="alert info noprint" id="topnote">
+    <b>Saisie 100 % numérique</b>
+    Remplissez les valeurs <b>mesurées</b> (masses, hauteurs, enfoncements, forces, couples…). Les feuilles CBR/IPI, cisaillement direct et masse volumique apparente suivent NF EN 13286-47, NF EN ISO 17892-10 et NF EN ISO 17892-2. Le bouton <b>🖨 PV</b> génère automatiquement un rapport (Imprimer → Enregistrer en PDF) ne contenant que les feuilles renseignées et la classification GTR.
+  </div>
+
+  <!-- IDENTIFICATION -->
+  <section class="tab active" data-tab="ident">
+    <div class="card">
+      <h2>Identification de l'échantillon <span class="tag">EN-TÊTE PV</span></h2>
+      <p class="norme">Informations communes à toutes les feuilles d'essai.</p>
+      <div class="grid g3">
+        <label class="f">Référence<input class="save" id="m_ref" placeholder="ex. SC2-0,80m"></label>
+        <label class="f">Chantier / Projet<input class="save" id="m_chantier" placeholder="ex. RN1 — Lot 3"></label>
+        <label class="f">Client / Maître d'ouvrage<input class="save" id="m_client" placeholder="ex. ECTC"></label>
+        <label class="f">N° de dossier<input class="save" id="m_dossier" placeholder="ex. 2020-305"></label>
+        <label class="f">Localisation / PK<input class="save" id="m_pk"></label>
+        <label class="f">Profondeur<input class="save" id="m_prof"></label>
+        <label class="f">Date de prélèvement<input class="save" id="m_date" type="date"></label>
+        <label class="f">Date d'essai<input class="save" id="m_dessai" type="date"></label>
+        <label class="f">Technicien<input class="save" id="m_op"></label>
+        <label class="f">Ingénieur chargé de l'étude (visa)<input class="save" id="m_ing" placeholder="ex. M. SAKHO"></label>
+        <label class="f">Laboratoire<input class="save" id="m_labo"></label>
+        <label class="f">Nature présumée<input class="save" id="m_nature" placeholder="ex. limon argileux brun"></label>
+        <label class="f">Famille géologique (rocheux)
+          <select class="save" id="m_geo">
+            <option value="">— non rocheux / inconnu —</option>
+            <option value="R1">R1 — Craies</option><option value="R2">R2 — Calcaires</option>
+            <option value="R3">R3 — Roches argileuses (marnes)</option><option value="R4">R4 — Roches siliceuses</option>
+            <option value="R5">R5 — Roches salines</option><option value="R6">R6 — Magmatiques / métamorphiques</option>
+          </select>
+        </label>
+      </div>
+      <label class="f" style="margin-top:12px">Observations<textarea class="save" id="m_obs" rows="2"></textarea></label>
+    </div>
+  </section>
+
+  <!-- TENEUR EN EAU -->
+  <section class="tab" data-tab="w">
+    <div class="card">
+      <h2>Teneur en eau <span class="tag">NF EN ISO 17892-1</span></h2>
+      <p class="norme">w = (m<sub>humide</sub> − m<sub>sec</sub>) / (m<sub>sec</sub> − m<sub>tare</sub>) × 100. Jusqu'à 3 prises, moyenne retenue.</p>
+      <table>
+        <thead><tr><th>Prise</th><th>Tare (g)</th><th>Humide+tare (g)</th><th>Sec+tare (g)</th><th>w (%)</th></tr></thead>
+        <tbody id="wbody"></tbody>
+      </table>
+      <div class="readout" id="out_w"></div>
+      <div class="hint">La teneur en eau moyenne sert d'état hydrique (w<sub>n</sub>) dans la classification.</div>
+    </div>
+  </section>
+
+  <!-- GRANULO -->
+  <section class="tab" data-tab="gran">
+    <div class="card">
+      <h2>Analyse granulométrique <span class="tag">NF EN ISO 17892-4 / EN 933-1</span></h2>
+      <p class="norme">Masse sèche totale + refus partiel par tamis → passant cumulé, D<sub>max</sub>, tamisat 80&nbsp;µm et 2&nbsp;mm. Le <b>module de finesse</b> (AFNOR : Σ refus cumulés sur 0,16·0,315·0,63·1,25·2,5·5&nbsp;mm ÷ 100) n'est affiché que pour les <b>sables</b> (fines ≤ 12 %, D<sub>max</sub> ≤ 8&nbsp;mm) : très fin ≤ 2,2 ; idéal 2,2–2,8 ; grossier &gt; 2,8.</p>
+      <div class="grid g3" style="max-width:520px">
+        <label class="f">Masse sèche totale M <span class="u">g</span><input class="save" id="gr_M" type="number" step="0.1"></label>
+        <label class="f">Refus en fond de colonne <span class="u">g (info)</span><input class="save" id="gr_fond" type="number" step="0.1"></label>
+      </div>
+      <div style="overflow-x:auto;margin-top:12px">
+        <table id="grtab">
+          <thead><tr><th>Tamis (mm)</th><th>Refus partiel (g)</th><th>Refus cumulé (g)</th><th>Passant cumulé (%)</th></tr></thead>
+          <tbody id="grbody"></tbody>
+        </table>
+      </div>
+      <div class="readout" id="out_gran"></div>
+      <div style="margin-top:14px"><canvas id="gcurve" width="900" height="300"></canvas></div>
+    </div>
+  </section>
+
+  <!-- ATTERBERG (Casagrande NF P 94-051) -->
+  <section class="tab" data-tab="att">
+    <div class="card">
+      <h2>Limites d'Atterberg <span class="tag">NF P 94-051</span></h2>
+      <p class="norme">Sur la fraction 0/400&nbsp;µm. Limite de liquidité <b>à la coupelle de Casagrande</b> (w<sub>L</sub> à 25 chocs, ≥ 4 points, droite moyenne sur (lg&nbsp;N, w)) ; limite de plasticité au rouleau Ø3&nbsp;mm (2 déterminations). I<sub>p</sub> = w<sub>L</sub> − w<sub>P</sub> ; I<sub>c</sub> = (w<sub>L</sub> − w) / I<sub>p</sub>.</p>
+      <div class="specbox" id="ll_spec"></div>
+
+      <h3 style="font-size:13.5px;margin-bottom:8px">Limite de liquidité w<sub>L</sub> — méthode Casagrande, ≥ 4 points encadrant 25 chocs</h3>
+      <div style="overflow-x:auto">
+        <table id="lltab">
+          <thead><tr><th>Point</th><th id="ll_xh">Nombre de chocs N</th><th>Tare (g)</th><th>Humide+tare (g)</th><th>Sec+tare (g)</th><th>w (%)</th></tr></thead>
+          <tbody id="llbody"></tbody>
+        </table>
+      </div>
+      <div class="hint">N doivent <b>encadrer 25</b> et rester compris entre <b>15 et 35</b> ; écart entre deux N consécutifs ≤ 10 ; écart w mesuré/calculé ≤ 3 % par point (§6.1).</div>
+      <div class="readout" id="out_ll"></div>
+      <div style="margin-top:12px"><canvas id="llcurve" width="800" height="280"></canvas></div>
+
+      <h3 style="font-size:13.5px;margin:18px 0 8px">Limite de plasticité w<sub>P</sub> — 2 déterminations (rouleaux Ø3 mm)</h3>
+      <table id="pltab">
+        <thead><tr><th>Détermination</th><th>Tare (g)</th><th>Humide+tare (g)</th><th>Sec+tare (g)</th><th>w<sub>P</sub> (%)</th></tr></thead>
+        <tbody id="plbody"></tbody>
+      </table>
+      <label class="f" style="flex-direction:row;align-items:center;gap:8px;font-size:13px;margin-top:10px">
+        <input type="checkbox" id="pl_np" class="save" style="width:auto" onchange="recalc()"> Sol <b>non plastique</b> (rouleaux Ø3 mm impossibles)
+      </label>
+      <div class="readout" id="out_att"></div>
+      <h3 style="font-size:13.5px;margin:18px 0 8px">Diagramme de plasticité (ligne A de Casagrande)</h3>
+      <canvas id="plastchart" width="700" height="320"></canvas>
+    </div>
+  </section>
+
+  <!-- VBS -->
+  <section class="tab" data-tab="vbs">
+    <div class="card">
+      <h2>Valeur de Bleu de méthylène (VBS) <span class="tag">NF P 94-068</span></h2>
+      <p class="norme">Sur la fraction 0/5 mm. M<sub>b</sub> = V·C/1000 (masse de bleu introduite, g) ; VBS<sub>0/5</sub> = M<sub>b</sub> / M<sub>1</sub> × 100 (M<sub>1</sub> = masse sèche de la prise) ; VBS du sol = VBS<sub>0/5</sub> × proportion de 0/5 dans le 0/D. <b>Deux déterminations</b>, moyenne retenue. Concentration usuelle C = 10 g/L ; le volume V doit dépasser 10 mL.</p>
+      <div class="grid g3" style="max-width:240px;margin-bottom:12px">
+        <label class="f">Concentration C <span class="u">g/L</span><input class="save" id="v_conc" type="number" step="1" value="10" oninput="recalc()"></label>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="vbstab" style="max-width:560px">
+          <thead><tr><th style="text-align:left">Paramètre</th><th>Essai 1</th><th>Essai 2</th></tr></thead>
+          <tbody>
+            <tr><td class="lab">Masse de la prise d'essai (g)</td><td><input class="save" id="v_prise1" type="number" step="0.1"></td><td><input class="save" id="v_prise2" type="number" step="0.1"></td></tr>
+            <tr><td class="lab">Fraction 0/5 dans 0/D (%)</td><td><input class="save" id="v_frac1" type="number" step="1" placeholder="100"></td><td><input class="save" id="v_frac2" type="number" step="1" placeholder="100"></td></tr>
+            <tr><td class="lab">Teneur en eau w (%)</td><td><input class="save" id="v_w1" type="number" step="0.1"></td><td><input class="save" id="v_w2" type="number" step="0.1"></td></tr>
+            <tr><td class="lab">Masse sèche M₁ (g)</td><td class="calc" id="v_M1_1">—</td><td class="calc" id="v_M1_2">—</td></tr>
+            <tr><td class="lab">Volume de bleu introduit V (mL)</td><td><input class="save" id="v_V1" type="number" step="0.5"></td><td><input class="save" id="v_V2" type="number" step="0.5"></td></tr>
+            <tr><td class="lab">Masse de bleu M<sub>b</sub> (g)</td><td class="calc" id="v_Mb1">—</td><td class="calc" id="v_Mb2">—</td></tr>
+            <tr><td class="lab">VBS de la fraction 0/5</td><td class="calc" id="v_v05_1">—</td><td class="calc" id="v_v05_2">—</td></tr>
+            <tr><td class="lab">VBS du sol</td><td class="calc" id="v_vsol1">—</td><td class="calc" id="v_vsol2">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <label class="f" style="max-width:240px;margin-top:10px">Saisie directe VBS <span class="u">prioritaire</span><input class="save" id="v_manual" type="number" step="0.01"></label>
+      <div class="readout" id="out_vbs"></div>
+    </div>
+  </section>
+
+  <!-- rho_s -->
+  <section class="tab" data-tab="rhos">
+    <div class="card">
+      <h2>Masse volumique des particules solides ρ<sub>s</sub> <span class="tag">NF EN ISO 17892-3</span></h2>
+      <p class="norme">Méthode du pycnomètre à liquide (Formule 3) : ρ<sub>s</sub> = m<sub>4</sub>·ρ<sub>L</sub> / [ (m<sub>1</sub>−m<sub>0</sub>) − (m<sub>3</sub>−m<sub>2</sub>) ]. Au moins <b>deux déterminations</b> ; elles doivent concorder à <b>0,03 Mg/m³</b> près, sinon répéter l'essai. m<sub>d</sub> ≥ 10 g, passant à 4 mm (pycnomètre 50 ml).</p>
+      <div class="row" style="margin-bottom:8px">
+        <div>
+          <div class="sub" style="margin-bottom:5px">Préparation de l'éprouvette :</div>
+          <div class="pillrow" id="rsmethod">
+            <span class="pill on" data-m="A">Méthode A — séchée à l'étuve</span>
+            <span class="pill" data-m="B">Méthode B — humide</span>
+          </div>
+        </div>
+      </div>
+      <div class="grid g4" style="max-width:680px">
+        <label class="f">Liquide d'essai
+          <select class="save" id="rs_liq" onchange="recalc()">
+            <option value="water">Eau distillée/déionisée</option>
+            <option value="other">Autre liquide (ρ saisie)</option>
+          </select>
+        </label>
+        <label class="f">Température d'essai T <span class="u">°C</span><input class="save" id="rs_T" type="number" step="0.1" value="20" oninput="recalc()"></label>
+        <label class="f">ρ<sub>L</sub> liquide <span class="u">Mg/m³</span><input class="save" id="rs_rL" type="number" step="0.0001" placeholder="auto si eau"></label>
+        <label class="f">ρ<sub>w</sub>(T) calculée <span class="u">Mg/m³</span><input id="rs_rwT" readonly></label>
+      </div>
+      <h3 style="font-size:13.5px;margin:12px 0 8px">Pesées (g) — une ligne par détermination</h3>
+      <div style="overflow-x:auto">
+        <table id="rstab">
+          <thead><tr>
+            <th>Dét.</th>
+            <th>m<sub>0</sub><br>pycno sec</th>
+            <th>m<sub>1</sub><br>pycno+liquide</th>
+            <th id="rs_h3col">m<sub>2</sub><br>pycno+sol sec</th>
+            <th>m<sub>3</sub><br>pycno+sol+liquide</th>
+            <th>m<sub>d</sub> (g)</th>
+            <th>ρ<sub>s</sub> (Mg/m³)</th>
+          </tr></thead>
+          <tbody id="rsbody"></tbody>
+        </table>
+      </div>
+      <div class="hint">Méthode B : la 4<sup>e</sup> colonne reçoit m<sub>4</sub> (masse sèche pesée après essai) ; m<sub>2</sub>=m<sub>4</sub>+m<sub>0</sub> (Formule 2).</div>
+      <div class="readout" id="out_rhos"></div>
+    </div>
+  </section>
+
+  <!-- PROCTOR (détaillé) -->
+  <section class="tab" data-tab="proctor">
+    <div class="card">
+      <h2>Essai Proctor <span class="tag">NF EN 13286-2</span></h2>
+      <p class="norme">Pour chaque point : ρ<sub>d</sub> = (m<sub>humide</sub>/V) / (1 + w/100). Optimum (w<sub>OPN</sub>, ρ<sub>d max</sub>) ajusté par parabole. Couches et coups imposés par le Tableau 5 (rappelés ci-dessous selon le moule). Répartir les coups uniformément ; la chute doit rester libre.</p>
+      <div class="row" style="margin-bottom:6px">
+        <div>
+          <div class="sub" style="margin-bottom:5px">Type d'essai :</div>
+          <div class="pillrow" id="prtype">
+            <span class="pill on" data-t="n">Proctor normal (2,5 kg)</span>
+            <span class="pill" data-t="m45">Modifié (4,5 kg)</span>
+            <span class="pill" data-t="m15">Modifié (15 kg)</span>
+          </div>
+        </div>
+      </div>
+      <div class="grid g4" style="max-width:640px;margin-top:8px">
+        <label class="f">Moule
+          <select class="save" id="pr_mould" onchange="setMould();recalc()">
+            <option value="A">A — Ø101,6 × h116,4</option>
+            <option value="B">B — Ø152 × h116,4</option>
+            <option value="C">C — Ø250 × h200</option>
+          </select>
+        </label>
+        <label class="f">Ø moule <span class="u">cm</span><input class="save" id="pr_d" type="number" step="0.1" oninput="recalc()"></label>
+        <label class="f">Hauteur <span class="u">cm</span><input class="save" id="pr_hh" type="number" step="0.1" oninput="recalc()"></label>
+        <label class="f">Volume V <span class="u">cm³ (calculé)</span><input id="pr_V" readonly></label>
+      </div>
+      <div class="specbox" id="pr_spec"></div>
+      <h3 style="font-size:13.5px;margin-bottom:8px">Points de compactage</h3>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Pt</th><th>Masse humide nette (g)</th><th>Tare (g)</th><th>Hum.+tare (g)</th><th>Sec+tare (g)</th><th>w (%)</th><th>ρ<sub>d</sub> (t/m³)</th></tr></thead>
+          <tbody id="prbody"></tbody>
+        </table>
+      </div>
+      <div class="readout" id="out_proctor"></div>
+      <div style="margin-top:14px"><canvas id="pcurve" width="800" height="300"></canvas></div>
+    </div>
+  </section>
+
+  <!-- CBR (après immersion, à différentes énergies) -->
+  <section class="tab" data-tab="cbr">
+    <div class="card">
+      <h2>Indice CBR — à différentes énergies <span class="tag">NF P 94-078</span></h2>
+      <p class="norme">3 moules compactés à <b>10 / 25 / 55 coups</b>/couche. Par moule : densité sèche puis compacité = ρ<sub>d</sub>/ρ<sub>d&nbsp;max&nbsp;OPM</sub>×100. CBR<sub>2,5</sub> = F<sub>2,5</sub>/F<sub>réf&nbsp;2,5</sub>×100, CBR<sub>5,0</sub> = F<sub>5,0</sub>/F<sub>réf&nbsp;5,0</sub>×100, CBR retenu = le plus élevé. L'<b>I.CBR à 95 % OPM</b> est interpolé sur la droite CBR–compacité. Réf. : <b>13,35&nbsp;kN</b> (2,5&nbsp;mm) et <b>20&nbsp;kN</b> (5,0&nbsp;mm).</p>
+      <div class="row" style="margin-bottom:8px">
+        <div>
+          <div class="sub" style="margin-bottom:5px">Type d'essai :</div>
+          <div class="pillrow" id="cbtype">
+            <span class="pill on" data-c="cbr">CBR — après immersion (4 j)</span>
+            <span class="pill" data-c="ipi">IPI — portance immédiate (sans immersion)</span>
+          </div>
+        </div>
+      </div>
+
+      <h3 style="font-size:13.5px;margin:6px 0 8px">Référence Proctor (OPM) &amp; paramètres</h3>
+      <div class="grid g4" style="max-width:920px">
+        <label class="f">ρ<sub>d max</sub> OPM <span class="u">Mg/m³ (vide = Proctor)</span><input class="save" id="cb_ydmax" type="number" step="0.001" oninput="recalc()"></label>
+        <label class="f">w<sub>OPM</sub> <span class="u">% (vide = Proctor)</span><input class="save" id="cb_wopt" type="number" step="0.1" oninput="recalc()"></label>
+        <label class="f">Compacité cible <span class="u">% OPM</span><input class="save" id="cb_cible" type="number" step="1" value="95" oninput="recalc()"></label>
+        <label class="f">ρ<sub>d</sub> du CBR <span class="u">Mg/m³ (calc.)</span><input id="cb_ydcbr" readonly></label>
+        <label class="f">Réf. 2,5 mm <span class="u">kN</span><input class="save" id="cb_s25" type="number" step="0.001" value="13.35"></label>
+        <label class="f">Réf. 5,0 mm <span class="u">kN</span><input class="save" id="cb_s5" type="number" step="0.001" value="20"></label>
+        <label class="f">Constante anneau K <span class="u">kN/division (1 = saisie kN)</span><input class="save" id="cb_K" type="number" step="0.0001" value="1" oninput="recalc()"></label>
+      </div>
+      <div class="hint" id="cb_opmsrc"></div>
+
+      <h3 style="font-size:13.5px;margin:14px 0 8px">Mise en place — densité &amp; compacité des 3 moules</h3>
+      <div style="overflow-x:auto">
+        <table id="cbmould">
+          <thead><tr><th>Coups</th><th>Poids total humide (g)</th><th>Poids moule (g)</th><th>Poids net (g)</th><th>Volume moule (cm³)</th><th>w moulage (%)</th><th>ρ<sub>h</sub> (t/m³)</th><th>ρ<sub>d</sub> (t/m³)</th><th>Compacité (%)</th></tr></thead>
+          <tbody id="cbmbody"></tbody>
+        </table>
+      </div>
+
+      <div id="cb_imm_block">
+        <h3 style="font-size:13.5px;margin:14px 0 8px">Imbibition — gonflement &amp; teneur en eau après immersion</h3>
+        <div style="overflow-x:auto">
+          <table id="cbimm">
+            <thead><tr><th>Coups</th><th>H₀ éprouvette (mm)</th><th>Gonflement ΔH (mm)</th><th>Gonflement (%)</th><th>w après immersion (%)</th></tr></thead>
+            <tbody id="cbibody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <h3 style="font-size:13.5px;margin:14px 0 8px">Poinçonnement — effort (kN ou lecture × K) par enfoncement</h3>
+      <div style="overflow-x:auto">
+        <table id="cbpen">
+          <thead><tr><th>Enf. (mm)</th><th>55 coups</th><th>25 coups</th><th>10 coups</th></tr></thead>
+          <tbody id="cbpbody"></tbody>
+          <tfoot>
+            <tr><td class="lab">CBR 2,5 mm</td><td class="calc" id="cb_c25_0">—</td><td class="calc" id="cb_c25_1">—</td><td class="calc" id="cb_c25_2">—</td></tr>
+            <tr><td class="lab">CBR 5,0 mm</td><td class="calc" id="cb_c5_0">—</td><td class="calc" id="cb_c5_1">—</td><td class="calc" id="cb_c5_2">—</td></tr>
+            <tr><td class="lab">CBR maxi</td><td class="calc" id="cb_maxi_0">—</td><td class="calc" id="cb_maxi_1">—</td><td class="calc" id="cb_maxi_2">—</td></tr>
+            <tr><td class="lab">Compacité (%)</td><td class="calc" id="cb_compf_0">—</td><td class="calc" id="cb_compf_1">—</td><td class="calc" id="cb_compf_2">—</td></tr>
+          </tfoot>
+        </table>
+      </div>
+      <div class="hint">CBR lus à 2,5 et 5,0 mm sur le tableau de poinçonnement. Si la courbe présente une concavité initiale, corriger l'origine avant lecture.</div>
+
+      <div class="readout" id="out_cbr"></div>
+      <div class="grid g2" style="margin-top:14px">
+        <div><canvas id="cb_pen" width="460" height="320"></canvas></div>
+        <div><canvas id="cb_var" width="460" height="320"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OEDO -->
+  <section class="tab" data-tab="oedo">
+    <div class="card">
+      <h2>Essai œdométrique par paliers <span class="tag">NF EN ISO 17892-5</span></h2>
+      <p class="norme">H<sub>s</sub> = m<sub>d</sub>/(ρ<sub>s</sub>·A)·1000 ; e<sub>0</sub> = (H<sub>0</sub>−H<sub>s</sub>)/H<sub>s</sub> = ρ<sub>s</sub>/ρ<sub>d</sub>−1 (Éq. 2). Par palier : H<sub>f</sub>=H<sub>0</sub>−ΔH, ε<sub>v</sub>=(H<sub>0</sub>−H<sub>f</sub>)/H<sub>0</sub> (Éq. 1), e<sub>f</sub>=(H<sub>f</sub>−H<sub>s</sub>)/H<sub>s</sub> (Éq. 3). C<sub>c</sub>=−δe/δlog σ′ (chargement vierge), C<sub>s</sub>=−δe/δlog σ′ (déchargement). Min. 7 paliers, charge doublée à chaque pas, anneau D/H ≥ 2,5.</p>
+      <div class="grid g4" style="max-width:760px">
+        <label class="f">Hauteur initiale H<sub>0</sub> <span class="u">mm</span><input class="save" id="oe_H0" type="number" step="0.01" oninput="recalc()"></label>
+        <label class="f">Diamètre anneau D <span class="u">mm</span><input class="save" id="oe_D" type="number" step="0.01" oninput="recalc()"></label>
+        <label class="f">Masse sèche m<sub>d</sub> <span class="u">g</span><input class="save" id="oe_md" type="number" step="0.01" oninput="recalc()"></label>
+        <label class="f">ρ<sub>s</sub> grains <span class="u">Mg/m³</span><input class="save" id="oe_rs" type="number" step="0.001" oninput="recalc()"></label>
+        <label class="f">Section A <span class="u">mm² (calc.)</span><input id="oe_A" readonly></label>
+        <label class="f">ρ<sub>d</sub> initiale <span class="u">Mg/m³ (calc.)</span><input id="oe_rd" readonly></label>
+        <label class="f">H<sub>s</sub> solides <span class="u">mm (calc.)</span><input id="oe_Hs" readonly></label>
+        <label class="f">e<sub>0</sub> <span class="u">ou saisie directe</span><input class="save" id="oe_e0" type="number" step="0.001" oninput="recalc()"></label>
+      </div>
+      <div class="hint">Si ρ<sub>s</sub>, m<sub>d</sub>, D et H<sub>0</sub> sont saisis, e<sub>0</sub> et H<sub>s</sub> sont calculés ; sinon, saisir e<sub>0</sub> directement (l'app utilise alors e=e<sub>0</sub>−(1+e<sub>0</sub>)·ΔH/H<sub>0</sub>).</div>
+      <h3 style="font-size:13.5px;margin:12px 0 8px">Paliers de chargement / déchargement</h3>
+      <div style="overflow-x:auto">
+        <table style="margin-top:4px">
+          <thead><tr><th>Palier</th><th>σ′ (kPa)</th><th>ΔH cumulé (mm)</th><th>H<sub>f</sub> (mm)</th><th>ε<sub>v</sub> (%)</th><th>indice des vides e</th></tr></thead>
+          <tbody id="oebody"></tbody>
+        </table>
+      </div>
+      <div class="readout" id="out_oedo"></div>
+      <div style="margin-top:14px"><canvas id="ocurve" width="800" height="300"></canvas></div>
+    </div>
+  </section>
+
+  <!-- UCS -->
+  <section class="tab" data-tab="ucs">
+    <div class="card">
+      <h2>Compression simple (R<sub>c</sub> / c<sub>u</sub>) <span class="tag">NF EN ISO 17892-7</span></h2>
+      <p class="norme">q<sub>u</sub> = F / A<sub>c</sub>, A<sub>c</sub> = A<sub>0</sub>/(1−ε). c<sub>u</sub> = q<sub>u</sub>/2.</p>
+      <div class="grid g4">
+        <label class="f">Diamètre d<sub>0</sub> <span class="u">mm</span><input class="save" id="uc_d" type="number" step="0.1"></label>
+        <label class="f">Hauteur h<sub>0</sub> <span class="u">mm</span><input class="save" id="uc_h" type="number" step="0.1"></label>
+        <label class="f">Force à la rupture F <span class="u">kN</span><input class="save" id="uc_f" type="number" step="0.001"></label>
+        <label class="f">Raccourcissement ΔL <span class="u">mm</span><input class="save" id="uc_dl" type="number" step="0.01"></label>
+      </div>
+      <div class="readout" id="out_ucs"></div>
+    </div>
+  </section>
+
+  <!-- TRIAXIAL UU -->
+  <section class="tab" data-tab="triuu">
+    <div class="card">
+      <h2>Triaxial UU <span class="tag">NF EN ISO 17892-8</span></h2>
+      <p class="norme">Sol saturé : φ<sub>u</sub> ≈ 0 ; c<sub>u</sub> = déviateur/2.</p>
+      <table>
+        <thead><tr><th>Éprouvette</th><th>σ<sub>3</sub> (kPa)</th><th>Déviateur rupture (kPa)</th><th>σ<sub>1</sub> (kPa)</th><th>c<sub>u</sub> (kPa)</th></tr></thead>
+        <tbody id="uubody"></tbody>
+      </table>
+      <div class="readout" id="out_triuu"></div>
+    </div>
+  </section>
+
+  <!-- TRIAXIAL CU -->
+  <section class="tab" data-tab="tricu">
+    <div class="card">
+      <h2>Triaxial CU / CD <span class="tag">NF EN ISO 17892-9</span></h2>
+      <p class="norme">Régression t = (σ'<sub>1</sub>−σ'<sub>3</sub>)/2 vs s' = (σ'<sub>1</sub>+σ'<sub>3</sub>)/2 ; φ' = arcsin(pente), c' = ordonnée/cos φ'.</p>
+      <table>
+        <thead><tr><th>Éprouvette</th><th>σ'<sub>3</sub> (kPa)</th><th>σ'<sub>1</sub> rupture (kPa)</th><th>s' (kPa)</th><th>t (kPa)</th></tr></thead>
+        <tbody id="cubody"></tbody>
+      </table>
+      <div class="readout" id="out_tricu"></div>
+    </div>
+  </section>
+
+  <!-- PERM -->
+  <section class="tab" data-tab="perm">
+    <div class="card">
+      <h2>Perméabilité k <span class="tag">NF EN ISO 17892-11</span></h2>
+      <p class="norme">Charge constante : k = V·L/(A·Δh·t). Charge variable : k = a·L/(A·t)·ln(h<sub>1</sub>/h<sub>2</sub>).</p>
+      <div class="pillrow" id="permmode" style="margin-bottom:12px">
+        <span class="pill on" data-pm="const">Charge constante</span>
+        <span class="pill" data-pm="var">Charge variable</span>
+      </div>
+      <div id="perm_const" class="grid g3">
+        <label class="f">Volume recueilli V <span class="u">cm³</span><input class="save" id="pe_V" type="number" step="0.1"></label>
+        <label class="f">Longueur L <span class="u">cm</span><input class="save" id="pe_L" type="number" step="0.1"></label>
+        <label class="f">Section A <span class="u">cm²</span><input class="save" id="pe_A" type="number" step="0.1"></label>
+        <label class="f">Charge Δh <span class="u">cm</span><input class="save" id="pe_dh" type="number" step="0.1"></label>
+        <label class="f">Durée t <span class="u">s</span><input class="save" id="pe_t" type="number" step="1"></label>
+      </div>
+      <div id="perm_var" class="grid g3" style="display:none">
+        <label class="f">Section tube a <span class="u">cm²</span><input class="save" id="pe_a" type="number" step="0.001"></label>
+        <label class="f">Longueur L <span class="u">cm</span><input class="save" id="pe_Lv" type="number" step="0.1"></label>
+        <label class="f">Section A <span class="u">cm²</span><input class="save" id="pe_Av" type="number" step="0.1"></label>
+        <label class="f">Durée t <span class="u">s</span><input class="save" id="pe_tv" type="number" step="1"></label>
+        <label class="f">h<sub>1</sub> <span class="u">cm</span><input class="save" id="pe_h1" type="number" step="0.1"></label>
+        <label class="f">h<sub>2</sub> <span class="u">cm</span><input class="save" id="pe_h2" type="number" step="0.1"></label>
+      </div>
+      <div class="readout" id="out_perm"></div>
+    </div>
+  </section>
+
+  <!-- ES -->
+  <section class="tab" data-tab="es">
+    <div class="card">
+      <h2>Équivalent de sable <span class="tag">NF EN 933-8</span></h2>
+      <p class="norme">SE = h<sub>2</sub> (niveau sable, piston) / h<sub>1</sub> (niveau total) × 100. Moyenne de 2 essais.</p>
+      <table>
+        <thead><tr><th>Essai</th><th>h<sub>1</sub> total (mm)</th><th>h<sub>2</sub> sable (mm)</th><th>SE (%)</th></tr></thead>
+        <tbody id="esbody"></tbody>
+      </table>
+      <div class="readout" id="out_es"></div>
+    </div>
+  </section>
+
+  <!-- LOS ANGELES (détaillé) -->
+  <section class="tab" data-tab="la">
+    <div class="card">
+      <h2>Los Angeles (LA) <span class="tag">NF EN 1097-2</span></h2>
+      <p class="norme">LA = (M − m) / M × 100, m = refus sur tamis 1,6&nbsp;mm. Résultat arrondi à l'entier.</p>
+      <div class="sub" style="margin-bottom:6px">Variante d'essai :</div>
+      <div class="pillrow" id="lavar" style="margin-bottom:6px">
+        <span class="pill on" data-v="std">Standard 10/14 (5000 g)</span>
+        <span class="pill" data-v="rb">Ballast 31,5/50 — LARB</span>
+        <span class="pill" data-v="alt">Autre fraction (Annexe B)</span>
+      </div>
+      <div class="specbox" id="la_spec"></div>
+      <div class="grid g4">
+        <label class="f">Masse initiale M <span class="u">g</span><input class="save" id="la_M" type="number" step="1"></label>
+        <label class="f">Refus &gt; 1,6 mm m <span class="u">g</span><input class="save" id="la_m" type="number" step="1"></label>
+        <label class="f">Nombre de boulets<input class="save" id="la_nb" type="number" step="1"></label>
+        <label class="f">Masse charge boulets <span class="u">g</span><input class="save" id="la_charge" type="number" step="1"></label>
+      </div>
+      <details>
+        <summary>Conformité granulaire de la prise d'essai</summary>
+        <div class="body grid g3">
+          <label class="f">Tamis intermédiaire <span class="u">mm</span><input class="save" id="la_ti" type="number" step="0.1" value="12.5"></label>
+          <label class="f">% passant mesuré<input class="save" id="la_pi" type="number" step="0.1"></label>
+          <div class="alert info" id="la_gran" style="margin:0;align-self:center">—</div>
+        </div>
+      </details>
+      <div class="readout" id="out_la"></div>
+    </div>
+  </section>
+
+  <!-- FRAGMENTATION SZ -->
+  <section class="tab" data-tab="sz">
+    <div class="card">
+      <h2>Fragmentation par impact (SZ) <span class="tag">NF EN 1097-2 §6</span></h2>
+      <p class="norme">10 coups (marteau 50 kg, 370 mm). SZ = (Σ % passant des 5 tamis) / 5. Moyenne sur 3 échantillons recommandée.</p>
+      <div class="grid g3" style="max-width:360px">
+        <label class="f">Masse initiale M <span class="u">g</span><input class="save" id="sz_M" type="number" step="0.1"></label>
+      </div>
+      <table style="margin-top:12px">
+        <thead><tr><th>Tamis (mm)</th><th>Masse refus (g)</th><th>% refus</th><th>% passant</th></tr></thead>
+        <tbody id="szbody"></tbody>
+      </table>
+      <div class="readout" id="out_sz"></div>
+    </div>
+  </section>
+
+  <!-- MICRO-DEVAL (détaillé) -->
+  <section class="tab" data-tab="mde">
+    <div class="card">
+      <h2>Micro-Deval (MDE) <span class="tag">NF EN 1097-1</span></h2>
+      <p class="norme">2 éprouvettes. Coefficient = (M − m) / M × 100 (m = refus sur 1,6&nbsp;mm), soit (500 − m)/5 pour la classe standard 10/14. Moyenne des 2 éprouvettes <b>arrondie à l'entier</b> (Art. 8). Méthode de référence en présence d'eau (MDE) ; à sec = MDS (Annexe B, informatif).</p>
+      <div class="row" style="margin-bottom:8px">
+        <div><div class="sub" style="margin-bottom:5px">Présentation :</div>
+          <div class="pillrow" id="mdemode">
+            <span class="pill on" data-md="norme">Norme — 2 éprouvettes</span>
+            <span class="pill" data-md="camp">Campagne CAFEC — MDS×2 + MDE×2</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="mde_norme">
+      <div class="row" style="margin-bottom:6px">
+        <div><div class="sub" style="margin-bottom:5px">Variante :</div>
+          <div class="pillrow" id="mdevar">
+            <span class="pill on" data-v="std">Standard 10/14 (500 g)</span>
+            <span class="pill" data-v="rb">Ballast 31,5/50 — MDE_RB</span>
+            <span class="pill" data-v="alt">Autre classe (Annexe C)</span>
+          </div>
+        </div>
+        <div><div class="sub" style="margin-bottom:5px">Condition :</div>
+          <div class="pillrow" id="mdewet">
+            <span class="pill on" data-w="h">Humide (MDE)</span>
+            <span class="pill" data-w="s">Sec (MDS)</span>
+          </div>
+        </div>
+      </div>
+      <div id="mde_altbox" class="grid g3" style="max-width:300px;margin:6px 0;display:none">
+        <label class="f">Classe granulaire (Annexe C)
+          <select class="save" id="mde_class" onchange="applyMdeVar();recalc()">
+            <option value="4/6.3">4/6,3 mm</option>
+            <option value="4/8">4/8 mm</option>
+            <option value="6.3/10">6,3/10 mm</option>
+            <option value="8/11.2">8/11,2 mm</option>
+            <option value="11.2/16">11,2/16 mm</option>
+          </select>
+        </label>
+      </div>
+      <div class="specbox" id="mde_spec"></div>
+      <table>
+        <thead><tr><th>Éprouvette</th><th>Masse initiale M (g)</th><th>Refus &gt; 1,6 mm m (g)</th><th>Coefficient</th></tr></thead>
+        <tbody id="mdebody"></tbody>
+      </table>
+      <div class="grid g3" style="margin-top:12px">
+        <label class="f">Charge billes <span class="u">g (Annexe C)</span><input class="save" id="mde_charge" type="number" step="1"></label>
+        <label class="f">Volume d'eau <span class="u">L</span><input class="save" id="mde_eau" type="number" step="0.1"></label>
+        <label class="f">Nombre de tours<input class="save" id="mde_tours" type="number" step="100"></label>
+      </div>
+      <details>
+        <summary>Conformité granulaire de la prise d'essai (Art. 6 / Annexe C)</summary>
+        <div class="body grid g3">
+          <label class="f">Tamis intermédiaire <span class="u">mm</span><input id="mde_ti" readonly></label>
+          <label class="f">% passant mesuré<input class="save" id="mde_pi" type="number" step="0.1" oninput="recalc()"></label>
+          <div class="alert info" id="mde_gran" style="margin:0;align-self:center">—</div>
+        </div>
+      </details>
+      <details>
+        <summary>Tableau C.1 — classes granulaires alternatives (charges abrasives)</summary>
+        <div class="body" style="overflow-x:auto">
+          <table>
+            <thead><tr><th>Classe (mm)</th><th>Tamis interm. (mm)</th><th>% passant</th><th>Charge abrasive (g)</th></tr></thead>
+            <tbody>
+              <tr><td>4 / 6,3</td><td>5</td><td>30–40</td><td>2000 ± 5</td></tr>
+              <tr><td>4 / 8</td><td>6,3</td><td>60–70</td><td>2800 ± 5</td></tr>
+              <tr><td>6,3 / 10</td><td>8</td><td>30–40</td><td>4000 ± 5</td></tr>
+              <tr><td>8 / 11,2</td><td>10</td><td>60–70</td><td>4400 ± 5</td></tr>
+              <tr><td>10 / 14 (réf.)</td><td>11,2 / 12,5</td><td>30–40 / 60–70</td><td>5000 ± 5</td></tr>
+              <tr><td>11,2 / 16</td><td>14</td><td>60–70</td><td>5400 ± 5</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+      <div class="readout" id="out_mde"></div>
+      <div class="resbox"><table class="restab"><tr><th id="mde_res_lbl">MDE</th></tr><tr><td id="mde_res_val">—</td></tr></table></div>
+      </div><!-- /mde_norme -->
+
+      <div id="mde_camp" style="display:none">
+        <p class="norme">Présentation type CAFEC : deux essais à sec (MDS) et deux en présence d'eau (MDE). Perte = (A − B)/A × 100 (B = refus 1,6&nbsp;mm). <b>CMDS</b> = moyenne des MDS ; <b>CMDE</b> = moyenne des MDE (valeur retenue pour la classification GTR) ; <b>CMD</b> = moyenne des quatre essais.</p>
+        <div style="overflow-x:auto">
+          <table id="mdecamptab">
+            <thead><tr><th>Essai</th><th>MDS 1</th><th>MDS 2</th><th>MDE 1</th><th>MDE 2</th></tr></thead>
+            <tbody>
+              <tr><td class="lab">Classe granulaire (mm)</td><td><input class="save" id="mc_cls0" type="text" style="text-align:center" placeholder="3/8"></td><td><input class="save" id="mc_cls1" type="text" style="text-align:center" placeholder="6/10"></td><td><input class="save" id="mc_cls2" type="text" style="text-align:center" placeholder="3/8"></td><td><input class="save" id="mc_cls3" type="text" style="text-align:center" placeholder="6/10"></td></tr>
+              <tr><td class="lab">Charge billes (g)</td><td><input class="save" id="mc_ch0" type="number" step="1"></td><td><input class="save" id="mc_ch1" type="number" step="1"></td><td><input class="save" id="mc_ch2" type="number" step="1"></td><td><input class="save" id="mc_ch3" type="number" step="1"></td></tr>
+              <tr><td class="lab">Nombre de rotations</td><td><input class="save" id="mc_rot0" type="number" step="100"></td><td><input class="save" id="mc_rot1" type="number" step="100"></td><td><input class="save" id="mc_rot2" type="number" step="100"></td><td><input class="save" id="mc_rot3" type="number" step="100"></td></tr>
+              <tr><td class="lab">Poids initial A (g)</td><td><input class="save" id="mc_A0" type="number" step="1"></td><td><input class="save" id="mc_A1" type="number" step="1"></td><td><input class="save" id="mc_A2" type="number" step="1"></td><td><input class="save" id="mc_A3" type="number" step="1"></td></tr>
+              <tr><td class="lab">Refus 1,6 mm — B (g)</td><td><input class="save" id="mc_B0" type="number" step="1"></td><td><input class="save" id="mc_B1" type="number" step="1"></td><td><input class="save" id="mc_B2" type="number" step="1"></td><td><input class="save" id="mc_B3" type="number" step="1"></td></tr>
+              <tr><td class="lab">Perte (A−B)/A ×100 (%)</td><td class="calc" id="mc_p0">—</td><td class="calc" id="mc_p1">—</td><td class="calc" id="mc_p2">—</td><td class="calc" id="mc_p3">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="readout" id="out_mdecamp"></div>
+        <div class="resbox"><table class="restab"><tr><th>CMDS (%)</th><th>CMDE (%)</th><th>CMD (%)</th></tr><tr><td id="mc_cmds">—</td><td id="mc_cmde">—</td><td id="mc_cmd">—</td></tr></table></div>
+      </div><!-- /mde_camp -->
+      <input id="mde_present" type="hidden">
+    </div>
+  </section>
+
+  <!-- RHO & ABS -->
+  <section class="tab" data-tab="rho">
+    <div class="card">
+      <h2>Masse volumique & absorption des granulats <span class="tag">NF EN 1097-6</span></h2>
+      <p class="norme">Méthode au pycnomètre. WA<sub>24</sub> = 100·(M<sub>1</sub>−M<sub>4</sub>)/M<sub>4</sub>.</p>
+      <div class="grid g4">
+        <label class="f">M₁ — surface sèche (SSD) <span class="u">g</span><input class="save" id="ra_M1" type="number" step="0.1"></label>
+        <label class="f">M₂ — pycno+granulat+eau <span class="u">g</span><input class="save" id="ra_M2" type="number" step="0.1"></label>
+        <label class="f">M₃ — pycno+eau <span class="u">g</span><input class="save" id="ra_M3" type="number" step="0.1"></label>
+        <label class="f">M₄ — séché à l'étuve <span class="u">g</span><input class="save" id="ra_M4" type="number" step="0.1"></label>
+        <label class="f">ρ<sub>w</sub> <span class="u">Mg/m³</span><input class="save" id="ra_rw" type="number" step="0.001" value="0.998"></label>
+      </div>
+      <div class="readout" id="out_rho"></div>
+    </div>
+  </section>
+
+  <!-- SULFATES -->
+  <section class="tab" data-tab="sulf">
+    <div class="card">
+      <h2>Teneur en sulfates <span class="tag">NF EN 1744-1</span></h2>
+      <p class="norme">Gravimétrie (précipité BaSO₄). SO₃ % = facteur · m<sub>BaSO₄</sub> / m<sub>prise</sub> × 100 (facteur 0,343).</p>
+      <div class="grid g4">
+        <label class="f">Précipité BaSO₄ <span class="u">g</span><input class="save" id="su_ba" type="number" step="0.0001"></label>
+        <label class="f">Prise d'essai <span class="u">g</span><input class="save" id="su_M" type="number" step="0.01"></label>
+        <label class="f">Facteur BaSO₄→SO₃<input class="save" id="su_f" type="number" step="0.001" value="0.343"></label>
+        <label class="f">Type
+          <select class="save" id="su_type"><option value="AS">Solubles acide (AS)</option><option value="SS">Solubles eau (SS)</option></select>
+        </label>
+      </div>
+      <div class="readout" id="out_sulf"></div>
+    </div>
+  </section>
+
+  <!-- CISAILLEMENT DIRECT -->
+  <section class="tab" data-tab="cisail">
+    <div class="card">
+      <h2>Cisaillement direct (c′, φ′) <span class="tag">NF EN ISO 17892-10</span></h2>
+      <p class="norme">Boîte : τ = P/A (Form. 9), σ′<sub>v</sub> = N/A (Form. 10). Annulaire : τ = 3M<sub>t</sub> / [2π(R<sub>a</sub>³ − R<sub>i</sub>³)] (Form. 11). Au moins <b>3 éprouvettes</b> sous contraintes verticales différentes ; régression τ = σ′<sub>v</sub>·tan φ′ + c′ (Annexe B). La résistance résiduelle τ<sub>R</sub> donne φ′<sub>R</sub>, c′<sub>R</sub>.</p>
+      <div class="row" style="margin-bottom:8px">
+        <div>
+          <div class="sub" style="margin-bottom:5px">Dispositif :</div>
+          <div class="pillrow" id="cimethod">
+            <span class="pill on" data-m="box">Boîte de cisaillement</span>
+            <span class="pill" data-m="ring">Cisaillement annulaire</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="ci_box_geom" class="grid g4" style="max-width:520px">
+        <label class="f">Forme éprouvette
+          <select class="save" id="ci_shape" onchange="recalc()">
+            <option value="sq">Carrée (côté)</option>
+            <option value="ci">Circulaire (Ø)</option>
+          </select>
+        </label>
+        <label class="f">Côté / Ø <span class="u">mm</span><input class="save" id="ci_dim" type="number" step="0.1" oninput="recalc()"></label>
+        <label class="f">Aire A <span class="u">cm² (calc.)</span><input id="ci_A" readonly></label>
+      </div>
+
+      <div id="ci_ring_geom" class="grid g4" style="max-width:520px;display:none">
+        <label class="f">Rayon extérieur R<sub>a</sub> <span class="u">mm</span><input class="save" id="ci_Ra" type="number" step="0.1" oninput="recalc()"></label>
+        <label class="f">Rayon intérieur R<sub>i</sub> <span class="u">mm</span><input class="save" id="ci_Ri" type="number" step="0.1" oninput="recalc()"></label>
+        <label class="f">Aire annulaire A <span class="u">cm² (calc.)</span><input id="ci_Aring" readonly></label>
+      </div>
+      <div class="specbox" id="ci_spec"></div>
+
+      <h3 style="font-size:13.5px;margin:6px 0 8px">Éprouvettes — une ligne par contrainte verticale</h3>
+      <div style="overflow-x:auto">
+        <table id="citab">
+          <thead><tr>
+            <th>Épr.</th>
+            <th>Force verticale N (kN)</th>
+            <th id="ci_pcol">Force cisaill. pic P (kN)</th>
+            <th id="ci_rcol">Force cisaill. résiduelle (kN)</th>
+            <th>σ′<sub>v</sub> (kPa)</th>
+            <th>τ<sub>pic</sub> (kPa)</th>
+            <th>τ<sub>R</sub> (kPa)</th>
+          </tr></thead>
+          <tbody id="cibody"></tbody>
+        </table>
+      </div>
+      <div class="hint" id="ci_hint">Boîte : saisir les <b>forces</b> (kN). Annulaire : les colonnes 3-4 reçoivent le <b>couple M<sub>t</sub></b> (N·m).</div>
+
+      <h3 style="font-size:13.5px;margin:16px 0 8px">Identification des éprouvettes de sol</h3>
+      <div class="grid g4" style="max-width:280px;margin-bottom:8px">
+        <label class="f">ρ<sub>s</sub> grains <span class="u">Mg/m³ (mesuré/estimé)</span><input class="save" id="ci_rs" type="number" step="0.01" oninput="recalc()"></label>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="ciidtab">
+          <thead><tr><th>Épr.</th><th>ρ (kg/m³)</th><th>ρ<sub>d</sub> (kg/m³)</th><th>W (%)</th><th>e</th><th>S<sub>R</sub> (%)</th><th>Nature de l'échantillon</th></tr></thead>
+          <tbody id="ciidbody"></tbody>
+        </table>
+      </div>
+      <div class="hint">e = ρ<sub>s</sub>/ρ<sub>d</sub> − 1 ; ρ<sub>d</sub> = ρ/(1+W/100) ; S<sub>R</sub> = W·ρ<sub>s</sub>/e (%). Renseigner ρ<sub>s</sub> et, par éprouvette, ρ et W.</div>
+
+      <div class="readout" id="out_cisail"></div>
+      <div style="margin-top:14px"><canvas id="cicurve" width="820" height="330"></canvas></div>
+      <div class="resbox"><table class="restab" id="ci_resbox"><tr><td class="lab" rowspan="2">Résultats</td><th>C′ (kPa)</th><th>φ′ (°)</th></tr><tr><td id="ci_res_c">—</td><td id="ci_res_phi">—</td></tr></table></div>
+    </div>
+  </section>
+
+  <!-- MASSE VOLUMIQUE APPARENTE -->
+  <section class="tab" data-tab="dens">
+    <div class="card">
+      <h2>Masse volumique apparente ρ <span class="tag">NF EN ISO 17892-2</span></h2>
+      <p class="norme">ρ = m/V (Form. 5). Trois méthodes pour le volume V. ρ<sub>d</sub> = ρ / (1 + w/100) (Form. 6). Éprouvette ≥ 50 cm³.</p>
+      <div class="row" style="margin-bottom:8px">
+        <div>
+          <div class="sub" style="margin-bottom:5px">Méthode :</div>
+          <div class="pillrow" id="dmethod">
+            <span class="pill on" data-m="lin">Mesures linéaires</span>
+            <span class="pill" data-m="imm">Immersion dans un fluide</span>
+            <span class="pill" data-m="dep">Déplacement de fluide</span>
+          </div>
+        </div>
+      </div>
+      <div class="specbox" id="d_spec"></div>
+
+      <!-- méthode linéaire -->
+      <div id="d_lin">
+        <div class="row" style="margin-bottom:8px">
+          <div class="pillrow" id="dshape">
+            <span class="pill on" data-s="prism">Prisme rectangulaire</span>
+            <span class="pill" data-s="cyl">Cylindre</span>
+          </div>
+        </div>
+        <div class="grid g4" id="d_lin_prism" style="max-width:680px">
+          <label class="f">Longueur L <span class="u">mm</span><input class="save" id="d_L" type="number" step="0.1" oninput="recalc()"></label>
+          <label class="f">Largeur W <span class="u">mm</span><input class="save" id="d_W" type="number" step="0.1" oninput="recalc()"></label>
+          <label class="f">Hauteur H <span class="u">mm</span><input class="save" id="d_H" type="number" step="0.1" oninput="recalc()"></label>
+          <label class="f">Masse m <span class="u">g</span><input class="save" id="d_m" type="number" step="0.01" oninput="recalc()"></label>
+        </div>
+        <div class="grid g4" id="d_lin_cyl" style="max-width:680px;display:none">
+          <label class="f">Diamètre d <span class="u">mm</span><input class="save" id="d_d" type="number" step="0.1" oninput="recalc()"></label>
+          <label class="f">Longueur L <span class="u">mm</span><input class="save" id="d_Lc" type="number" step="0.1" oninput="recalc()"></label>
+          <label class="f">Masse m <span class="u">g</span><input class="save" id="d_mc" type="number" step="0.01" oninput="recalc()"></label>
+        </div>
+      </div>
+
+      <!-- immersion -->
+      <div id="d_imm" class="grid g4" style="max-width:760px;display:none">
+        <label class="f">Masse m <span class="u">g</span><input class="save" id="di_m" type="number" step="0.01" oninput="recalc()"></label>
+        <label class="f">m<sub>f</sub> après remplissage vides <span class="u">g</span><input class="save" id="di_mf" type="number" step="0.01" oninput="recalc()"></label>
+        <label class="f">m<sub>c</sub> après enrobage <span class="u">g</span><input class="save" id="di_mc" type="number" step="0.01" oninput="recalc()"></label>
+        <label class="f">m<sub>g</sub> masse immergée <span class="u">g</span><input class="save" id="di_mg" type="number" step="0.01" oninput="recalc()"></label>
+        <label class="f">ρ<sub>fl</sub> fluide <span class="u">Mg/m³</span><input class="save" id="di_rfl" type="number" step="0.0001" value="0.998" oninput="recalc()"></label>
+        <label class="f">ρ<sub>p</sub> enrobage <span class="u">Mg/m³</span><input class="save" id="di_rp" type="number" step="0.001" value="0.9" oninput="recalc()"></label>
+      </div>
+
+      <!-- déplacement -->
+      <div id="d_dep" class="grid g4" style="max-width:760px;display:none">
+        <label class="f">Masse m <span class="u">g</span><input class="save" id="dd_m" type="number" step="0.01" oninput="recalc()"></label>
+        <label class="f">m<sub>f</sub> après remplissage vides <span class="u">g</span><input class="save" id="dd_mf" type="number" step="0.01" oninput="recalc()"></label>
+        <label class="f">m<sub>c</sub> après enrobage <span class="u">g</span><input class="save" id="dd_mc" type="number" step="0.01" oninput="recalc()"></label>
+        <label class="f">m<sub>1</sub> récipient vide <span class="u">g</span><input class="save" id="dd_m1" type="number" step="0.01" oninput="recalc()"></label>
+        <label class="f">m<sub>2</sub> récipient + fluide déplacé <span class="u">g</span><input class="save" id="dd_m2" type="number" step="0.01" oninput="recalc()"></label>
+        <label class="f">ρ<sub>fl</sub> fluide <span class="u">Mg/m³</span><input class="save" id="dd_rfl" type="number" step="0.0001" value="0.998" oninput="recalc()"></label>
+        <label class="f">ρ<sub>p</sub> enrobage <span class="u">Mg/m³</span><input class="save" id="dd_rp" type="number" step="0.001" value="0.9" oninput="recalc()"></label>
+      </div>
+
+      <div class="grid g3" style="max-width:520px;margin-top:10px">
+        <label class="f">Teneur en eau w <span class="u">% (vide = w moyen)</span><input class="save" id="d_w" type="number" step="0.1" oninput="recalc()"></label>
+      </div>
+      <div class="hint">Si w est laissée vide, la teneur en eau moyenne de la feuille « Teneur en eau » est utilisée pour ρ<sub>d</sub>.</div>
+      <div class="readout" id="out_dens"></div>
+    </div>
+  </section>
+
+  <!-- CLASSIFICATION -->
+  <section class="tab" data-tab="class">
+    <div class="card">
+      <h2>Classification GTR <span class="tag">SYNTHÈSE</span></h2>
+      <p class="norme">À partir de : granulométrie, Atterberg, VBS, teneur en eau, Proctor, LA, MDE.</p>
+      <div style="margin-bottom:12px">
+        <div class="sub" style="margin-bottom:5px">État hydrique — forcer (sinon déduit de w<sub>n</sub>/w<sub>OPN</sub>) :</div>
+        <div class="pillrow" id="statepills">
+          <span class="pill on" data-st="">Auto</span><span class="pill" data-st="ts">ts</span><span class="pill" data-st="s">s</span>
+          <span class="pill" data-st="m">m</span><span class="pill" data-st="h">h</span><span class="pill" data-st="th">th</span>
+        </div>
+      </div>
+      <div id="result"></div>
+    </div>
+    <div class="card">
+      <h2>Fiche de synthèse des essais</h2>
+      <table class="recap" id="recap"></table>
+    </div>
+  </section>
+
+  <!-- SEUILS -->
+  <section class="tab" data-tab="seuils">
+    <div class="card">
+      <h2>Seuils de classification <span class="tag">PARAMÉTRABLE</span></h2>
+      <p class="norme">Calez ces valeurs sur votre exemplaire du GTR (NF P 11-300).</p>
+      <div class="row noprint" style="margin-bottom:14px">
+        <button class="btn sec sm" onclick="resetThresholds()">↺ Valeurs par défaut</button>
+        <label class="f" style="flex-direction:row;align-items:center;gap:8px;font-size:13px">
+          <input type="checkbox" id="cfg_routeD" style="width:auto" onchange="cfgFromUI();recalc()">
+          Router insensibles (VBS ≤ 0,1 & fines ≤ 12 %) vers famille <b>D</b>
+        </label>
+      </div>
+      <div class="grid g3" id="thwrap"></div>
+    </div>
+  </section>
+
+  <!-- DB -->
+  <section class="tab" data-tab="db">
+    <div class="card">
+      <h2>Échantillons enregistrés</h2>
+      <div class="row noprint" style="margin-bottom:14px">
+        <button class="btn sec sm" onclick="exportAll()">⬇ Exporter (.json)</button>
+        <label class="btn ghost sm" style="cursor:pointer">⬆ Importer (.json)<input type="file" accept="application/json" style="display:none" onchange="importAll(event)"></label>
+        <span class="hint" style="margin:0">Sauvegarde durable même hors connexion.</span>
+      </div>
+      <div id="dblist" class="slist"></div>
+    </div>
+  </section>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+<footer>FASTLAB · aide au traitement des essais et à la classification (NF P 11-300) · à valider par un géotechnicien.</footer>
+
+<script>
+const $=id=>document.getElementById(id);
+const num=id=>{const e=$(id);if(!e)return null;const v=parseFloat((e.value||'').replace(',','.'));return isNaN(v)?null:v;};
+const setv=(id,v)=>{const e=$(id);if(e)e.value=v;};
+const f=(x,d=1)=>x==null||isNaN(x)?null:(+x).toFixed(d);
+const chip=(k,v,u='',hot=false)=>`<div class="chip${hot?' hot':''}"><div class="k">${k}</div><div class="v">${v==null||v===''?'—':v}${u?`<small> ${u}</small>`:''}</div></div>`;
+const wcalc=(t,h,s)=>(t!=null&&h!=null&&s!=null&&(s-t)>0)?(h-s)/(s-t)*100:null;
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
+
+
+/* CONFIG */
+const DEFAULTS={routeD:true,A_fines:35,A_ip:[12,25,40],A_vbs:[2.5,6,8],B_p2:70,B_fines:12,B_vbs01:0.1,B_vbs56:1.5,C_dmax:50,D_fines:12,D_vbs:0.1,st:[0.7,0.9,1.1,1.3],FR:7,DG:5};
+let CFG=structuredClone(DEFAULTS);
+const TH_DEF=[['A_fines','Famille — passant 80µm fins/sableux (%)','> = A'],['C_dmax','Dmax seuil famille C (mm)','> = C'],['A_ip','A : bornes Ip (A1|A2|A3 / A4)','3 valeurs'],['A_vbs','A : bornes VBS si Ip absent','3 valeurs'],['B_p2','B : passant 2mm sables/graves (%)',''],['B_fines','B : passant 80µm B1-4 / B5-6 (%)',''],['B_vbs01','B : VBS B1/B2 et B3/B4',''],['B_vbs56','B : VBS B5/B6',''],['D_fines','D : passant 80µm max (%)',''],['D_vbs','D : VBS max (insensible)',''],['st','État : bornes wn/wOPN (ts|s|m|h)','à confirmer'],['FR','Fragmentabilité FR seuil',''],['DG','Dégradabilité DG seuil','']];
+function renderThresholds(){const w=$('thwrap');w.innerHTML='';TH_DEF.forEach(([k,lab,note])=>{const v=CFG[k],val=Array.isArray(v)?v.join(' ; '):v;const c=document.createElement('label');c.className='f';c.innerHTML=`${lab} ${note?`<span class="u">${note}</span>`:''}`;const i=document.createElement('input');i.value=val;i.dataset.k=k;i.oninput=()=>{cfgFromUI();recalc()};c.appendChild(i);w.appendChild(c);});$('cfg_routeD').checked=CFG.routeD;}
+function cfgFromUI(){document.querySelectorAll('#thwrap input').forEach(i=>{const k=i.dataset.k,raw=i.value.trim();if(Array.isArray(DEFAULTS[k])){const a=raw.split(/[;,]/).map(s=>parseFloat(s.replace(',','.'))).filter(n=>!isNaN(n));if(a.length)CFG[k]=a;}else{const n=parseFloat(raw.replace(',','.'));if(!isNaN(n))CFG[k]=n;}});CFG.routeD=$('cfg_routeD').checked;}
+function resetThresholds(){CFG=structuredClone(DEFAULTS);renderThresholds();recalc();toast('Seuils réinitialisés');}
+
+/* NAV */
+const NAV=[['IDENTIFICATION',[['ident','Identification']]],
+ ['SOLS',[['w','Teneur en eau'],['gran','Granulométrie'],['att','Atterberg'],['vbs','Bleu (VBS)'],['rhos','Masse vol. grains'],['dens','Masse vol. apparente'],['proctor','Proctor'],['cbr','CBR / IPI'],['cisail','Cisaillement direct'],['oedo','Œdomètre'],['ucs','Compression simple'],['triuu','Triaxial UU'],['tricu','Triaxial CU/CD'],['perm','Perméabilité']]],
+ ['GRANULATS',[['es','Équivalent de sable'],['la','Los Angeles'],['sz','Fragmentation SZ'],['mde','Micro-Deval'],['rho','Masse vol. & absorption'],['sulf','Sulfates']]],
+ ['SYNTHÈSE',[['class','★ Classification GTR'],['seuils','Seuils'],['db','Enregistrés']]]];
+const side=$('side');
+NAV.forEach(([g,items])=>{const h=document.createElement('div');h.className='grp';h.textContent=g;side.appendChild(h);items.forEach(([id,lab])=>{const a=document.createElement('a');a.dataset.t=id;a.innerHTML=`<span>${lab}</span><span class="dot"></span>`;a.onclick=()=>show(id);side.appendChild(a);});});
+side.querySelector('a').classList.add('active');
+function show(id){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===id));document.querySelectorAll('#side a').forEach(a=>a.classList.toggle('active',a.dataset.t===id));if(id==='class')recalc();window.scrollTo(0,0);}
+
+/* dynamic rows */
+function cell(id,step='0.1'){return `<td><input class="save" id="${id}" type="number" step="${step}"></td>`;}
+for(let i=1;i<=3;i++)$('wbody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${i}</td>${cell('w_t'+i,'0.01')}${cell('w_h'+i,'0.01')}${cell('w_s'+i,'0.01')}<td class="calc" id="w_r${i}">—</td></tr>`);
+const SIEVES=[100,80,63,50,40,31.5,20,16,10,8,6.3,5,4,2,1,0.5,0.2,0.08];
+SIEVES.forEach(s=>{$('grbody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${s}</td>${cell('gr_'+String(s).replace('.','_'),'0.1')}<td class="calc gr_cum" data-s="${s}">—</td><td class="calc gr_pass" data-s="${s}">—</td></tr>`);});
+for(let i=1;i<=5;i++)$('llbody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${i}</td>${cell('ll_x'+i,'0.1')}${cell('ll_t'+i,'0.01')}${cell('ll_h'+i,'0.01')}${cell('ll_s'+i,'0.01')}<td class="calc" id="ll_w${i}">—</td></tr>`);
+for(let i=1;i<=2;i++)$('plbody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${i}</td>${cell('pl_t'+i,'0.01')}${cell('pl_h'+i,'0.01')}${cell('pl_s'+i,'0.01')}<td class="calc" id="pl_w${i}">—</td></tr>`);
+for(let i=1;i<=7;i++)$('prbody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${i}</td>${cell('pr_mh'+i,'0.1')}${cell('pr_t'+i,'0.01')}${cell('pr_h'+i,'0.01')}${cell('pr_s'+i,'0.01')}<td class="calc" id="pr_w${i}">—</td><td class="calc" id="pr_rd${i}">—</td></tr>`);
+for(let i=1;i<=12;i++)$('oebody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${i}</td>${cell('oe_s'+i,'1')}${cell('oe_dh'+i,'0.001')}<td class="calc" id="oe_hf${i}">—</td><td class="calc" id="oe_ev${i}">—</td><td class="calc" id="oe_e${i}">—</td></tr>`);
+for(let i=1;i<=3;i++)$('rsbody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${i}</td>${cell('rs2_m0_'+i,'0.01')}${cell('rs2_m1_'+i,'0.01')}${cell('rs2_mx_'+i,'0.01')}${cell('rs2_m3_'+i,'0.01')}<td class="calc" id="rs_md${i}">—</td><td class="calc" id="rs_rs${i}">—</td></tr>`);
+for(let i=1;i<=3;i++)$('uubody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${i}</td>${cell('tu_s3_'+i,'1')}${cell('tu_df_'+i,'1')}<td class="calc" id="tu_s1_${i}">—</td><td class="calc" id="tu_cu_${i}">—</td></tr>`);
+for(let i=1;i<=3;i++)$('cubody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${i}</td>${cell('tc_s3_'+i,'1')}${cell('tc_s1_'+i,'1')}<td class="calc" id="tc_s_${i}">—</td><td class="calc" id="tc_t_${i}">—</td></tr>`);
+for(let i=1;i<=2;i++)$('esbody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${i}</td>${cell('es_h1_'+i,'0.1')}${cell('es_h2_'+i,'0.1')}<td class="calc" id="es_r${i}">—</td></tr>`);
+for(let i=1;i<=2;i++)$('mdebody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${i}</td>${cell('md_M'+i,'1')}${cell('md_m'+i,'1')}<td class="calc" id="md_r${i}">—</td></tr>`);
+const SZS=[8,5,2,0.63,0.2];
+SZS.forEach(s=>$('szbody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${s}</td>${cell('sz_'+String(s).replace('.','_'),'0.1')}<td class="calc sz_ref" data-s="${s}">—</td><td class="calc sz_pas" data-s="${s}">—</td></tr>`));
+for(let i=1;i<=4;i++)$('cibody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${i}</td>${cell('ci_N'+i,'0.001')}${cell('ci_P'+i,'0.001')}${cell('ci_R'+i,'0.001')}<td class="calc" id="ci_sv${i}">—</td><td class="calc" id="ci_tp${i}">—</td><td class="calc" id="ci_tr${i}">—</td></tr>`);
+for(let i=1;i<=4;i++)$('ciidbody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${i}</td>${cell('ci_rho'+i,'0.1')}<td class="calc" id="ci_rdd${i}">—</td>${cell('ci_w'+i,'0.1')}<td class="calc" id="ci_e${i}">—</td><td class="calc" id="ci_sr${i}">—</td><td><input class="save" id="ci_nat${i}" type="text" style="text-align:left"></td></tr>`);
+const CBR_MOULDS=[55,25,10];
+const CBR_ENF=[0.25,0.5,0.75,1,1.5,2,2.5,3,4,5];
+CBR_MOULDS.forEach((c,m)=>{
+  $('cbmbody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${c}</td>${cell('cb_tot'+m,'0.1')}${cell('cb_moule'+m,'0.1')}<td class="calc" id="cb_net${m}">—</td>${cell('cb_vol'+m,'1')}${cell('cb_w'+m,'0.1')}<td class="calc" id="cb_dh${m}">—</td><td class="calc" id="cb_ds${m}">—</td><td class="calc" id="cb_comp${m}">—</td></tr>`);
+  $('cbibody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${c}</td>${cell('cb_H0'+m,'0.1')}${cell('cb_gonf'+m,'0.01')}<td class="calc" id="cb_gpct${m}">—</td>${cell('cb_wimm'+m,'0.1')}</tr>`);
+});
+CBR_ENF.forEach((e,i)=>$('cbpbody').insertAdjacentHTML('beforeend',`<tr><td class="lab">${e}</td>${cell('cb_pen_0_'+i,'0.01')}${cell('cb_pen_1_'+i,'0.01')}${cell('cb_pen_2_'+i,'0.01')}</tr>`));
+
+/* pills */
+let forcedState='',permMode='const',laVar='std',mdeVar='std',mdeWet='h',prType='n',rsMethod='A';
+let mdeMode='norme';
+let cbType='ipi',ciMethod='box',densMethod='lin',densShape='prism';
+document.querySelectorAll('#rsmethod .pill').forEach(p=>p.onclick=()=>{rsMethod=p.dataset.m;setOn('#rsmethod',p);$('rs_h3col').innerHTML=rsMethod==='B'?'m<sub>4</sub><br>masse sèche':'m<sub>2</sub><br>pycno+sol sec';recalc();});
+document.querySelectorAll('#statepills .pill').forEach(p=>p.onclick=()=>{forcedState=p.dataset.st;setOn('#statepills',p);recalc();});
+document.querySelectorAll('#permmode .pill').forEach(p=>p.onclick=()=>{permMode=p.dataset.pm;setOn('#permmode',p);$('perm_const').style.display=permMode==='const'?'grid':'none';$('perm_var').style.display=permMode==='var'?'grid':'none';recalc();});
+document.querySelectorAll('#lavar .pill').forEach(p=>p.onclick=()=>{laVar=p.dataset.v;setOn('#lavar',p);applyLaVar();recalc();});
+document.querySelectorAll('#mdevar .pill').forEach(p=>p.onclick=()=>{mdeVar=p.dataset.v;setOn('#mdevar',p);applyMdeVar();recalc();});
+document.querySelectorAll('#mdewet .pill').forEach(p=>p.onclick=()=>{mdeWet=p.dataset.w;setOn('#mdewet',p);recalc();});
+document.querySelectorAll('#mdemode .pill').forEach(p=>p.onclick=()=>{mdeMode=p.dataset.md;setOn('#mdemode',p);mdeModeApply();recalc();});
+function mdeModeApply(){if($('mde_norme'))$('mde_norme').style.display=mdeMode==='camp'?'none':'block';if($('mde_camp'))$('mde_camp').style.display=mdeMode==='camp'?'block':'none';}
+document.querySelectorAll('#prtype .pill').forEach(p=>p.onclick=()=>{prType=p.dataset.t;setOn('#prtype',p);recalc();});
+document.querySelectorAll('#cbtype .pill').forEach(p=>p.onclick=()=>{cbType=p.dataset.c;setOn('#cbtype',p);applyCbType();recalc();});
+document.querySelectorAll('#cimethod .pill').forEach(p=>p.onclick=()=>{ciMethod=p.dataset.m;setOn('#cimethod',p);applyCiMethod();recalc();});
+document.querySelectorAll('#dmethod .pill').forEach(p=>p.onclick=()=>{densMethod=p.dataset.m;setOn('#dmethod',p);applyDensMethod();recalc();});
+document.querySelectorAll('#dshape .pill').forEach(p=>p.onclick=()=>{densShape=p.dataset.s;setOn('#dshape',p);applyDensShape();recalc();});
+function applyCiMethod(){const box=ciMethod==='box';$('ci_box_geom').style.display=box?'grid':'none';$('ci_ring_geom').style.display=box?'none':'grid';$('ci_pcol').innerHTML=box?'Force cisaill. pic P (kN)':'Couple pic M<sub>t</sub> (N·m)';$('ci_rcol').innerHTML=box?'Force cisaill. résiduelle (kN)':'Couple résiduel M<sub>t</sub> (N·m)';$('ci_hint').innerHTML=box?'Boîte : saisir les <b>forces</b> verticale et de cisaillement (kN), l’aire est calculée à partir de la géométrie.':'Annulaire : colonnes 3-4 = <b>couple M<sub>t</sub></b> (N·m) ; σ′<sub>v</sub> = N / aire annulaire.';}
+function applyDensMethod(){$('d_lin').style.display=densMethod==='lin'?'block':'none';$('d_imm').style.display=densMethod==='imm'?'grid':'none';$('d_dep').style.display=densMethod==='dep'?'grid':'none';}
+function applyDensShape(){$('d_lin_prism').style.display=densShape==='prism'?'grid':'none';$('d_lin_cyl').style.display=densShape==='cyl'?'grid':'none';}
+function setOn(sel,p){document.querySelectorAll(sel+' .pill').forEach(q=>q.classList.toggle('on',q===p));}
+
+const D={};
+/* ===================== BRIDGE + RENDER (injecte — clone excise, ADR 0015) ===================== */
+(function(){
+  var TOOL_ID="fastlab", ENGINE_ID="labo";
+  var pending=Object.create(null), stpend=Object.create(null), seq=0, stseq=0;
+  var ctx={ engineId:ENGINE_ID, orgSlug:null, projectLabel:null, readOnly:false };
+  function post(msg){ try{ window.parent.postMessage(msg,"*"); }catch(e){} }
+  window.addEventListener("message", function(ev){
+    if(ev.source !== window.parent) return;
+    var d=ev.data; if(!d || d.v!==1 || typeof d.type!=="string") return;
+    if(d.type==="init"){ ctx=Object.assign(ctx, d.payload||{}); return; }
+    if(d.type==="calc:response"){ var p=pending[d.id]; if(!p) return; delete pending[d.id]; p(d.payload||{ok:false,error:{message:"reponse vide"}}); return; }
+    if(d.type==="store:value"){ var pr=d.id?stpend[d.id]:null; if(pr){ delete stpend[d.id]; pr(d.payload&&d.payload.value); } return; }
+  });
+  window.__geofamBridge={
+    calc:function(params){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:ENGINE_ID,label:(params&&params.m_ref)||null,params:params}}); }); },
+    emitPv:function(calcResultId){ post({v:1,type:"pv:request",payload:{calcResultId:calcResultId}}); },
+    storeGet:function(key){ var id=TOOL_ID+":s:"+(++stseq); return new Promise(function(resolve){ stpend[id]=resolve; post({v:1,type:"store:get",id:id,payload:{key:key}}); }); },
+    storeSet:function(key,value){ var id=TOOL_ID+":s:"+(++stseq); return new Promise(function(resolve){ stpend[id]=resolve; post({v:1,type:"store:set",id:id,payload:{key:key,value:value}}); }); },
+    context:function(){ return ctx; }
+  };
+  post({v:1,type:"ready",payload:{toolId:TOOL_ID}});
+})();
+
+var __calcTimer=null;
+window.__laboLastClasse=null; window.__laboLastCalcResultId=null;
+/* Etat PLAUSIBLE : au moins une MESURE primaire saisie (memes ids que updateDots, hors
+   identification). Sur l etat vide (boot writeForm({})) on NE poste RIEN (no-calc-initial). */
+function plausibleState(o){
+  var ids=["gr_M","w_s1","ll_s1","v_V1","rs2_m0_1","d_m","pr_mh1","cb_tot0","ci_N1","oe_H0","uc_f","tu_df_1","tc_s1_1","pe_V","es_h2_1","la_m","sz_8","mde_present","ra_M1","su_ba"];
+  for(var i=0;i<ids.length;i++){ var v=o[ids[i]]; if(v!=null && v!=="") return true; } return false;
+}
+/* Seuils GTR de l onglet « Seuils » (CFG, SAISIE conservee) -> params serveur (cfg). */
+function cfgObject(){
+  try{ return { routeD:CFG.routeD, A_fines:CFG.A_fines, A_ip:CFG.A_ip, A_vbs:CFG.A_vbs, B_p2:CFG.B_p2, B_fines:CFG.B_fines, B_vbs01:CFG.B_vbs01, B_vbs56:CFG.B_vbs56, C_dmax:CFG.C_dmax, D_fines:CFG.D_fines, D_vbs:CFG.D_vbs, st:CFG.st, FR:CFG.FR, DG:CFG.DG }; }catch(e){ return undefined; }
+}
+function setHTML(id,h){ var e=$(id); if(e) e.innerHTML=h; }
+function renderCalcError(err){
+  var msg=(err&&err.message)?err.message:"Calcul indisponible.";
+  var el=$("result"); if(el) el.innerHTML='<div class="alert warn"><b>Calcul indisponible</b>'+msg+'</div>';
+}
+/* Verdict de classification (mirroir du bloc verdict de recalc du HTML). caveats = 
+   l ancien classify().warn (encart « Points a verifier »). */
+function renderVerdict(cl){
+  var el=$("result"); if(!el) return;
+  if(!cl||!cl.code){ el.innerHTML='<div class="alert info"><b>En attente de donnees</b>Renseignez au minimum la granulometrie (passant 80 \u00b5m) et la VBS ou l\u2019Ip.</div>'; return; }
+  var h='<div class="verdict"><div class="classbadge">'+cl.full+'</div><div class="desc"><h3>Famille '+cl.fam+' \u2014 '+cl.code+'</h3><p>'+(cl.desc||'')+'</p>'+((cl.etat&&cl.stApplies)?'<p class="sub">\u00c9tat hydrique : <b>'+cl.etat+'</b></p>':'')+'</div></div>';
+  h+='<div class="pathbox"><div class="h">Chemin de d\u00e9cision</div><ol>'+((cl.path||[]).map(function(s){return '<li>'+s+'</li>';}).join(''))+'</ol></div>';
+  var cav=cl.caveats||[]; if(cav.length) h+='<div class="alert warn"><b>Points \u00e0 v\u00e9rifier</b>'+cav.map(function(w){return '\u00b7 '+w;}).join('<br>')+'</div>';
+  if(cl.rNote) h+='<div class="alert info"><b>Assistant famille R (rocheux)</b>'+cl.rNote.join(' \u00b7 ')+'<br><span class="sub">Classement R complet selon nature + seuils LA/MDE/FR/DG (\u00e0 finaliser avec le GTR).</span></div>';
+  el.innerHTML=h;
+}
+/* Teneur en eau — $(w_r i) + chips (miroir du kernel eau du HTML). */
+function renderW(w){
+  for(var i=1;i<=3;i++){ var v=(w&&w.rows&&w.rows[i-1]!=null)?w.rows[i-1]:null; var e=$("w_r"+i); if(e) e.textContent=(v==null?"\u2014":v.toFixed(2)); }
+  setHTML("out_w", chip("w moyenne",f(w?w.moy:null,2),"%",true)+chip("Nb prises",w?w.n:0));
+}
+/* Granulometrie — refus/passant cumules par tamis + chips + courbe (D.granPts serveur). */
+function renderGran(det){
+  var g=det&&det.gran, rows=(g&&g.rows)||[];
+  for(var i=0;i<rows.length;i++){ var r=rows[i];
+    var sc=document.querySelector('.gr_cum[data-s="'+r.s+'"]'); if(sc) sc.textContent=(r.cum==null?"\u2014":r.cum.toFixed(1));
+    var sp=document.querySelector('.gr_pass[data-s="'+r.s+'"]'); if(sp) sp.textContent=(r.pass==null?"\u2014":r.pass.toFixed(1)); }
+  var out=chip("Dmax",f(D.dmax,(D.dmax!=null&&D.dmax<1)?2:0),"mm",true)+chip("P 80\u00b5m",f(D.p80),"%",true)+chip("P 2mm",f(D.p2),"%")+chip("Cu",f(D.Cu))+chip("Cc",f(D.Cc,2));
+  if(D.mf!=null) out+=chip("Module finesse",f(D.mf,2),"",true)+chip("Sable",D.mfq);
+  setHTML("out_gran", out);
+  D.granPts=(g&&g.pts)||[]; try{ drawGran(); }catch(e){}
+}
+/* Atterberg — w par point (liquidite/plasticite) + chips + validite + nature + encart. */
+function renderAtt(att){
+  for(var i=1;i<=5;i++){ var v=(att&&att.llw&&att.llw[i-1]!=null)?att.llw[i-1]:null; var e=$("ll_w"+i); if(e) e.textContent=(v==null?"\u2014":v.toFixed(2)); }
+  for(var j=1;j<=2;j++){ var v2=(att&&att.plw&&att.plw[j-1]!=null)?att.plw[j-1]:null; var e2=$("pl_w"+j); if(e2) e2.textContent=(v2==null?"\u2014":v2.toFixed(2)); }
+  var wL=D.wl, ip=D.ip, wP=D.wp, ic=D.ic, np=($("pl_np")&&$("pl_np").checked);
+  var pts=(att&&att.points)||0, valide=att?att.valide:true, warns=(att&&att.warns)||[];
+  setHTML("out_ll", chip("wL",wL==null?null:wL,"%",true)+chip("Points",pts)+chip("Pente droite",(att&&att.pente!=null)?f(att.pente,2):null)+(valide?chip("Validit\u00e9","\u2713 conforme","",true):chip("Validit\u00e9","\u2717 \u00e0 v\u00e9rifier","!",true)));
+  var out=chip("wL",wL==null?null:wL,"%")+chip("wP",np?"NP":(wP==null?null:wP),np?"":"%")+chip("Ip",np?"NP":(ip==null?null:ip),"",true);
+  if(ic!=null) out+=chip("Ic",f(ic,2),"",true);
+  var nature=att?att.nature:null;
+  if(nature) out+='<div class="chip" style="min-width:auto"><div class="k">Nature</div><div class="v" style="font-size:12px;font-weight:600">'+nature+'</div></div>';
+  setHTML("out_att", out+(warns.length?'<div class="alert warn" style="width:100%"><b>Contr\u00f4les NF P 94-051</b>'+warns.map(function(w){return '\u00b7 '+w;}).join('<br>')+'</div>':''));
+  var raw=(att&&att.raw)||[]; var reg=(att&&att.pente!=null)?{a:att.pente,b:(att.wLraw!=null?att.wLraw-att.pente*Math.log10(25):0)}:null;
+  try{ drawLL(raw,reg,att?att.wLraw:null); drawPlast(wL,ip); }catch(e){}
+}
+/* VBS — M1/Mb/VBS 0-5/VBS du sol par essai + chips + alerte V<=10. */
+function renderVbs(v){
+  for(var i=1;i<=2;i++){ var r=(v&&v.rows&&v.rows[i-1])||{};
+    var a=$("v_M1_"+i); if(a) a.textContent=(r.M1==null?"\u2014":r.M1.toFixed(2));
+    var b=$("v_Mb"+i); if(b) b.textContent=(r.Mb==null?"\u2014":r.Mb.toFixed(2));
+    var c=$("v_v05_"+i); if(c) c.textContent=(r.v05==null?"\u2014":r.v05.toFixed(2));
+    var d2=$("v_vsol"+i); if(d2) d2.textContent=(r.vs==null?"\u2014":r.vs.toFixed(2)); }
+  var out=chip("VBS du sol (moyenne)",f(v?v.moy:null,2),"",true)+chip("VBS retenue",f(v?v.retenue:null,2),"",true)+chip("Essais",v?v.essais:0);
+  if(v&&v.manual!=null) out+=chip("Saisie directe",f(v.manual,2),"!");
+  if(v&&v.lowV) out+='<div class="alert warn" style="width:100%"><b>Contr\u00f4le NF P 94-068 (art. 7)</b>\u00b7 Volume de bleu V \u2264 10 cm\u00b3 : l\u2019essai doit \u00eatre recommenc\u00e9 avec une prise d\u2019essai de masse sup\u00e9rieure.</div>';
+  setHTML("out_vbs", out);
+}
+/* Proctor — w/rd par point + spec (mode operatoire + energie serveur) + chips + courbe. */
+function renderProctor(p){
+  var V=p?p.V:null; setv("pr_V",V!=null?V.toFixed(1):"");
+  var pts=[];
+  for(var i=1;i<=7;i++){ var r=(p&&p.rows&&p.rows[i-1])||{}; var a=$("pr_w"+i); if(a) a.textContent=(r.w==null?"\u2014":r.w.toFixed(2)); var b=$("pr_rd"+i); if(b) b.textContent=(r.rd==null?"\u2014":r.rd.toFixed(3)); if(r.w!=null&&r.rd!=null) pts.push([r.w,r.rd]); }
+  var spec='<b>'+({n:"Normal",m45:"Modifi\u00e9 4,5 kg",m15:"Modifi\u00e9 15 kg"}[prType]||"")+'.</b> '+(PRSPEC[prType]||"");
+  var key=prType+"_"+($("pr_mould")?$("pr_mould").value:"A"); var PR=PRPROC[key];
+  if(PR){ var eline=""; var en=p?p.energy:null; if(en){ eline=' \u00b7 \u00e9nergie calcul\u00e9e <b>'+en.E.toFixed(3)+' MJ/m\u00b3</b> '+(en.ok?'<span style="color:var(--ok)">\u2713 conforme</span>':'<span style="color:var(--bad)">\u26a0 \u00e9cart > 8 %</span>'); }
+    spec+='<br><span style="display:inline-block;margin-top:6px">Mode op\u00e9ratoire normatif : dame <b>'+PR.m+' kg</b>, chute <b>'+PR.h+' mm</b>, <b>'+PR.L+' couches</b> \u00d7 <b>'+PR.N+' coups</b>/couche.'+eline+'</span>'; }
+  else{ spec+='<br><span style="color:var(--bad)">\u26a0 Combinaison moule + dame hors Tableau 5 : la dame 15 kg s\u2019emploie avec le moule C ; les dames 2,5/4,5 kg avec les moules A ou B.</span>'; }
+  setHTML("pr_spec", spec);
+  setHTML("out_proctor", chip("wOPN",f(D.wopn,1),"%",true)+chip("\u03c1d max",f(D.rdmax,3),"t/m\u00b3",true)+chip("Points",pts.length)+chip("Volume",f(V,0),"cm\u00b3"));
+  var fit=(p&&p.fit)?{a:p.fit.a,b:p.fit.b,c:p.fit.c,wopn:p.wopn,rdmax:p.rdmax}:null;
+  try{ drawProctor(pts,fit); }catch(e){}
+}
+/* Essais NON encore cables au detail par ligne : leur RESULTAT (agregat serveur) est
+   rendu dans le chip de tete de feuille (le detail par ligne suit le meme patron —
+   RESIDU documente). La fiche de synthese (renderRecap) restitue deja tous les agregats. */
+function renderAgg(o){
+  setHTML("out_rhos", chip("\u03c1s moyenne",f(o.rhos,2),"Mg/m\u00b3",true));
+  setHTML("out_cbr", chip((o.cbrType==="ipi"?"IPI":"I.CBR"),f(o.cbr,1),"",true)+chip("Gonflement",f(o.gonfl,2),"%"));
+  setHTML("out_cisail", chip("c\u2032",f(o.c_cis,1),"kPa",true)+chip("\u03c6\u2032",f(o.phi_cis,1),"\u00b0",true)+chip("\u03c6\u2032R",f(o.phiR_cis,1),"\u00b0"));
+  setHTML("out_dens", chip("\u03c1 apparente",f(o.rho_app,2),"Mg/m\u00b3",true)+chip("\u03c1d s\u00e8che",f(o.rhod_app,2),"Mg/m\u00b3"));
+  setHTML("out_oedo", chip("e\u2080",f(o.e0_oedo,3),"",true)+chip("Cc",f(o.Cc_oedo,3),"",true)+chip("Cs",f(o.Cs_oedo,3)));
+  setHTML("out_ucs", chip("qu",f(o.qu,3),"MPa",true));
+  setHTML("out_triuu", chip("cu moyen",f(o.cu_uu,0),"kPa",true)+chip("\u03c6u","\u2248 0","\u00b0"));
+  setHTML("out_tricu", chip("c\u2032",f(o.c,1),"kPa",true)+chip("\u03c6\u2032",f(o.phi,1),"\u00b0",true));
+  setHTML("out_perm", chip("k",o.k==null?null:o.k.toExponential(2),"cm/s",true)+chip("k",o.k==null?null:(o.k/100).toExponential(2),"m/s"));
+  setHTML("out_es", chip("SE moyen",f(o.es,1),"%",true));
+  setHTML("out_la", chip("LA",o.la==null?null:o.la,"",true));
+  setHTML("out_sz", chip("SZ",f(o.sz,2),"%",true));
+  setHTML("out_mde", chip("MDE",o.mde==null?null:o.mde,"",true));
+  setHTML("out_rho", chip("WA24",f(o.wa,2),"%",true));
+  setHTML("out_sulf", chip("SO\u2083",f(o.so3,3),"%",true));
+}
+/* Peuple D (agregats) depuis la sortie serveur, puis appelle les render*, le verdict,
+   la fiche de synthese (renderRecap, conservee) et les pastilles (updateDots). */
+function renderAll(o){
+  o=o||{};
+  var keys=["wn","dmax","p80","p2","Cu","Cc","mf","mfq","wl","wp","ip","ic","vbs","rhos","wopn","rdmax","cbr","cbrType","gonfl","rho_app","rhod_app","es","la","sz","mde","wa","so3","qu","c_cis","phi_cis","phiR_cis","c","phi","cu_uu","e0_oedo","Cc_oedo","Cs_oedo","k"];
+  for(var i=0;i<keys.length;i++){ D[keys[i]]=(o[keys[i]]===undefined?null:o[keys[i]]); }
+  window.__laboLastClasse=o.classe||null;
+  var det=o.detail||{};
+  renderW(det.w); renderGran(det); renderAtt(det.att); renderVbs(det.vbs); renderProctor(det.proctor);
+  renderAgg(o);
+  renderVerdict(o.classe);
+  try{ renderRecap(o.classe||{}); }catch(e){}
+  try{ updateDots(); }catch(e){}
+}
+async function __runCalcLabo(o){
+  var params=o; var cfg=cfgObject(); if(cfg) { try{ params=Object.assign({},o,{cfg:cfg}); }catch(e){} }
+  var resp;
+  try{ resp=await window.__geofamBridge.calc(params); }
+  catch(e){ renderCalcError({message:"Pont de calcul indisponible : "+((e&&e.message)||e)}); return; }
+  if(!resp || !resp.ok){ renderCalcError((resp&&resp.error)||{message:"R\u00e9ponse de calcul vide."}); return; }
+  window.__laboLastCalcResultId=resp.calcResultId||null;
+  try{ renderAll(resp.output||{}); }catch(e){ renderCalcError({message:"Erreur de rendu."}); }
+}
+/* =================== FIN BRIDGE + RENDER =================== */
+
+
+
+
+
+
+
+
+function drawGran(){const c=$('gcurve'),x=c.getContext('2d'),W=c.width,H=c.height,mL=44,mR=14,mT=12,mB=28;x.clearRect(0,0,W,H);const xmin=Math.log10(0.06),xmax=Math.log10(100);const px=v=>mL+(Math.log10(v)-xmin)/(xmax-xmin)*(W-mL-mR);const py=p=>mT+(100-p)/100*(H-mT-mB);x.font='10px system-ui';x.textAlign='center';[0.08,0.1,0.2,0.5,1,2,5,10,20,50,100].forEach(v=>{const X=px(v);x.strokeStyle='#eef2f5';x.beginPath();x.moveTo(X,mT);x.lineTo(X,H-mB);x.stroke();x.fillStyle='#9aa7b3';x.fillText(v,X,H-mB+13);});x.textAlign='right';for(let p=0;p<=100;p+=20){const Y=py(p);x.strokeStyle='#eef2f5';x.beginPath();x.moveTo(mL,Y);x.lineTo(W-mR,Y);x.stroke();x.fillStyle='#9aa7b3';x.fillText(p+'%',mL-5,Y+3);}[[0.08,'#1f5f8b'],[2,'#a86a18']].forEach(([v,c2])=>{const X=px(v);x.strokeStyle=c2;x.setLineDash([4,3]);x.beginPath();x.moveTo(X,mT);x.lineTo(X,H-mB);x.stroke();x.setLineDash([]);});const pts=D.granPts||[];if(pts.length>1){x.strokeStyle='#16212e';x.lineWidth=2;x.beginPath();pts.forEach((p,i)=>{const X=px(p[0]),Y=py(p[1]);i?x.lineTo(X,Y):x.moveTo(X,Y);});x.stroke();x.fillStyle='#1f5f8b';pts.forEach(p=>{x.beginPath();x.arc(px(p[0]),py(p[1]),3,0,7);x.fill();});}x.fillStyle='#6b7886';x.textAlign='left';x.fillText('Ø tamis (mm) — échelle log',mL,12);}
+
+/* ATTERBERG */
+/* ATTERBERG — NF P 94-051 : limite de liquidité à la coupelle de Casagrande */
+const llMethod='cas';   // méthode unique (NF P 94-051)
+const LLSPEC='<b>Casagrande (NF P 94-051)</b> — w<sub>L</sub> = teneur en eau à 25 chocs, lue sur la droite moyenne ajustée sur les couples (lg&nbsp;N, w). Minimum 4 points ; N entre 15 et 35 encadrant 25 ; écart entre deux N consécutifs ≤ 10. La droite n\'est acceptable que si, pour chaque point, l\'écart entre w mesuré et w calculé ≤ 3 %. w<sub>L</sub> et w<sub>P</sub> sont arrondis à l\'entier.';
+
+function drawLL(raw,reg,wL){const c=$('llcurve'),x=c.getContext('2d'),W=c.width,H=c.height,mL=48,mR=14,mT=14,mB=30;x.clearRect(0,0,W,H);
+  if(raw.length<2){x.fillStyle='#9aa7b3';x.font='12px system-ui';x.fillText('Saisir au moins 2 points valides',mL,H/2);return;}
+  const useLog=llMethod!=='c80';const xs=raw.map(p=>p[0]),ws=raw.map(p=>p[1]);
+  let xmin=Math.min(...xs)*0.9,xmax=Math.max(...xs)*1.1,wmin=Math.min(...ws)-2,wmax=Math.max(...ws)+2;
+  if(useLog){xmin=Math.min(...xs)/1.3;xmax=Math.max(...xs)*1.3;}
+  const tx=v=>useLog?Math.log10(v):v;const txmin=tx(xmin),txmax=tx(xmax);
+  const px=v=>mL+(tx(v)-txmin)/(txmax-txmin)*(W-mL-mR);const py=w=>mT+(wmax-w)/(wmax-wmin)*(H-mT-mB);
+  x.strokeStyle='#eef2f5';x.fillStyle='#9aa7b3';x.font='10px system-ui';x.textAlign='center';
+  const ticks=useLog?[5,7,10,15,20,25,30,40]:[5,10,15,20,25,30];ticks.forEach(v=>{if(v<xmin||v>xmax)return;const X=px(v);x.beginPath();x.moveTo(X,mT);x.lineTo(X,H-mB);x.stroke();x.fillStyle='#9aa7b3';x.fillText(v,X,H-mB+13);});
+  x.textAlign='right';for(let w=Math.ceil(wmin);w<=wmax;w+=2){const Y=py(w);x.beginPath();x.strokeStyle='#f1f4f6';x.moveTo(mL,Y);x.lineTo(W-mR,Y);x.stroke();x.fillStyle='#9aa7b3';x.fillText(w,mL-4,Y+3);}
+  if(reg){x.strokeStyle='#1f5f8b';x.lineWidth=2;x.beginPath();let first=true;for(let v=xmin;v<=xmax;v*=useLog?1.02:1){const w=reg.a*tx(v)+reg.b;const X=px(v),Y=py(w);first?(x.moveTo(X,Y),first=false):x.lineTo(X,Y);if(!useLog)v+=(xmax-xmin)/100;if(v<=0)break;}x.stroke();}
+  const wLx=llMethod==='c60'?10:llMethod==='c80'?20:25;if(wL!=null&&wL>wmin&&wL<wmax){const X=px(wLx),Y=py(wL);x.strokeStyle='#a86a18';x.setLineDash([4,3]);x.beginPath();x.moveTo(X,mT);x.lineTo(X,Y);x.lineTo(mL,Y);x.stroke();x.setLineDash([]);x.fillStyle='#a86a18';x.beginPath();x.arc(X,Y,4,0,7);x.fill();}
+  x.fillStyle='#16212e';raw.forEach(p=>{x.beginPath();x.arc(px(p[0]),py(p[1]),3,0,7);x.fill();});
+  x.fillStyle='#6b7886';x.textAlign='left';x.fillText(llMethod==='cas'?'Nombre de coups':'Enfoncement (mm)',W-130,H-6);x.save();x.translate(12,H/2);x.rotate(-Math.PI/2);x.fillText('teneur en eau (%)',0,0);x.restore();}
+function drawPlast(wL,ip){const c=$('plastchart'),x=c.getContext('2d'),W=c.width,H=c.height,mL=44,mR=14,mT=14,mB=34;x.clearRect(0,0,W,H);
+  const xmax=100,ymax=60;const px=v=>mL+v/xmax*(W-mL-mR);const py=v=>mT+(ymax-v)/ymax*(H-mT-mB);
+  x.strokeStyle='#eef2f5';x.fillStyle='#9aa7b3';x.font='10px system-ui';x.textAlign='center';
+  for(let v=0;v<=100;v+=10){const X=px(v);x.beginPath();x.moveTo(X,mT);x.lineTo(X,H-mB);x.stroke();x.fillText(v,X,H-mB+13);}
+  x.textAlign='right';for(let v=0;v<=60;v+=10){const Y=py(v);x.beginPath();x.moveTo(mL,Y);x.lineTo(W-mR,Y);x.stroke();x.fillText(v,mL-4,Y+3);}
+  // A-line Ip=0.73(wL-20), starts wL=20
+  x.strokeStyle='#b03a3a';x.lineWidth=1.5;x.beginPath();let s=false;for(let w=20;w<=xmax;w++){const ip2=0.73*(w-20);if(ip2>ymax)break;const X=px(w),Y=py(ip2);s?x.lineTo(X,Y):(x.moveTo(X,Y),s=true);}x.stroke();
+  x.fillStyle='#b03a3a';x.font='italic 10px system-ui';x.textAlign='left';x.fillText("Ligne A : Ip = 0,73(wL−20)",px(55),py(0.73*(55-20))-6);
+  if(wL!=null&&ip!=null){x.fillStyle='#1f5f8b';x.beginPath();x.arc(px(wL),py(ip),5,0,7);x.fill();x.strokeStyle='#fff';x.lineWidth=1.5;x.stroke();}
+  x.fillStyle='#6b7886';x.textAlign='left';x.font='10px system-ui';x.fillText('Limite de liquidité WL (%)',W-150,H-6);x.save();x.translate(12,H/2);x.rotate(-Math.PI/2);x.fillText("Indice de plasticité Ip",0,0);x.restore();}
+
+
+
+
+
+
+/* PROCTOR */
+/* Dimensions nominales internes (cm) — EN 13286-2 Tableaux 2 & A.1 à A.4 */
+const MOULES={A:[10.16,11.64],B:[15.2,11.64],C:[25.0,20.0]};
+/* Procédure normative EN 13286-2 Tableau 5 : dame (kg), chute (mm), couches, coups/couche, par moule.
+   Clé = type d'essai + moule. */
+const PRPROC={
+  'n_A' :{m:2.5,h:305,L:3,N:25,E:0.6},
+  'n_B' :{m:2.5,h:305,L:3,N:56,E:0.6},
+  'n_C' :{m:15.0,h:600,L:3,N:22,E:0.6},
+  'm45_A':{m:4.5,h:457,L:5,N:25,E:2.7},
+  'm45_B':{m:4.5,h:457,L:5,N:56,E:2.7},
+  'm15_C':{m:15.0,h:600,L:3,N:98,E:2.7}
+};
+const PRSPEC={n:'Proctor normal — énergie ≈ 0,6 MJ/m³.',m45:'Proctor modifié — dame 4,5 kg — énergie ≈ 2,7 MJ/m³.',m15:'Proctor modifié — dame 15 kg (moule C) — énergie ≈ 2,7 MJ/m³.'};
+function setMould(){const m=$('pr_mould').value,[d,h]=MOULES[m]||[];if(d){setv('pr_d',d);setv('pr_hh',h);}}
+function prProc(){let key=prType+'_'+($('pr_mould')?$('pr_mould').value:'A');return PRPROC[key]||null;}
+
+
+function drawProctor(pts,fit){const c=$('pcurve'),x=c.getContext('2d'),W=c.width,H=c.height,mL=48,mR=14,mT=14,mB=30;x.clearRect(0,0,W,H);if(!pts.length){x.fillStyle='#9aa7b3';x.font='12px system-ui';x.fillText('Saisir au moins 3 points (masse + teneur en eau)',mL,H/2);return;}const ws=pts.map(p=>p[0]),rs=pts.map(p=>p[1]);let wmin=Math.min(...ws)-2,wmax=Math.max(...ws)+2,rmin=Math.min(...rs)-0.05,rmax=Math.max(...rs)+0.05;const px=w=>mL+(w-wmin)/(wmax-wmin)*(W-mL-mR);const py=r=>mT+(rmax-r)/(rmax-rmin)*(H-mT-mB);x.strokeStyle='#eef2f5';x.fillStyle='#9aa7b3';x.font='10px system-ui';x.textAlign='center';for(let w=Math.ceil(wmin);w<=wmax;w++){if(w%2)continue;const X=px(w);x.beginPath();x.moveTo(X,mT);x.lineTo(X,H-mB);x.stroke();x.fillText(w,X,H-mB+13);}x.textAlign='right';for(let r=Math.ceil(rmin*20)/20;r<=rmax;r+=0.05){const Y=py(r);x.beginPath();x.moveTo(mL,Y);x.lineTo(W-mR,Y);x.stroke();x.fillStyle='#9aa7b3';x.fillText(r.toFixed(2),mL-4,Y+3);}if(fit){x.strokeStyle='#1f5f8b';x.lineWidth=2;x.beginPath();let first=true;for(let w=wmin;w<=wmax;w+=0.2){const r=fit.a*w*w+fit.b*w+fit.c;const X=px(w),Y=py(r);first?(x.moveTo(X,Y),first=false):x.lineTo(X,Y);}x.stroke();const X=px(fit.wopn),Y=py(fit.rdmax);x.strokeStyle='#a86a18';x.setLineDash([4,3]);x.beginPath();x.moveTo(X,mT);x.lineTo(X,H-mB);x.stroke();x.setLineDash([]);x.fillStyle='#a86a18';x.beginPath();x.arc(X,Y,4,0,7);x.fill();}x.fillStyle='#16212e';pts.forEach(p=>{x.beginPath();x.arc(px(p[0]),py(p[1]),3,0,7);x.fill();});x.fillStyle='#6b7886';x.textAlign='left';x.fillText('w (%)',W-40,H-6);x.save();x.translate(12,H/2);x.rotate(-Math.PI/2);x.fillText('ρd (t/m³)',0,0);x.restore();}
+
+/* CBR */
+/* CBR à différentes énergies — NF P 94-078 (CBR après immersion / IPI) */
+function applyCbType(){const imm=cbType==='cbr';$('cb_imm_block').style.display=imm?'block':'none';}
+
+function drawCbrPen(K){
+  const cv=$('cb_pen'),x=cv.getContext('2d'),W=cv.width,H=cv.height,mL=46,mR=12,mT=26,mB=30;x.clearRect(0,0,W,H);
+  const series=[0,1,2].map(m=>CBR_ENF.map((e,i)=>{const v=num('cb_pen_'+m+'_'+i);return v==null?null:[e,v*(K||1)];}).filter(Boolean));
+  const all=series.flat();
+  x.fillStyle='#16212e';x.font='600 11px system-ui';x.textAlign='left';x.fillText('Poinçonnement CBR',mL,14);
+  if(!all.length){x.fillStyle='#9aa7b3';x.font='12px system-ui';x.fillText('Saisir les efforts de poinçonnement',mL,H/2);return;}
+  const ymax=Math.max(...all.map(p=>p[1]))*1.1||1;
+  const px=e=>mL+e/5*(W-mL-mR),py=v=>mT+(ymax-v)/ymax*(H-mT-mB);
+  x.strokeStyle='#eef2f5';x.fillStyle='#9aa7b3';x.font='10px system-ui';x.textAlign='center';
+  [0,1,2,2.5,3,4,5].forEach(e=>{const X=px(e);x.beginPath();x.moveTo(X,mT);x.lineTo(X,H-mB);x.stroke();x.fillText(e,X,H-mB+12);});
+  const cols=['#16212e','#1f5f8b','#a86a18'],labs=['55 c','25 c','10 c'];
+  series.forEach((s,m)=>{if(s.length<2)return;x.strokeStyle=cols[m];x.lineWidth=1.8;x.beginPath();s.forEach((p,i)=>{const X=px(p[0]),Y=py(p[1]);i?x.lineTo(X,Y):x.moveTo(X,Y);});x.stroke();x.fillStyle=cols[m];s.forEach(p=>{x.beginPath();x.arc(px(p[0]),py(p[1]),2.5,0,7);x.fill();});});
+  // repères 2,5 et 5,0 mm
+  x.strokeStyle='#b03a3a';x.setLineDash([3,3]);[2.5,5].forEach(e=>{const X=px(e);x.beginPath();x.moveTo(X,mT);x.lineTo(X,H-mB);x.stroke();});x.setLineDash([]);
+  x.textAlign='left';labs.forEach((l,m)=>{x.fillStyle=cols[m];x.fillText('● '+l,mL+m*46,mT-6);});
+  x.fillStyle='#6b7886';x.fillText('Enf. (mm)',W-58,H-6);x.save();x.translate(11,H/2);x.rotate(-Math.PI/2);x.fillText('Effort (kN)',0,0);x.restore();
+}
+function drawCbrVar(pts,reg,cible,icbr,ydmax){
+  const cv=$('cb_var'),x=cv.getContext('2d'),W=cv.width,H=cv.height,mL=46,mR=12,mT=26,mB=30;x.clearRect(0,0,W,H);
+  x.fillStyle='#16212e';x.font='600 11px system-ui';x.textAlign='left';x.fillText('CBR / Compacité',mL,14);
+  if(pts.length<1){x.fillStyle='#9aa7b3';x.font='12px system-ui';x.fillText('Densités + poinçonnement requis',mL,H/2);return;}
+  const cs=pts.map(p=>p[0]).concat([cible]),vs=pts.map(p=>p[1]).concat([icbr||0]);
+  let xmin=Math.min(...cs)-1,xmax=Math.max(...cs)+1,ymin=Math.max(0,Math.min(...vs)-2),ymax=Math.max(...vs)+2;
+  const px=c=>mL+(c-xmin)/(xmax-xmin)*(W-mL-mR),py=v=>mT+(ymax-v)/(ymax-ymin)*(H-mT-mB);
+  x.strokeStyle='#eef2f5';x.fillStyle='#9aa7b3';x.font='10px system-ui';x.textAlign='center';
+  for(let c=Math.ceil(xmin);c<=xmax;c++){const X=px(c);x.beginPath();x.moveTo(X,mT);x.lineTo(X,H-mB);x.stroke();if(c%2===0)x.fillText(c,X,H-mB+12);}
+  x.textAlign='right';for(let v=Math.ceil(ymin);v<=ymax;v++){if(v%2)continue;const Y=py(v);x.beginPath();x.moveTo(mL,Y);x.lineTo(W-mR,Y);x.stroke();x.fillText(v,mL-3,Y+3);}
+  if(reg){x.strokeStyle='#1f5f8b';x.lineWidth=2;x.beginPath();x.moveTo(px(xmin),py(reg.a*xmin+reg.b));x.lineTo(px(xmax),py(reg.a*xmax+reg.b));x.stroke();}
+  x.fillStyle='#16212e';pts.forEach(p=>{x.beginPath();x.arc(px(p[0]),py(p[1]),3.5,0,7);x.fill();});
+  if(icbr!=null){const X=px(cible),Y=py(icbr);x.strokeStyle='#a86a18';x.setLineDash([4,3]);x.beginPath();x.moveTo(X,H-mB);x.lineTo(X,Y);x.lineTo(mL,Y);x.stroke();x.setLineDash([]);x.fillStyle='#a86a18';x.beginPath();x.arc(X,Y,4,0,7);x.fill();x.textAlign='left';x.fillText(cible+'% → '+icbr.toFixed(1),X+5,Y-4);}
+  x.fillStyle='#6b7886';x.textAlign='left';x.fillText('Compacité (%)',W-90,H-6);x.save();x.translate(11,H/2);x.rotate(-Math.PI/2);x.fillText('CBR maxi',0,0);x.restore();
+}
+
+/* CISAILLEMENT DIRECT (NF EN ISO 17892-10) */
+const CISPEC={box:'Boîte : σ′<sub>v</sub> = N/A, τ = P/A (Form. 9 &amp; 10). Vitesse ≤ v<sub>max</sub> = s<sub>f</sub>/t<sub>f</sub> (Form. 2), ≤ 1 mm/min.',
+ ring:'Annulaire : σ′<sub>v</sub> = N/A<sub>annulaire</sub>, τ = 3M<sub>t</sub>/[2π(R<sub>a</sub>³−R<sub>i</sub>³)] (Form. 11). Vitesse angulaire ≤ θ<sub>max</sub> = 57,3·v<sub>max</sub>/r (Form. 3).'};
+
+
+function drawCis(ptsP,regP,ptsR,regR,r2){
+  const cv=$('cicurve'),x=cv.getContext('2d'),W=cv.width,H=cv.height,mL=50,mR=16,mT=14,mB=32;x.clearRect(0,0,W,H);
+  const all=ptsP.concat(ptsR);
+  if(all.length<1){x.fillStyle='#9aa7b3';x.font='12px system-ui';x.fillText('Saisir ≥ 2 éprouvettes (N et P/Mt)',mL,H/2);return;}
+  const smax=Math.max(...all.map(p=>p[0]),1)*1.15,tmax=Math.max(...all.map(p=>p[1]),1)*1.2;
+  const px=s=>mL+s/smax*(W-mL-mR),py=t=>mT+(tmax-t)/tmax*(H-mT-mB);
+  x.strokeStyle='#eef2f5';x.fillStyle='#9aa7b3';x.font='10px system-ui';x.textAlign='center';
+  for(let i=0;i<=5;i++){const s=smax*i/5,X=px(s);x.beginPath();x.moveTo(X,mT);x.lineTo(X,H-mB);x.stroke();x.fillText(Math.round(s),X,H-mB+13);}
+  x.textAlign='right';for(let i=0;i<=5;i++){const t=tmax*i/5,Y=py(t);x.beginPath();x.moveTo(mL,Y);x.lineTo(W-mR,Y);x.stroke();x.fillText(Math.round(t),mL-4,Y+3);}
+  const line=(reg,col)=>{if(!reg)return;x.strokeStyle=col;x.lineWidth=2;x.beginPath();const y0=reg.b,y1=reg.a*smax+reg.b;x.moveTo(px(0),py(Math.max(0,y0)));x.lineTo(px(smax),py(y1));x.stroke();};
+  line(regP,'#1f5f8b');line(regR,'#a86a18');
+  x.fillStyle='#16212e';ptsP.forEach(p=>{x.beginPath();x.arc(px(p[0]),py(p[1]),4,0,7);x.fill();});
+  x.fillStyle='#a86a18';ptsR.forEach(p=>{x.beginPath();x.arc(px(p[0]),py(p[1]),3,0,7);x.fill();});
+  x.fillStyle='#6b7886';x.textAlign='left';x.font='10px system-ui';x.fillText("σ′v (kPa)",W-70,H-6);x.save();x.translate(12,H/2);x.rotate(-Math.PI/2);x.fillText('τ (kPa)',0,0);x.restore();
+  x.fillStyle='#1f5f8b';x.fillText('● pic',mL+4,mT+12);x.fillStyle='#a86a18';x.fillText('● résiduel',mL+44,mT+12);
+  if(regP){x.textAlign='right';x.fillStyle='#1f5f8b';x.font='600 11px var(--mono,monospace)';
+    x.fillText(`τ = ${regP.a.toFixed(4)}·σ′ + ${Math.max(0,regP.b).toFixed(2)}`,W-mR-4,mT+14);
+    if(r2!=null)x.fillText(`R² = ${r2.toFixed(4)}`,W-mR-4,mT+30);
+    const phi=Math.atan(regP.a)*180/Math.PI;
+    x.fillText(`c′ = ${Math.max(0,regP.b).toFixed(1)} kPa · φ′ = ${phi.toFixed(1)}°`,W-mR-4,mT+46);}
+}
+
+/* MASSE VOLUMIQUE APPARENTE (NF EN ISO 17892-2) */
+const DENSPEC={lin:'Mesures linéaires — éprouvette de forme régulière. V = L·W·H (prisme) ou π·d²/4·L (cylindre).',
+ imm:'Immersion dans un fluide — V = [(m<sub>c</sub>−m<sub>g</sub>)/ρ<sub>fl</sub> − (m<sub>c</sub>−m<sub>f</sub>)/ρ<sub>p</sub>] (Form. 3). Enrober si le fluide pénètre.',
+ dep:'Déplacement de fluide — V = [(m<sub>2</sub>−m<sub>1</sub>)/ρ<sub>fl</sub> − (m<sub>c</sub>−m<sub>f</sub>)/ρ<sub>p</sub>] (Form. 4).'};
+
+
+
+function drawOedo(rows){const c=$('ocurve'),x=c.getContext('2d'),W=c.width,H=c.height,mL=48,mR=14,mT=14,mB=30;x.clearRect(0,0,W,H);if(rows.length<2){x.fillStyle='#9aa7b3';x.font='12px system-ui';x.fillText('Saisir e0, H0 et ≥2 paliers',mL,H/2);return;}const ss=rows.map(r=>r[0]),es=rows.map(r=>r[1]);const smin=Math.log10(Math.max(1,Math.min(...ss))),smax=Math.log10(Math.max(...ss)*1.2);let emin=Math.min(...es)-0.02,emax=Math.max(...es)+0.02;const px=s=>mL+(Math.log10(s)-smin)/(smax-smin)*(W-mL-mR);const py=e=>mT+(emax-e)/(emax-emin)*(H-mT-mB);x.strokeStyle='#eef2f5';x.fillStyle='#9aa7b3';x.font='10px system-ui';x.textAlign='center';[1,10,100,1000].forEach(s=>{if(Math.log10(s)<smin-0.3||Math.log10(s)>smax+0.3)return;const X=px(s);x.beginPath();x.moveTo(X,mT);x.lineTo(X,H-mB);x.stroke();x.fillText(s,X,H-mB+13);});x.strokeStyle='#16212e';x.lineWidth=2;x.beginPath();rows.forEach((r,i)=>{const X=px(r[0]),Y=py(r[1]);i?x.lineTo(X,Y):x.moveTo(X,Y);});x.stroke();x.fillStyle='#1f5f8b';rows.forEach(r=>{x.beginPath();x.arc(px(r[0]),py(r[1]),3,0,7);x.fill();});x.fillStyle='#6b7886';x.textAlign='left';x.fillText("σ' (kPa, log)",W-90,H-6);x.save();x.translate(12,H/2);x.rotate(-Math.PI/2);x.fillText('indice des vides e',0,0);x.restore();}
+
+
+
+
+
+
+
+
+
+
+/* LOS ANGELES */
+const LASPEC={std:'Fraction 10/14 mm · prise (5000 ± 5) g · 11 boulets (4690–4860 g) · 500 tours à 31–33 tr/min · LA = (5000 − m)/50.',
+ rb:'Ballast 31,5/50 mm · prise (10000 ± 100) g · 12 boulets (5210 ± 90 g) · 1000 tours · LARB = (10000 − m)/100.',
+ alt:'Fraction alternative (Annexe B) · adapter masse, boulets et tamis intermédiaire au tableau B.1.'};
+function applyLaVar(){if(laVar==='std'){if(!num('la_M'))setv('la_M','5000');if(!num('la_nb'))setv('la_nb','11');setv('la_ti','12.5');}else if(laVar==='rb'){if(!num('la_M'))setv('la_M','10000');if(!num('la_nb'))setv('la_nb','12');setv('la_ti','40');}}
+
+
+
+
+/* MICRO-DEVAL (NF EN 1097-1) */
+/* Classes granulaires : standard 10/14 (Art. 6), Annexe C (Tableau C.1), ballast 31,5/50 (Annexe A) */
+const MDE_CLASS={
+ '10/14':{charge:5000,M:500,eau:2.5,tours:12000,ti:11.2,lo:30,hi:40,alt2:[12.5,60,70]},
+ '4/6.3':{charge:2000,M:500,eau:2.5,tours:12000,ti:5,lo:30,hi:40},
+ '4/8':{charge:2800,M:500,eau:2.5,tours:12000,ti:6.3,lo:60,hi:70},
+ '6.3/10':{charge:4000,M:500,eau:2.5,tours:12000,ti:8,lo:30,hi:40},
+ '8/11.2':{charge:4400,M:500,eau:2.5,tours:12000,ti:10,lo:60,hi:70},
+ '11.2/16':{charge:5400,M:500,eau:2.5,tours:12000,ti:14,lo:60,hi:70},
+ '31.5/50':{charge:0,M:10000,eau:2.0,tours:14000,ti:null}
+};
+function mdeClassKey(){return mdeVar==='std'?'10/14':mdeVar==='rb'?'31.5/50':($('mde_class')?$('mde_class').value:'4/6.3');}
+function mdeVis(){if($('mde_altbox'))$('mde_altbox').style.display=mdeVar==='alt'?'grid':'none';}
+function applyMdeVar(){
+  mdeVis();
+  const c=MDE_CLASS[mdeClassKey()];if(!c)return;
+  if(!num('md_M1'))setv('md_M1',c.M);if(!num('md_M2'))setv('md_M2',c.M);
+  setv('mde_charge',c.charge?c.charge:'');setv('mde_eau',c.eau);setv('mde_tours',c.tours);
+  setv('mde_ti',mdeVar==='std'?'11,2 / 12,5':(c.ti==null?'—':c.ti));
+}
+
+
+
+
+
+
+
+/* CLASSIFICATION */
+const DESC={A1:"Limons peu plastiques, loess, sables fins argileux, arènes",A2:"Sables fins argileux, limons, argiles peu plastiques",A3:"Argiles et argiles marneuses, limons très plastiques",A4:"Argiles très plastiques",B1:"Sables silteux",B2:"Sables argileux (peu argileux)",B3:"Graves silteuses",B4:"Graves argileuses (peu argileuses)",B5:"Sables et graves très silteux",B6:"Sables et graves argileux à très argileux",D1:"Sables propres insensibles à l'eau",D2:"Graves propres insensibles à l'eau",D3:"Matériaux grossiers insensibles",C1:"Gros éléments — comportement régi par le squelette",C2:"Gros éléments — comportement régi par la fraction 0/50"};
+
+
+
+
+
+function recalc(){
+  var o; try{ o=readForm(); }catch(e){ o={}; }
+  if(!plausibleState(o)){
+    if(__calcTimer){ clearTimeout(__calcTimer); __calcTimer=null; }
+    window.__laboLastClasse=null; renderVerdict(null);
+    try{ renderRecap({}); }catch(e){} try{ updateDots(); }catch(e){}
+    return;
+  }
+  if(__calcTimer) clearTimeout(__calcTimer);
+  __calcTimer=setTimeout(function(){ __calcTimer=null; __runCalcLabo(o); }, 320);
+}
+function renderRecap(r){const rows=[['Classe GTR',r&&r.full?r.full:'—'],['Dmax (mm)',f(D.dmax,D.dmax<1?2:0)],['Passant 80 µm (%)',f(D.p80)],['Passant 2 mm (%)',f(D.p2)],['Module de finesse',D.mf==null?'—':f(D.mf,2)+(D.mfq?' ('+D.mfq+')':'')],['WL (%)',D.wl==null?'—':D.wl],['WP (%)',D.wp==null?'—':D.wp],['Ip',D.ip==null?'—':D.ip],['Ic',f(D.ic,2)],['VBS',f(D.vbs,2)],['Teneur en eau wn (%)',f(D.wn,2)],['wOPN (%)',f(D.wopn,1)],['ρd max (t/m³)',f(D.rdmax,3)],['I.CBR à 95 % OPM',f(D.cbr,1)],['Gonflement (%)',f(D.gonfl,2)],['ρ apparente (Mg/m³)',f(D.rho_app,2)],['ρs grains (Mg/m³)',f(D.rhos,2)],['Équivalent de sable (%)',f(D.es,1)],['Los Angeles',D.la==null?'—':D.la],['Fragmentation SZ (%)',f(D.sz,2)],['Micro-Deval',D.mde==null?'—':D.mde],['WA24 (%)',f(D.wa,2)],['SO₃ (%)',f(D.so3,3)],["qu (MPa)",f(D.qu,3)],["c′ cisaillement (kPa)",f(D.c_cis,1)],["φ′ cisaillement (°)",f(D.phi_cis,1)],["c' triaxial (kPa)",f(D.c,1)],["φ' triaxial (°)",f(D.phi,1)],['cu UU (kPa)',f(D.cu_uu,0)],['e₀ œdo',f(D.e0_oedo,3)],['Cc œdo',f(D.Cc_oedo,3)],['Cs œdo',f(D.Cs_oedo,3)],['k (cm/s)',D.k==null?'—':D.k.toExponential(2)]];$('recap').innerHTML='<tr><th>Paramètre</th><th>Valeur</th></tr>'+rows.map(([k,v])=>`<tr><td>${k}</td><td>${v==null?'—':v}</td></tr>`).join('');}
+function updateDots(){const map={ident:'m_ref',w:'w_s1',gran:'gr_M',att:'ll_s1',vbs:'v_V1',rhos:'rs2_m0_1',dens:'d_m',proctor:'pr_mh1',cbr:'cb_tot0',cisail:'ci_N1',oedo:'oe_H0',ucs:'uc_f',triuu:'tu_df_1',tricu:'tc_s1_1',perm:'pe_V',es:'es_h2_1',la:'la_m',sz:'sz_8',mde:'mde_present',rho:'ra_M1',sulf:'su_ba'};document.querySelectorAll('#side a').forEach(a=>{const id=map[a.dataset.t];a.classList.toggle('done', id && $(id) && $(id).value );});}
+
+/* PERSISTENCE */
+function readForm(){const o={forcedState,permMode,laVar,mdeVar,mdeWet,mdeMode,prType,rsMethod,cbType,ciMethod,densMethod,densShape};document.querySelectorAll('.save').forEach(i=>{if(i.type==='checkbox'){if(i.checked)o[i.id]=true;}else if(i.value!=='')o[i.id]=i.value;});return o;}
+const DEF={v_conc:'10',rs_T:'20',ra_rw:'0.998',cb_s25:'13.35',cb_s5:'20',cb_cible:'95',cb_K:'1',su_f:'0.343',la_ti:'12.5',di_rfl:'0.998',di_rp:'0.9',dd_rfl:'0.998',dd_rp:'0.9'};
+function writeForm(o){document.querySelectorAll('.save').forEach(i=>{if(i.type==='checkbox'){i.checked=!!(o&&o[i.id]);}else{i.value=(o&&o[i.id]!=null)?o[i.id]:(DEF[i.id]||'');}});forcedState=(o&&o.forcedState)||'';setSel('#statepills','st',forcedState);permMode=(o&&o.permMode)||'const';setSel('#permmode','pm',permMode);$('perm_const').style.display=permMode==='const'?'grid':'none';$('perm_var').style.display=permMode==='var'?'grid':'none';laVar=(o&&o.laVar)||'std';setSel('#lavar','v',laVar);mdeVar=(o&&o.mdeVar)||'std';setSel('#mdevar','v',mdeVar);mdeWet=(o&&o.mdeWet)||'h';setSel('#mdewet','w',mdeWet);mdeMode=(o&&o.mdeMode)||'norme';setSel('#mdemode','md',mdeMode);mdeModeApply();prType=(o&&o.prType)||'n';setSel('#prtype','t',prType);rsMethod=(o&&o.rsMethod)||'A';setSel('#rsmethod','m',rsMethod);$('rs_h3col').innerHTML=rsMethod==='B'?'m<sub>4</sub><br>masse sèche':'m<sub>2</sub><br>pycno+sol sec';cbType=(o&&o.cbType)||'cbr';setSel('#cbtype','c',cbType);applyCbType();ciMethod=(o&&o.ciMethod)||'box';setSel('#cimethod','m',ciMethod);applyCiMethod();densMethod=(o&&o.densMethod)||'lin';setSel('#dmethod','m',densMethod);applyDensMethod();densShape=(o&&o.densShape)||'prism';setSel('#dshape','s',densShape);applyDensShape();if(!o||!o.la_M)applyLaVar();if(!o||!o.md_M1)applyMdeVar();mdeVis();if(!o||!o.pr_d)setMould();recalc();}
+function setSel(sel,attr,val){document.querySelectorAll(sel+' .pill').forEach(q=>q.classList.toggle('on',q.dataset[attr]===val));}
+function newSample(){writeForm({});toast('Nouvel essai');show('ident');}
+
+/* ====== EXEMPLE FICTIF : échantillon de démonstration (données non réelles) ====== */
+const DEMO={
+  m_ref:'SC2 — 1,20 m', m_chantier:'Aménagement RN1 — Lot 3', m_client:'DGTP / SAPCO', m_dossier:'2026-014',
+  m_pk:'PK 12+300', m_prof:'1,20 m', m_date:'2026-03-10', m_dessai:'2026-03-18',
+  m_op:'A. Diop', m_ing:'M. NDIAYE', m_labo:'GEOTEST LABO', m_nature:'Limon argileux brun',
+  m_obs:'Exemple fictif de démonstration — données simulées, non issues d’un essai réel.',
+  /* Teneur en eau (≈ 18 %) */
+  w_t1:'20.00',w_h1:'138.00',w_s1:'120.00', w_t2:'21.50',w_h2:'149.50',w_s2:'130.00', w_t3:'19.80',w_h3:'126.60',w_s3:'110.30',
+  /* Granulométrie — M=1000 g, refus partiels (Dmax 20 mm, p80≈52 %, p2≈73 %) */
+  gr_M:'1000', gr_20:'5',gr_16:'15',gr_10:'30',gr_8:'25',gr_6_3:'30',gr_5:'35',gr_4:'40',gr_2:'90',gr_1:'80',gr_0_5:'60',gr_0_2:'40',gr_0_08:'30',
+  /* Atterberg — wL≈38, wP≈20, Ip≈18 → A2 */
+  ll_x1:'15',ll_t1:'15.00',ll_h1:'29.05',ll_s1:'25.00',
+  ll_x2:'22',ll_t2:'15.00',ll_h2:'28.88',ll_s2:'25.00',
+  ll_x3:'28',ll_t3:'15.00',ll_h3:'28.72',ll_s3:'25.00',
+  ll_x4:'33',ll_t4:'15.00',ll_h4:'28.60',ll_s4:'25.00',
+  pl_t1:'15.00',pl_h1:'21.00',pl_s1:'20.00', pl_t2:'14.50',pl_h2:'20.14',pl_s2:'19.20',
+  /* VBS — 2 déterminations (NF P 94-068), moyenne ≈ 3,5 */
+  v_conc:'10',
+  v_prise1:'30',v_frac1:'100',v_w1:'4.0',v_V1:'101',
+  v_prise2:'30',v_frac2:'100',v_w2:'4.0',v_V2:'101',
+  /* Proctor normal, moule A — optimum ≈ 16 %, ρd max ≈ 1,85 */
+  pr_mould:'A',
+  pr_mh1:'1836.6',pr_t1:'18.0',pr_h1:'74.0',pr_s1:'68.0',
+  pr_mh2:'1944.8',pr_t2:'18.0',pr_h2:'75.0',pr_s2:'68.0',
+  pr_mh3:'2022.6',pr_t3:'18.0',pr_h3:'76.0',pr_s3:'68.0',
+  pr_mh4:'2024.1',pr_t4:'18.0',pr_h4:'77.0',pr_s4:'68.0',
+  pr_mh5:'1990.6',pr_t5:'18.0',pr_h5:'78.0',pr_s5:'68.0',
+  /* Cisaillement direct — boîte carrée 60 mm → c′≈8 kPa, φ′≈25° */
+  ci_shape:'sq', ci_dim:'60',
+  ci_N1:'0.36',ci_P1:'0.197', ci_N2:'0.72',ci_P2:'0.365', ci_N3:'1.08',ci_P3:'0.533', ci_N4:'1.44',ci_P4:'0.700',
+  ci_rs:'2.65',
+  ci_rho1:'1950',ci_w1:'18.5',ci_nat1:'Limon argileux brun',
+  ci_rho2:'1965',ci_w2:'18.0',ci_nat2:'Limon argileux brun',
+  ci_rho3:'1940',ci_w3:'18.8',ci_nat3:'Limon argileux brun',
+  ci_rho4:'1970',ci_w4:'17.6',ci_nat4:'Limon argileux brun',
+  /* Œdomètre — H0=20 mm, D=70 mm, e0≈0,74, Cc≈0,12 */
+  oe_H0:'20.0',oe_D:'70.0',oe_md:'119.3',oe_rs:'2.70',
+  oe_s1:'10',oe_dh1:'0.05', oe_s2:'20',oe_dh2:'0.12', oe_s3:'40',oe_dh3:'0.24', oe_s4:'80',oe_dh4:'0.45',
+  oe_s5:'160',oe_dh5:'0.78', oe_s6:'320',oe_dh6:'1.18', oe_s7:'640',oe_dh7:'1.60',
+  oe_s8:'160',oe_dh8:'1.52', oe_s9:'40',oe_dh9:'1.40'
+};
+function loadDemo(){writeForm(structuredClone(DEMO));toast('Exemple fictif chargé — limon argileux (A2)');show('class');}
+
+let DB=[];const MEM={};
+const Store={
+  get:function(k){ return window.__geofamBridge.storeGet(k); },
+  set:function(k,v){ return window.__geofamBridge.storeSet(k,v); }
+};
+async function loadDB(){DB=await Store.get('geolab_db')||[];renderDB();}
+async function persistDB(){await Store.set('geolab_db',DB);}
+async function saveSample(){
+  var o=readForm(); if(!o.m_ref){ toast('Renseignez une référence'); show('ident'); var mr=$('m_ref'); if(mr) mr.focus(); return; }
+  await __runCalcLabo(o);
+  var r=window.__laboLastClasse||{};
+  DB.unshift({ id:o.m_ref+'·'+Date.now(), ref:o.m_ref, chantier:o.m_chantier||'', code:(r&&r.full)||'—', o:o, ts:Date.now() });
+  await persistDB(); renderDB(); toast('Enregistré : '+o.m_ref+' ('+((r&&r.full)||'—')+')');
+}
+function renderDB(){const w=$('dblist');if(!DB.length){w.innerHTML='<div class="empty">Aucun échantillon enregistré.</div>';return;}w.innerHTML='';DB.forEach(rec=>{const d=document.createElement('div');d.className='sitem';const date=new Date(rec.ts).toLocaleDateString('fr-FR');d.innerHTML=`<div class="mini">${rec.code}</div><div class="meta"><b>${rec.ref||'(sans réf.)'}</b><span>${rec.chantier||'—'} · ${date}</span></div><button class="btn sec sm noprint">Ouvrir</button><button class="btn ghost sm noprint">Suppr.</button>`;d.querySelectorAll('button')[0].onclick=()=>{writeForm(rec.o);toast('Chargé : '+rec.ref);show('ident');};d.querySelectorAll('button')[1].onclick=async()=>{if(confirm('Supprimer ?')){DB=DB.filter(x=>x.id!==rec.id);await persistDB();renderDB();}};w.appendChild(d);});}
+function exportAll(){const blob=new Blob([JSON.stringify({app:'FASTLAB',version:2,db:DB,cfg:CFG},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='fastlab.json';a.click();}
+function importAll(ev){const fl=ev.target.files[0];if(!fl)return;const rd=new FileReader();rd.onload=async()=>{try{const j=JSON.parse(rd.result);if(j.db){DB=j.db.concat(DB);await persistDB();renderDB();}if(j.cfg){CFG=Object.assign(structuredClone(DEFAULTS),j.cfg);renderThresholds();}toast('Import réussi');}catch(e){toast('Fichier invalide');}};rd.readAsText(fl);ev.target.value='';}
+
+/* PV automatique : ne sortir que les feuilles renseignées + identification + classification */
+function markPV(){
+  const map={w:'w_s1',gran:'gr_M',att:'ll_s1',vbs:'v_V1',rhos:'rs2_m0_1',dens:'d_m',proctor:'pr_mh1',cbr:'cb_tot0',cisail:'ci_N1',oedo:'oe_H0',ucs:'uc_f',triuu:'tu_df_1',tricu:'tc_s1_1',perm:'pe_V',es:'es_h2_1',la:'la_m',sz:'sz_8',mde:'mde_present',rho:'ra_M1',sulf:'su_ba'};
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('pv-show'));
+  ['ident','class'].forEach(id=>{const el=document.querySelector(`.tab[data-tab="${id}"]`);if(el)el.classList.add('pv-show');});
+  Object.entries(map).forEach(([t,id])=>{const e=$(id);if(e&&e.value){const el=document.querySelector(`.tab[data-tab="${t}"]`);if(el)el.classList.add('pv-show');}});
+  buildPVChrome();
+}
+/* En-tête labo + bloc visa (style fiche d'essai), injectés uniquement pour l'impression */
+function pvVal(id,d=''){const e=$(id);return (e&&e.value)?e.value:d;}
+function pvFmtDate(v){if(!v)return '';const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(v);return m?`${m[3]}/${m[2]}/${m[1]}`:v;}
+function pvMeta(tab){const h=tab.querySelector('.card>h2');if(!h)return{title:tab.dataset.tab,norm:''};const c=h.cloneNode(true);const t=c.querySelector('.tag');const norm=t?t.textContent.trim():'';if(t)t.remove();return{title:c.textContent.trim(),norm};}
+function buildPVChrome(){
+  document.querySelectorAll('.pvonly').forEach(n=>n.remove());
+  const lab=pvVal('m_labo','LABORATOIRE'),client=pvVal('m_client','—'),ing=pvVal('m_ing');
+  const metaSrc=[['Projet',pvVal('m_chantier')],['N° dossier',pvVal('m_dossier')],['Réf. / Sondage',pvVal('m_ref')],['Profondeur',pvVal('m_prof')],['Date prélèvement',pvFmtDate(pvVal('m_date'))],['Date essai',pvFmtDate(pvVal('m_dessai'))],['Opérateur',pvVal('m_op')],['Nature',pvVal('m_nature')]];
+  const metaHTML=metaSrc.filter(([k,v])=>v).map(([k,v])=>`<span><b>${k} :</b> ${v}</span>`).join('')||'<span class="sub">Renseignez l’identification de l’échantillon</span>';
+  document.querySelectorAll('.tab.pv-show').forEach(tab=>{
+    const id=tab.dataset.tab,m=pvMeta(tab),title=m.title,norm=m.norm;
+    let banner="PROCÈS-VERBAL D'ESSAI";
+    if(id==='ident')banner="FICHE D'IDENTIFICATION DE L'ÉCHANTILLON";
+    else if(id==='class')banner='SYNTHÈSE & CLASSIFICATION GTR';
+    const realNorm=/(NF|EN|ISO|XP|\bP\s?\d)/.test(norm)&&id!=='ident'&&id!=='class';
+    const normLine=realNorm?`<div class="pvh-norm">Essai réalisé conformément à la norme <b>${norm}</b></div>`:'';
+    const head=`<div class="pvonly pv-head"><div class="pvh-top">`+
+      `<div class="pvh-lab"><div class="pvh-labname">${lab}</div><div class="pvh-labsub">Laboratoire d'essais</div></div>`+
+      `<div class="pvh-mid"><div class="pvh-banner">${banner}</div><div class="pvh-sub">${title}</div>${normLine}</div>`+
+      `<div class="pvh-cli"><div class="pvh-clilab">Client</div><div class="pvh-cliname">${client}</div></div>`+
+      `</div><div class="pvh-meta">${metaHTML}</div></div>`;
+    const foot=`<div class="pvonly pv-foot"><div class="pvf-sig"><div class="pvf-role">L'ingénieur chargé de l'étude</div><div class="pvf-name">${ing||'&nbsp;'}</div></div></div>`;
+    tab.insertAdjacentHTML('afterbegin',head);
+    tab.insertAdjacentHTML('beforeend',foot);
+  });
+}
+function printPV(){recalc();markPV();window.print();}
+window.addEventListener('beforeprint',markPV);
+
+document.addEventListener('input',e=>{if(e.target.classList&&e.target.classList.contains('save'))recalc();});
+renderThresholds();writeForm({});loadDB();
+</script>
+</body>
+</html>

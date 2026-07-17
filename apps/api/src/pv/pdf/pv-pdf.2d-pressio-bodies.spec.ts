@@ -160,11 +160,17 @@ describe('PV plane-strain — corps « coupe en déformations planes »', () => 
 
   it('given un calcul plane-strain scellé, then le PV rend les stats du panneau #ps-run (libellés/unités/ordre)', () => {
     const def = buildPvDocDefinition(makeSealedPv('plane-strain', IN, OUT));
+    // Tassements sur-rapportés ×1000 comme `(R.wMax*1000).toFixed(1)+' mm'` du panneau
+    // client (wMax 12,34 -> 12 340 mm). Défaut d'affichage COPIÉ (décision 15/07/17-07).
     expect(findRowValue(def.content, 'Tassement maximal w_max')).toBe(
-      '12,3 mm',
+      '12 340 mm',
     );
-    expect(findRowValue(def.content, 'Tassement minimal w_min')).toBe('1,2 mm');
-    expect(findRowValue(def.content, 'Tassement différentiel')).toBe('11,1 mm');
+    expect(findRowValue(def.content, 'Tassement minimal w_min')).toBe(
+      '1 230 mm',
+    );
+    expect(findRowValue(def.content, 'Tassement différentiel')).toBe(
+      '11 110 mm',
+    );
     expect(findRowValue(def.content, 'Moment fléchissant maximal')).toBe(
       '45,7 kN·m/m',
     );
@@ -251,11 +257,16 @@ describe('PV axi-plaque — corps « plaque axisymétrique »', () => {
 
   it('given un calcul axi scellé, then le PV rend centre/bord + différentiel + moments radial/tangentiel (panneau #ax-run)', () => {
     const def = buildPvDocDefinition(makeSealedPv('axi-plaque', IN, OUT));
-    expect(findRowValue(def.content, 'Tassement au centre w_c')).toBe('5,5 mm');
-    expect(findRowValue(def.content, 'Tassement au bord w_bord')).toBe(
-      '2,2 mm',
+    // Tassements ×1000 (panneau #ax-run : `(R.wc*1000).toFixed(1)`) : wc 5,5 -> 5 500 mm.
+    expect(findRowValue(def.content, 'Tassement au centre w_c')).toBe(
+      '5 500 mm',
     );
-    expect(findRowValue(def.content, 'Tassement différentiel')).toBe('5 mm');
+    expect(findRowValue(def.content, 'Tassement au bord w_bord')).toBe(
+      '2 200 mm',
+    );
+    expect(findRowValue(def.content, 'Tassement différentiel')).toBe(
+      '5 000 mm',
+    );
     expect(findRowValue(def.content, 'Moment radial M_r max')).toBe(
       '30,1 kN·m/m',
     );
@@ -329,9 +340,16 @@ describe('PV radier-tri — corps « radier maillé (triangulaire) »', () => {
     const pv = makeSealedPv('radier-tri', IN, OUT);
     const def = buildPvDocDefinition(pv);
     expect(findRowValue(def.content, 'Nombre de plaques modélisées')).toBe('2');
-    expect(findRowValue(def.content, 'Tassement maximal w_max')).toBe('8,8 mm');
-    expect(findRowValue(def.content, 'Tassement minimal w_min')).toBe('2,1 mm');
-    expect(findRowValue(def.content, 'Tassement différentiel')).toBe('6,7 mm');
+    // Tassements ×1000 (panneau #tri-run : `(R.wMax*1000).toFixed(1)`).
+    expect(findRowValue(def.content, 'Tassement maximal w_max')).toBe(
+      '8 800 mm',
+    );
+    expect(findRowValue(def.content, 'Tassement minimal w_min')).toBe(
+      '2 100 mm',
+    );
+    expect(findRowValue(def.content, 'Tassement différentiel')).toBe(
+      '6 700 mm',
+    );
     expect(findRowValue(def.content, 'Réaction de sol maximale')).toBe(
       '95,2 kPa',
     );

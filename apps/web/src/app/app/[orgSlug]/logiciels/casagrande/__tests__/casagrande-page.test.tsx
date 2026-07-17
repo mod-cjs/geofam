@@ -1,5 +1,5 @@
 /**
- * Tests — shell GEOFAM de la page ROADSENS (clone UI client, ADR 0015).
+ * Tests — shell GEOFAM de la page CASAGRANDE (clone UI client, ADR 0015).
  *
  * DoD §9 : given/when/then, chemins négatifs (gate bloqué, erreur d'émission
  * PV) testés autant que le chemin heureux. `ToolFrame` est mocké ici — sa
@@ -9,7 +9,7 @@
  * calcResultId remonté par ToolFrame).
  *
  * Patron d'interaction : react-dom/client + act (pas de @testing-library/react
- * dans ce dépôt — cf. terzaghi-page.test.tsx / PvEmittedActions.test.tsx).
+ * dans ce dépôt — cf. roadsens-page.test.tsx / geoplaque-page.test.tsx).
  */
 
 import { act } from 'react';
@@ -69,13 +69,13 @@ vi.mock('@/lib/tool-bridge/ToolFrame', () => ({
   ),
 }));
 
-import RoadsensPage from '../page';
+import CasagrandePage from '../page';
 
 const PROJECT = {
-  id: 'proj_ch_01',
+  id: 'proj_fd_01',
   orgId: 'org_01',
-  name: 'Route A12',
-  domain: 'CH' as const,
+  name: 'Ouvrage P3',
+  domain: 'FD' as const,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   createdBy: 'u1',
@@ -91,7 +91,7 @@ function entitlements(
   return {
     orgId: 'org_01',
     pack: 'COMPLETE' as const,
-    modules: overrides.modules ?? ['burmister'],
+    modules: overrides.modules ?? ['pieux'],
     expiresAt: '2027-01-01T00:00:00.000Z',
     expired: overrides.expired ?? false,
     quota: overrides.quota ?? { limit: 500, used: 100, remaining: 400 },
@@ -120,7 +120,7 @@ afterEach(() => {
 async function renderPage() {
   await act(async () => {
     root = createRoot(container);
-    root.render(<RoadsensPage />);
+    root.render(<CasagrandePage />);
   });
   await act(async () => {
     await Promise.resolve();
@@ -128,30 +128,30 @@ async function renderPage() {
   });
 }
 
-describe('Page ROADSENS — shell GEOFAM', () => {
-  it('given un seul projet CH, when montage, then le projet est présélectionné et ToolFrame reçoit le contexte projet (toolId roadsens, engineId burmister)', async () => {
+describe('Page CASAGRANDE — shell GEOFAM', () => {
+  it('given un seul projet FD, when montage, then le projet est présélectionné et ToolFrame reçoit le contexte projet (toolId casagrande, engineId pieux)', async () => {
     await renderPage();
     const stub = container.querySelector('[data-testid="tool-frame-stub"]');
     expect(stub).not.toBeNull();
     const props = JSON.parse(stub!.getAttribute('data-props')!);
     expect(props).toMatchObject({
-      toolId: 'roadsens',
-      engineId: 'burmister',
-      projectId: 'proj_ch_01',
-      projectLabel: 'Route A12',
+      toolId: 'casagrande',
+      engineId: 'pieux',
+      projectId: 'proj_fd_01',
+      projectLabel: 'Ouvrage P3',
       accessToken: 'token-abc',
     });
   });
 
-  it('given des projets CH, LEGACY(null) et FD, when montage, then le picker montre CH + legacy et EXCLUT le FD', async () => {
-    // Même règle que terzaghi (bug swap mock->réel) : le filtre retient le
-    // domaine du logiciel (CH) OU un domaine null (projet legacy, domaine
-    // inconnu -> sélectionnable partout plutôt qu'invisible partout), et
-    // écarte un domaine explicitement autre (FD).
+  it('given des projets FD, LEGACY(null) et CH, when montage, then le picker montre FD + legacy et EXCLUT le CH', async () => {
+    // Même règle que terzaghi/roadsens/geoplaque (bug swap mock->réel) : le filtre
+    // retient le domaine du logiciel (FD) OU un domaine null (projet legacy,
+    // domaine inconnu -> sélectionnable partout plutôt qu'invisible partout), et
+    // écarte un domaine explicitement autre (CH).
     mockListProjects.mockResolvedValue([
-      { ...PROJECT, id: 'p_ch', name: 'Route CH', domain: 'CH' },
+      { ...PROJECT, id: 'p_fd', name: 'Pieux FD', domain: 'FD' },
       { ...PROJECT, id: 'p_legacy', name: 'Projet legacy', domain: null },
-      { ...PROJECT, id: 'p_fd', name: 'Fondation FD', domain: 'FD' },
+      { ...PROJECT, id: 'p_ch', name: 'Chaussée CH', domain: 'CH' },
     ]);
     await renderPage();
     const select = container.querySelector(
@@ -161,9 +161,9 @@ describe('Page ROADSENS — shell GEOFAM', () => {
     const labels = Array.from(select.querySelectorAll('option')).map(
       (o) => o.textContent,
     );
-    expect(labels).toContain('Route CH');
+    expect(labels).toContain('Pieux FD');
     expect(labels).toContain('Projet legacy');
-    expect(labels).not.toContain('Fondation FD');
+    expect(labels).not.toContain('Chaussée CH');
   });
 
   it('given aucun projet sélectionné (liste vide), when montage, then ToolFrame est AFFICHÉ quand même (fidélité UI, projectId null) et le bandeau montre un hint discret', async () => {
@@ -216,11 +216,11 @@ describe('Page ROADSENS — shell GEOFAM', () => {
   it('given un calcul terminé, when "Émettre le PV" cliqué et emitPv résout, then le PV scellé est affiché', async () => {
     mockEmitPv.mockResolvedValue({
       id: 'pv_01',
-      number: 'PV-2026-0007',
+      number: 'PV-2026-0011',
       orgId: 'org_01',
-      projectId: 'proj_ch_01',
+      projectId: 'proj_fd_01',
       calcResultId: 'calc_42',
-      engineId: 'burmister',
+      engineId: 'pieux',
       hmacTruncated: 'a1b2c3d4',
       sealedAt: '2026-07-16T10:00:00.000Z',
       sealedBy: 'Amadou Diallo',
@@ -242,10 +242,10 @@ describe('Page ROADSENS — shell GEOFAM', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(mockEmitPv).toHaveBeenCalledWith('org_01', 'proj_ch_01', {
+    expect(mockEmitPv).toHaveBeenCalledWith('org_01', 'proj_fd_01', {
       calcResultId: 'calc_42',
     });
-    expect(container.textContent).toMatch(/PV-2026-0007/);
+    expect(container.textContent).toMatch(/PV-2026-0011/);
   });
 
   it('given emitPv échoue, when "Émettre le PV" cliqué, then un message d\'erreur explicite est affiché', async () => {
@@ -270,7 +270,7 @@ describe('Page ROADSENS — shell GEOFAM', () => {
     );
   });
 
-  it("given le module burmister n'est PAS inclus dans l'abonnement, when montage, then la bannière de gate est affichée", async () => {
+  it("given le module pieux n'est PAS inclus dans l'abonnement, when montage, then la bannière de gate est affichée", async () => {
     mockGetEntitlements.mockResolvedValue(entitlements({ modules: ['terzaghi'] }));
     await renderPage();
     const banner = container.querySelector('[data-testid="gate-banner"]');

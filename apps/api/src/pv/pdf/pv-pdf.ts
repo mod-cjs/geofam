@@ -397,6 +397,59 @@ function fdnFirstFinite(...vals: unknown[]): number | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Affichage RADIER / modes 2D GEOPLAQUE — COPIE des transformations d'affichage de
+// l'outil client GEOPLAQUE_V10 (décision titulaire 15/07, re-confirmée 17/07 :
+// « zéro écart absolu »). La sortie MOTEUR reste physiquement juste (tassements en mm,
+// distorsions en ‰) et le SCELLÉ canonique est INCHANGÉ ; SEULE la couche de
+// PRÉSENTATION reproduit les défauts d'affichage de l'outil client : tassements ×1000
+// (sur-rapport), grandeurs angulaires rendues CRUES (`ratio1` + valeur brute étiquetée
+// « rad »). Appliqué app ET PV ensemble (jamais l'un sans l'autre — leçon pressio
+// MAJEUR-1). Exception à faire valider par STARFIRE (inverse la décision du 01/07 qui
+// affichait mm/‰ « justes »). Réf. client : `refreshResults` l.2560-2598 (radier) ;
+// panneaux `#ps-run`/`#ax-run`/`#tri-run` l.2237-2333 (2D). Typographie fr-FR maison
+// (séparateur décimal « , », mantisse de la notation scientifique localisée).
+// ---------------------------------------------------------------------------
+
+function radierNum(v: unknown): number | null {
+  const n =
+    typeof v === 'number'
+      ? v
+      : typeof v === 'string' && v.trim() !== ''
+        ? Number(v)
+        : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Tassement sur-rapporté ×1000 « mm » — miroir de `(d.wMax*1000).toFixed(1)+' mm'`. */
+function fdnSettleMm(v: unknown): string {
+  const n = radierNum(v);
+  return n === null ? '—' : fdnNum(n * 1000, 1, 'mm');
+}
+
+/** `ratio1(v)` = « 1/N » (fr-FR) — miroir exact de l'outil client. « — » si v ≤ 0 / non fini. */
+function ratio1(v: unknown): string {
+  const n = radierNum(v);
+  if (n === null || n <= 0) return '—';
+  return `1/${Math.round(1 / n)
+    .toLocaleString('fr-FR')
+    .replace(/\s/g, ' ')}`;
+}
+
+/** Distorsion β CRUE — miroir de `ratio1(β)+'  ('+β.toExponential(1)+' rad)'`. */
+function fdnBetaRad(v: unknown): string {
+  const n = radierNum(v);
+  if (n === null) return '—';
+  return `${ratio1(n)} (${n.toExponential(1).replace('.', ',')} rad)`;
+}
+
+/** Rotation / pente CRUE — miroir de `v.toExponential(2)+' rad  ('+ratio1(v)+')'` (Synthèse). */
+function fdnRotRad(v: unknown): string {
+  const n = radierNum(v);
+  if (n === null) return '—';
+  return `${n.toExponential(2).replace('.', ',')} rad (${ratio1(n)})`;
+}
+
 function fdnSubTitle(label: string): Content {
   return { text: label, style: 'groupRow', margin: [0, 8, 0, 3] };
 }
@@ -1145,34 +1198,39 @@ function buildRadierBody(sealed: SealedContent): Content[] {
 
   body.push(sectionTitle('Déflexions & distorsions'));
   const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
-  // Moteur radier : tassements en mm, distorsion en ‰ — TRANCHÉ (physique + solveModel
-  // de référence identique au bit près + cohérence inter-cas). Le solveur sort ses
-  // déplacements numériquement en mm (piège d'unité E-MPa × charges-kN × géométrie-m) ;
-  // l'annotation « m/rad » du contrat vise l'unité SI, pas la sortie numérique. Voir le
-  // commentaire détaillé dans apps/web adapters.ts (buildRadierRows).
+  // AFFICHAGE = COPIE de l'outil client GEOPLAQUE_V10 (`refreshResults`, décision
+  // titulaire 15/07 re-confirmée 17/07 : « zéro écart absolu »). La sortie MOTEUR reste
+  // juste (tassements en mm, distorsions en ‰) et le scellé est INCHANGÉ ; seule la
+  // PRÉSENTATION reproduit les défauts de l'outil : tassements ×1000 (fdnSettleMm),
+  // distorsions/pentes rendues CRUES via ratio1 + valeur brute « rad » (fdnBetaRad /
+  // fdnRotRad). Inclinaison ϖ = `ratio1(tilt)` SEUL (l'outil client ne lui adjoint pas de
+  // « rad »). Détails du raisonnement d'unité : bandeau des helpers ci-dessus.
   // COMPLÉTUDE : tous les diagnostics client-safe (RadierOutputSchema), ordre GEOPLAQUE_V10.
-  fdnKvRow(t, 'Tassement maximal w_max', fdnNum(o.wMax, 2, 'mm'));
-  fdnKvRow(t, 'Tassement minimal w_min', fdnNum(o.wMin, 2, 'mm'));
-  fdnKvRow(t, 'Tassement différentiel', fdnNum(o.diff, 2, 'mm'));
-  fdnKvRow(t, 'Distorsion angulaire gouvernante β', fdnNum(o.betaGov, 2, '‰'));
-  fdnKvRow(t, 'Distorsion intra-plaque max', fdnNum(o.betaIntra, 2, '‰'));
-  fdnKvRow(t, "Inclinaison d'ensemble ϖ", fdnNum(o.tiltMax, 2, '‰'));
-  fdnKvRow(t, 'Pente locale max |∇w|', fdnNum(o.slopeMax, 2, '‰'));
+  fdnKvRow(t, 'Tassement maximal w_max', fdnSettleMm(o.wMax));
+  fdnKvRow(t, 'Tassement minimal w_min', fdnSettleMm(o.wMin));
+  fdnKvRow(t, 'Tassement différentiel', fdnSettleMm(o.diff));
+  fdnKvRow(t, 'Distorsion angulaire gouvernante β', fdnBetaRad(o.betaGov));
+  fdnKvRow(t, 'Distorsion intra-plaque max', fdnBetaRad(o.betaIntra));
+  fdnKvRow(t, "Inclinaison d'ensemble ϖ", ratio1(o.tiltMax));
+  fdnKvRow(t, 'Pente locale max |∇w|', fdnRotRad(o.slopeMax));
   const nRafts = typeof o.nRafts === 'number' ? o.nRafts : 0;
   if (nRafts > 1) {
-    fdnKvRow(t, 'Distorsion entre plaques', fdnNum(o.betaInter, 2, '‰'));
+    // Inter-plaques : l'outil client affiche `ratio1(interBeta)  · Δs (interDiff*1000)`
+    // — distorsion CRUE (ratio1 seul) + différentiel ×1000.
+    fdnKvRow(t, 'Distorsion entre plaques', ratio1(o.betaInter));
     fdnKvRow(
       t,
       'Tassement différentiel inter-plaques',
-      fdnNum(o.interDiff, 2, 'mm'),
+      fdnSettleMm(o.interDiff),
     );
   }
   const wlp = o.worstLoadPair;
   if (wlp != null && typeof wlp === 'object') {
+    // Entre charges : l'outil client affiche `ratio1(w.beta)  · Δs …` (ratio1 seul).
     fdnKvRow(
       t,
       'Distorsion max entre charges voisines',
-      fdnNum((wlp as Record<string, unknown>).beta, 2, '‰'),
+      ratio1((wlp as Record<string, unknown>).beta),
     );
   }
   fdnKvRow(t, 'Nombre de radiers', fdnNum(o.nRafts, 0));
@@ -1196,8 +1254,10 @@ function buildRadierBody(sealed: SealedContent): Content[] {
   fdnKvRow(s, 'Σ réactions du sol', fdnNum(o.sumReact, 1, 'kN'));
   fdnKvRow(s, 'Σ réaction de Winkler', fdnNum(o.sumWink, 1, 'kN'));
   fdnKvRow(s, 'Σ réaction des ressorts', fdnNum(o.sumSpr, 1, 'kN'));
-  fdnKvRow(s, 'Rotation θx max', fdnNum(o.txMax, 2, '‰'));
-  fdnKvRow(s, 'Rotation θy max', fdnNum(o.tyMax, 2, '‰'));
+  // Rotations : format « Synthèse » de l'outil client (`v.toExponential(2)+' rad  ('+
+  // ratio1(v)+')'`) — rendues CRUES, plus de ‰.
+  fdnKvRow(s, 'Rotation θx max', fdnRotRad(o.txMax));
+  fdnKvRow(s, 'Rotation θy max', fdnRotRad(o.tyMax));
   fdnKvRow(s, 'Réaction de sol minimale', fdnNum(o.pMin, 1, 'kPa'));
   fdnKvRow(s, 'Réaction de sol maximale', fdnNum(o.pMax, 1, 'kPa'));
   fdnKvRow(s, 'Moment |Mx| max', fdnNum(o.mxMax, 1, 'kN·m/ml'));
@@ -1546,8 +1606,11 @@ function buildPressiometreBody(sealed: SealedContent): Content[] {
 // Présentations « déformée 2D » GEOPLAQUE (déformations planes / axisymétrique /
 // radier triangulaire) — RÉSULTATS de calcul EF, SANS verdict de conformité :
 // pour ces modes l'outil client (`#ps-run` / `#ax-run` / `#tri-run`) n'affiche que
-// des STATISTIQUES + une figure. Clés NOMMÉES (fail-closed, DoD §8). Unités mm/‰
-// effectives — pas de ×1000 d'affichage (cf. contrats + mémoire roadsen-radier-units).
+// des STATISTIQUES + une figure. Clés NOMMÉES (fail-closed, DoD §8). Les tassements
+// sont sur-rapportés ×1000 (fdnSettleMm) pour COPIER l'affichage de l'outil client
+// (`(R.wMax*1000).toFixed(1)+' mm'` des panneaux #ps-run/#ax-run/#tri-run) — décision
+// titulaire 15/07 re-confirmée 17/07 (« zéro écart absolu ») ; sortie moteur et scellé
+// INCHANGÉS (cf. bandeau des helpers radier + mémoire roadsen-radier-units).
 // ---------------------------------------------------------------------------
 
 /** Cellule de tableau alignée à droite (valeur numérique). */
@@ -1622,9 +1685,9 @@ function buildPlaneStrainBody(sealed: SealedContent): Content[] {
   body.push(sectionTitle('Résultats — coupe en déformations planes'));
   // Ordre & libellés du panneau `#ps-run` de GEOPLAQUE_V10 (tranche unitaire).
   const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
-  fdnKvRow(t, 'Tassement maximal w_max', fdnNum(o.wMax, 1, 'mm'));
-  fdnKvRow(t, 'Tassement minimal w_min', fdnNum(o.wMin, 1, 'mm'));
-  fdnKvRow(t, 'Tassement différentiel', fdnNum(o.diff, 1, 'mm'));
+  fdnKvRow(t, 'Tassement maximal w_max', fdnSettleMm(o.wMax));
+  fdnKvRow(t, 'Tassement minimal w_min', fdnSettleMm(o.wMin));
+  fdnKvRow(t, 'Tassement différentiel', fdnSettleMm(o.diff));
   fdnKvRow(t, 'Moment fléchissant maximal', fdnNum(o.mMax, 1, 'kN·m/m'));
   fdnKvRow(t, 'Moment fléchissant minimal', fdnNum(o.mMin, 1, 'kN·m/m'));
   fdnKvRow(t, 'Réaction de sol maximale', fdnNum(o.pMax, 1, 'kPa'));
@@ -1664,9 +1727,9 @@ function buildAxiBody(sealed: SealedContent): Content[] {
   // Ordre & libellés du panneau `#ax-run` : centre/bord + différentiel (le client
   // n'affiche PAS wMax/wMin isolés — ils sont AGRÉGÉS dans « Tassement différentiel »).
   const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
-  fdnKvRow(t, 'Tassement au centre w_c', fdnNum(o.wc, 1, 'mm'));
-  fdnKvRow(t, 'Tassement au bord w_bord', fdnNum(o.wEdge, 1, 'mm'));
-  fdnKvRow(t, 'Tassement différentiel', fdnNum(o.diff, 1, 'mm'));
+  fdnKvRow(t, 'Tassement au centre w_c', fdnSettleMm(o.wc));
+  fdnKvRow(t, 'Tassement au bord w_bord', fdnSettleMm(o.wEdge));
+  fdnKvRow(t, 'Tassement différentiel', fdnSettleMm(o.diff));
   fdnKvRow(t, 'Moment radial M_r max', fdnNum(o.mrMax, 1, 'kN·m/m'));
   fdnKvRow(t, 'Moment tangentiel M_t max', fdnNum(o.mtMax, 1, 'kN·m/m'));
   fdnKvRow(t, 'Réaction de sol maximale', fdnNum(o.pMax, 1, 'kPa'));
@@ -1696,9 +1759,9 @@ function buildTriRaftBody(sealed: SealedContent): Content[] {
   // DENSITÉ DE MAILLAGE (méthode EF) NON whitelistée (§8) -> on ne rend que le nb de
   // plaques (donnée de modèle, client-safe).
   fdnKvRow(t, 'Nombre de plaques modélisées', fdnNum(o.nRaft, 0));
-  fdnKvRow(t, 'Tassement maximal w_max', fdnNum(o.wMax, 1, 'mm'));
-  fdnKvRow(t, 'Tassement minimal w_min', fdnNum(o.wMin, 1, 'mm'));
-  fdnKvRow(t, 'Tassement différentiel', fdnNum(o.diff, 1, 'mm'));
+  fdnKvRow(t, 'Tassement maximal w_max', fdnSettleMm(o.wMax));
+  fdnKvRow(t, 'Tassement minimal w_min', fdnSettleMm(o.wMin));
+  fdnKvRow(t, 'Tassement différentiel', fdnSettleMm(o.diff));
   fdnKvRow(t, 'Réaction de sol maximale', fdnNum(o.reactionMax, 1, 'kPa'));
   fdnKvRow(
     t,

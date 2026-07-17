@@ -65,6 +65,8 @@ interface RenderOpts {
   toolId?: string;
   engineId?: string;
   engineAllowlist?: string[];
+  /** Défaut 'proj_01' — passer `null` simule l'outil ouvert SANS projet sélectionné. */
+  projectId?: string | null;
 }
 
 async function renderFrame(opts: RenderOpts = {}) {
@@ -77,7 +79,7 @@ async function renderFrame(opts: RenderOpts = {}) {
         engineAllowlist={opts.engineAllowlist}
         orgId="org_01"
         orgSlug="be-routes-dakar"
-        projectId="proj_01"
+        projectId={opts.projectId === undefined ? 'proj_01' : opts.projectId}
         projectLabel="Fondation A12"
         accessToken="token-abc"
         onCalcResultId={opts.onCalcResultId}
@@ -355,6 +357,65 @@ describe('ToolFrame — calc:request → calc:response', () => {
   });
 });
 
+// Correction UX/fidélité (17/07) : l'outil s'affiche désormais AVANT toute
+// sélection de projet (le placeholder du shell a disparu, cf. les 5 pages
+// logiciels) — `projectId` devient donc `null` tant qu'aucun projet n'est
+// choisi. Le calcul et l'émission de PV, eux, restent bloqués : c'est
+// `ToolFrame` qui porte cette frontière (le clone ne le sait pas).
+describe('ToolFrame — aucun projet sélectionné (projectId=null)', () => {
+  it('given projectId=null, when calc:request reçu, then calc:response.error invite explicitement à sélectionner un projet dans le bandeau', async () => {
+    await renderFrame({ projectId: null });
+    const iframe = getIframe();
+    const postSpy = vi.spyOn(iframe.contentWindow as Window, 'postMessage');
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_no_project',
+      payload: { engineId: 'terzaghi', label: 'Calcul', params: {} },
+    });
+
+    expect(mockRunCalc).not.toHaveBeenCalled();
+    const call = postSpy.mock.calls.find(
+      (c) => (c[0] as { id?: string }).id === 'req_no_project',
+    );
+    expect(call?.[0]).toMatchObject({
+      payload: {
+        ok: false,
+        error: {
+          message:
+            "Sélectionnez un projet (bandeau au-dessus de l'outil) avant de lancer le calcul.",
+        },
+      },
+    });
+  });
+
+  it("given projectId=null, when pv:request reçu, then un message d'erreur de protocole invite à sélectionner un projet (aucun appel à emitPv)", async () => {
+    await renderFrame({ projectId: null });
+    const iframe = getIframe();
+    const postSpy = vi.spyOn(iframe.contentWindow as Window, 'postMessage');
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'pv:request',
+      payload: { calcResultId: 'calc_42' },
+    });
+
+    expect(mockEmitPv).not.toHaveBeenCalled();
+    expect(postSpy).toHaveBeenCalledWith(
+      {
+        v: 1,
+        type: 'error',
+        payload: {
+          message:
+            "Sélectionnez un projet (bandeau au-dessus de l'outil) avant d'émettre le PV.",
+        },
+      },
+      '*',
+    );
+  });
+});
+
 describe('ToolFrame — engineAllowlist (multi-engine, GEOPLAQUE)', () => {
   const GEOPLAQUE_MODES = ['radier', 'plane-strain', 'axi', 'tri-raft'];
 
@@ -541,6 +602,52 @@ describe('ToolFrame — store:get / store:set namespacés', () => {
 
     expect(postSpy).toHaveBeenCalledWith(
       { v: 1, type: 'store:value', payload: { key: 'inexistant', value: null } },
+      '*',
+    );
+  });
+
+  it("given projectId=null (aucun projet choisi), when store:set reçu, then la clé est namespacée sous le repli '_noproject' (brouillon non perdu)", async () => {
+    await renderFrame({ projectId: null });
+    const iframe = getIframe();
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'store:set',
+      payload: { key: 'brouillon', value: { B: '2' } },
+    });
+
+    // Assertion sur la clé LITTÉRALE (pas via toolStoreKey des deux côtés :
+    // ça vérifierait juste que production et test s'accordent entre eux,
+    // pas que le repli '_noproject' existe réellement — faux-vert DoD §9).
+    const stored = localStorage.getItem(
+      'tool-store:org_01:_noproject:terzaghi:brouillon',
+    );
+    expect(stored).toBe(JSON.stringify({ B: '2' }));
+    // Contre-épreuve : toolStoreKey(orgId, null, …) produit bien cette même clé.
+    expect(toolStoreKey('org_01', null, 'terzaghi', 'brouillon')).toBe(
+      'tool-store:org_01:_noproject:terzaghi:brouillon',
+    );
+  });
+
+  it("given un brouillon déjà écrit sous le repli '_noproject', when store:get reçu AVEC un vrai projet sélectionné, then il n'est PAS visible (espaces de noms distincts, pas de fuite)", async () => {
+    // Écrit directement sous la clé LITTÉRALE de repli — équivalent d'une
+    // saisie faite AVANT toute sélection de projet dans une session précédente.
+    localStorage.setItem(
+      'tool-store:org_01:_noproject:terzaghi:brouillon',
+      JSON.stringify({ B: '2' }),
+    );
+    await renderFrame({ projectId: 'proj_01' });
+    const iframe = getIframe();
+    const postSpy = vi.spyOn(iframe.contentWindow as Window, 'postMessage');
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'store:get',
+      payload: { key: 'brouillon' },
+    });
+
+    expect(postSpy).toHaveBeenCalledWith(
+      { v: 1, type: 'store:value', payload: { key: 'brouillon', value: null } },
       '*',
     );
   });

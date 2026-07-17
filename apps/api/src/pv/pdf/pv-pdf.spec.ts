@@ -844,7 +844,10 @@ describe('PV radier — synthèse (ADR 0014) + alerte de poinçonnement', () => 
   });
 
   /** Sortie radier représentative — options Winkler/ressorts/décollement INACTIVES
-   * (conditionnels null). tassements mm, distorsions ‰ (unités TRANCHÉES). */
+   * (conditionnels null). La SORTIE MOTEUR reste physiquement juste (tassements mm,
+   * distorsions ‰) ; c'est la PRÉSENTATION qui copie l'outil client GEOPLAQUE_V10
+   * (tassements ×1000, angles crus « rad » + ratio1) — décision titulaire 15/07,
+   * re-confirmée 17/07 (« zéro écart absolu »). */
   const RADIER_OUT: SealableValue = {
     erreur: null,
     warnings: [],
@@ -890,8 +893,14 @@ describe('PV radier — synthèse (ADR 0014) + alerte de poinçonnement', () => 
     expect(findRowValue(def.content, 'Σ réactions du sol')?.value).toMatch(
       /kN$/,
     );
-    expect(findRowValue(def.content, 'Rotation θx max')?.value).toMatch(/‰$/);
-    expect(findRowValue(def.content, 'Rotation θy max')?.value).toMatch(/‰$/);
+    // Rotations rendues CRUES comme l'outil client (Synthèse : `v.toExponential(2)
+    // + ' rad  (' + ratio1(v) + ')'`) — plus de ‰. txMax=0.45 -> « 4,50e-1 rad (1/2) ».
+    expect(findRowValue(def.content, 'Rotation θx max')?.value).toBe(
+      '4,50e-1 rad (1/2)',
+    );
+    expect(findRowValue(def.content, 'Rotation θy max')?.value).toBe(
+      '3,80e-1 rad (1/3)',
+    );
     expect(
       findRowValue(def.content, 'Réaction de sol minimale')?.value,
     ).toMatch(/kPa$/);
@@ -910,6 +919,38 @@ describe('PV radier — synthèse (ADR 0014) + alerte de poinçonnement', () => 
     // Valeur exacte d'une ligne (pas une sous-chaîne globale).
     expect(findRowValue(def.content, 'Réaction de sol maximale')?.value).toBe(
       '210,7 kPa',
+    );
+  });
+
+  it('COPIE l’affichage de l’outil client GEOPLAQUE_V10 : tassements ×1000, angles crus « rad » (décision 15/07 re-confirmée 17/07)', () => {
+    const pv = makeSealedPv({ engineId: 'radier-plaque', output: RADIER_OUT });
+    const def = buildPvDocDefinition(pv);
+    // Tassements : sur-rapport ×1000 comme `(d.wMax*1000).toFixed(1)+' mm'` (wMax 6,25
+    // -> 6 250 mm). La sortie moteur (6,25) est physiquement juste ; seul l'affichage
+    // reproduit le défaut de l'outil client.
+    expect(findRowValue(def.content, 'Tassement maximal w_max')?.value).toBe(
+      '6 250 mm',
+    );
+    expect(findRowValue(def.content, 'Tassement minimal w_min')?.value).toBe(
+      '1 100 mm',
+    );
+    expect(findRowValue(def.content, 'Tassement différentiel')?.value).toBe(
+      '5 150 mm',
+    );
+    // Distorsion β : `ratio1(β)+'  ('+β.toExponential(1)+' rad)'` (betaGov 1,2 -> 1/1).
+    expect(
+      findRowValue(def.content, 'Distorsion angulaire gouvernante β')?.value,
+    ).toBe('1/1 (1,2e+0 rad)');
+    expect(
+      findRowValue(def.content, 'Distorsion intra-plaque max')?.value,
+    ).toBe('1/1 (1,2e+0 rad)');
+    // Inclinaison ϖ : `ratio1(tilt)` SEUL (pas de « rad ») — tiltMax 0,3 -> 1/3.
+    expect(findRowValue(def.content, "Inclinaison d'ensemble ϖ")?.value).toBe(
+      '1/3',
+    );
+    // Pente locale : format Synthèse `slope.toExponential(2)+' rad  ('+ratio1+')'`.
+    expect(findRowValue(def.content, 'Pente locale max |∇w|')?.value).toBe(
+      '8,00e-1 rad (1/1)',
     );
   });
 

@@ -34,7 +34,12 @@ import {
   type PieuxInput,
   type PieuxOutput,
 } from './contract.js';
-import { computePieux, computeDowndrag, computeBeton } from './engine.js';
+import {
+  computePieux,
+  computeDowndrag,
+  computeBeton,
+  computePortanceCurve,
+} from './engine.js';
 
 export {
   PIEUX_ENGINE_ID,
@@ -341,10 +346,230 @@ function betonFields(bt: Record<string, unknown> | null): {
   };
 }
 
+/**
+ * NOMBRE DE POINTS d'affichage des courbes re-echantillonnees (display-only). FIXE et
+ * DECOUPLE de la resolution interne (balayage de portance ~110 pts, discretisation t-z
+ * 61 pts, marche de frottement negatif variable). Meme intention que la grille FIXE
+ * 48×48 des cartes radier/geoplaque : on montre le RESULTAT (la forme de la courbe),
+ * pas la METHODE (le pas/segmentation interne). 48 points suffisent a un rendu lisse.
+ */
+const CURVE_SAMPLES = 48;
+
+/**
+ * RE-ECHANTILLONNE une serie de points (triee par `xKey` croissant, comme l'engine les
+ * produit) sur une grille UNIFORME de `n` points de l'abscisse, par interpolation
+ * LINEAIRE de chaque champ. Fail-closed : si < 2 points, si le domaine est degenere, ou
+ * si une valeur utilisee n'est pas finie, on renvoie null (aucune courbe affichee) plutot
+ * que de risquer un NaN. Decouple la grille d'affichage de la resolution interne.
+ */
+function resampleSeries(
+  pts: unknown,
+  xKey: string,
+  valueKeys: readonly string[],
+  n: number,
+): Array<Record<string, number>> | null {
+  if (!Array.isArray(pts) || pts.length < 2) return null;
+  const rows = pts as Array<Record<string, unknown>>;
+  const xAt = (i: number): number =>
+    fin(rows[i]![xKey]) ? (rows[i]![xKey] as number) : NaN;
+  const x0 = xAt(0),
+    x1 = xAt(rows.length - 1);
+  if (!Number.isFinite(x0) || !Number.isFinite(x1) || !(x1 > x0)) return null;
+  // Verifie que TOUTES les valeurs interpolees sont finies (sinon fail-closed).
+  for (const r of rows) {
+    if (!fin(r[xKey])) return null;
+    for (const k of valueKeys) if (!fin(r[k])) return null;
+  }
+  const out: Array<Record<string, number>> = [];
+  let j = 0;
+  for (let i = 0; i < n; i++) {
+    const x = x0 + ((x1 - x0) * i) / (n - 1);
+    while (j < rows.length - 2 && (rows[j + 1]![xKey] as number) < x) j++;
+    const A = rows[j]!,
+      Bp = rows[j + 1]!;
+    const dx = (Bp[xKey] as number) - (A[xKey] as number);
+    const t = dx > 0 ? (x - (A[xKey] as number)) / dx : 0;
+    const row: Record<string, number> = { [xKey]: x };
+    for (const k of valueKeys) {
+      row[k] = (A[k] as number) + ((Bp[k] as number) - (A[k] as number)) * t;
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+/**
+ * Projette les SCALAIRES d'affichage (display-only, RECLASSIFICATION §8) depuis le
+ * resultat brut `R`. Aucune autorite : ce sont des sorties, jamais reinjectees. null
+ * quand la grandeur n'a pas de sens pour le jeu (ex. p*le hors methode pressiometrique,
+ * kmax hors des methodes a facteur de portance tabule).
+ */
+function displayScalars(R: Record<string, unknown>): {
+  Rb: number | null;
+  Rs: number | null;
+  ple: number | null;
+  qce: number | null;
+  kfac: number | null;
+  kmax: number | null;
+  Def: number | null;
+  debR: number | null;
+  xi3: number | null;
+  xi4: number | null;
+  gammaRd1: number | null;
+  Ce: number | null;
+  fric: Array<{
+    soil: string;
+    top: number;
+    bot: number;
+    dz: number;
+    qs: number;
+    dRs: number;
+    qsm: number | null;
+    deg: boolean;
+  }> | null;
+} {
+  const meth = typeof R.meth === 'string' ? R.meth : '';
+  const fricRaw = Array.isArray(R.fric)
+    ? (R.fric as Array<Record<string, unknown>>)
+    : null;
+  const fric =
+    fricRaw && fricRaw.length
+      ? fricRaw.map((f) => ({
+          soil: typeof f.soil === 'string' ? f.soil : '',
+          top: fin(f.top) ? f.top : 0,
+          bot: fin(f.bot) ? f.bot : 0,
+          dz: fin(f.dz) ? f.dz : 0,
+          qs: fin(f.qs) ? f.qs : 0,
+          dRs: fin(f.dRs) ? f.dRs : 0,
+          qsm: fin(f.qsm) ? f.qsm : null,
+          deg: f.deg === true,
+        }))
+      : null;
+  return {
+    Rb: fin(R.Rb) ? R.Rb : null,
+    Rs: fin(R.Rs) ? R.Rs : null,
+    // p*le : methode pressiometrique uniquement ; qce : penetrometrique uniquement.
+    ple: meth === 'pmt' && fin(R.ple) ? R.ple : null,
+    qce: meth === 'cpt' && fin(R.qce) ? R.qce : null,
+    kfac: fin(R.kfac) ? R.kfac : null,
+    // kmax (kp,max/kc,max) : pas de plafond tabule en c-φ (Nq), donc null.
+    kmax: meth !== 'cphi' && fin(R.kmax) && (R.kmax as number) > 0 ? R.kmax : null,
+    Def: fin(R.Def) ? R.Def : null,
+    debR: fin(R.debR) ? R.debR : null,
+    xi3: fin(R.xi3) ? R.xi3 : null,
+    xi4: fin(R.xi4) ? R.xi4 : null,
+    gammaRd1: fin(R.grd) ? R.grd : null,
+    Ce: fin(R.Ce) ? R.Ce : null,
+    fric,
+  };
+}
+
+/** Bloc de champs d'affichage tous NULS (branche erreur / non calculable). */
+const DISPLAY_NULLS = {
+  Rb: null,
+  Rs: null,
+  ple: null,
+  qce: null,
+  kfac: null,
+  kmax: null,
+  Def: null,
+  debR: null,
+  xi3: null,
+  xi4: null,
+  gammaRd1: null,
+  Ce: null,
+  fric: null,
+  courbePortance: null,
+  courbeTassement: null,
+  profilsDowndrag: null,
+} as const;
+
+/** courbeTassement (charge-tassement) re-echantillonnee depuis R.settle. null si absente. */
+function courbeTassementField(
+  R: Record<string, unknown>,
+): { pts: Array<{ F: number; s: number }>; Fmax: number } | null {
+  const settle = (R.settle ?? null) as Record<string, unknown> | null;
+  if (!settle) return null;
+  const sampled = resampleSeries(settle.pts, 'F', ['s'], CURVE_SAMPLES);
+  if (!sampled) return null;
+  const pts = sampled as Array<{ F: number; s: number }>;
+  const Fmax = fin(settle.Fmax) ? (settle.Fmax as number) : pts[pts.length - 1]!.F;
+  if (!Number.isFinite(Fmax)) return null;
+  return { pts, Fmax };
+}
+
+/** profilsDowndrag re-echantillonnes depuis le resultat brut downdrag. null si absent. */
+function profilsDowndragField(dd: Record<string, unknown> | null): {
+  wHead: number;
+  prof: Array<{
+    z: number;
+    w: number;
+    g: number;
+    f: number;
+    qsP: number;
+    qsN: number;
+    N: number;
+  }>;
+} | null {
+  if (!dd || typeof dd.err === 'string') return null;
+  const prof = resampleSeries(
+    dd.prof,
+    'z',
+    ['w', 'g', 'f', 'qsP', 'qsN', 'N'],
+    CURVE_SAMPLES,
+  );
+  if (!prof) return null;
+  if (!fin(dd.wHead)) return null;
+  return {
+    wHead: dd.wHead as number,
+    prof: prof as Array<{
+      z: number;
+      w: number;
+      g: number;
+      f: number;
+      qsP: number;
+      qsN: number;
+      N: number;
+    }>,
+  };
+}
+
+/** courbePortance re-echantillonnee depuis le balayage brut. null si non traçable. */
+function courbePortanceField(
+  portanceRaw: Record<string, unknown> | null,
+): {
+  rows: Array<{
+    D: number;
+    elufond: number;
+    eluacc: number;
+    elscar: number;
+    elsqp: number;
+  }>;
+} | null {
+  if (!portanceRaw) return null;
+  const rows = resampleSeries(
+    portanceRaw.rows,
+    'D',
+    ['elufond', 'eluacc', 'elscar', 'elsqp'],
+    CURVE_SAMPLES,
+  );
+  if (!rows) return null;
+  return {
+    rows: rows as Array<{
+      D: number;
+      elufond: number;
+      eluacc: number;
+      elscar: number;
+      elsqp: number;
+    }>,
+  };
+}
+
 function shapeOutput(
   R: Record<string, unknown>,
   downdrag: Record<string, unknown> | null,
   beton: Record<string, unknown> | null,
+  portanceRaw: Record<string, unknown> | null,
 ): unknown {
   const dd = downdragFields(downdrag);
   const bt = betonFields(beton);
@@ -373,6 +598,7 @@ function shapeOutput(
       allOk: false,
       tauxGouvernant: 0,
       tassementELS: null,
+      ...DISPLAY_NULLS,
       Gsn: dd.Gsn,
       Nmax: dd.Nmax,
       pointNeutre: dd.pointNeutre,
@@ -451,6 +677,11 @@ function shapeOutput(
     allOk: derivedAllOk,
     tauxGouvernant: finiteTaux(derivedGovern),
     tassementELS,
+    // --- AFFICHAGE DETAILLE (display-only, §8) : scalaires + tableau frottement + courbes ---
+    ...displayScalars(R),
+    courbePortance: courbePortanceField(portanceRaw),
+    courbeTassement: courbeTassementField(R),
+    profilsDowndrag: profilsDowndragField(downdrag),
     Gsn: dd.Gsn,
     Nmax: dd.Nmax,
     pointNeutre: dd.pointNeutre,
@@ -501,7 +732,10 @@ export function runPieux(rawInput: unknown): EngineResultEnvelope<PieuxOutput> {
   // Verification structurale du beton : calcul SEPARE (comme betonCheck dans compute()),
   // uniquement si le groupe `beton` est fourni. Facteurs de calage confidentiels ecartes.
   const beton = input.beton ? (computeBeton(input) as Record<string, unknown>) : null;
-  const shaped = shapeOutput(rawResult, downdrag, beton);
+  // Courbe de portance en profondeur (display-only) : balayage SEPARE (comme drawPortance
+  // du HTML), re-echantillonne en aval. Pur/garde : null si non traçable.
+  const portanceRaw = computePortanceCurve(input) as Record<string, unknown> | null;
+  const shaped = shapeOutput(rawResult, downdrag, beton, portanceRaw);
   // Re-strip a travers le schema declare : tout champ non whiteliste qui aurait
   // survecu a shapeOutput est retire ici (defense en profondeur, anti-fuite).
   const output = projectEngineOutput(PieuxOutputSchema, shaped);

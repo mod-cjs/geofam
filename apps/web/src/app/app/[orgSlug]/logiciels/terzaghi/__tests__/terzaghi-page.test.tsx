@@ -52,7 +52,7 @@ vi.mock('@/lib/tool-bridge/ToolFrame', () => ({
     engineId: string;
     orgId: string | null;
     orgSlug: string;
-    projectId: string;
+    projectId: string | null;
     projectLabel: string;
     accessToken: string | null;
     onCalcResultId?: (id: string | null) => void;
@@ -167,11 +167,29 @@ describe('Page Terzaghi — shell GEOFAM', () => {
     expect(labels).not.toContain('Chaussée CH');
   });
 
-  it("given aucun projet sélectionné (liste vide), when montage, then ToolFrame n'est PAS rendu (placeholder affiché)", async () => {
+  it('given aucun projet sélectionné (liste vide), when montage, then ToolFrame est AFFICHÉ quand même (fidélité UI, projectId null) et le bandeau montre un hint discret', async () => {
+    // Correction UX 17/07 : l'outil client s'affiche dès l'ouverture, que la
+    // sélection de projet ait eu lieu ou non (elle ne conditionne QUE le
+    // calcul/PV) — le placeholder qui masquait l'outil a disparu.
     mockListProjects.mockResolvedValue([]);
     await renderPage();
-    expect(container.querySelector('[data-testid="tool-frame-stub"]')).toBeNull();
-    expect(container.textContent).toMatch(/Sélectionnez ou créez un projet/);
+    const stub = container.querySelector('[data-testid="tool-frame-stub"]');
+    expect(stub).not.toBeNull();
+    const props = JSON.parse(stub!.getAttribute('data-props')!);
+    expect(props.projectId).toBeNull();
+    expect(container.textContent).not.toMatch(
+      /Sélectionnez ou créez un projet pour ouvrir/,
+    );
+    const hint = container.querySelector('[data-testid="no-project-hint"]');
+    expect(hint).not.toBeNull();
+    expect(hint!.textContent).toMatch(
+      /Sélectionnez un projet pour calculer et émettre un PV/,
+    );
+  });
+
+  it('given un projet sélectionné, when rendu, then le hint de sélection de projet est ABSENT du bandeau', async () => {
+    await renderPage();
+    expect(container.querySelector('[data-testid="no-project-hint"]')).toBeNull();
   });
 
   it('given le bouton "Émettre le PV" n\'a pas encore de calcul, when rendu, then il est désactivé', async () => {

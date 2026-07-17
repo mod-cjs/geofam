@@ -177,6 +177,16 @@ export default function GeoplaquePage() {
           <div style={{ fontSize: 12, color: MUTED }}>
             Radier &amp; plaque · éléments finis · EC7 annexe H
           </div>
+          {/* L'outil est affiché dès l'ouverture (fidélité UI) — la sélection
+              de projet ne conditionne que le calcul/PV, pas l'affichage. */}
+          {!projectId && (
+            <div
+              data-testid="no-project-hint"
+              style={{ fontSize: 11, color: MUTED, marginTop: 3 }}
+            >
+              Sélectionnez un projet pour calculer et émettre un PV.
+            </div>
+          )}
         </div>
         <div
           style={{ marginLeft: 'auto', display: 'flex', alignItems: 'flex-end', gap: 12 }}
@@ -296,7 +306,11 @@ export default function GeoplaquePage() {
         </div>
       )}
 
-      {/* L'outil client cloné occupe l'essentiel du viewport — c'est LUI le produit. */}
+      {/* L'outil client cloné occupe l'essentiel du viewport — c'est LUI le
+          produit. Affiché dès que l'org est connue (fidélité UI, cf. bandeau
+          ci-dessus) : la sélection de projet ne conditionne QUE le calcul/PV
+          (ToolFrame bloque calc:request/pv:request tant que projectId est
+          null), jamais l'affichage de l'outil lui-même. */}
       <div
         style={{
           flex: 1,
@@ -308,23 +322,17 @@ export default function GeoplaquePage() {
           border: `1px solid ${LINE}`,
         }}
       >
-        {!projectId ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: MUTED }}>
-            Sélectionnez ou créez un projet pour ouvrir GEOPLAQUE.
-          </div>
-        ) : (
-          <ToolFrame
-            toolId={TOOL_ID}
-            engineId={ENGINE_ID}
-            engineAllowlist={ENGINE_ALLOWLIST}
-            orgId={orgId}
-            orgSlug={orgSlug}
-            projectId={projectId}
-            projectLabel={project?.name ?? ''}
-            accessToken={getStoredToken()}
-            onCalcResultId={setCalcResultId}
-          />
-        )}
+        <ToolFrame
+          toolId={TOOL_ID}
+          engineId={ENGINE_ID}
+          engineAllowlist={ENGINE_ALLOWLIST}
+          orgId={orgId}
+          orgSlug={orgSlug}
+          projectId={projectId || null}
+          projectLabel={project?.name ?? ''}
+          accessToken={getStoredToken()}
+          onCalcResultId={setCalcResultId}
+        />
       </div>
     </div>
   );

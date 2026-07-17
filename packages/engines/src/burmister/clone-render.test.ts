@@ -182,6 +182,42 @@ d('roadsens — fidelite du clone excise (mapping serveur -> renderers conserves
     win.close?.();
   });
 
+  it('§8 : la valeur « adm r=50 % » AFFICHÉE vient du SERVEUR (details.adm_r50), pas d’une re-dérivation cliente', async () => {
+    const fx = BURMISTER_FIXTURES.find((f) => f.id === 'bitumineuse-epaisse-defaut');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const env = runBurmister(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    // Le contrat DOIT exposer la valeur r=50 % côté serveur (sinon le clone ne peut pas
+    // s'y brancher — la re-dérivation cliente serait le seul recours, ce qu'on interdit).
+    const details = (env.output as { details?: Record<string, unknown> }).details;
+    expect(details, 'details serveur absents').toBeDefined();
+    expect(
+      typeof details?.adm_r50 === 'number' && Number.isFinite(details.adm_r50),
+      'le serveur doit exposer details.adm_r50 (et_adm/st_adm à r=50 %)',
+    ).toBe(true);
+
+    // SENTINELLE : on remplace adm_r50 par une valeur DISTINCTIVE qui ne peut PAS résulter
+    // de la re-dérivation e6·kθ·(1e6/NE)^(1/b)·kc·ks. Si l'affichage la restitue, il LIT
+    // bien le champ serveur ; s'il re-dérivait localement, la sentinelle n'apparaîtrait pas.
+    const SENTINEL = 88.88; // μdef (fixture bitumineuse -> et_adm, 2 décimales), f(v,2)="88.88".
+    const output = JSON.parse(JSON.stringify(env.output)) as {
+      details: { adm_r50: number };
+    };
+    output.details.adm_r50 = SENTINEL;
+
+    const { win } = await renderCloneWith(fx.input, output);
+    const detout = win.document.getElementById('detout')?.innerHTML ?? '';
+    // La ligne « et_adm r=50 % » (cellule label) doit afficher la sentinelle serveur.
+    expect(detout).toContain('r=50%');
+    expect(detout).toMatch(/et_adm r=50%<\/td>[\s\S]{0,160}?88\.88/);
+    // Anti faux-vert : aucune fuite grossière dans le détail rendu.
+    expect(detout).not.toContain('undefined');
+    expect(detout).not.toContain('burIntegrateML');
+    win.close?.();
+  });
+
   it('NO-CALC-INITIAL : un state INVALIDE ne sollicite PAS le serveur (message local)', async () => {
     const html = readFileSync(CLONE_PATH, 'utf8');
     const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });

@@ -151,6 +151,16 @@ export default function TerzaghiPage() {
             Fondations superficielles · NF P 94-261 / Eurocode 7 · capacité portante &amp;
             tassements
           </div>
+          {/* L'outil est affiché dès l'ouverture (fidélité UI) — la sélection
+              de projet ne conditionne que le calcul/PV, pas l'affichage. */}
+          {!projectId && (
+            <div
+              data-testid="no-project-hint"
+              style={{ fontSize: 11, color: MUTED, marginTop: 3 }}
+            >
+              Sélectionnez un projet pour calculer et émettre un PV.
+            </div>
+          )}
         </div>
         <div
           style={{ marginLeft: 'auto', display: 'flex', alignItems: 'flex-end', gap: 12 }}
@@ -270,7 +280,11 @@ export default function TerzaghiPage() {
         </div>
       )}
 
-      {/* L'outil client cloné occupe l'essentiel du viewport — c'est LUI le produit. */}
+      {/* L'outil client cloné occupe l'essentiel du viewport — c'est LUI le
+          produit. Affiché dès que l'org est connue (fidélité UI, cf. bandeau
+          ci-dessus) : la sélection de projet ne conditionne QUE le calcul/PV
+          (ToolFrame bloque calc:request/pv:request tant que projectId est
+          null), jamais l'affichage de l'outil lui-même. */}
       <div
         style={{
           flex: 1,
@@ -280,22 +294,16 @@ export default function TerzaghiPage() {
           border: `1px solid ${LINE}`,
         }}
       >
-        {!projectId ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: MUTED }}>
-            Sélectionnez ou créez un projet pour ouvrir Terzaghi.
-          </div>
-        ) : (
-          <ToolFrame
-            toolId={TOOL_ID}
-            engineId={ENGINE_ID}
-            orgId={orgId}
-            orgSlug={orgSlug}
-            projectId={projectId}
-            projectLabel={project?.name ?? ''}
-            accessToken={getStoredToken()}
-            onCalcResultId={setCalcResultId}
-          />
-        )}
+        <ToolFrame
+          toolId={TOOL_ID}
+          engineId={ENGINE_ID}
+          orgId={orgId}
+          orgSlug={orgSlug}
+          projectId={projectId || null}
+          projectLabel={project?.name ?? ''}
+          accessToken={getStoredToken()}
+          onCalcResultId={setCalcResultId}
+        />
       </div>
     </div>
   );

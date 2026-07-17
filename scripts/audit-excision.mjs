@@ -24,7 +24,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { TOOLS, stripCommentsAndStrings } from './clone-tool.mjs';
+import { TOOLS, stripCommentsAndStrings, scanForbiddenComments } from './clone-tool.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '..');
@@ -38,6 +38,18 @@ function scriptCodeOf(html) {
     code += stripCommentsAndStrings(m[1]) + '\n';
   }
   return code;
+}
+
+/** Recense les COMMENTAIRES des <script> mentionnant un symbole moteur excise (filet
+ * prose §8 : le nom d'une methode confidentielle ne doit pas partir en prose non plus). */
+function scriptCommentViolations(html, forbiddenSymbols) {
+  const re = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+  let m;
+  const hits = [];
+  while ((m = re.exec(html)) !== null) {
+    for (const h of scanForbiddenComments(m[1], forbiddenSymbols)) hits.push(h);
+  }
+  return hits;
 }
 
 /**
@@ -56,12 +68,20 @@ export function auditHtml(html, forbiddenSymbols) {
       const from = Math.max(0, hit.index - 24);
       violations.push({
         symbol: sym,
+        kind: 'code',
         sample: code
           .slice(from, hit.index + sym.length + 8)
           .replace(/\s+/g, ' ')
           .trim(),
       });
     }
+  }
+  // FILET PROSE §8 : un COMMENTAIRE trahissant le nom d'une methode moteur excisee
+  // (ex. « burIntegrateML ») est aussi une fuite -> viole l'audit. Meme predicat que le
+  // generateur (stripForbiddenComments) : l'audit ne peut donc echouer que si le clone
+  // servi n'a PAS ete regenere (drift), jamais sur du code legitime.
+  for (const h of scriptCommentViolations(html, forbiddenSymbols)) {
+    violations.push({ symbol: h.symbol, kind: 'prose', sample: h.sample });
   }
   return violations;
 }
@@ -141,6 +161,43 @@ if (isMain()) {
       if (!caught) allCaught = false;
     }
 
+    // Temoins casagrande explicites (science NF P 94-262) — un clone pieux qui laisserait
+    // fuiter la METHODE DE PORTANCE (portanceCore), le TASSEMENT (settlement), la
+    // VERIFICATION BETON (betonCheck) ou l'ECRETAGE q_ce (computeQce) doit ECHOUER.
+    const casaForb = TOOLS.casagrande?.forbiddenSymbols ?? [];
+    for (const sym of ['portanceCore', 'settlement', 'betonCheck', 'computeQce']) {
+      const witness = `<html><script>"use strict"; function compute(){ const R=${sym}(state); return R; }</script></html>`;
+      const caught = auditHtml(witness, casaForb).some((v) => v.symbol === sym);
+      console.log(
+        `[audit] self-test temoin casagrande (${sym}) capturé : ${caught ? 'OUI' : 'NON'}`,
+      );
+      if (!caught) allCaught = false;
+    }
+
+    // Temoins fastlab explicites — un clone labo qui laisserait fuiter un KERNEL de calcul
+    // (calcGranulo) ou l ARBRE de classification GTR (classify) doit ECHOUER.
+    const fastForb = TOOLS.fastlab?.forbiddenSymbols ?? [];
+    for (const sym of ['calcGranulo', 'classify']) {
+      const witness = `<html><script>"use strict"; function recalc(){ const R=${sym}(state); return R; }</script></html>`;
+      const caught = auditHtml(witness, fastForb).some((v) => v.symbol === sym);
+      console.log(
+        `[audit] self-test temoin fastlab (${sym}) capturé : ${caught ? 'OUI' : 'NON'}`,
+      );
+      if (!caught) allCaught = false;
+    }
+
+    // Temoin PROSE (roadsens) — un COMMENTAIRE trahissant le nom du propagateur excise
+    // (« burIntegrateML », abreviation de burIntegrateMLWithPSC) doit ECHOUER meme sans
+    // appel de code : le filet prose §8 le capture.
+    const burmForb = TOOLS.roadsens?.forbiddenSymbols ?? [];
+    const proseWitness =
+      '<html><script>function renderDetails(){ /* le resultat est deja dans sr_acc du burIntegrateML si on indexe */ return 0; }</script></html>';
+    const proseCaught = auditHtml(proseWitness, burmForb).some((v) => v.kind === 'prose');
+    console.log(
+      `[audit] self-test temoin prose (burIntegrateML) capturé : ${proseCaught ? 'OUI' : 'NON'}`,
+    );
+    if (!proseCaught) allCaught = false;
+
     // Le clone reel DOIT passer.
     let realClean = true;
     try {
@@ -175,7 +232,7 @@ if (isMain()) {
       failed = true;
       console.error(`[audit] FUITE dans ${r.path} :`);
       for (const v of r.violations) {
-        console.error(`   - ${v.symbol}   (…${v.sample}…)`);
+        console.error(`   - ${v.symbol} [${v.kind || 'code'}]   (…${v.sample}…)`);
       }
     }
   }

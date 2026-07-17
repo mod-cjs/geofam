@@ -1,5 +1,5 @@
 /**
- * Tests — shell GEOFAM de la page ROADSENS (clone UI client, ADR 0015).
+ * Tests — shell GEOFAM de la page FASTLAB (clone UI client, ADR 0015).
  *
  * DoD §9 : given/when/then, chemins négatifs (gate bloqué, erreur d'émission
  * PV) testés autant que le chemin heureux. `ToolFrame` est mocké ici — sa
@@ -8,8 +8,15 @@
  * le câblage du shell (projet, gate, bouton PV branché sur le dernier
  * calcResultId remonté par ToolFrame).
  *
+ * Particularité FASTLAB (ADR 0015 §Conséquences) : le clone envoie ses
+ * `calc:request` en rafale débouncée — plusieurs `calcResultId` peuvent
+ * arriver coup sur coup. Le stub `ToolFrame` ci-dessous simule cette rafale
+ * en exposant un bouton qui déclenche successivement `onCalcResultId` avec
+ * PLUSIEURS ids : le test vérifie que le shell (simple `setState`, aucune
+ * logique de page dédiée) suit bien le DERNIER de la rafale.
+ *
  * Patron d'interaction : react-dom/client + act (pas de @testing-library/react
- * dans ce dépôt — cf. terzaghi-page.test.tsx / PvEmittedActions.test.tsx).
+ * dans ce dépôt — cf. casagrande-page.test.tsx / roadsens-page.test.tsx).
  */
 
 import { act } from 'react';
@@ -45,7 +52,9 @@ vi.mock('@/lib/api/client', () => ({
 
 // Stub — la boucle de bridge (ready/init/calc/store/pv) est testée dans
 // lib/tool-bridge/__tests__/ToolFrame.test.tsx. Ici on vérifie seulement le
-// câblage : props reçues + remontée de calcResultId au shell.
+// câblage : props reçues + remontée de calcResultId au shell — y compris en
+// rafale (bouton dédié qui pousse plusieurs ids successifs, comme le fait le
+// clone FASTLAB à chaque frappe débouncée).
 vi.mock('@/lib/tool-bridge/ToolFrame', () => ({
   ToolFrame: (props: {
     toolId: string;
@@ -65,17 +74,30 @@ vi.mock('@/lib/tool-bridge/ToolFrame', () => ({
       >
         Simuler calcul terminé
       </button>
+      <button
+        type="button"
+        data-testid="simulate-calc-burst"
+        onClick={() => {
+          // Rafale débouncée : plusieurs calcResultId coup sur coup, seul le
+          // dernier doit compter pour le bouton PV du shell.
+          props.onCalcResultId?.('calc_burst_1');
+          props.onCalcResultId?.('calc_burst_2');
+          props.onCalcResultId?.('calc_burst_3');
+        }}
+      >
+        Simuler rafale de calculs
+      </button>
     </div>
   ),
 }));
 
-import RoadsensPage from '../page';
+import FastlabPage from '../page';
 
 const PROJECT = {
-  id: 'proj_ch_01',
+  id: 'proj_lb_01',
   orgId: 'org_01',
-  name: 'Route A12',
-  domain: 'CH' as const,
+  name: 'Échantillon SC2',
+  domain: 'LB' as const,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   createdBy: 'u1',
@@ -91,7 +113,7 @@ function entitlements(
   return {
     orgId: 'org_01',
     pack: 'COMPLETE' as const,
-    modules: overrides.modules ?? ['burmister'],
+    modules: overrides.modules ?? ['labo'],
     expiresAt: '2027-01-01T00:00:00.000Z',
     expired: overrides.expired ?? false,
     quota: overrides.quota ?? { limit: 500, used: 100, remaining: 400 },
@@ -120,7 +142,7 @@ afterEach(() => {
 async function renderPage() {
   await act(async () => {
     root = createRoot(container);
-    root.render(<RoadsensPage />);
+    root.render(<FastlabPage />);
   });
   await act(async () => {
     await Promise.resolve();
@@ -128,30 +150,30 @@ async function renderPage() {
   });
 }
 
-describe('Page ROADSENS — shell GEOFAM', () => {
-  it('given un seul projet CH, when montage, then le projet est présélectionné et ToolFrame reçoit le contexte projet (toolId roadsens, engineId burmister)', async () => {
+describe('Page FASTLAB — shell GEOFAM', () => {
+  it('given un seul projet LB, when montage, then le projet est présélectionné et ToolFrame reçoit le contexte projet (toolId fastlab, engineId labo)', async () => {
     await renderPage();
     const stub = container.querySelector('[data-testid="tool-frame-stub"]');
     expect(stub).not.toBeNull();
     const props = JSON.parse(stub!.getAttribute('data-props')!);
     expect(props).toMatchObject({
-      toolId: 'roadsens',
-      engineId: 'burmister',
-      projectId: 'proj_ch_01',
-      projectLabel: 'Route A12',
+      toolId: 'fastlab',
+      engineId: 'labo',
+      projectId: 'proj_lb_01',
+      projectLabel: 'Échantillon SC2',
       accessToken: 'token-abc',
     });
   });
 
-  it('given des projets CH, LEGACY(null) et FD, when montage, then le picker montre CH + legacy et EXCLUT le FD', async () => {
-    // Même règle que terzaghi (bug swap mock->réel) : le filtre retient le
-    // domaine du logiciel (CH) OU un domaine null (projet legacy, domaine
-    // inconnu -> sélectionnable partout plutôt qu'invisible partout), et
-    // écarte un domaine explicitement autre (FD).
+  it('given des projets LB, LEGACY(null) et CH, when montage, then le picker montre LB + legacy et EXCLUT le CH', async () => {
+    // Même règle que terzaghi/roadsens/geoplaque/casagrande (bug swap mock->réel) :
+    // le filtre retient le domaine du logiciel (LB) OU un domaine null (projet
+    // legacy, domaine inconnu -> sélectionnable partout plutôt qu'invisible
+    // partout), et écarte un domaine explicitement autre (CH).
     mockListProjects.mockResolvedValue([
-      { ...PROJECT, id: 'p_ch', name: 'Route CH', domain: 'CH' },
+      { ...PROJECT, id: 'p_lb', name: 'Sondage LB', domain: 'LB' },
       { ...PROJECT, id: 'p_legacy', name: 'Projet legacy', domain: null },
-      { ...PROJECT, id: 'p_fd', name: 'Fondation FD', domain: 'FD' },
+      { ...PROJECT, id: 'p_ch', name: 'Chaussée CH', domain: 'CH' },
     ]);
     await renderPage();
     const select = container.querySelector(
@@ -161,9 +183,9 @@ describe('Page ROADSENS — shell GEOFAM', () => {
     const labels = Array.from(select.querySelectorAll('option')).map(
       (o) => o.textContent,
     );
-    expect(labels).toContain('Route CH');
+    expect(labels).toContain('Sondage LB');
     expect(labels).toContain('Projet legacy');
-    expect(labels).not.toContain('Fondation FD');
+    expect(labels).not.toContain('Chaussée CH');
   });
 
   it('given aucun projet sélectionné (liste vide), when montage, then ToolFrame est AFFICHÉ quand même (fidélité UI, projectId null) et le bandeau montre un hint discret', async () => {
@@ -213,14 +235,50 @@ describe('Page ROADSENS — shell GEOFAM', () => {
     expect(btn.disabled).toBe(false);
   });
 
+  it('given une rafale débouncée de calculs (3 calcResultId coup sur coup), when le dernier arrive, then le bouton PV émet le PV sur le DERNIER id de la rafale', async () => {
+    mockEmitPv.mockResolvedValue({
+      id: 'pv_01',
+      number: 'PV-2026-0011',
+      orgId: 'org_01',
+      projectId: 'proj_lb_01',
+      calcResultId: 'calc_burst_3',
+      engineId: 'labo',
+      hmacTruncated: 'a1b2c3d4',
+      sealedAt: '2026-07-16T10:00:00.000Z',
+      sealedBy: 'Amadou Diallo',
+      params: {},
+      output: null,
+    });
+    await renderPage();
+    const burst = container.querySelector(
+      '[data-testid="simulate-calc-burst"]',
+    ) as HTMLButtonElement;
+    await act(async () => {
+      burst.click();
+    });
+    const btn = container.querySelector(
+      '[data-testid="btn-emettre-pv"]',
+    ) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    await act(async () => {
+      btn.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockEmitPv).toHaveBeenCalledWith('org_01', 'proj_lb_01', {
+      calcResultId: 'calc_burst_3',
+    });
+    expect(container.textContent).toMatch(/PV-2026-0011/);
+  });
+
   it('given un calcul terminé, when "Émettre le PV" cliqué et emitPv résout, then le PV scellé est affiché', async () => {
     mockEmitPv.mockResolvedValue({
       id: 'pv_01',
-      number: 'PV-2026-0007',
+      number: 'PV-2026-0011',
       orgId: 'org_01',
-      projectId: 'proj_ch_01',
+      projectId: 'proj_lb_01',
       calcResultId: 'calc_42',
-      engineId: 'burmister',
+      engineId: 'labo',
       hmacTruncated: 'a1b2c3d4',
       sealedAt: '2026-07-16T10:00:00.000Z',
       sealedBy: 'Amadou Diallo',
@@ -242,10 +300,10 @@ describe('Page ROADSENS — shell GEOFAM', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(mockEmitPv).toHaveBeenCalledWith('org_01', 'proj_ch_01', {
+    expect(mockEmitPv).toHaveBeenCalledWith('org_01', 'proj_lb_01', {
       calcResultId: 'calc_42',
     });
-    expect(container.textContent).toMatch(/PV-2026-0007/);
+    expect(container.textContent).toMatch(/PV-2026-0011/);
   });
 
   it('given emitPv échoue, when "Émettre le PV" cliqué, then un message d\'erreur explicite est affiché', async () => {
@@ -270,7 +328,7 @@ describe('Page ROADSENS — shell GEOFAM', () => {
     );
   });
 
-  it("given le module burmister n'est PAS inclus dans l'abonnement, when montage, then la bannière de gate est affichée", async () => {
+  it("given le module labo n'est PAS inclus dans l'abonnement, when montage, then la bannière de gate est affichée", async () => {
     mockGetEntitlements.mockResolvedValue(entitlements({ modules: ['terzaghi'] }));
     await renderPage();
     const banner = container.querySelector('[data-testid="gate-banner"]');

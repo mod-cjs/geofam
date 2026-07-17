@@ -121,6 +121,102 @@ export function stripCommentsAndStrings(code) {
   return out;
 }
 
+/**
+ * Predicat PARTAGE (generateur <-> audit) : un COMMENTAIRE mentionne-t-il un symbole
+ * MOTEUR excise ? Renvoie le symbole capture, sinon null. On raisonne par TOKENS
+ * identifiants du commentaire (pas de substring naif) et on ne cible que les noms qui
+ * TRAHISSENT REELLEMENT la methode :
+ *  - le token doit etre un IDENTIFIANT DISTINCTIF (camelCase, chiffre, `_`/`$`) : on ne
+ *    scrute PAS les mots tout-en-minuscules (« tassement », « raideurs », « lambdas ») qui
+ *    sont des mots du domaine (la GRANDEUR physique, affichee dans l'UI) et non le CODE
+ *    confidentiel — sinon on effacerait de la prose legitime ;
+ *  - egalite exacte token===symbole pour les symboles >= 6 car. (doCalc, krLCPC,
+ *    burIntegrateMLWithPSC) ; les symboles courts (J0, J1, _P, inv4) sont trop generiques
+ *    en prose et restent couverts par l'audit de CODE ;
+ *  - PREFIXE : un token distinctif >= 6 car. prefixe d'un symbole >= 8 car. (capture
+ *    l'ABREVIATION « burIntegrateML » du propagateur « burIntegrateMLWithPSC »).
+ * Cible UNIQUEMENT les commentaires : jamais le code (l'audit de code reste l'arbitre du §8).
+ */
+function isDistinctiveIdent(t) {
+  // Tout ce qui n'est pas purement des minuscules a-z : majuscule (camelCase/sigle),
+  // chiffre, `_` ou `$` -> ressemble a un identifiant de code, pas a un mot du domaine.
+  return /[^a-z]/.test(t);
+}
+export function commentMentionsForbidden(commentText, forbiddenSymbols) {
+  const tokens = commentText.match(/[A-Za-z_$][\w$]*/g);
+  if (!tokens) return null;
+  for (const t of tokens) {
+    if (!isDistinctiveIdent(t)) continue;
+    for (const s of forbiddenSymbols) {
+      if (t === s && s.length >= 6) return s;
+      if (t.length >= 6 && s.length >= 8 && s.startsWith(t)) return s;
+    }
+  }
+  return null;
+}
+
+/**
+ * Retire du CODE tout COMMENTAIRE (`//` ou `/* *\/`) mentionnant un symbole moteur
+ * excise (cf. commentMentionsForbidden). Ne touche NI le code executable NI les chaines
+ * (le nom moteur en prose ne doit pas partir au navigateur — DoD §8). Remplacement
+ * neutre pour la syntaxe : bloc `/* *\/` -> une espace (pas de jonction de tokens) ;
+ * ligne `//` -> vide (le saut de ligne reste). Deterministe, sans horloge ni hasard.
+ */
+export function stripForbiddenComments(code, forbiddenSymbols) {
+  let out = '';
+  let i = 0;
+  while (i < code.length) {
+    const isComment =
+      (code[i] === '/' && (code[i + 1] === '/' || code[i + 1] === '*')) || false;
+    const sc = skipStringOrComment(code, i);
+    if (sc >= 0) {
+      const span = code.slice(i, sc);
+      // Seuls les commentaires sont candidats au retrait ; les chaines passent intactes.
+      if (isComment && commentMentionsForbidden(span, forbiddenSymbols)) {
+        out += code[i + 1] === '*' ? ' ' : '';
+      } else {
+        out += span;
+      }
+      i = sc;
+      continue;
+    }
+    out += code[i];
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Recense les COMMENTAIRES d'un fragment de code qui mentionnent un symbole moteur
+ * excise (memes regles que commentMentionsForbidden). Renvoie [{ symbol, sample }].
+ * Sert de FILET a l'audit §8 : prouve que stripForbiddenComments a bien nettoye le
+ * clone servi (aucun nom de methode confidentielle en prose cote navigateur).
+ */
+export function scanForbiddenComments(code, forbiddenSymbols) {
+  const hits = [];
+  let i = 0;
+  while (i < code.length) {
+    const isComment = code[i] === '/' && (code[i + 1] === '/' || code[i + 1] === '*');
+    const sc = skipStringOrComment(code, i);
+    if (sc >= 0) {
+      if (isComment) {
+        const span = code.slice(i, sc);
+        const sym = commentMentionsForbidden(span, forbiddenSymbols);
+        if (sym) {
+          hits.push({
+            symbol: sym,
+            sample: span.replace(/\s+/g, ' ').trim().slice(0, 80),
+          });
+        }
+      }
+      i = sc;
+      continue;
+    }
+    i++;
+  }
+  return hits;
+}
+
 /** Prochain index >= from d'un caractere, en sautant chaines/commentaires. */
 function indexOfCode(src, ch, from) {
   let i = from;
@@ -744,6 +840,10 @@ const BURMISTER_BRIDGE_AND_SHIM = [
   '    e6:(fat&&fat.referenceCatalogue!=null)?+fat.referenceCatalogue:Infinity,',
   '    ub:(det.ub!=null?+det.ub:null), ukc:(det.kc!=null?+det.kc:null), usn:(det.sn!=null?+det.sn:null), ukth:(det.ktheta!=null?+det.ktheta:null), sig:(useRig?1:0),',
   '    kr:(det.kr!=null?+det.kr:null), sh:(det.sh_cm!=null?+det.sh_cm:null), ks:(det.ks!=null?+det.ks:null),',
+  // adm_r50 (et_adm/st_adm a r=50 %, kr=1) SERVI par le serveur (BurmisterOutputSchema.details.adm_r50)
+  // -> AFFICHE tel quel par renderDetails (patchText remplace la RE-DERIVATION cliente e50 par d.adm50 ;
+  // condition §8 titulaire : toute valeur AFFICHEE vient du serveur, jamais d'un recalcul navigateur).
+  '    adm50:(det.adm_r50!=null?+det.adm_r50:null),',
   '    be:bitEndFromState(), ezL:ezL, gq:gq,',
   '    et2:(ph2?_bn(ph2.valeur):null), et2A:(ph2?_bn(ph2.admissible):null), et2i:(ph2&&_bn(ph2.couche)>=1?ph2.couche-1:-1),',
   '    st2:(inv?_bn(inv.valeur):null), st2A:(inv?_bn(inv.admissible):null), st2i:(inv&&_bn(inv.couche)>=1?inv.couche-1:-1),',
@@ -819,10 +919,19 @@ const BURMISTER_BRIDGE_AND_SHIM = [
 // `E: num(f.E, 30000)` sur un formulaire en MPa). buildRadierInput/_layersMPa/les
 // handlers 2D DIVISENT donc E par 1000 (kPa->MPa) — pure reconciliation d'unite de
 // SAISIE, aucune science. Consequence : la sortie serveur des tassements est en
-// mm-echelle (piege d'unite deja tranche, memoire radier-units) -> le clone AFFICHE
-// les tassements SANS le x1000 de l'outil d'origine (« GEOPLAQUE sur-rapporte x1000,
-// ne pas copier »). Les autres grandeurs (moments/reactions/EI/ratios) sont rendues
-// telles quelles depuis la sortie serveur.
+// mm-echelle (piege d'unite deja tranche, memoire radier-units).
+//
+// AFFICHAGE = COPIE DE L'OUTIL CLIENT (decision titulaire 15/07, re-confirmee 17/07 ;
+// RENVERSE la decision « physiquement juste » du 01/07) : le clone REPREND A L'IDENTIQUE
+// les expressions d'affichage de GEOPLAQUE_V10, DEFAUTS COMPRIS. Les tassements sont donc
+// AFFICHES AVEC le x1000 de l'outil d'origine (sur-rapport « ne pas corriger » : on COPIE)
+// — refreshResults l.2560/2595, printReport l.1330/1353, panneaux 2D ps/ax/tri (wMax*1000)
+// et legendes de profils (wmm=v*1000). La VALEUR NUMERIQUE serveur reste inchangee ; SEULE
+// la couche d'affichage du clone applique le x1000. Les distorsions/rotations/pentes sont
+// rendues CRUES (ratio1 + valeur brute « rad », sans conversion) comme l'outil client. Les
+// autres grandeurs (moments/reactions/EI/ratios) sont rendues telles quelles.
+// La FIDELITE DE LA GRILLE (carto : champs/champDeflexion) reste INCHANGEE = valeurs
+// serveur brutes (aucun x1000 sur les cellules ; seules les legendes texte suivent l'outil).
 //
 // MASQUAGES §8 assumes cote clone (exception #54 + intermediaires non whitelistes) :
 //   - localisations de nœuds (S max/S min/β max, segments *At) -> marqueurs critiques
@@ -1132,8 +1241,9 @@ const GEOPLAQUE_DRAWCRITICAL = [
 ].join('\n');
 
 /** refreshResults() RÉÉCRIT : rend cartographie + EC7 + synthèse depuis les SCALAIRES
- * whitelistés (jamais de champ nodal ni de localisation de nœud). Tassements SANS ×1000
- * (déjà en mm-échelle côté serveur). Masquages §8 documentés inline. */
+ * whitelistés (jamais de champ nodal ni de localisation de nœud). Tassements AVEC ×1000
+ * (COPIE de l'affichage de l'outil client, défaut de sur-rapport inclus — décision
+ * titulaire 15/07 re-confirmée 17/07 ; cf. en-tête UNITE E). Masquages §8 documentés inline. */
 const GEOPLAQUE_REFRESHRESULTS = [
   'function refreshResults(){',
   '  var b=document.getElementById("resbody"); var R=state.results;',
@@ -1147,21 +1257,21 @@ const GEOPLAQUE_REFRESHRESULTS = [
   '  h+=\'<label class="field" style="display:flex;align-items:center;gap:8px;margin:4px 0 2px"><span style="margin:0;flex:1">Nombre de niveaux</span><select id="opt-nlev" style="width:78px">\'+[6,8,10,12,16,20,24].map(function(v){return \'<option value="\'+v+\'" \'+(iso.n===v?"selected":"")+\'>\'+v+\'</option>\';}).join("")+\'</select></label>\';',
   '  h+=\'<label class="toggle" style="margin:6px 0 2px"><input type="checkbox" id="opt-crit" \'+(R.showCrit===false?"":"checked")+\'> Marquer le couple de charges le plus défavorable</label>\';',
   '  var d=R.diag;',
-  '  var wmaxmm=d.wMax, diffmm=d.diff;',
+  '  var wmaxmm=d.wMax*1000, diffmm=d.diff*1000;',
   '  var betaGov=d.betaGov, tilt=d.tiltMax;',
   '  h+=\'<div class="secth" style="margin-top:14px">Vérifications · EC7 annexe H</div>\';',
   '  h+=chk("Tassement total max", wmaxmm.toFixed(1)+" mm", lvlSettle(wmaxmm), "repère \\u2248 50 mm pour fondations isolées");',
   '  h+=chk("Tassement différentiel", diffmm.toFixed(1)+" mm", lvlDiff(diffmm), "repère \\u2248 20 mm entre appuis adjacents");',
   '  h+=chk("Distorsion angulaire β", ratio1(betaGov)+"  ("+betaGov.toExponential(1)+" rad)", lvlBeta(betaGov), "rotation relative · limite ELS \\u2248 1/500, ELU \\u2248 1/150");',
   '  h+=chk("Inclinaison d\\u2019ensemble ϖ", ratio1(tilt), tilt<=1/500?"ok":tilt<=1/150?"warn":"bad", "basculement rigide (séparé de la distorsion) · visible vers 1/500");',
-  '  if(d.nRafts>1) h+=chk("Distorsion entre plaques", ratio1(d.interBeta)+"  · Δs "+(d.interDiff).toFixed(1)+" mm", lvlBeta(d.interBeta), "rotation relative entre centres de plaques voisines");',
+  '  if(d.nRafts>1) h+=chk("Distorsion entre plaques", ratio1(d.interBeta)+"  · Δs "+(d.interDiff*1000).toFixed(1)+" mm", lvlBeta(d.interBeta), "rotation relative entre centres de plaques voisines");',
   '  var lp=d.loadPairs;',
   '  if(lp && lp.worst){ var w=lp.worst;',
-  '    h+=chk("Distorsion entre charges (max)", ratio1(w.beta)+"  · Δs "+(w.ds).toFixed(1)+" mm / "+w.L.toFixed(2)+" m", lvlBeta(w.beta), "colonnes adjacentes les plus défavorables : charge "+w.ki+" \\u2194 "+w.kj); }',
+  '    h+=chk("Distorsion entre charges (max)", ratio1(w.beta)+"  · Δs "+(w.ds*1000).toFixed(1)+" mm / "+w.L.toFixed(2)+" m", lvlBeta(w.beta), "colonnes adjacentes les plus défavorables : charge "+w.ki+" \\u2194 "+w.kj); }',
   '  h+=\'<div class="secth" style="margin-top:16px">Synthèse</div>\';',
   "  var st=function(a,v){ return '<div class=\"stat\"><span>'+a+'</span><b>'+v+'</b></div>'; };",
   '  if(d.nRafts>1) h+=st("Plaques modélisées", d.nRafts);',
-  '  h+=st("Tassement max / min", wmaxmm.toFixed(1)+" / "+(d.wMin).toFixed(1)+" mm");',
+  '  h+=st("Tassement max / min", wmaxmm.toFixed(1)+" / "+(d.wMin*1000).toFixed(1)+" mm");',
   '  h+=st("Rotation θx max", d.txMax.toExponential(2)+" rad  ("+ratio1(d.txMax)+")");',
   '  h+=st("Rotation θy max", d.tyMax.toExponential(2)+" rad  ("+ratio1(d.tyMax)+")");',
   '  h+=st("Pente locale max |∇w|", d.slopeMax.toExponential(2)+" rad  ("+ratio1(d.slopeMax)+")");',
@@ -1207,7 +1317,8 @@ const GEOPLAQUE_PSPLOT = [
   '      +\'<text x="\'+(pad+2)+\'" y="\'+(top+11)+\'" fill="\'+col+\'" font-size="10" font-family="var(--mono)">\'+label+\'</text>\'',
   '      +\'<text x="\'+(W-pad-2)+\'" y="\'+(top+11)+\'" fill="var(--ink-dim,#789)" font-size="9" text-anchor="end" font-family="var(--mono)">\'+(Math.max(Math.abs(mn),Math.abs(mx))).toFixed(0)+" "+unit+\'</text></g>\'; }',
   '  var s=\'<svg viewBox="0 0 \'+W+\' \'+H+\'" style="width:100%;margin-top:12px;background:transparent" xmlns="http://www.w3.org/2000/svg">\';',
-  '  s+=band(wD.x,wD.v,pad,"#5ea9ff","tassement w","mm");',
+  '  var wmm=wD.v.map(function(v){ return v*1000; });',
+  '  s+=band(wD.x,wmm,pad,"#5ea9ff","tassement w","mm");',
   '  if(mD&&mD.v) s+=band(mD.x,mD.v,pad+ph+gap,"#ffb454","moment M","kN·m/m");',
   '  if(pD&&pD.v) s+=band(pD.x,pD.v,pad+2*(ph+gap),"#3fb6a8","réaction p","kPa");',
   '  s+=\'<text x="\'+(W/2)+\'" y="\'+(H-4)+\'" fill="var(--ink-dim,#789)" font-size="9" text-anchor="middle" font-family="var(--mono)">x (m) — 0 \\u2192 \'+xmax.toFixed(1)+\'</text>\';',
@@ -1233,7 +1344,8 @@ const GEOPLAQUE_AXIPLOT = [
   '      +\'<text x="\'+(pad+2)+\'" y="\'+(top+11)+\'" fill="\'+col+\'" font-size="10" font-family="var(--mono)">\'+label+\'</text>\'',
   '      +\'<text x="\'+(W-pad-2)+\'" y="\'+(top+11)+\'" fill="var(--ink-dim,#789)" font-size="9" text-anchor="end" font-family="var(--mono)">\'+(Math.max(Math.abs(mn),Math.abs(mx))).toFixed(0)+" "+unit+\'</text></g>\'; }',
   '  var s=\'<svg viewBox="0 0 \'+W+\' \'+H+\'" style="width:100%;margin-top:12px;background:transparent" xmlns="http://www.w3.org/2000/svg">\';',
-  '  s+=band(wD.x,wD.v,pad,"#5ea9ff","tassement w","mm");',
+  '  var wmm=wD.v.map(function(v){ return v*1000; });',
+  '  s+=band(wD.x,wmm,pad,"#5ea9ff","tassement w","mm");',
   '  if(mrD&&mrD.v) s+=band(mrD.x,mrD.v,pad+ph+gap,"#ffb454","moment M_r","kN·m/m");',
   '  if(mtD&&mtD.v) s+=band(mtD.x,mtD.v,pad+2*(ph+gap),"#c58cf0","moment M_t","kN·m/m");',
   '  if(pD&&pD.v) s+=band(pD.x,pD.v,pad+3*(ph+gap),"#3fb6a8","réaction p","kPa");',
@@ -1260,7 +1372,7 @@ const GEOPLAQUE_TRIMESHSVG = [
   '    var x=g.x0+i*cwx-cwx/2, y=g.y0+j*cwy-cwy/2;',
   '    var rx=sx(x), ry=sy(y+cwy);',
   "    s+='<rect x=\"'+rx.toFixed(1)+'\" y=\"'+ry.toFixed(1)+'\" width=\"'+(cwx*sc+0.6).toFixed(1)+'\" height=\"'+(cwy*sc+0.6).toFixed(1)+'\" fill=\"'+jetc((v-wmn)/rng)+'\" />'; } }",
-  '  s+=\'<text x="\'+(W/2)+\'" y="\'+(Hh-3)+\'" fill="var(--ink-dim,#789)" font-size="9" text-anchor="middle" font-family="var(--mono)">tassement — bleu \'+wmn.toFixed(1)+\' mm \\u2192 rouge \'+wmx.toFixed(1)+\' mm · grille d\\u2019affichage 48×48</text>\';',
+  '  s+=\'<text x="\'+(W/2)+\'" y="\'+(Hh-3)+\'" fill="var(--ink-dim,#789)" font-size="9" text-anchor="middle" font-family="var(--mono)">tassement — bleu \'+(wmn*1000).toFixed(1)+\' mm \\u2192 rouge \'+(wmx*1000).toFixed(1)+\' mm · grille d\\u2019affichage 48×48</text>\';',
   '  s+="</svg>"; return s;',
   '}',
 ].join('\n');
@@ -1299,7 +1411,7 @@ const GEOPLAQUE_PRINTREPORT = [
   '  var lspr=state.lineSprings.map(function(l,i){ return "<tr><td>KL"+(i+1)+"</td><td>"+num(l.x1)+";"+num(l.y1)+" → "+num(l.x2)+";"+num(l.y2)+"</td><td>"+num(l.k,0)+" kN/m/m</td></tr>"; }).join("");',
   '  var ly=state.layers.map(function(c,i){ return "<tr><td>"+esc(c.name||("Couche "+(i+1)))+"</td><td>"+num(c.zBase,1)+" m</td><td>"+(c.E/1000).toFixed(0)+" MPa</td><td>"+c.nu+"</td></tr>"; }).join("");',
   '  var resHtml=\'<p style="color:#a33">Aucun calcul effectué — lance le calcul avant d\\u2019imprimer pour inclure les résultats.</p>\';',
-  '  if(R && R.diag){ var d=R.diag; var wmaxmm=d.wMax, diffmm=d.diff;',
+  '  if(R && R.diag){ var d=R.diag; var wmaxmm=d.wMax*1000, diffmm=d.diff*1000;',
   '    var verdict=function(l){ return {ok:\'<b style="color:#1a7f37">CONFORME</b>\',warn:\'<b style="color:#b07a12">ATTENTION</b>\',bad:\'<b style="color:#b3261e">DÉPASSEMENT</b>\'}[l]; };',
   '    var decol=document.getElementById("opt-decol").checked;',
   '    resHtml=""',
@@ -1310,13 +1422,13 @@ const GEOPLAQUE_PRINTREPORT = [
   '    +"<tr><td>Tassement différentiel</td><td>"+diffmm.toFixed(1)+" mm</td><td>≈ 20 mm</td><td>"+verdict(lvlDiff(diffmm))+"</td></tr>"',
   '    +"<tr><td>Distorsion angulaire β (rotation relative)</td><td>"+ratio1(d.betaGov)+" ("+d.betaGov.toExponential(1)+" rad)</td><td>ELS 1/500 · ELU 1/150</td><td>"+verdict(lvlBeta(d.betaGov))+"</td></tr>"',
   '    +"<tr><td>Inclinaison d\\u2019ensemble ϖ (basculement)</td><td>"+ratio1(d.tiltMax)+"</td><td>visible ≈ 1/500</td><td>"+verdict(d.tiltMax<=1/500?"ok":d.tiltMax<=1/150?"warn":"bad")+"</td></tr>"',
-  '    +(d.nRafts>1?"<tr><td>Distorsion entre plaques</td><td>"+ratio1(d.interBeta)+" · Δs "+(d.interDiff).toFixed(1)+" mm</td><td>ELS 1/500</td><td>"+verdict(lvlBeta(d.interBeta))+"</td></tr>":"")',
-  '    +(d.loadPairs&&d.loadPairs.worst?"<tr><td>Distorsion entre charges (max) — P"+d.loadPairs.worst.ki+"↔P"+d.loadPairs.worst.kj+"</td><td>"+ratio1(d.loadPairs.worst.beta)+" · Δs "+(d.loadPairs.worst.ds).toFixed(1)+" mm / "+d.loadPairs.worst.L.toFixed(2)+" m</td><td>ELS 1/500 · ELU 1/150</td><td>"+verdict(lvlBeta(d.loadPairs.worst.beta))+"</td></tr>":"")',
+  '    +(d.nRafts>1?"<tr><td>Distorsion entre plaques</td><td>"+ratio1(d.interBeta)+" · Δs "+(d.interDiff*1000).toFixed(1)+" mm</td><td>ELS 1/500</td><td>"+verdict(lvlBeta(d.interBeta))+"</td></tr>":"")',
+  '    +(d.loadPairs&&d.loadPairs.worst?"<tr><td>Distorsion entre charges (max) — P"+d.loadPairs.worst.ki+"↔P"+d.loadPairs.worst.kj+"</td><td>"+ratio1(d.loadPairs.worst.beta)+" · Δs "+(d.loadPairs.worst.ds*1000).toFixed(1)+" mm / "+d.loadPairs.worst.L.toFixed(2)+" m</td><td>ELS 1/500 · ELU 1/150</td><td>"+verdict(lvlBeta(d.loadPairs.worst.beta))+"</td></tr>":"")',
   '    +"</table>"',
   '    +"<h2>Synthèse des résultats</h2>"',
   '    +\'<table class="syn">\'',
   '    +(d.nRafts>1?"<tr><td>Plaques modélisées</td><td>"+d.nRafts+"</td></tr>":"")',
-  '    +"<tr><td>Tassement max / min</td><td>"+wmaxmm.toFixed(1)+" / "+(d.wMin).toFixed(1)+" mm</td></tr>"',
+  '    +"<tr><td>Tassement max / min</td><td>"+wmaxmm.toFixed(1)+" / "+(d.wMin*1000).toFixed(1)+" mm</td></tr>"',
   '    +"<tr><td>Tassement différentiel</td><td>"+diffmm.toFixed(1)+" mm</td></tr>"',
   '    +"<tr><td>Rotation θx max</td><td>"+d.txMax.toExponential(2)+" rad ("+ratio1(d.txMax)+")</td></tr>"',
   '    +"<tr><td>Rotation θy max</td><td>"+d.tyMax.toExponential(2)+" rad ("+ratio1(d.tyMax)+")</td></tr>"',
@@ -1355,7 +1467,7 @@ const GEOPLAQUE_PRINTREPORT = [
   '}',
 ].join('\n');
 
-/** Handler ps-run RÉÉCRIT : async, bridge (plane-strain). Tassements SANS ×1000. */
+/** Handler ps-run RÉÉCRIT : async, bridge (plane-strain). Tassements AVEC ×1000 (copie client). */
 const GEOPLAQUE_PSRUN = [
   "document.getElementById('ps-run').onclick=async function(){",
   '  var out=document.getElementById("ps-out");',
@@ -1376,8 +1488,8 @@ const GEOPLAQUE_PSRUN = [
   '  var R=resp.output||{}; if(R.erreur){ out.innerHTML=\'<div class="empty" style="color:var(--err)">\'+_esc(R.erreur)+"</div>"; return; }',
   '  window.__geoplaqueLastCalcResultId=resp.calcResultId||null;',
   "  var st=function(a,v){ return '<div class=\"stat\"><span>'+a+'</span><b>'+v+'</b></div>'; };",
-  '  var h=st("Tassement max / min",(R.wMax).toFixed(1)+" / "+(R.wMin).toFixed(1)+" mm");',
-  '  h+=st("Tassement différentiel",(R.diff).toFixed(1)+" mm");',
+  '  var h=st("Tassement max / min",(R.wMax*1000).toFixed(1)+" / "+(R.wMin*1000).toFixed(1)+" mm");',
+  '  h+=st("Tassement différentiel",(R.diff*1000).toFixed(1)+" mm");',
   '  h+=st("Moment max (+/−)",(R.mMax).toFixed(1)+" / "+(R.mMin).toFixed(1)+" kN·m/m");',
   '  h+=st("Réaction sol max",(R.pMax).toFixed(1)+" kPa");',
   '  h+=st("Charge / réaction Σ",(R.totalLoad).toFixed(0)+" / "+(R.sumReact).toFixed(0)+" kN/m"+_eqSuffix(R.totalLoad,R.sumReact));',
@@ -1388,7 +1500,7 @@ const GEOPLAQUE_PSRUN = [
   '}',
 ].join('\n');
 
-/** Handler ax-run RÉÉCRIT : async, bridge (axi ; clé opts = `o`). Tassements SANS ×1000. */
+/** Handler ax-run RÉÉCRIT : async, bridge (axi ; clé opts = `o`). Tassements AVEC ×1000 (copie client). */
 const GEOPLAQUE_AXRUN = [
   "document.getElementById('ax-run').onclick=async function(){",
   '  var out=document.getElementById("ax-out");',
@@ -1406,8 +1518,8 @@ const GEOPLAQUE_AXRUN = [
   '  var R=resp.output||{}; if(R.erreur){ out.innerHTML=\'<div class="empty" style="color:var(--err)">\'+_esc(R.erreur)+"</div>"; return; }',
   '  window.__geoplaqueLastCalcResultId=resp.calcResultId||null;',
   "  var st=function(a,v){ return '<div class=\"stat\"><span>'+a+'</span><b>'+v+'</b></div>'; };",
-  '  var h=st("Tassement centre / bord",(R.wc).toFixed(1)+" / "+(R.wEdge).toFixed(1)+" mm");',
-  '  h+=st("Tassement différentiel",(R.diff).toFixed(1)+" mm");',
+  '  var h=st("Tassement centre / bord",(R.wc*1000).toFixed(1)+" / "+(R.wEdge*1000).toFixed(1)+" mm");',
+  '  h+=st("Tassement différentiel",(R.diff*1000).toFixed(1)+" mm");',
   '  h+=st("Moment radial M_r max",(R.mrMax).toFixed(1)+" kN·m/m");',
   '  h+=st("Moment tangentiel M_t max",(R.mtMax).toFixed(1)+" kN·m/m");',
   '  h+=st("Réaction sol max",(R.pMax).toFixed(1)+" kPa");',
@@ -1441,12 +1553,654 @@ const GEOPLAQUE_TRIRUN = [
   '  window.__geoplaqueLastCalcResultId=resp.calcResultId||null;',
   "  var st=function(a,v){ return '<div class=\"stat\"><span>'+a+'</span><b>'+v+'</b></div>'; };",
   '  var h=st("Maillage",(R.nRaft)+" plaque"+(R.nRaft>1?"s":"")+" · maillage triangulaire (serveur)");',
-  '  h+=st("Tassement max / min",(R.wMax).toFixed(1)+" / "+(R.wMin).toFixed(1)+" mm");',
-  '  h+=st("Tassement différentiel",(R.diff).toFixed(1)+" mm");',
+  '  h+=st("Tassement max / min",(R.wMax*1000).toFixed(1)+" / "+(R.wMin*1000).toFixed(1)+" mm");',
+  '  h+=st("Tassement différentiel",(R.diff*1000).toFixed(1)+" mm");',
   '  h+=st("Réaction sol max",(R.reactionMax).toFixed(1)+" kPa");',
   '  h+=st("Charge / réaction Σ",(R.totalLoad).toFixed(0)+" / "+(R.sumReact).toFixed(0)+" kN"+_eqSuffix(R.totalLoad,R.sumReact));',
   '  if(foundD>0) h+=st("Cote d\\u2019assise D",(R.z0).toFixed(2)+" m");',
   '  out.innerHTML=h+triMeshSvg(R);',
+  '}',
+].join('\n');
+
+// ===========================================================================
+// CASAGRANDE — fondations profondes / pieux (NF P 94-262, EC7) (ADR 0015).
+// ---------------------------------------------------------------------------
+// Outil a 5 onglets (Projet & pieu / Frottement negatif / Profil de sol /
+// Coefficients / Resultats). Choke point `compute()` (portance) + `computeDowndrag()`
+// (frottement negatif) + `betonCheck()` (verification structurale) + `portanceCore`
+// (courbe de portance en profondeur) + `settlement` (Frank & Zhao). On EXCISE toute
+// la science NF P 94-262 et on REECRIT les 2 entrees de calcul (compute/computeDowndrag)
+// en async/bridge ; les renderers CONSERVES rendent la sortie serveur WHITELISTEE.
+//
+// ARBITRAGE D'EXCISION (fail-closed, ADR 0015 §Excision ; « defaut NON » pieux TOUJOURS
+// en vigueur — cf. memoire roadsen-engine-output-whitelist-ple-qce) :
+//  - CONFIDENTIEL (excise + interdit a l'audit) : les fonctions de methode
+//    computeQce/portanceCore/portanceCaps/settlement/betonCheck/xiFactors/qsCPT/
+//    groupCe/effLen/gammaRd1/kpMax/kcMax/alphaPMT/alphaCPT/qsMaxOf/kpReduced/kcReduced
+//    + les TABLES d'abaques KP_MAX/KC_MAX/ALPHA_PMT/ALPHA_CPT/QSMAX + les coefficients
+//    de courbe de frottement PMT_CURVE/CPT_CURVE (a,b,c). mResist/qcAt (selection EC7.M
+//    publique / interpolation du penetrogramme saisi) sont RETIRES sans etre interdits.
+//  - CONSERVE (rendu pur, SAISIE) : drawCoupe (coupe geotechnique live), drawQcLog
+//    (log q_c(z) — courbe de saisie ; l'overlay q_ce/ecretage disparait car
+//    window._qceDetail n'est plus alimente), pileGeom/layerTops/soilAt (geometrie de
+//    section/profil = saisie, PUBLIQUE), fillFictitious, tout l'import penetrogramme,
+//    renderResults (fed par mapPieuxOutput), initPiles/curPile/PILES (Tableau A.1 =
+//    classes publiques), SOILS/EC7/DA_COMBOS (publics).
+//  - REECRIT (bridge / sortie whitelistee) : compute (async), computeDowndrag (async),
+//    drawBeton (verdict/taux/f_cd whitelistes ; sigma « — »), buildSoilCoefTable
+//    (libelles de sol + « — », abaques servies serveur), updateXiInfo (N/S saisie,
+//    xi3/xi4 « — »), drawSettle (courbe si servie, sinon placeholder), drawPortance
+//    (idem), drawDowndrag (KPI N_max/G_sn/point neutre WHITELISTES ; wHead « — » ;
+//    3 profils = placeholder tant que non elargi).
+//
+// RESIDUS FERMES §8 (« defaut NON ») affiches « — » cote clone — VALEURS AFFICHEES par
+// l'outil d'origine mais NON whitelistees par PieuxOutputSchema : R_b/R_s bruts, R_d par
+// terme, p_le*/q_ce/k_p/k_c/D_ef (qbDetail), xi3/xi4, gamma_R;d1, C_e, frottement par
+// couche (fric[]), la courbe charge-tassement (settle.pts), les 3 profils de frottement
+// negatif, la courbe de portance en profondeur, et les abaques de l'onglet Coefficients.
+// >>> DECISION REQUISE (expert + titulaire) : ces grandeurs sont des intermediaires
+// PUBLIES de la norme (memes annexes que terzaghi, ADR 0015 reco A). Leur exposition =
+// ELARGISSEMENT gouverne du contrat pieux (comme terzaghi l'a eu). Le clone est deja
+// CABLE pour les consommer (champs serveur optionnels courbePortance/courbeTassement/
+// profilsDowndrag/wHead + colonnes fric) : leur arrivee au contrat allume les figures
+// SANS retoucher le clone. Tant que non decide, affichage « — » / placeholder (fidele
+// au regime de confidentialite actuel), signale comme ecart a trancher.
+//
+// UNITES : aucune conversion (le contrat PieuxInputSchema reprend les champs du HTML tels
+// quels — G/Q en kN, pl*/qc en MPa, gamma en kN/m3). SEULE reconciliation : la valeur de
+// section carree du HTML est « carr » (data-sec) alors que le contrat attend « carre » —
+// buildPieuxInput mappe carr->carre (validation-surface, aucune science). Les coefficients
+// partiels EC7 sont AUTORITATIFS SERVEUR (audit adverse : falsifiables -> verdict truque) :
+// buildPieuxInput envoie la constante normative (jamais les champs editables de l'onglet 04).
+// ===========================================================================
+
+/** Symboles MOTEUR (science NF P 94-262 confidentielle) SUPPRIMES + INTERDITS a l'audit. */
+const CASAGRANDE_ENGINE_SYMBOLS = [
+  'computeQce',
+  'portanceCore',
+  'portanceCaps',
+  'settlement',
+  'betonCheck',
+  'xiFactors',
+  'qsCPT',
+  'groupCe',
+  'effLen',
+  'gammaRd1',
+  'kpMax',
+  'kcMax',
+  'alphaPMT',
+  'alphaCPT',
+  'qsMaxOf',
+  'kpReduced',
+  'kcReduced',
+];
+
+/** Bridge postMessage (cote iframe, patron roadsens) + helpers de mapping etat<->contrat. */
+const CASAGRANDE_BRIDGE_AND_SHIM = [
+  '/* ===================== BRIDGE + MAPPING (injecté — clone excisé, ADR 0015) ===================== */',
+  '(function(){',
+  '  var TOOL_ID="casagrande", ENGINE_ID="pieux";',
+  '  var pending=Object.create(null), seq=0;',
+  '  var ctx={ engineId:ENGINE_ID, orgSlug:null, projectLabel:null, readOnly:false };',
+  '  function post(msg){ try{ window.parent.postMessage(msg,"*"); }catch(e){} }',
+  '  window.addEventListener("message", function(ev){',
+  '    if(ev.source !== window.parent) return;',
+  '    var d=ev.data; if(!d || d.v!==1 || typeof d.type!=="string") return;',
+  '    if(d.type==="init"){ ctx=Object.assign(ctx, d.payload||{}); return; }',
+  '    if(d.type==="calc:response"){ var p=pending[d.id]; if(!p) return; delete pending[d.id]; p(d.payload||{ok:false,error:{message:"réponse vide"}}); return; }',
+  '  });',
+  '  window.__geofamBridge={',
+  '    calc:function(params){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:ENGINE_ID,label:(params&&params.projet)||null,params:params}}); }); },',
+  '    emitPv:function(calcResultId){ post({v:1,type:"pv:request",payload:{calcResultId:calcResultId}}); },',
+  '    context:function(){ return ctx; }',
+  '  };',
+  '  post({v:1,type:"ready",payload:{toolId:TOOL_ID}});',
+  '})();',
+  '',
+  '/* Coefficients partiels NORMATIFS (NA France DA2 + fluage 14.2.2) — AUTORITATIFS SERVEUR.',
+  '   Le contrat REJETTE (400) toute valeur non normative : on envoie la constante, jamais les',
+  '   champs editables de l\\u2019onglet 04 (audit adverse : coeffs falsifiables -> verdict truque). */',
+  'var CASAGRANDE_COEFFS={k_gG:1.35,k_gQ:1.5,k_gb:1.1,k_gs:1.1,k_gst:1.15,k_psi2:0.3,cr_b_b:0.7,cr_b_s:0.7,cr_f_b:0.5,cr_f_s:0.7,cr_car:0.9,cr_qp:1.1,cr_car_t:1.1,cr_qp_t:1.5};',
+  '',
+  '/* Nombre fini de la sortie serveur, sinon NaN (les renderers affichent « — » via fmt). */',
+  'function sv(v){ return (typeof v==="number" && isFinite(v)) ? v : NaN; }',
+  '/* Echappement HTML minimal (messages d\\u2019erreur). */',
+  'function escPieux(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }',
+  '/* Message d\\u2019erreur borne (402 EXPIRED/QUOTA, 403 MODULE_NOT_IN_PACK, pont). */',
+  'function fmtCalcErr(err){ if(!err) return "Réponse de calcul vide."; if(typeof err==="string") return err; var m=err.message||"Calcul indisponible."; var r=err.reason?(" ("+err.reason+")"):""; return m+r; }',
+  '',
+  '/* ETAT outil -> PieuxInputSchema. Reprise fidele des champs (aucune conversion d\\u2019unite).',
+  '   section « carr » (HTML) -> « carre » (contrat). coeffs = constante normative. */',
+  'function buildPieuxInput(withFn){',
+  '  var geom={ section:(state.section==="carr"?"carre":state.section) };',
+  "  var B=num('g_B'); if(B>0) geom.g_B=B;",
+  "  var b2=num('g_b2'); if(b2>0) geom.g_b2=b2;",
+  "  var Ap=num('g_Ap'); if(Ap>0) geom.g_Ap=Ap;",
+  "  var P=num('g_P'); if(P>0) geom.g_P=P;",
+  '  var p=curPile();',
+  '  var layers=(state.layers||[]).map(function(L){ var o={ soil:L.soil, th:+L.th };',
+  '    if(L.pl!=null) o.pl=+L.pl; if(L.em!=null) o.em=+L.em; if(L.qc!=null) o.qc=+L.qc;',
+  '    if(L.c!=null) o.c=+L.c; if(L.phi!=null) o.phi=+L.phi; if(L.gamma!=null) o.gamma=+L.gamma; return o; });',
+  '  var pts=((state.cpt&&state.cpt.pts)?state.cpt.pts:[]).map(function(q){ return { z:+q.z, qc:+q.qc }; });',
+  '  var inp={ geom:geom, g_z0:num("g_z0"), g_D:num("g_D"), cat:p.cat,',
+  '    meth:state.meth, da:state.da, sens:state.sens, essais:state.essais,',
+  '    c_G:num("c_G"), c_Q:num("c_Q"), o_nappe:num("o_nappe"),',
+  '    o_nprofil:Math.max(1,Math.round(num("o_nprofil"))||1), o_surf:num("o_surf"),',
+  '    o_redis:(($("o_redis")&&$("o_redis").value==="oui")?"oui":"non"),',
+  '    grp:{ grp_n:Math.max(1,Math.round(num("grp_n"))||1), grp_m:Math.max(1,Math.round(num("grp_m"))||1), grp_s:num("grp_s") },',
+  '    coeffs:CASAGRANDE_COEFFS, layers:layers,',
+  '    cpt:{ step:((state.cpt&&state.cpt.step)||0.2), pts:pts },',
+  '    beton:{ arm:state.arm, k3:state.k3 } };',
+  '  var fck=num("b_fck"); if(fck>0) inp.beton.b_fck=fck;',
+  '  var nom=$("p_nom"); if(nom&&nom.value) inp.projet=String(nom.value).slice(0,200);',
+  '  var pieu=$("p_pieu"); if(pieu&&pieu.value) inp.pieu=String(pieu.value).slice(0,200);',
+  '  if(withFn){ inp.frottementNegatif={ mode:(state.fnmode||"auto"), fn_Q:num("fn_Q"), fn_ktd:num("fn_ktd"),',
+  '    fn_s0:num("fn_s0"), fn_hc:num("fn_hc"), fn_zt:num("fn_zt"), fn_zb:num("fn_zb") }; }',
+  '  return inp;',
+  '}',
+  '',
+  '/* Contexte geometrique reconstruit depuis la SAISIE (public : aires/perimetres/zone',
+  "   d'influence). Aucune science NF P 94-262 (pas de k_p, p_le, D_ef). */",
+  'function pieuxGeomCtx(){',
+  '  var PG=pileGeom(); var layers=layerTops(); var D=num("g_D"), z0=num("g_z0");',
+  '  var a=Math.max((PG.B||0.6)/2,0.5);',
+  '  var baseLayer=soilAt(D-0.01,layers)||(layers.length?layers[layers.length-1]:{soil:"argile",ztop:0});',
+  '  var hInLayer=baseLayer?D-baseLayer.ztop:0; var b=Math.min(a,Math.max(hInLayer,0.001));',
+  '  return { PG:PG, layers:layers, D:D, z0:z0, a:a, b:b, baseLayer:baseLayer, hInLayer:hInLayer };',
+  '}',
+  '',
+  '/* SORTIE whitelistee (PieuxOutputSchema) -> objet R attendu par renderResults CONSERVE.',
+  '   Whitelistes : allOk/tauxGouvernant/warnings/RbK/RsK/RcK/RcD/RcrK/verifications/',
+  '   tassementELS/FdCar/methode/sens/D/categorie. RESIDUS FERMES (defaut NON) -> NaN/« — »/[]',
+  '   pour Rb/Rs bruts, RbD/RsD, qbDetail (p_le, q_ce, k_p), xi3/xi4, grd, Def/debR, Ce, fric.',
+  '   Geometrie (Ab/perim/a/b/baseLayer/D/z0/cat/cls) reconstruite depuis la SAISIE (publique). */',
+  'function mapPieuxOutput(out){',
+  '  var g=pieuxGeomCtx(); var p=curPile();',
+  '  var checks=(Array.isArray(out.verifications)?out.verifications:[]).map(function(v){',
+  '    return { nom:(typeof v.nom==="string"?v.nom:""), comb:"", Fd:sv(v.Fd), Rd:sv(v.Rd) }; });',
+  '  var ct=(out.courbeTassement&&Array.isArray(out.courbeTassement.pts))?out.courbeTassement:null;',
+  '  return {',
+  '    err:null, allOk:(out.allOk===true), sens:(out.sens||state.sens),',
+  '    warn:(Array.isArray(out.warnings)?out.warnings.slice():[]), meth:(out.methode||state.meth),',
+  '    govern:sv(out.tauxGouvernant), da:state.da,',
+  '    Rb:NaN, qbDetail:"\\u2014", Rs:NaN, D:g.D, z0:g.z0, RcD:sv(out.RcD),',
+  '    settle:{ sEls:sv(out.tassementELS), pts:(ct?ct.pts:[]), EM:NaN, fine:null, Fmax:(ct&&isFinite(ct.Fmax)?ct.Fmax:0) },',
+  '    RbK:sv(out.RbK), RbD:NaN, RsK:sv(out.RsK), RsD:NaN, RcK:sv(out.RcK), RcrK:sv(out.RcrK),',
+  '    xi3:NaN, xi4:NaN, N:Math.max(1,Math.round(num("o_nprofil"))||1),',
+  '    Sinv:Math.min(2500,Math.max(100,(num("o_surf")>0?num("o_surf"):2500))),',
+  '    redis:($("o_redis")&&$("o_redis").value==="oui"), grd:NaN,',
+  '    checks:checks, G:num("c_G"), Q:num("c_Q"), fric:[],',
+  '    cat:(isFinite(out.categorie)?out.categorie:p.cat), pile:p, cls:p.cls,',
+  '    Ab:g.PG.Ab, perim:g.PG.perim, Def:NaN, debR:NaN,',
+  '    baseLayer:(g.baseLayer||{soil:"argile"}), b:g.b, a:g.a, Ce:NaN, CeF:NaN, FdCar:sv(out.FdCar)',
+  '  };',
+  '}',
+  '',
+  '/* Courbe de portance en profondeur — rendue UNIQUEMENT si le serveur fournit',
+  '   courbePortance.rows [{D,elufond,eluacc,elscar,elsqp}] (elargissement gouverne, cf.',
+  '   en-tete). Coupe stratigraphique + reperes de sollicitation depuis la SAISIE. */',
+  'function portanceSvgFromServer(Dcur, cp){',
+  '  var rows=cp.rows; var layers=layerTops(); var z0=num("g_z0");',
+  '  var Hsol=layers.length?layers[layers.length-1].zbot:0; if(!(Hsol>z0)) return "";',
+  '  var series=[{key:"elufond",lab:"ELU fondamentales",color:"#BC3B2A"},{key:"eluacc",lab:"ELU accidentelles",color:"#5A6B79"},{key:"elscar",lab:"ELS caractéristiques",color:"#0E7490"},{key:"elsqp",lab:"ELS quasi-permanentes",color:"#C0872B"}];',
+  '  var maxCap=1; rows.forEach(function(r){ series.forEach(function(s){ if(isFinite(r[s.key])&&r[s.key]>maxCap) maxCap=r[s.key]; }); }); maxCap*=1.06;',
+  '  var G=num("c_G"), Q=num("c_Q"), loadCar=G+Q, loadElu=1.35*G+1.5*Q;',
+  '  var W=720,H=470,mT=26,mB=42,stripX=46,stripW=26,plotL=92,mR=18;',
+  '  var Y=function(z){ return mT+((z-z0)/(Hsol-z0))*(H-mT-mB); };',
+  '  var X=function(v){ return plotL+(v/maxCap)*(W-plotL-mR); };',
+  '  var g=\'<rect x="0" y="0" width="\'+W+\'" height="\'+H+\'" fill="#FBFCFE"/>\';',
+  '  var SC={argile:"var(--s-argile)",sable:"var(--s-sable)",craie:"var(--s-craie)",marne:"var(--s-marne)",roche:"var(--s-roche)"};',
+  '  layers.forEach(function(L){ var yt=Y(Math.max(L.ztop,z0)), yb=Y(L.zbot); if(yb<=yt) return; g+=\'<rect x="\'+stripX+\'" y="\'+yt+\'" width="\'+stripW+\'" height="\'+(yb-yt)+\'" fill="\'+(SC[L.soil]||"#ccc")+\'" stroke="#fff" stroke-width="1"/>\'; });',
+  '  var nz=Math.min(10,Math.max(4,Math.round((Hsol-z0)/2))), i;',
+  '  for(i=0;i<=nz;i++){ var z=z0+(Hsol-z0)*i/nz, y=Y(z); g+=\'<line x1="\'+plotL+\'" y1="\'+y+\'" x2="\'+(W-mR)+\'" y2="\'+y+\'" stroke="#EEF2F7"/><text x="\'+(stripX-4)+\'" y="\'+(y+3)+\'" font-size="8.5" fill="#7A8794" text-anchor="end" font-family="var(--mono)">\'+z.toFixed(0)+\'</text>\'; }',
+  '  for(i=0;i<=4;i++){ var v=maxCap*i/4, x=X(v); g+=\'<line x1="\'+x+\'" y1="\'+mT+\'" x2="\'+x+\'" y2="\'+(H-mB)+\'" stroke="#EEF2F7"/><text x="\'+x+\'" y="\'+(H-mB+14)+\'" font-size="8.5" fill="#7A8794" text-anchor="middle" font-family="var(--mono)">\'+(v/1000).toFixed(1)+\'</text>\'; }',
+  '  g+=\'<text x="\'+(plotL+(W-plotL-mR)/2)+\'" y="\'+(H-4)+\'" font-size="9" fill="#7A8794" text-anchor="middle" font-family="var(--mono)">Capacité du pieu (MN)</text>\';',
+  '  [{v:loadElu,c:"#BC3B2A",t:"1,35G+1,5Q"},{v:loadCar,c:"#0E7490",t:"G+Q"}].forEach(function(L){ if(L.v>0&&L.v<maxCap){ var x=X(L.v); g+=\'<line x1="\'+x+\'" y1="\'+mT+\'" x2="\'+x+\'" y2="\'+(H-mB)+\'" stroke="\'+L.c+\'" stroke-dasharray="2 3" stroke-width="1" opacity=".7"/><text x="\'+x+\'" y="\'+(mT-4)+\'" font-size="8" fill="\'+L.c+\'" text-anchor="middle" font-family="var(--mono)">\'+L.t+\'</text>\'; } });',
+  '  series.forEach(function(s){ var d=rows.map(function(r){ return X(r[s.key])+" "+Y(r.D); }); g+=\'<path d="M\'+d.join(" L")+\'" fill="none" stroke="\'+s.color+\'" stroke-width="2"/>\'; });',
+  '  if(Dcur>z0 && Dcur<=Hsol){ var yd=Y(Dcur); g+=\'<line x1="\'+plotL+\'" y1="\'+yd+\'" x2="\'+(W-mR)+\'" y2="\'+yd+\'" stroke="#0E2330" stroke-dasharray="4 3" stroke-width="1.2"/><text x="\'+(W-mR)+\'" y="\'+(yd-4)+\'" font-size="8.5" fill="#0E2330" text-anchor="end" font-family="var(--mono)">D = \'+Dcur.toFixed(1)+\' m</text>\'; }',
+  "  var svg='<svg viewBox=\"0 0 '+W+' '+H+'\" width=\"100%\" style=\"display:block\">'+g+'</svg>';",
+  '  var legend=\'<div class="coupe-legend" style="border-top:1px solid var(--line)">\'+series.map(function(s){ return \'<span><span class="swatch" style="background:\'+s.color+\'"></span>\'+s.lab+\'</span>\'; }).join("")+\'</div>\';',
+  '  return \'<div class="card" style="margin-top:20px"><div class="hd"><h2>Courbe de portance avec la profondeur</h2><span class="tag">servie serveur</span></div><div class="bd" style="padding:14px 14px 0">\'+svg+\'</div>\'+legend+\'</div>\';',
+  '}',
+  '',
+  '/* 3 profils de frottement negatif — rendus UNIQUEMENT si le serveur fournit prof',
+  '   [{z,w,g,f,qsP,qsN,N}] (elargissement gouverne). Port fidele de drawDowndrag. */',
+  'function downdragSvg(prof, m){',
+  '  var PW=292, H=440, mT=24, mB=34, mL=40, mR=14, gap=18;',
+  '  var Y=function(z){ return mT+((z-m.z0)/(m.D-m.z0))*(H-mT-mB); };',
+  '  function axisDepth(){ var g="", i; for(i=0;i<=6;i++){ var z=m.z0+(m.D-m.z0)*i/6, y=Y(z); g+=\'<line x1="\'+mL+\'" y1="\'+y+\'" x2="\'+(PW-mR)+\'" y2="\'+y+\'" stroke="#E6ECF2"/><text x="\'+(mL-5)+\'" y="\'+(y+3)+\'" font-size="8.5" fill="#7A8794" text-anchor="end" font-family="var(--mono)">\'+z.toFixed(0)+\'</text>\'; } return g; }',
+  '  function panel(title, xmin, xmax, unit, sers, extra){',
+  '    var X=function(v){ return mL+((v-xmin)/(xmax-xmin||1))*(PW-mL-mR); };',
+  '    var g=\'<rect x="0" y="0" width="\'+PW+\'" height="\'+H+\'" fill="#FBFCFE"/>\'+axisDepth(); var i;',
+  '    for(i=0;i<=3;i++){ var v=xmin+(xmax-xmin)*i/3, x=X(v); g+=\'<line x1="\'+x+\'" y1="\'+mT+\'" x2="\'+x+\'" y2="\'+(H-mB)+\'" stroke="#EEF2F7"/><text x="\'+x+\'" y="\'+(H-mB+13)+\'" font-size="8" fill="#7A8794" text-anchor="middle" font-family="var(--mono)">\'+(Math.abs(v)>=100?v.toFixed(0):v.toFixed(unit==="m"?2:1))+\'</text>\'; }',
+  '    if(xmin<0&&xmax>0){ var x0=X(0); g+=\'<line x1="\'+x0+\'" y1="\'+mT+\'" x2="\'+x0+\'" y2="\'+(H-mB)+\'" stroke="#C2CDD8" stroke-width="1"/>\'; }',
+  '    if(extra) g+=extra(X,Y);',
+  '    sers.forEach(function(s){ var pts=s.data.map(function(d,k){ return (k?"L":"M")+X(d.v)+" "+Y(d.z); }).join(" "); g+=\'<path d="\'+pts+\'" fill="none" stroke="\'+s.color+\'" stroke-width="\'+(s.w||2)+\'"\'+(s.dash?\' stroke-dasharray="\'+s.dash+\'"\':"")+\'/>\'; });',
+  '    g+=\'<text x="\'+(PW/2)+\'" y="14" font-size="10" fill="#0E2330" text-anchor="middle" font-family="var(--disp)" font-weight="600">\'+title+\'</text>\';',
+  '    g+=\'<text x="\'+(PW/2)+\'" y="\'+(H-3)+\'" font-size="8" fill="#7A8794" text-anchor="middle" font-family="var(--mono)">\'+unit+\'</text>\'; return g;',
+  '  }',
+  '  var teal="#0E7490", ochre="#C0872B", red="#BC3B2A", ink="#0E2330";',
+  '  var imp=(m.mode==="impose");',
+  '  var band=imp?function(X,Yf){ return \'<rect x="\'+mL+\'" y="\'+Yf(m.zt)+\'" width="\'+(PW-mL-mR)+\'" height="\'+Math.max(0,Yf(m.zb)-Yf(m.zt))+\'" fill="rgba(188,59,42,.07)"/>\'; }:null;',
+  '  var withBand=function(extra){ return function(X,Yf){ return (band?band(X,Yf):"")+(extra?extra(X,Yf):""); }; };',
+  '  var wmax=1e-3; prof.forEach(function(p){ var mm=Math.max(p.w,p.g); if(mm>wmax) wmax=mm; }); wmax*=1.05;',
+  '  var s1=[{data:prof.map(function(p){ return {z:p.z,v:p.w*1000}; }),color:teal,w:2}];',
+  '  if(!imp) s1.unshift({data:prof.map(function(p){ return {z:p.z,v:p.g*1000}; }),color:ochre,w:2});',
+  '  var p1=panel(imp?"Tassement du pieu":"Tassement sol / pieu",0,wmax*1000,"mm",s1,band?withBand(null):null);',
+  '  var fM=10; prof.forEach(function(p){ [p.f,p.qsP,p.qsN].forEach(function(x){ if(Math.abs(x)>fM) fM=Math.abs(x); }); }); fM*=1.05;',
+  '  var p2=panel("Frottement axial",-fM,fM,"kPa",[',
+  '    {data:prof.map(function(p){ return {z:p.z,v:p.qsP}; }),color:"#9AA8B4",w:1.3,dash:"4 3"},',
+  '    {data:prof.map(function(p){ return {z:p.z,v:p.qsN}; }),color:red,w:1.3,dash:"4 3"},',
+  '    {data:prof.map(function(p){ return {z:p.z,v:p.f}; }),color:teal,w:2.2}],',
+  '    withBand(m.zN!=null?function(X,Yf){ return \'<line x1="\'+mL+\'" y1="\'+Yf(m.zN)+\'" x2="\'+(PW-mR)+\'" y2="\'+Yf(m.zN)+\'" stroke="\'+ink+\'" stroke-dasharray="2 3" stroke-width="1"/><text x="\'+(PW-mR)+\'" y="\'+(Yf(m.zN)-4)+\'" font-size="8" fill="\'+ink+\'" text-anchor="end" font-family="var(--mono)">point neutre</text>\'; }:null));',
+  '  var Nmx=1; prof.forEach(function(p){ if(p.N>Nmx) Nmx=p.N; }); Nmx*=1.05;',
+  '  var p3=panel("Effort axial N",0,Nmx,"kN",[{data:prof.map(function(p){ return {z:p.z,v:p.N}; }),color:teal,w:2.2}],',
+  '    withBand(m.zN!=null?function(X,Yf){ return \'<line x1="\'+mL+\'" y1="\'+Yf(m.zN)+\'" x2="\'+(PW-mR)+\'" y2="\'+Yf(m.zN)+\'" stroke="\'+ink+\'" stroke-dasharray="2 3" stroke-width="1"/>\'; }:null));',
+  "  var svg='<svg viewBox=\"0 0 '+(PW*3+gap*2)+' '+H+'\" width=\"100%\" style=\"display:block\"><g>'+p1+'</g><g transform=\"translate('+(PW+gap)+',0)\">'+p2+'</g><g transform=\"translate('+((PW+gap)*2)+',0)\">'+p3+'</g></svg>';",
+  '  var legend=\'<div class="coupe-legend" style="border-top:1px solid var(--line)"><span><span class="swatch" style="background:\'+teal+\'"></span>Pieu</span>\'+(imp?\'<span><span class="swatch" style="background:rgba(188,59,42,.18)"></span>Zone de frottement négatif imposée</span>\':\'<span><span class="swatch" style="background:\'+ochre+\'"></span>Sol — tassement libre</span>\')+\'<span><span class="swatch" style="background:\'+red+\'"></span>q<sub>sn</sub></span></div>\';',
+  '  return \'<div class="card"><div class="hd"><h2>Profils en profondeur</h2><span class="tag">t-z · servis serveur</span></div><div class="bd" style="padding:14px 14px 0">\'+svg+\'</div>\'+legend+\'</div>\';',
+  '}',
+  '/* =================== FIN BRIDGE + MAPPING =================== */',
+].join('\n');
+
+/** compute() RÉÉCRIT : async, garde no-calc-initial locale, bridge, mapping serveur. */
+const CASAGRANDE_COMPUTE = [
+  'async function compute(){',
+  '  var layers=layerTops(); var z0=num("g_z0"), D=num("g_D");',
+  '  if(!layers.length){ renderResults({err:"Aucune couche de sol définie (onglet 02)."}); return; }',
+  '  if(D<=z0){ renderResults({err:"La profondeur de base D doit être supérieure à la profondeur de tête z\\u2080."}); return; }',
+  '  var el=$("res-content"); if(el) el.innerHTML=\'<div class="notice">Calcul en cours\\u2026</div>\';',
+  '  var resp;',
+  '  try{ resp=await window.__geofamBridge.calc(buildPieuxInput(false)); }',
+  '  catch(e){ renderResults({err:"Pont de calcul indisponible : "+((e&&e.message)||e)}); return; }',
+  '  if(!resp || !resp.ok){ renderResults({err:fmtCalcErr(resp&&resp.error)}); return; }',
+  '  window.__casagrandeLastCalcResultId=resp.calcResultId||null;',
+  '  var out=resp.output||{};',
+  '  if(out.erreur){ renderResults({err:out.erreur}); return; }',
+  '  var g=pieuxGeomCtx();',
+  '  try{ renderResults(mapPieuxOutput(out)); }catch(e){ if(el) el.innerHTML=\'<div class="verdict no"><span class="ic">!</span><div class="txt"><b>Erreur de rendu</b><div>\'+escPieux(e&&e.message)+\'</div></div></div>\'; }',
+  '  try{ drawCoupe(g.D,g.a,g.b); }catch(e){}',
+  '  if(state.meth==="cpt"){ try{ drawQcLog(g.D,g.a,g.b); }catch(e){} }',
+  '  try{ drawBeton(out); }catch(e){}',
+  '  try{ drawPortance(g.D,out); }catch(e){}',
+  '}',
+].join('\n');
+
+/** computeDowndrag() RÉÉCRIT : async, garde locale, bridge (frottementNegatif), KPI whitelistés. */
+const CASAGRANDE_DOWNDRAG = [
+  'async function computeDowndrag(){',
+  '  var host=$("fn-content"); if(!host) return;',
+  '  var layers=layerTops();',
+  '  if(!layers.length){ host.innerHTML=\'<div class="card"><div class="bd"><div class="coef-note">Définissez d\\u2019abord un profil de sol (onglet 03) et la géométrie du pieu (onglet 01), puis revenez ici. Le bouton \\u00ab Reprendre Q et la coupe du projet \\u00bb initialise les données.</div></div></div>\'; return; }',
+  '  var z0=num("g_z0"), D=num("g_D");',
+  '  if(!(D>z0)){ host.innerHTML=\'<div class="card"><div class="bd"><div class="coef-note">Géométrie incomplète : la base D doit être sous la tête z\\u2080 (onglet 01).</div></div></div>\'; return; }',
+  '  host.innerHTML=\'<div class="card"><div class="bd"><div class="coef-note">Calcul du frottement négatif\\u2026</div></div></div>\';',
+  '  var resp;',
+  '  try{ resp=await window.__geofamBridge.calc(buildPieuxInput(true)); }',
+  '  catch(e){ host.innerHTML=\'<div class="card"><div class="bd"><div class="coef-note">Pont de calcul indisponible : \'+escPieux((e&&e.message)||e)+\'</div></div></div>\'; return; }',
+  '  if(!resp || !resp.ok){ host.innerHTML=\'<div class="card"><div class="bd"><div class="coef-note">\'+escPieux(fmtCalcErr(resp&&resp.error))+\'</div></div></div>\'; return; }',
+  '  window.__casagrandeLastCalcResultId=resp.calcResultId||null;',
+  '  var out=resp.output||{};',
+  '  if(out.erreur){ host.innerHTML=\'<div class="card"><div class="bd"><div class="coef-note">\'+escPieux(out.erreur)+\'</div></div></div>\'; return; }',
+  '  var mode=state.fnmode||"auto";',
+  '  var zt=Math.max(z0,num("fn_zt")||z0), zb=Math.min(D,num("fn_zb")||0);',
+  '  if(mode==="impose" && zb<=zt) zb=Math.min(D,zt+0.01);',
+  '  var pd=(out.profilsDowndrag&&Array.isArray(out.profilsDowndrag.prof))?out.profilsDowndrag:null;',
+  '  drawDowndrag(pd?pd.prof:null, { z0:z0, D:D, B:(pileGeom().B||0.6), Q:num("fn_Q"),',
+  '    Nmax:sv(out.Nmax), Gsn:sv(out.Gsn), zN:(out.pointNeutre==null?null:out.pointNeutre),',
+  '    wHead:(pd&&isFinite(pd.wHead)?pd.wHead:NaN),',
+  '    s0:num("fn_s0"), Hc:num("fn_hc"), KtanD:num("fn_ktd"), meth:state.meth, mode:mode, zt:zt, zb:zb });',
+  '}',
+].join('\n');
+
+/** drawDowndrag() RÉÉCRIT : 4 KPI (N_max/G_sn/point neutre WHITELISTÉS ; wHead « — ») +
+ * 3 profils si servis serveur (downdragSvg), sinon placeholder (défaut NON). */
+const CASAGRANDE_DRAWDOWNDRAG = [
+  'function drawDowndrag(prof, m){',
+  '  var host=$("fn-content"); if(!host) return;',
+  '  var kpis=\'<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">\'',
+  '    +\'<div class="kpi accent"><div class="lab">Effort axial max</div><div class="val">\'+fmt(m.Nmax/1000,2)+\'<span class="un">MN</span></div><div class="sub">au point neutre</div></div>\'',
+  '    +\'<div class="kpi"><div class="lab">Frottement négatif G<sub>sn</sub></div><div class="val">\'+fmt(m.Gsn/1000,2)+\'<span class="un">MN</span></div><div class="sub">N<sub>max</sub> \\u2212 Q</div></div>\'',
+  '    +\'<div class="kpi"><div class="lab">Point neutre</div><div class="val">\'+(m.zN!=null?fmt(m.zN,1):"\\u2014")+\'<span class="un">m</span></div><div class="sub">déplacement relatif nul</div></div>\'',
+  '    +\'<div class="kpi blue"><div class="lab">Tassement tête pieu</div><div class="val">\'+fmt(m.wHead,1)+\'<span class="un">mm</span></div><div class="sub">\'+(m.mode==="impose"?("zone F.N. : "+fmt(m.zt,1)+"\\u2013"+fmt(m.zb,1)+" m"):("sol en surface : "+fmt(m.s0,0)+" mm"))+\'</div></div>\'',
+  "    +'</div>';",
+  '  var fig;',
+  '  if(prof && prof.length){ try{ fig=downdragSvg(prof,m); }catch(e){ fig=""; } }',
+  '  else { fig=\'<div class="card"><div class="hd"><h2>Profils en profondeur</h2><span class="tag">t-z</span></div><div class="bd"><div class="coef-note" style="margin:0">Les profils détaillés (tassement, frottement axial, effort N en profondeur) sont calculés côté serveur (méthode confidentielle). Leur restitution graphique est en attente de validation (élargissement de contrat, expert + titulaire \\u2014 défaut NON pieux). Les grandeurs de synthèse ci-dessus (N<sub>max</sub>, G<sub>sn</sub>, point neutre) sont issues du calcul serveur scellé au PV.</div></div></div>\'; }',
+  '  host.innerHTML=kpis+fig',
+  '    +\'<div class="notice" style="margin-top:18px">Le frottement négatif (G<sub>sn</sub> = \'+fmt(m.Gsn/1000,2)+\' MN) est une action permanente à <b>ajouter</b> à la charge en tête pour les vérifications (ch. 11 du guide). Au-dessus du point neutre (\'+(m.zN!=null?fmt(m.zN,1)+" m":"\\u2014")+\') le sol entraîne le pieu vers le bas ; en dessous, frottement positif et pointe équilibrent l\\u2019effort maximal N<sub>max</sub> = \'+fmt(m.Nmax/1000,2)+\' MN. Modèle t-z à valider par une étude \\u0153dométrique.</div>\';',
+  '}',
+].join('\n');
+
+/** drawSettle() RÉÉCRIT : courbe charge-tassement si servie (courbeTassement), sinon placeholder. */
+const CASAGRANDE_DRAWSETTLE = [
+  'function drawSettle(s,Fels){',
+  '  var svg=$("settle-svg"); if(!svg) return;',
+  '  var W=420,H=300,mL=52,mR=16,mT=14,mB=40, i;',
+  '  if(!s || !s.pts || !s.pts.length || !(s.Fmax>0)){',
+  '    svg.innerHTML=\'<rect x="0" y="0" width="\'+W+\'" height="\'+H+\'" fill="#F7F9FC"/>\'',
+  '      +\'<text x="\'+(W/2)+\'" y="\'+(H/2-6)+\'" font-size="11" fill="#8A92A0" text-anchor="middle" font-family="monospace">Courbe charge\\u2013tassement servie côté serveur</text>\'',
+  '      +\'<text x="\'+(W/2)+\'" y="\'+(H/2+12)+\'" font-size="9.5" fill="#8A92A0" text-anchor="middle" font-family="monospace">(restitution en attente de validation \\u2014 défaut NON pieux)</text>\';',
+  '    return;',
+  '  }',
+  '  var maxF=s.Fmax, arrS=s.pts.map(function(p){ return p.s; }).concat([s.sEls]);',
+  '  var maxS=(Math.max.apply(null,arrS)*1.1)||10;',
+  '  var X=function(f){ return mL+(f/maxF)*(W-mL-mR); }, Y=function(ss){ return mT+(ss/maxS)*(H-mT-mB); };',
+  '  var g=\'<rect x="0" y="0" width="\'+W+\'" height="\'+H+\'" fill="#F7F9FC"/>\';',
+  '  for(i=0;i<=5;i++){ var y=mT+(H-mT-mB)*i/5, val=maxS*i/5; g+=\'<line x1="\'+mL+\'" y1="\'+y+\'" x2="\'+(W-mR)+\'" y2="\'+y+\'" stroke="#E5EAF1"/><text x="\'+(mL-6)+\'" y="\'+(y+3)+\'" font-size="9" fill="#8A92A0" text-anchor="end" font-family="monospace">\'+val.toFixed(0)+\'</text>\'; }',
+  '  for(i=0;i<=4;i++){ var x=mL+(W-mL-mR)*i/4, vf=maxF*i/4; g+=\'<line x1="\'+x+\'" y1="\'+mT+\'" x2="\'+x+\'" y2="\'+(H-mB)+\'" stroke="#EEF1F6"/><text x="\'+x+\'" y="\'+(H-mB+14)+\'" font-size="9" fill="#8A92A0" text-anchor="middle" font-family="monospace">\'+(vf/1000).toFixed(1)+\'</text>\'; }',
+  '  var path=s.pts.map(function(p,k){ return (k?"L":"M")+X(p.F)+" "+Y(p.s); }).join(" ");',
+  '  g+=\'<path d="\'+path+\'" fill="none" stroke="var(--amber)" stroke-width="2"/>\';',
+  '  g+=\'<line x1="\'+X(Fels)+\'" y1="\'+mT+\'" x2="\'+X(Fels)+\'" y2="\'+(H-mB)+\'" stroke="var(--blue)" stroke-dasharray="4 3" stroke-width="1.2"/>\';',
+  '  g+=\'<circle cx="\'+X(Fels)+\'" cy="\'+Y(s.sEls)+\'" r="4" fill="var(--blue)"/>\';',
+  '  g+=\'<text x="\'+(X(Fels)+5)+\'" y="\'+(Y(s.sEls)-6)+\'" font-size="9.5" fill="var(--blue)" font-family="monospace">\'+s.sEls.toFixed(1)+\' mm</text>\';',
+  '  g+=\'<text x="\'+(W/2)+\'" y="\'+(H-4)+\'" font-size="9.5" fill="#8A92A0" text-anchor="middle" font-family="monospace">Charge F (MN)</text>\';',
+  '  g+=\'<text x="12" y="\'+(H/2)+\'" font-size="9.5" fill="#8A92A0" text-anchor="middle" font-family="monospace" transform="rotate(-90 12 \'+(H/2)+\')">Tassement (mm)</text>\';',
+  '  svg.innerHTML=g;',
+  '}',
+].join('\n');
+
+/** drawBeton() RÉÉCRIT : verdict/taux/f_cd depuis la sortie WHITELISTÉE ; σ appliquées « — ». */
+const CASAGRANDE_DRAWBETON = [
+  'function drawBeton(out){',
+  '  var el=$("res-content"); if(!el) return;',
+  '  var applicable=out.betonApplicable;',
+  '  if(applicable===false){',
+  '    el.insertAdjacentHTML("beforeend", \'<div class="card" style="margin-top:20px"><div class="hd"><h2>Résistance du béton (structure)</h2><span class="tag">§4.4</span></div><div class="bd"><div class="coef-note" style="margin:0">Vérification non applicable : pieu en traction (résistance assurée par les armatures) ou catégorie non couverte (acier, préfabriqué, micropieu, injecté).</div></div></div>\');',
+  '    return;',
+  '  }',
+  '  if(applicable==null) return;',
+  '  var okELU=(out.betonOkELU===true), okELS=(out.betonOkELS===true), ok=okELU&&okELS;',
+  '  var taux=Math.max((isFinite(out.betonTauxELU)?out.betonTauxELU:0),(isFinite(out.betonTauxELS)?out.betonTauxELS:0));',
+  '  var verdict=\'<div class="verdict \'+(ok?"ok":"no")+\'" style="margin:0 0 16px"><div class="ic">\'+(ok?"\\u2713":"\\u2717")+\'</div><div class="txt"><b>Béton \'+(ok?"vérifié":"NON vérifié")+\'</b><div>Contrainte la plus défavorable : \'+fmt(taux*100,0)+\' % \\u00b7 f<sub>cd</sub> = \'+fmt(out.betonFcd,1)+\' MPa</div></div></div>\';',
+  '  var rows=\'<tr><td class="lbl">\\u03c3 ELU = N<sub>d</sub>/A<sub>b</sub></td><td class="r">\\u2014</td><td class="r">\'+fmt(out.betonFcd,2)+\'</td><td class="r"><span class="\'+(okELU?"pass":"fail")+\'">\'+fmt(out.betonTauxELU*100,0)+\' %</span></td><td class="r">\'+(okELU?"\\u2713":"\\u2717")+\'</td></tr>\'',
+  '    +\'<tr><td class="lbl">\\u03c3 ELS car. = N<sub>ser</sub>/A<sub>b</sub></td><td class="r">\\u2014</td><td class="r">\\u2014</td><td class="r"><span class="\'+(okELS?"pass":"fail")+\'">\'+fmt(out.betonTauxELS*100,0)+\' %</span></td><td class="r">\'+(okELS?"\\u2713":"\\u2717")+\'</td></tr>\';',
+  '  el.insertAdjacentHTML("beforeend", \'<div class="card" style="margin-top:20px"><div class="hd"><h2>Résistance du béton (structure)</h2><span class="tag">NF P 94-262 §4.4</span></div><div class="bd">\'+verdict+\'<table class="res"><tr><th>Combinaison</th><th class="r">\\u03c3 (MPa)</th><th class="r">limite (MPa)</th><th class="r">taux</th><th class="r"></th></tr>\'+rows+\'</table><div class="coef-note" style="margin-top:14px">Résistance de calcul du béton f<sub>cd</sub> = \'+fmt(out.betonFcd,1)+\' MPa (NF P 94-262 §4.4). Les contraintes appliquées \\u03c3 et le détail des facteurs (C<sub>max</sub>, k\\u2081, k\\u2082, f<sub>ck</sub>*) sont calculés côté serveur.</div></div></div>\');',
+  '}',
+].join('\n');
+
+/** drawPortance() RÉÉCRIT : courbe si servie (courbePortance), sinon placeholder (défaut NON). */
+const CASAGRANDE_DRAWPORTANCE = [
+  'function drawPortance(Dcur, out){',
+  '  var el=$("res-content"); if(!el) return;',
+  '  if(out && out.courbePortance && Array.isArray(out.courbePortance.rows) && out.courbePortance.rows.length>=2){',
+  '    try{ var svg=portanceSvgFromServer(Dcur,out.courbePortance); if(svg){ el.insertAdjacentHTML("beforeend",svg); return; } }catch(e){}',
+  '  }',
+  '  el.insertAdjacentHTML("beforeend", \'<div class="card" style="margin-top:20px"><div class="hd"><h2>Courbe de portance avec la profondeur</h2><span class="tag">\'+(state.sens==="trac"?"traction":"compression")+\' \\u00b7 \'+(state.meth==="pmt"?"pressio":state.meth==="cpt"?"pénétro":"c-\\u03c6")+\'</span></div><div class="bd"><div class="coef-note" style="margin:0">La courbe de portance en fonction de la profondeur d\\u2019ancrage (aide au choix de l\\u2019ancrage) est construite à partir de la capacité calculée côté serveur à chaque profondeur (méthode NF P 94-262 confidentielle). Sa restitution graphique est en attente de validation (élargissement de contrat, expert + titulaire \\u2014 défaut NON pieux). Le verdict et les résistances ci-dessus sont issus du calcul serveur scellé au PV.</div></div></div>\');',
+  '}',
+].join('\n');
+
+/** buildSoilCoefTable() RÉÉCRIT : libellés de sol conservés ; abaques (k_p/k_c/α/q_s,max)
+ * « — » servies serveur (défaut NON — pas d'abaques NF P 94-262 côté navigateur). */
+const CASAGRANDE_BUILDSOILCOEF = [
+  'function buildSoilCoefTable(){',
+  '  var t=$("soil-coef-table"); if(!t) return;',
+  '  var p=curPile(); var cls=p.cls;',
+  '  var h=\'<tr><th rowspan="2">Nature de sol</th><th colspan="2">Pointe \\u2014 classe \'+cls+\'</th><th colspan="2">Frottement pressio</th><th colspan="2">Frottement pénétro</th><th rowspan="2">q<sub>s,max</sub><br>(kPa)</th></tr><tr><th>k<sub>p,max</sub></th><th>k<sub>c,max</sub></th><th>courbe</th><th>\\u03b1<sub>PMT</sub></th><th>courbe</th><th>\\u03b1<sub>CPT</sub></th></tr>\';',
+  "  Object.keys(SOILS).forEach(function(s){ h+='<tr><td><span class=\"swatch\" style=\"background:'+SOILS[s].color+'\"></span> '+SOILS[s].label+'</td><td>\\u2014</td><td>\\u2014</td><td>\\u2014</td><td>\\u2014</td><td>\\u2014</td><td>\\u2014</td><td>\\u2014</td></tr>'; });",
+  '  h+=\'<tr><td colspan="8" style="font-size:10.5px;color:var(--color-text-secondary,#6b7280);text-align:left;line-height:1.5">Coefficients de portance et de frottement (Tableaux NF P 94-262 F.4.2.1 / G.4.2.1 / F.5.2 / G.5.2) appliqués côté serveur \\u2014 restitution détaillée en attente de validation (expert + titulaire, défaut NON pieux).</td></tr>\';',
+  '  t.innerHTML=h;',
+  '}',
+].join('\n');
+
+/** updateXiInfo() RÉÉCRIT : N/S depuis la saisie ; ξ₃/ξ₄ « servis serveur » (non whitelistés). */
+const CASAGRANDE_UPDATEXI = [
+  'function updateXiInfo(){',
+  '  var el=$("xi-info"); if(!el) return;',
+  '  var N=Math.max(1,Math.round(num("o_nprofil")));',
+  '  var S=Math.min(2500,Math.max(100,(num("o_surf")>0?num("o_surf"):2500)));',
+  '  var redis=$("o_redis") && $("o_redis").value==="oui";',
+  '  el.innerHTML="N = "+N+" profil"+(N>1?"s":"")+" \\u00b7 S = "+fmt(S,0)+" m\\u00b2 (\\u221a(S/2500) = "+fmt(Math.sqrt(S/2500),2)+")"+(redis?" \\u00b7 \\u00f71,1":"")+" \\u2192 \\u03be\\u2083 \\u00b7 \\u03be\\u2084 servis côté serveur (Tableau C.2.4.2).";',
+  '}',
+].join('\n');
+
+// ===========================================================================
+// FASTLAB (labo + classification GTR) — patron d'excision DIFFERENT : pas de choke
+// point. ~20 kernels calc* lisent le DOM, calculent ET ecrivent le DOM, enchaines par
+// recalc(). On EXCISE tous les kernels + classify + helpers de calcul + tables de
+// classification (subFine/subB/stateFromRatio), et on REECRIT recalc en un POST UNIQUE
+// DEBOUNCE : le serveur renvoie TOUTES les valeurs derivees (agregats + detail par ligne
+// + series de courbe + alertes normatives) ; les render* (injectes) ne CALCULENT plus,
+// ils ECRIVENT la reponse serveur. Le module labo est INTEGRALEMENT client-safe (ADR
+// 0014) : l'excision sert l'ENFORCEMENT du calcul serveur (entitlements/quota/PV, DoD
+// §8/ADR 0002), pas la confidentialite d'une science.
+// ---------------------------------------------------------------------------
+
+/** Kernels de calcul + helpers + tables de decision EXCISES (audit-excision). Les
+ * SPEC/tables de SAISIE normatives (MOULES/PRPROC/MDE_CLASS/SIEVES/CBR_ENF…), les draw*
+ * (renderers canvas) et les helpers de rendu (chip/f/renderRecap/updateDots) restent
+ * CONSERVES. mdeClassKey est CONSERVE (assiste la SAISIE via applyMdeVar). */
+const FASTLAB_ENGINE_SYMBOLS = [
+  'calcW',
+  'calcGranulo',
+  'granuloPts',
+  'interpP',
+  'dAt',
+  'calcAtt',
+  'calcVbs',
+  'calcRhos',
+  'rhoWaterT',
+  'calcProctor',
+  'fitPar',
+  'calcCbr',
+  'calcCisail',
+  'rsq',
+  'calcDens',
+  'calcOedo',
+  'calcUcs',
+  'calcTriUU',
+  'calcTriCU',
+  'calcPerm',
+  'calcEs',
+  'calcLa',
+  'calcSZ',
+  'calcMde',
+  'calcMdeCamp',
+  'calcRho',
+  'calcSulf',
+  'classify',
+  'subFine',
+  'subB',
+  'stateFromRatio',
+  'lreg',
+];
+
+/** Pont postMessage (origine opaque) + DEBOUNCE + proxy Store + tous les render* (mapping
+ * sortie serveur -> DOM). Injecte apres `const D={};` (helpers de base definis ; les
+ * fonctions hoistees de rendu/saisie restent appelables au 1er recalc, jamais au boot). */
+const FASTLAB_BRIDGE_AND_RENDER = [
+  '/* ===================== BRIDGE + RENDER (injecte — clone excise, ADR 0015) ===================== */',
+  '(function(){',
+  '  var TOOL_ID="fastlab", ENGINE_ID="labo";',
+  '  var pending=Object.create(null), stpend=Object.create(null), seq=0, stseq=0;',
+  '  var ctx={ engineId:ENGINE_ID, orgSlug:null, projectLabel:null, readOnly:false };',
+  '  function post(msg){ try{ window.parent.postMessage(msg,"*"); }catch(e){} }',
+  '  window.addEventListener("message", function(ev){',
+  '    if(ev.source !== window.parent) return;',
+  '    var d=ev.data; if(!d || d.v!==1 || typeof d.type!=="string") return;',
+  '    if(d.type==="init"){ ctx=Object.assign(ctx, d.payload||{}); return; }',
+  '    if(d.type==="calc:response"){ var p=pending[d.id]; if(!p) return; delete pending[d.id]; p(d.payload||{ok:false,error:{message:"reponse vide"}}); return; }',
+  '    if(d.type==="store:value"){ var pr=d.id?stpend[d.id]:null; if(pr){ delete stpend[d.id]; pr(d.payload&&d.payload.value); } return; }',
+  '  });',
+  '  window.__geofamBridge={',
+  '    calc:function(params){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:ENGINE_ID,label:(params&&params.m_ref)||null,params:params}}); }); },',
+  '    emitPv:function(calcResultId){ post({v:1,type:"pv:request",payload:{calcResultId:calcResultId}}); },',
+  '    storeGet:function(key){ var id=TOOL_ID+":s:"+(++stseq); return new Promise(function(resolve){ stpend[id]=resolve; post({v:1,type:"store:get",id:id,payload:{key:key}}); }); },',
+  '    storeSet:function(key,value){ var id=TOOL_ID+":s:"+(++stseq); return new Promise(function(resolve){ stpend[id]=resolve; post({v:1,type:"store:set",id:id,payload:{key:key,value:value}}); }); },',
+  '    context:function(){ return ctx; }',
+  '  };',
+  '  post({v:1,type:"ready",payload:{toolId:TOOL_ID}});',
+  '})();',
+  '',
+  'var __calcTimer=null;',
+  'window.__laboLastClasse=null; window.__laboLastCalcResultId=null;',
+  '/* Etat PLAUSIBLE : au moins une MESURE primaire saisie (memes ids que updateDots, hors',
+  '   identification). Sur l etat vide (boot writeForm({})) on NE poste RIEN (no-calc-initial). */',
+  'function plausibleState(o){',
+  '  var ids=["gr_M","w_s1","ll_s1","v_V1","rs2_m0_1","d_m","pr_mh1","cb_tot0","ci_N1","oe_H0","uc_f","tu_df_1","tc_s1_1","pe_V","es_h2_1","la_m","sz_8","mde_present","ra_M1","su_ba"];',
+  '  for(var i=0;i<ids.length;i++){ var v=o[ids[i]]; if(v!=null && v!=="") return true; } return false;',
+  '}',
+  '/* Seuils GTR de l onglet « Seuils » (CFG, SAISIE conservee) -> params serveur (cfg). */',
+  'function cfgObject(){',
+  '  try{ return { routeD:CFG.routeD, A_fines:CFG.A_fines, A_ip:CFG.A_ip, A_vbs:CFG.A_vbs, B_p2:CFG.B_p2, B_fines:CFG.B_fines, B_vbs01:CFG.B_vbs01, B_vbs56:CFG.B_vbs56, C_dmax:CFG.C_dmax, D_fines:CFG.D_fines, D_vbs:CFG.D_vbs, st:CFG.st, FR:CFG.FR, DG:CFG.DG }; }catch(e){ return undefined; }',
+  '}',
+  'function setHTML(id,h){ var e=$(id); if(e) e.innerHTML=h; }',
+  'function renderCalcError(err){',
+  '  var msg=(err&&err.message)?err.message:"Calcul indisponible.";',
+  '  var el=$("result"); if(el) el.innerHTML=\'<div class="alert warn"><b>Calcul indisponible</b>\'+msg+\'</div>\';',
+  '}',
+  '/* Verdict de classification (mirroir du bloc verdict de recalc du HTML). caveats = ',
+  '   l ancien classify().warn (encart « Points a verifier »). */',
+  'function renderVerdict(cl){',
+  '  var el=$("result"); if(!el) return;',
+  '  if(!cl||!cl.code){ el.innerHTML=\'<div class="alert info"><b>En attente de donnees</b>Renseignez au minimum la granulometrie (passant 80 \\u00b5m) et la VBS ou l\\u2019Ip.</div>\'; return; }',
+  "  var h='<div class=\"verdict\"><div class=\"classbadge\">'+cl.full+'</div><div class=\"desc\"><h3>Famille '+cl.fam+' \\u2014 '+cl.code+'</h3><p>'+(cl.desc||'')+'</p>'+((cl.etat&&cl.stApplies)?'<p class=\"sub\">\\u00c9tat hydrique : <b>'+cl.etat+'</b></p>':'')+'</div></div>';",
+  "  h+='<div class=\"pathbox\"><div class=\"h\">Chemin de d\\u00e9cision</div><ol>'+((cl.path||[]).map(function(s){return '<li>'+s+'</li>';}).join(''))+'</ol></div>';",
+  "  var cav=cl.caveats||[]; if(cav.length) h+='<div class=\"alert warn\"><b>Points \\u00e0 v\\u00e9rifier</b>'+cav.map(function(w){return '\\u00b7 '+w;}).join('<br>')+'</div>';",
+  "  if(cl.rNote) h+='<div class=\"alert info\"><b>Assistant famille R (rocheux)</b>'+cl.rNote.join(' \\u00b7 ')+'<br><span class=\"sub\">Classement R complet selon nature + seuils LA/MDE/FR/DG (\\u00e0 finaliser avec le GTR).</span></div>';",
+  '  el.innerHTML=h;',
+  '}',
+  '/* Teneur en eau — $(w_r i) + chips (miroir du kernel eau du HTML). */',
+  'function renderW(w){',
+  '  for(var i=1;i<=3;i++){ var v=(w&&w.rows&&w.rows[i-1]!=null)?w.rows[i-1]:null; var e=$("w_r"+i); if(e) e.textContent=(v==null?"\\u2014":v.toFixed(2)); }',
+  '  setHTML("out_w", chip("w moyenne",f(w?w.moy:null,2),"%",true)+chip("Nb prises",w?w.n:0));',
+  '}',
+  '/* Granulometrie — refus/passant cumules par tamis + chips + courbe (D.granPts serveur). */',
+  'function renderGran(det){',
+  '  var g=det&&det.gran, rows=(g&&g.rows)||[];',
+  '  for(var i=0;i<rows.length;i++){ var r=rows[i];',
+  '    var sc=document.querySelector(\'.gr_cum[data-s="\'+r.s+\'"]\'); if(sc) sc.textContent=(r.cum==null?"\\u2014":r.cum.toFixed(1));',
+  '    var sp=document.querySelector(\'.gr_pass[data-s="\'+r.s+\'"]\'); if(sp) sp.textContent=(r.pass==null?"\\u2014":r.pass.toFixed(1)); }',
+  '  var out=chip("Dmax",f(D.dmax,(D.dmax!=null&&D.dmax<1)?2:0),"mm",true)+chip("P 80\\u00b5m",f(D.p80),"%",true)+chip("P 2mm",f(D.p2),"%")+chip("Cu",f(D.Cu))+chip("Cc",f(D.Cc,2));',
+  '  if(D.mf!=null) out+=chip("Module finesse",f(D.mf,2),"",true)+chip("Sable",D.mfq);',
+  '  setHTML("out_gran", out);',
+  '  D.granPts=(g&&g.pts)||[]; try{ drawGran(); }catch(e){}',
+  '}',
+  '/* Atterberg — w par point (liquidite/plasticite) + chips + validite + nature + encart. */',
+  'function renderAtt(att){',
+  '  for(var i=1;i<=5;i++){ var v=(att&&att.llw&&att.llw[i-1]!=null)?att.llw[i-1]:null; var e=$("ll_w"+i); if(e) e.textContent=(v==null?"\\u2014":v.toFixed(2)); }',
+  '  for(var j=1;j<=2;j++){ var v2=(att&&att.plw&&att.plw[j-1]!=null)?att.plw[j-1]:null; var e2=$("pl_w"+j); if(e2) e2.textContent=(v2==null?"\\u2014":v2.toFixed(2)); }',
+  '  var wL=D.wl, ip=D.ip, wP=D.wp, ic=D.ic, np=($("pl_np")&&$("pl_np").checked);',
+  '  var pts=(att&&att.points)||0, valide=att?att.valide:true, warns=(att&&att.warns)||[];',
+  '  setHTML("out_ll", chip("wL",wL==null?null:wL,"%",true)+chip("Points",pts)+chip("Pente droite",(att&&att.pente!=null)?f(att.pente,2):null)+(valide?chip("Validit\\u00e9","\\u2713 conforme","",true):chip("Validit\\u00e9","\\u2717 \\u00e0 v\\u00e9rifier","!",true)));',
+  '  var out=chip("wL",wL==null?null:wL,"%")+chip("wP",np?"NP":(wP==null?null:wP),np?"":"%")+chip("Ip",np?"NP":(ip==null?null:ip),"",true);',
+  '  if(ic!=null) out+=chip("Ic",f(ic,2),"",true);',
+  '  var nature=att?att.nature:null;',
+  '  if(nature) out+=\'<div class="chip" style="min-width:auto"><div class="k">Nature</div><div class="v" style="font-size:12px;font-weight:600">\'+nature+\'</div></div>\';',
+  "  setHTML(\"out_att\", out+(warns.length?'<div class=\"alert warn\" style=\"width:100%\"><b>Contr\\u00f4les NF P 94-051</b>'+warns.map(function(w){return '\\u00b7 '+w;}).join('<br>')+'</div>':''));",
+  '  var raw=(att&&att.raw)||[]; var reg=(att&&att.pente!=null)?{a:att.pente,b:(att.wLraw!=null?att.wLraw-att.pente*Math.log10(25):0)}:null;',
+  '  try{ drawLL(raw,reg,att?att.wLraw:null); drawPlast(wL,ip); }catch(e){}',
+  '}',
+  '/* VBS — M1/Mb/VBS 0-5/VBS du sol par essai + chips + alerte V<=10. */',
+  'function renderVbs(v){',
+  '  for(var i=1;i<=2;i++){ var r=(v&&v.rows&&v.rows[i-1])||{};',
+  '    var a=$("v_M1_"+i); if(a) a.textContent=(r.M1==null?"\\u2014":r.M1.toFixed(2));',
+  '    var b=$("v_Mb"+i); if(b) b.textContent=(r.Mb==null?"\\u2014":r.Mb.toFixed(2));',
+  '    var c=$("v_v05_"+i); if(c) c.textContent=(r.v05==null?"\\u2014":r.v05.toFixed(2));',
+  '    var d2=$("v_vsol"+i); if(d2) d2.textContent=(r.vs==null?"\\u2014":r.vs.toFixed(2)); }',
+  '  var out=chip("VBS du sol (moyenne)",f(v?v.moy:null,2),"",true)+chip("VBS retenue",f(v?v.retenue:null,2),"",true)+chip("Essais",v?v.essais:0);',
+  '  if(v&&v.manual!=null) out+=chip("Saisie directe",f(v.manual,2),"!");',
+  '  if(v&&v.lowV) out+=\'<div class="alert warn" style="width:100%"><b>Contr\\u00f4le NF P 94-068 (art. 7)</b>\\u00b7 Volume de bleu V \\u2264 10 cm\\u00b3 : l\\u2019essai doit \\u00eatre recommenc\\u00e9 avec une prise d\\u2019essai de masse sup\\u00e9rieure.</div>\';',
+  '  setHTML("out_vbs", out);',
+  '}',
+  '/* Proctor — w/rd par point + spec (mode operatoire + energie serveur) + chips + courbe. */',
+  'function renderProctor(p){',
+  '  var V=p?p.V:null; setv("pr_V",V!=null?V.toFixed(1):"");',
+  '  var pts=[];',
+  '  for(var i=1;i<=7;i++){ var r=(p&&p.rows&&p.rows[i-1])||{}; var a=$("pr_w"+i); if(a) a.textContent=(r.w==null?"\\u2014":r.w.toFixed(2)); var b=$("pr_rd"+i); if(b) b.textContent=(r.rd==null?"\\u2014":r.rd.toFixed(3)); if(r.w!=null&&r.rd!=null) pts.push([r.w,r.rd]); }',
+  '  var spec=\'<b>\'+({n:"Normal",m45:"Modifi\\u00e9 4,5 kg",m15:"Modifi\\u00e9 15 kg"}[prType]||"")+\'.</b> \'+(PRSPEC[prType]||"");',
+  '  var key=prType+"_"+($("pr_mould")?$("pr_mould").value:"A"); var PR=PRPROC[key];',
+  "  if(PR){ var eline=\"\"; var en=p?p.energy:null; if(en){ eline=' \\u00b7 \\u00e9nergie calcul\\u00e9e <b>'+en.E.toFixed(3)+' MJ/m\\u00b3</b> '+(en.ok?'<span style=\"color:var(--ok)\">\\u2713 conforme</span>':'<span style=\"color:var(--bad)\">\\u26a0 \\u00e9cart > 8 %</span>'); }",
+  "    spec+='<br><span style=\"display:inline-block;margin-top:6px\">Mode op\\u00e9ratoire normatif : dame <b>'+PR.m+' kg</b>, chute <b>'+PR.h+' mm</b>, <b>'+PR.L+' couches</b> \\u00d7 <b>'+PR.N+' coups</b>/couche.'+eline+'</span>'; }",
+  '  else{ spec+=\'<br><span style="color:var(--bad)">\\u26a0 Combinaison moule + dame hors Tableau 5 : la dame 15 kg s\\u2019emploie avec le moule C ; les dames 2,5/4,5 kg avec les moules A ou B.</span>\'; }',
+  '  setHTML("pr_spec", spec);',
+  '  setHTML("out_proctor", chip("wOPN",f(D.wopn,1),"%",true)+chip("\\u03c1d max",f(D.rdmax,3),"t/m\\u00b3",true)+chip("Points",pts.length)+chip("Volume",f(V,0),"cm\\u00b3"));',
+  '  var fit=(p&&p.fit)?{a:p.fit.a,b:p.fit.b,c:p.fit.c,wopn:p.wopn,rdmax:p.rdmax}:null;',
+  '  try{ drawProctor(pts,fit); }catch(e){}',
+  '}',
+  '/* Essais NON encore cables au detail par ligne : leur RESULTAT (agregat serveur) est',
+  '   rendu dans le chip de tete de feuille (le detail par ligne suit le meme patron —',
+  '   RESIDU documente). La fiche de synthese (renderRecap) restitue deja tous les agregats. */',
+  'function renderAgg(o){',
+  '  setHTML("out_rhos", chip("\\u03c1s moyenne",f(o.rhos,2),"Mg/m\\u00b3",true));',
+  '  setHTML("out_cbr", chip((o.cbrType==="ipi"?"IPI":"I.CBR"),f(o.cbr,1),"",true)+chip("Gonflement",f(o.gonfl,2),"%"));',
+  '  setHTML("out_cisail", chip("c\\u2032",f(o.c_cis,1),"kPa",true)+chip("\\u03c6\\u2032",f(o.phi_cis,1),"\\u00b0",true)+chip("\\u03c6\\u2032R",f(o.phiR_cis,1),"\\u00b0"));',
+  '  setHTML("out_dens", chip("\\u03c1 apparente",f(o.rho_app,2),"Mg/m\\u00b3",true)+chip("\\u03c1d s\\u00e8che",f(o.rhod_app,2),"Mg/m\\u00b3"));',
+  '  setHTML("out_oedo", chip("e\\u2080",f(o.e0_oedo,3),"",true)+chip("Cc",f(o.Cc_oedo,3),"",true)+chip("Cs",f(o.Cs_oedo,3)));',
+  '  setHTML("out_ucs", chip("qu",f(o.qu,3),"MPa",true));',
+  '  setHTML("out_triuu", chip("cu moyen",f(o.cu_uu,0),"kPa",true)+chip("\\u03c6u","\\u2248 0","\\u00b0"));',
+  '  setHTML("out_tricu", chip("c\\u2032",f(o.c,1),"kPa",true)+chip("\\u03c6\\u2032",f(o.phi,1),"\\u00b0",true));',
+  '  setHTML("out_perm", chip("k",o.k==null?null:o.k.toExponential(2),"cm/s",true)+chip("k",o.k==null?null:(o.k/100).toExponential(2),"m/s"));',
+  '  setHTML("out_es", chip("SE moyen",f(o.es,1),"%",true));',
+  '  setHTML("out_la", chip("LA",o.la==null?null:o.la,"",true));',
+  '  setHTML("out_sz", chip("SZ",f(o.sz,2),"%",true));',
+  '  setHTML("out_mde", chip("MDE",o.mde==null?null:o.mde,"",true));',
+  '  setHTML("out_rho", chip("WA24",f(o.wa,2),"%",true));',
+  '  setHTML("out_sulf", chip("SO\\u2083",f(o.so3,3),"%",true));',
+  '}',
+  '/* Peuple D (agregats) depuis la sortie serveur, puis appelle les render*, le verdict,',
+  '   la fiche de synthese (renderRecap, conservee) et les pastilles (updateDots). */',
+  'function renderAll(o){',
+  '  o=o||{};',
+  '  var keys=["wn","dmax","p80","p2","Cu","Cc","mf","mfq","wl","wp","ip","ic","vbs","rhos","wopn","rdmax","cbr","cbrType","gonfl","rho_app","rhod_app","es","la","sz","mde","wa","so3","qu","c_cis","phi_cis","phiR_cis","c","phi","cu_uu","e0_oedo","Cc_oedo","Cs_oedo","k"];',
+  '  for(var i=0;i<keys.length;i++){ D[keys[i]]=(o[keys[i]]===undefined?null:o[keys[i]]); }',
+  '  window.__laboLastClasse=o.classe||null;',
+  '  var det=o.detail||{};',
+  '  renderW(det.w); renderGran(det); renderAtt(det.att); renderVbs(det.vbs); renderProctor(det.proctor);',
+  '  renderAgg(o);',
+  '  renderVerdict(o.classe);',
+  '  try{ renderRecap(o.classe||{}); }catch(e){}',
+  '  try{ updateDots(); }catch(e){}',
+  '}',
+  'async function __runCalcLabo(o){',
+  '  var params=o; var cfg=cfgObject(); if(cfg) { try{ params=Object.assign({},o,{cfg:cfg}); }catch(e){} }',
+  '  var resp;',
+  '  try{ resp=await window.__geofamBridge.calc(params); }',
+  '  catch(e){ renderCalcError({message:"Pont de calcul indisponible : "+((e&&e.message)||e)}); return; }',
+  '  if(!resp || !resp.ok){ renderCalcError((resp&&resp.error)||{message:"R\\u00e9ponse de calcul vide."}); return; }',
+  '  window.__laboLastCalcResultId=resp.calcResultId||null;',
+  '  try{ renderAll(resp.output||{}); }catch(e){ renderCalcError({message:"Erreur de rendu."}); }',
+  '}',
+  '/* =================== FIN BRIDGE + RENDER =================== */',
+].join('\n');
+
+/** recalc() REECRIT : POST UNIQUE DEBOUNCE (~320 ms). Sur l etat vide (no-calc-initial)
+ * aucun appel serveur, verdict natif « En attente ». Une rafale de frappes = 1 seul POST. */
+const FASTLAB_RECALC = [
+  'function recalc(){',
+  '  var o; try{ o=readForm(); }catch(e){ o={}; }',
+  '  if(!plausibleState(o)){',
+  '    if(__calcTimer){ clearTimeout(__calcTimer); __calcTimer=null; }',
+  '    window.__laboLastClasse=null; renderVerdict(null);',
+  '    try{ renderRecap({}); }catch(e){} try{ updateDots(); }catch(e){}',
+  '    return;',
+  '  }',
+  '  if(__calcTimer) clearTimeout(__calcTimer);',
+  '  __calcTimer=setTimeout(function(){ __calcTimer=null; __runCalcLabo(o); }, 320);',
+  '}',
+].join('\n');
+
+/** Store REECRIT : persistance des echantillons proxifiee via le bridge store:get/set
+ * (namespace org/projet gere par l hote, ADR 0015) — plus de window.storage direct. */
+const FASTLAB_STORE = [
+  'const Store={',
+  '  get:function(k){ return window.__geofamBridge.storeGet(k); },',
+  '  set:function(k,v){ return window.__geofamBridge.storeSet(k,v); }',
+  '};',
+].join('\n');
+
+/** saveSample REECRIT : le calcul (donc la classe enregistree) vient du SERVEUR — on
+ * attend le POST et on lit la derniere classe serveur (plus de classify() cote client). */
+// NB : le `async ` d'origine PRECEDE `function saveSample` et n'est PAS dans le span de
+// findDecl (qui commence a `function`) — il est CONSERVE. On ne repete donc PAS `async`
+// ici (sinon `async async function`). La fonction reste asynchrone via ce prefixe retenu.
+const FASTLAB_SAVESAMPLE = [
+  'function saveSample(){',
+  "  var o=readForm(); if(!o.m_ref){ toast('Renseignez une référence'); show('ident'); var mr=$('m_ref'); if(mr) mr.focus(); return; }",
+  '  await __runCalcLabo(o);',
+  '  var r=window.__laboLastClasse||{};',
+  "  DB.unshift({ id:o.m_ref+'·'+Date.now(), ref:o.m_ref, chantier:o.m_chantier||'', code:(r&&r.full)||'—', o:o, ts:Date.now() });",
+  "  await persistDB(); renderDB(); toast('Enregistré : '+o.m_ref+' ('+((r&&r.full)||'—')+')');",
   '}',
 ].join('\n');
 
@@ -1512,6 +2266,18 @@ export const TOOLS = {
     // les renderers (hoistés) restent appelables plus tard.
     insertAfterAnchor: 'let nid=4;',
     insertBlock: '\n' + BURMISTER_BRIDGE_AND_SHIM + '\n',
+    // CONDITION §8 (titulaire) : chaque valeur AFFICHÉE vient du SERVEUR, jamais d'une
+    // re-dérivation cliente. renderDetails l.1558 re-dérivait « et_adm/st_adm r=50 % »
+    // (e50 = e6·kθ·(1e6/NE)^(1/b)·kc·ks) DANS le navigateur pour l'AFFICHER. On rebranche
+    // sur la valeur serveur whitelistée `d.adm50` (= details.adm_r50, même formule côté
+    // moteur) : plus aucun nombre affiché n'est calculé côté client.
+    patchText: [
+      {
+        find: 'var e50=d.e6<Infinity?d.e6*d.ukth*Math.pow(1e6/d.NE,1/d.ub)*d.ukc*d.ks:null;',
+        replace: 'var e50=(d.adm50!=null?d.adm50:null);',
+        count: 1,
+      },
+    ],
     forbiddenSymbols: BURMISTER_ENGINE_SYMBOLS,
   },
   geoplaque: {
@@ -1556,6 +2322,75 @@ export const TOOLS = {
     insertAfterAnchor: "window.addEventListener('load',init);",
     insertBlock: '\n' + GEOPLAQUE_BRIDGE_AND_SHIM + '\n',
     forbiddenSymbols: GEOPLAQUE_ENGINE_SYMBOLS,
+  },
+  casagrande: {
+    engineId: 'pieux',
+    referencePath: 'packages/engines/reference/casagrande_V5.html',
+    // sha256 = registre (fondation-profonde-pieux v1.2.0).
+    expectedSha256: '54c5d7d4cfd0d88998b26010335c888b9361163e0eb2825814f0c6430e4d86b0',
+    outputPath: 'apps/web/src/tools-cloned/casagrande.html',
+    sourceFileName: 'casagrande_V5.html',
+    // Science NF P 94-262 supprimée INTÉGRALEMENT + helpers publics dead (mResist =
+    // sélection EC7.M publique ; qcAt = interpolation du pénétrogramme saisi) retirés.
+    removeFunctions: CASAGRANDE_ENGINE_SYMBOLS.concat(['mResist', 'qcAt']),
+    // Tables d'abaques (portance/frottement) + coefficients de courbe SUPPRIMÉS : ne
+    // partent jamais au navigateur. EC7/DA_COMBOS/PILES restent (publics).
+    removeConsts: [
+      'KP_MAX',
+      'KC_MAX',
+      'ALPHA_PMT',
+      'ALPHA_CPT',
+      'QSMAX',
+      'PMT_CURVE',
+      'CPT_CURVE',
+    ],
+    // Entrées de calcul → async/bridge ; renderers de résultat → sortie whitelistée.
+    // renderResults/drawCoupe/drawQcLog CONSERVÉS (fed par mapPieuxOutput / saisie).
+    replaceDecls: {
+      compute: CASAGRANDE_COMPUTE,
+      computeDowndrag: CASAGRANDE_DOWNDRAG,
+      drawDowndrag: CASAGRANDE_DRAWDOWNDRAG,
+      drawSettle: CASAGRANDE_DRAWSETTLE,
+      drawBeton: CASAGRANDE_DRAWBETON,
+      drawPortance: CASAGRANDE_DRAWPORTANCE,
+      buildSoilCoefTable: CASAGRANDE_BUILDSOILCOEF,
+      updateXiInfo: CASAGRANDE_UPDATEXI,
+    },
+    // Injecté après la déclaration du helper `num` (état `state`/`$`/`num` définis ;
+    // `fmt` et les fonctions hoistées disponibles au 1er appel, jamais au chargement).
+    insertAfterAnchor: 'const num = id => parseFloat($(id).value)||0;',
+    insertBlock: '\n' + CASAGRANDE_BRIDGE_AND_SHIM + '\n',
+    // compute/computeDowndrag sont RÉÉCRITS (noms conservés) → NON interdits (comme
+    // recalc/runCalc/doSolve). Interdits = la science RETIRÉE.
+    forbiddenSymbols: CASAGRANDE_ENGINE_SYMBOLS,
+  },
+  fastlab: {
+    engineId: 'labo',
+    referencePath: 'packages/engines/reference/FASTLAB7.html',
+    // sha256 = registre (labo-classification-gtr v1.0.0).
+    expectedSha256: '3271287e551448ea5ce8396a2e9687e38c7245a3c49259a02a5f4f393f48599a',
+    outputPath: 'apps/web/src/tools-cloned/fastlab.html',
+    sourceFileName: 'FASTLAB7.html',
+    // ~20 kernels calc* + classify + helpers de calcul (lreg/fitPar/rsq/interpP/dAt/
+    // granuloPts/rhoWaterT) + tables de decision (subFine/subB/stateFromRatio) SUPPRIMES.
+    // CONSERVES : SAISIE + SPEC normatives (MOULES/PRPROC/MDE_CLASS/SIEVES/CBR_ENF…),
+    // renderers canvas (draw*), fiche de synthese (renderRecap), pastilles (updateDots),
+    // helpers de rendu (chip/f/setv), mdeClassKey (assiste la saisie via applyMdeVar).
+    removeFunctions: FASTLAB_ENGINE_SYMBOLS,
+    removeConsts: [],
+    // recalc -> POST unique debounce ; Store -> proxy bridge ; saveSample -> classe serveur.
+    replaceDecls: {
+      recalc: FASTLAB_RECALC,
+      Store: FASTLAB_STORE,
+      saveSample: FASTLAB_SAVESAMPLE,
+    },
+    // Le script FASTLAB n a pas de garde `if(document)` : on injecte apres `const D={};`
+    // (helpers de base $/chip/f/CFG/prType definis ; les fonctions de rendu/saisie hoistees
+    // restent appelables au 1er recalc, jamais au boot). L IIFE du pont poste « ready »
+    // AVANT le boot (renderThresholds();writeForm({});loadDB();).
+    insertAfterAnchor: 'const D={};',
+    insertBlock: '\n' + FASTLAB_BRIDGE_AND_RENDER + '\n',
+    forbiddenSymbols: FASTLAB_ENGINE_SYMBOLS,
   },
 };
 
@@ -1621,6 +2456,32 @@ export function generateCloneHtml(toolId) {
   }
   const at = anchorIdx + cfg.insertAfterAnchor.length;
   out = out.slice(0, at) + cfg.insertBlock + out.slice(at);
+
+  // Correctifs textuels cibles (find/replace litteral) sur des LIGNES CONSERVEES qu'on
+  // ne peut pas atteindre par une remise en cause de declaration entiere. Chaque patch
+  // exige un NOMBRE d'occurrences precis (defaut 1) -> echec dur si la source derive
+  // (fidelite du portage). Ex. roadsens : rebrancher l'affichage « adm r=50 % » sur la
+  // valeur SERVEUR (adm50) au lieu de la re-derivation cliente (condition §8 titulaire).
+  for (const patch of cfg.patchText ?? []) {
+    const want = patch.count ?? 1;
+    const parts = out.split(patch.find);
+    const found = parts.length - 1;
+    if (found !== want) {
+      throw new Error(
+        `patchText « ${patch.find.slice(0, 48)}… » : ${found} occurrence(s) trouvée(s), ${want} attendue(s) (source dérivée ?).`,
+      );
+    }
+    out = parts.join(patch.replace);
+  }
+
+  // Hygiene §8 — retrait des COMMENTAIRES mentionnant un symbole moteur excise (nom du
+  // propagateur, coefficients de calage…) DANS LES <script> uniquement (le scanner JS ne
+  // doit pas courir sur le HTML brut). Ne touche jamais le code ni les chaines.
+  out = out.replace(
+    /(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi,
+    (_m, open, body, close) =>
+      open + stripForbiddenComments(body, cfg.forbiddenSymbols) + close,
+  );
 
   // En-tete byte-stable (sha, PAS de date).
   const header =

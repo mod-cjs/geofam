@@ -176,13 +176,13 @@ describe('PV mode 2D GEOPLAQUE (fallback) — pas de mur de nombres (CRITIQUE-1)
     // Les grandeurs sont désormais LIBELLÉES (miroir du panneau `#ps-run`), plus de
     // clés brutes « wMax »/« mMax »/« EI » : chaque valeur porte son unité.
     expect(findRowValue(def.content, 'Tassement maximal w_max')?.value).toBe(
-      '12,3 mm', // wMax 12.34 -> toFixed(1) fr-FR comme l'outil client
+      '12 340 mm', // wMax 12.34 -> *1000 comme l'outil client (défaut d'affichage copié)
     );
     expect(findRowValue(def.content, 'Moment fléchissant maximal')?.value).toBe(
       '45,7 kN·m/m',
     );
     expect(findRowValue(def.content, 'Tassement différentiel')?.value).toBe(
-      '11,1 mm',
+      '11 110 mm',
     );
     expect(findRowValue(def.content, 'Rigidité de flexion D')?.value).toMatch(
       /kN·m$/,

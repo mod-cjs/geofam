@@ -147,12 +147,26 @@ export function isToolBridgeMessage(data: unknown): data is ToolBridgeMessage {
   return true;
 }
 
-/** Espace de noms de la clé localStorage parent pour `store:get`/`store:set`. */
+/**
+ * Espace de noms de la clé localStorage parent pour `store:get`/`store:set`.
+ *
+ * Repli `_noproject` (correction UX/fidélité 17/07) : l'outil s'affiche
+ * désormais AVANT toute sélection de projet (`projectId: null`) — la
+ * saisie/les brouillons de cette phase ne doivent pas être perdus le temps
+ * que l'utilisateur choisisse un projet. On les range donc sous un segment
+ * de repli FIXE, scopé à l'org (jamais cross-tenant) mais PAS au projet —
+ * `_noproject` ne peut pas collisionner avec un vrai `projectId` (identifiants
+ * serveur, jamais cette chaîne littérale). Ce repli couvre uniquement le
+ * stockage : le calcul (`calc:request`) et l'émission de PV (`pv:request`),
+ * eux, restent bloqués tant qu'aucun projet réel n'est sélectionné (cf.
+ * `ToolFrame.tsx`).
+ */
 export function toolStoreKey(
   orgId: string,
-  projectId: string,
+  projectId: string | null,
   toolId: string,
   key: string,
 ): string {
-  return `tool-store:${orgId}:${projectId}:${toolId}:${key}`;
+  const projectSegment = projectId ?? '_noproject';
+  return `tool-store:${orgId}:${projectSegment}:${toolId}:${key}`;
 }

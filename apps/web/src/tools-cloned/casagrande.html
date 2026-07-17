@@ -1,0 +1,1464 @@
+<!--
+  CLONE EXCISÉ — NE PAS ÉDITER À LA MAIN. Artefact généré par scripts/clone-tool.mjs.
+  Outil            : casagrande (pieux)
+  Source (gelée)   : casagrande_V5.html
+  sha256 source    : 54c5d7d4cfd0d88998b26010335c888b9361163e0eb2825814f0c6430e4d86b0
+  Calcul           : EXCISÉ — exécuté côté serveur via bridge postMessage (ADR 0015, DoD §8).
+  Régénérer        : pnpm clone:tools   ·   Auditer : pnpm audit:excision
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CASAGRANDE — Calcul de fondations profondes (NF P 94-262)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ============ CASAGRANDE — identité « relevé de sondage » ============ */
+:root{
+  --bg:#E9EEF3;            /* fond froid clair */
+  --paper:#FFFFFF;
+  --paper-2:#F1F5F9;       /* surfaces en creux / en-têtes de carte */
+  --ink:#0E2330;           /* texte & en-tête : petrol-slate profond */
+  --ink-soft:#5A6B79;
+  --line:#E1E8EF;
+  --amber:#0E7490;         /* ACCENT PRIMAIRE = bleu-pétrole (nappe / instrument) */
+  --amber-deep:#0A5468;
+  --blue:#C0872B;          /* accent secondaire = ocre (sable) — repères ELS/tassement */
+  --green:#1C7A4B;
+  --red:#BC3B2A;
+  --panel:#0E2330;         /* en-tête */
+  --panel-soft:#16303F;
+  --panel-line:#274456;
+  --panel-text:#A7B8C4;
+  /* strates (fil conducteur de l'identité) */
+  --s-argile:#8AA1B4; --s-sable:#DBA445; --s-craie:#E6E0CF; --s-marne:#7F9474; --s-roche:#8E867B;
+  --radius:16px; --radius-s:10px;
+  --shadow:0 1px 2px rgba(14,35,48,.05), 0 12px 28px -10px rgba(14,35,48,.16);
+  --shadow-sm:0 1px 2px rgba(14,35,48,.07);
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --disp:'Space Grotesk',system-ui,sans-serif;
+  --body:'Inter',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--body);color:var(--ink);background:var(--bg);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+/* ============ EN-TÊTE — avec ligne d'horizon ============ */
+header.top{background:linear-gradient(180deg,#10283600 0,#0000000d 100%),var(--panel);color:var(--panel-text);padding:16px 28px;display:flex;align-items:center;gap:18px;position:sticky;top:0;z-index:50;border-bottom:2px solid transparent;background-clip:padding-box;}
+header.top::after{content:"";position:absolute;left:0;right:0;bottom:-2px;height:2px;background:linear-gradient(90deg,var(--amber) 0,var(--amber) 38%,var(--blue) 38%,var(--blue) 52%,transparent 52%);opacity:.9}
+.brand{display:flex;align-items:baseline;gap:14px}
+.brand .mark{font-family:var(--disp);font-weight:500;font-size:22px;letter-spacing:.06em;color:#fff;}
+.brand .mark b{color:#3AA7C2;font-weight:700}
+.brand .sub{font-family:var(--body);font-size:10px;font-weight:500;letter-spacing:.24em;color:#6E8392;text-transform:uppercase}
+.top .spacer{flex:1}
+.top .ref{font-family:var(--body);font-size:11px;color:#7B8E9C;text-align:right;line-height:1.55}
+.top .ref b{color:#fff;font-weight:600}
+.top .ref .hl{color:#3AA7C2;font-weight:600}
+/* ============ ONGLETS ============ */
+nav.tabs{background:var(--paper);display:flex;align-items:stretch;gap:0;padding:0 16px 0 24px;border-bottom:1px solid var(--line);position:sticky;top:57px;z-index:49;box-shadow:var(--shadow-sm)}
+/* la liste d'onglets défile horizontalement si l'écran est étroit… */
+nav.tabs .tabs-scroll{display:flex;gap:2px;flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:thin}
+nav.tabs .tabs-scroll::-webkit-scrollbar{height:0}
+nav.tabs button{font-family:var(--body);font-size:13px;font-weight:500;background:none;border:none;color:var(--ink-soft);padding:16px 16px 14px;cursor:pointer;border-bottom:2.5px solid transparent;white-space:nowrap;transition:.18s;display:flex;align-items:center;gap:9px;flex:0 0 auto}
+nav.tabs button .n{font-family:var(--mono);font-size:10px;color:#9AA8B4;font-weight:700;background:var(--paper-2);padding:2px 7px;border-radius:6px;transition:.18s}
+nav.tabs button:hover{color:var(--ink)}
+nav.tabs button.active{color:var(--amber-deep);border-bottom-color:var(--amber)}
+nav.tabs button.active .n{background:var(--amber);color:#fff}
+/* …mais les boutons d'action restent TOUJOURS visibles, épinglés à droite */
+nav.tabs .nav-actions{display:flex;align-items:center;gap:10px;padding-left:18px;margin-left:6px;flex:0 0 auto;border-left:1px solid var(--line);background:var(--paper)}
+nav.tabs .nav-actions .btn{font-family:var(--body);font-size:12.5px;font-weight:600;padding:9px 15px;border-radius:var(--radius-s);border:1.5px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;white-space:nowrap;transition:.15s}
+nav.tabs .nav-actions .btn:hover{background:var(--paper-2);border-color:#D2DAE2}
+nav.tabs .nav-actions .btn.primary{background:var(--amber);border-color:var(--amber);color:#fff;box-shadow:0 2px 14px -2px rgba(14,116,144,.45)}
+nav.tabs .nav-actions .btn.primary:hover{background:var(--amber-deep);border-color:var(--amber-deep)}
+@media(max-width:640px){
+  nav.tabs .nav-actions .btn:not(.primary){display:none} /* sur très petit écran, on ne garde que le bouton de calcul */
+  nav.tabs .nav-actions{padding-left:10px}
+}
+/* ============ MISE EN PAGE ============ */
+main{max-width:1340px;margin:0 auto;padding:30px 24px 96px}
+.tabpane{display:none}
+.tabpane.active{display:block;animation:fade .32s cubic-bezier(.2,.7,.3,1)}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.tabpane.active{animation:none}}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.split{display:grid;grid-template-columns:1.05fr .95fr;gap:24px;align-items:start}
+@media(max-width:900px){.grid2,.grid3,.split{grid-template-columns:1fr}}
+/* ============ CARTE ============ */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.card>.hd{display:flex;align-items:center;gap:10px;padding:16px 20px 14px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#FAFCFE,#FFFFFF)}
+.card>.hd h2{font-family:var(--disp);font-size:15px;font-weight:600;letter-spacing:-.01em}
+.card>.hd .tag{font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.04em;color:var(--amber-deep);margin-left:auto;background:rgba(14,116,144,.08);padding:4px 11px;border-radius:20px;}
+.card>.bd{padding:20px}
+/* ============ FORMULAIRE ============ */
+.field{margin-bottom:15px}
+.field:last-child{margin-bottom:0}
+label.lab{display:block;font-family:var(--body);font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--ink-soft);text-transform:uppercase;margin-bottom:7px;}
+label.lab .u{color:var(--amber-deep);text-transform:none;letter-spacing:0;font-weight:500}
+input,select{width:100%;font-family:var(--mono);font-size:14px;color:var(--ink);background:#fff;border:1.5px solid var(--line);border-radius:var(--radius-s);padding:11px 13px;transition:.15s;}
+input::placeholder{color:#A9B4BF}
+input:focus,select:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 3px rgba(14,116,144,.14)}
+input[type=number]{font-variant-numeric:tabular-nums}
+select{cursor:pointer}
+.row-inline{display:flex;gap:12px}
+.row-inline .field{flex:1}
+.hint{font-size:11.5px;color:var(--ink-soft);margin-top:6px;line-height:1.5}
+/* segmenté (style pilule) */
+.seg{display:flex;gap:3px;background:var(--paper-2);border:1px solid var(--line);border-radius:12px;padding:4px}
+.seg button{flex:1;font-family:var(--body);font-size:12.5px;font-weight:500;padding:9px 8px;background:none;border:none;border-radius:9px;cursor:pointer;color:var(--ink-soft);transition:.15s;}
+.seg button.on{background:#fff;color:var(--amber-deep);font-weight:600;box-shadow:var(--shadow-sm)}
+.seg button:not(.on):hover{color:var(--ink)}
+/* boutons */
+.btn{font-family:var(--body);font-size:13px;font-weight:600;padding:12px 18px;border-radius:var(--radius-s);cursor:pointer;border:1.5px solid var(--line);background:#fff;color:var(--ink);transition:.15s;}
+.btn:hover{background:var(--paper-2);border-color:#D2DAE2}
+.btn.primary{background:var(--amber);border-color:var(--amber);color:#fff;box-shadow:0 2px 14px -2px rgba(14,116,144,.45)}
+.btn.primary:hover{background:var(--amber-deep);border-color:var(--amber-deep)}
+.btn.ghost{background:none;border-color:transparent;color:var(--amber-deep)}
+.btn.ghost:hover{background:rgba(14,116,144,.08)}
+.btn.danger{color:var(--red);border-color:transparent}
+.btn.danger:hover{background:rgba(188,59,42,.08)}
+.btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:6px}
+/* ============ TABLE DES COUCHES ============ */
+.soil-tools{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+table.layers{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
+table.layers th{font-family:var(--body);font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);text-align:left;padding:8px 8px;border-bottom:1px solid var(--line);}
+table.layers th .u{color:var(--amber-deep)}
+table.layers td{padding:5px 6px;border-bottom:1px solid var(--line)}
+table.layers tr:last-child td{border-bottom:none}
+table.layers tr:hover td{background:#F8FAFC}
+table.layers input,table.layers select{padding:7px 8px;font-size:12.5px;border:1.5px solid transparent;background:transparent;border-radius:7px}
+table.layers input:focus,table.layers select:focus{background:#fff;border-color:var(--amber)}
+table.layers td.idx{font-family:var(--disp);color:var(--amber-deep);font-weight:700;text-align:center;width:28px}
+.swatch{width:14px;height:14px;border-radius:4px;display:inline-block;vertical-align:middle;border:1px solid rgba(0,0,0,.12)}
+.del-row{color:var(--red);cursor:pointer;font-size:18px;line-height:1;padding:0 6px;background:none;border:none;transition:.15s}
+.del-row:hover{transform:scale(1.2)}
+/* ============ RÉSULTATS — cartes KPI ============ */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+@media(max-width:760px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:20px 18px 17px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:var(--line)}
+.kpi.accent::before{background:var(--amber)}
+.kpi.accent{background:linear-gradient(180deg,rgba(14,116,144,.05),#fff 60%)}
+.kpi.blue::before{background:var(--blue)}
+.kpi .lab{font-family:var(--body);font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:11px}
+.kpi .val{font-family:var(--disp);font-size:31px;font-weight:600;line-height:1;letter-spacing:-.02em;color:var(--ink)}
+.kpi .val .un{font-size:14px;color:var(--ink-soft);font-weight:500;margin-left:5px}
+.kpi .sub{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);margin-top:10px}
+/* verdict */
+.verdict{display:flex;align-items:center;gap:16px;padding:18px 22px;border-radius:var(--radius);margin-bottom:20px;font-family:var(--body);box-shadow:var(--shadow)}
+.verdict.ok{background:linear-gradient(180deg,#EBF6F0,#F5FBF8);border:1px solid #BEE0CE;color:#176B41}
+.verdict.no{background:linear-gradient(180deg,#FBEDEB,#FEF6F4);border:1px solid #F0C5BF;color:#9E342A}
+.verdict .ic{width:40px;height:40px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex:0 0 auto;color:#fff}
+.verdict.ok .ic{background:var(--green)}
+.verdict.no .ic{background:var(--red)}
+.verdict .txt b{font-family:var(--disp);font-size:16px;font-weight:600;letter-spacing:-.01em}
+.verdict .txt div{font-size:12px;color:var(--ink-soft);margin-top:3px}
+/* tableau résultats */
+table.res{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
+table.res td,table.res th{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line)}
+table.res th{font-family:var(--body);font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft)}
+table.res td.r,table.res th.r{text-align:right;font-variant-numeric:tabular-nums}
+table.res td.lbl{color:var(--ink-soft);font-family:var(--body)}
+table.res tr.total td{border-top:2px solid var(--ink);border-bottom:none;font-weight:700;padding-top:11px}
+table.res .pass{color:var(--green);font-weight:700}
+table.res .fail{color:var(--red);font-weight:700}
+/* ============ COUPE SVG (signature) ============ */
+.coupe-wrap{position:sticky;top:120px}
+.coupe-card .bd{padding:0;background:linear-gradient(180deg,#FBFCFE,#EAF0F6)}
+svg.coupe{width:100%;display:block;font-family:var(--mono)}
+.coupe-legend{display:flex;flex-wrap:wrap;gap:10px 16px;padding:14px 18px;border-top:1px solid var(--line);font-family:var(--body);font-size:11px;color:var(--ink-soft)}
+.coupe-legend span{display:flex;align-items:center;gap:6px}
+/* ============ ENCART / AVERTISSEMENT ============ */
+.notice{background:linear-gradient(180deg,#FBF4EA,#FDF9F3);border:1px solid #EAD3B6;border-left:4px solid var(--blue);border-radius:var(--radius-s);padding:14px 16px;font-size:12.5px;color:#7A5A22;margin-bottom:20px;line-height:1.55;}
+.notice b{color:#8A6418}
+/* éditeur de coefficients */
+.coef-note{font-size:12px;color:var(--ink-soft);margin-bottom:14px;line-height:1.55}
+table.coef{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+table.coef th{font-family:var(--body);font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);}
+table.coef td{padding:4px 6px;border-bottom:1px solid var(--line)}
+table.coef td:first-child{color:var(--ink-soft)}
+table.coef input{padding:6px 8px;font-size:12px;border:1.5px solid transparent;border-radius:7px}
+table.coef input:focus{border-color:var(--amber);background:#fff}
+.subhd{font-family:var(--disp);font-size:12.5px;font-weight:600;color:var(--amber-deep);text-transform:uppercase;letter-spacing:.02em;margin:22px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+.subhd:first-child{margin-top:0}
+footer{font-family:var(--body);font-size:11px;color:var(--ink-soft);text-align:center;padding:30px;border-top:1px solid var(--line);margin-top:10px}
+footer b{color:var(--amber-deep)}
+.pill{font-family:var(--mono);font-size:10.5px;padding:4px 11px;border-radius:20px;background:var(--paper-2);border:1px solid var(--line);color:var(--ink-soft)}
+/* impression */
+@media print{
+  nav.tabs,header.top .ref,.btn,.soil-tools .btn{display:none}
+  body{background:#fff}
+  .tabpane{display:block!important}
+  .coupe-wrap{position:static}
+  .card{box-shadow:none}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="mark">CASA<b>GRANDE</b></span>
+    <span class="sub">Fondations&nbsp;Profondes</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="ref">
+    Calcul selon <b>NF&nbsp;P&nbsp;94-262</b> — Eurocode&nbsp;7<br>
+    Méthodes pressiométrique · pénétrométrique · c-φ
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <div class="tabs-scroll">
+    <button class="active" data-tab="projet"><span class="n">01</span>Projet &amp; pieu</button>
+    <button data-tab="fn"><span class="n">02</span>Frottement négatif</button>
+    <button data-tab="sol"><span class="n">03</span>Profil de sol</button>
+    <button data-tab="coef"><span class="n">04</span>Coefficients</button>
+    <button data-tab="res"><span class="n">05</span>Résultats &amp; vérifs</button>
+  </div>
+  <div class="nav-actions">
+    <button class="btn" onclick="fillFictitious()">Remplir la fiche fictivement</button>
+    <button class="btn primary" onclick="goTab('res')">Calculer la portance →</button>
+  </div>
+</nav>
+
+<main>
+<!-- ============ TAB 1 : PROJET ============ -->
+<section class="tabpane active" id="tab-projet">
+  <div class="split">
+    <div>
+      <div class="card" style="margin-bottom:18px">
+        <div class="hd"><h2>Identification</h2><span class="tag">Projet</span></div>
+        <div class="bd">
+          <div class="grid2">
+            <div class="field"><label class="lab">Nom du projet</label><input id="p_nom" type="text" placeholder="Projet sans titre"></div>
+            <div class="field"><label class="lab">Sondage / pieu</label><input id="p_pieu" type="text" placeholder="P1"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px">
+        <div class="hd"><h2>Géométrie du pieu</h2><span class="tag">m</span></div>
+        <div class="bd">
+          <div class="field">
+            <label class="lab">Section</label>
+            <div class="seg" id="seg-section">
+              <button class="on" data-sec="circ">Circulaire</button>
+              <button data-sec="carr">Carrée</button>
+              <button data-sec="rect">Rectangulaire</button>
+              <button data-sec="quel">Quelconque</button>
+            </div>
+          </div>
+          <div class="row-inline" id="f-std">
+            <div class="field" id="f-diam"><label class="lab">Diamètre B <span class="u">(m)</span></label><input id="g_B" type="number" step="0.05" placeholder="0.60"></div>
+            <div class="field" id="f-larg" style="display:none"><label class="lab">Largeur b <span class="u">(m)</span></label><input id="g_b2" type="number" step="0.05" placeholder="0.50"></div>
+          </div>
+          <div class="row-inline" id="f-quel" style="display:none">
+            <div class="field"><label class="lab">Aire de pointe A<sub>p</sub> <span class="u">(m²)</span></label><input id="g_Ap" type="number" step="0.01" placeholder="0.28"></div>
+            <div class="field"><label class="lab">Périmètre du fût P <span class="u">(m)</span></label><input id="g_P" type="number" step="0.05" placeholder="1.88"></div>
+          </div>
+          <div class="row-inline">
+            <div class="field"><label class="lab">Profondeur tête z₀ <span class="u">(m)</span></label><input id="g_z0" type="number" step="0.1" placeholder="0.0"></div>
+            <div class="field"><label class="lab">Profondeur base D <span class="u">(m)</span></label><input id="g_D" type="number" step="0.1" placeholder="15.0"></div>
+          </div>
+          <div class="hint">La base du pieu doit se situer dans une couche définie au profil de sol (onglet 02).</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="hd"><h2>Type de pieu</h2><span class="tag">Classe NF P 94-262</span></div>
+        <div class="bd">
+          <div class="field">
+            <label class="lab">Technique de mise en œuvre</label>
+            <select id="g_pieu"></select>
+          </div>
+          <div class="hint" id="pieu-info"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="hd"><h2>Béton du pieu</h2><span class="tag">Structure</span></div>
+        <div class="bd">
+          <div class="field"><label class="lab">Résistance caractéristique f<sub>ck</sub> <span class="u">(MPa)</span></label><input id="b_fck" type="number" step="1" placeholder="25"></div>
+          <div class="row-inline">
+            <div class="field"><label class="lab">Section</label>
+              <div class="seg" id="seg-arm"><button class="on" data-arm="arme">Béton armé</button><button data-arm="nonarme">Non armé</button></div>
+            </div>
+            <div class="field"><label class="lab">Contrôles d'intégrité</label>
+              <div class="seg" id="seg-k3"><button class="on" data-k3="1.0">Courants</button><button data-k3="1.2">Renforcés</button></div>
+            </div>
+          </div>
+          <div class="hint">Sert à vérifier la résistance structurale du fût en compression (f<sub>cd</sub>). C<sub>max</sub> et k₁ sont déduits de la technique de pieu ; la vérification est faite à l'onglet 05. Sans objet pour les pieux acier, préfabriqués ou en traction.</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="margin-bottom:18px">
+        <div class="hd"><h2>Charges appliquées</h2><span class="tag">kN</span></div>
+        <div class="bd">
+          <div class="field">
+            <label class="lab">Sollicitation</label>
+            <div class="seg" id="seg-sens">
+              <button class="on" data-sens="comp">Compression</button>
+              <button data-sens="trac">Traction</button>
+            </div>
+          </div>
+          <div class="row-inline">
+            <div class="field"><label class="lab">G permanent <span class="u">(kN)</span></label><input id="c_G" type="number" step="10" placeholder="800"></div>
+            <div class="field"><label class="lab">Q variable <span class="u">(kN)</span></label><input id="c_Q" type="number" step="10" placeholder="350"></div>
+          </div>
+          <div class="field"><label class="lab">Essais de chargement <span class="u">(traction ELS-QP)</span></label>
+            <div class="seg" id="seg-essais"><button class="on" data-essais="non">Non réalisés</button><button data-essais="oui">Réalisés</button></div>
+          </div>
+          <div class="hint">Valeurs caractéristiques non pondérées. En traction sans essais de chargement, la résistance ELS quasi-permanente est plafonnée à 0,15·R<sub>s</sub> (§4.3.3).</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px">
+        <div class="hd"><h2>Groupe de pieux</h2><span class="tag">Effet de groupe</span></div>
+        <div class="bd">
+          <div class="row-inline">
+            <div class="field"><label class="lab">Nb de files n</label><input id="grp_n" type="number" step="1" placeholder="1"></div>
+            <div class="field"><label class="lab">Pieux / file m</label><input id="grp_m" type="number" step="1" placeholder="1"></div>
+            <div class="field"><label class="lab">Entraxe S <span class="u">(m)</span></label><input id="grp_s" type="number" step="0.1" placeholder="—"></div>
+          </div>
+          <div class="hint">Laissez n = m = 1 pour un pieu isolé. Pour un entraxe S &lt; 3·B, un coefficient réducteur C<sub>e</sub> est appliqué au frottement R<sub>s</sub> (§4.3.2). S ≥ 3·B : pas d'effet.</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px">
+        <div class="hd"><h2>Méthode de calcul</h2><span class="tag">Portance</span></div>
+        <div class="bd">
+          <div class="field">
+            <div class="seg" id="seg-meth">
+              <button class="on" data-meth="pmt">Pressiométrique</button>
+              <button data-meth="cpt">Pénétrométrique</button>
+              <button data-meth="cphi">c — φ</button>
+            </div>
+          </div>
+          <div class="hint" id="meth-info">Méthode pressiométrique Ménard : portance à partir de la pression limite nette p<sub>l</sub>* (Annexe F).</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px">
+        <div class="hd"><h2>Approche de calcul</h2><span class="tag">EN 1997-1</span></div>
+        <div class="bd">
+          <div class="field">
+            <div class="seg" id="seg-da">
+              <button data-da="da1">DA 1</button>
+              <button class="on" data-da="da2">DA 2</button>
+              <button data-da="da3">DA 3</button>
+            </div>
+          </div>
+          <div class="hint" id="da-info">Approche 2 (NF P 94-262, France) : A1 «+» M1 «+» R2 — facteurs partiels sur actions et résistances.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="hd"><h2>Nappe &amp; modèle</h2><span class="tag">Options</span></div>
+        <div class="bd">
+          <div class="field"><label class="lab">Profondeur de la nappe <span class="u">(m)</span></label><input id="o_nappe" type="number" step="0.5" placeholder="3.0"></div>
+          <div class="field">
+            <label class="lab">Nb. de profils de sondage <span class="u">(N)</span></label>
+            <input id="o_nprofil" type="number" step="1" min="1" placeholder="1">
+            <div class="hint">Pilote les facteurs de corrélation ξ₃ / ξ₄ (Tableau C.2.4.2).</div>
+          </div>
+          <div class="row-inline">
+            <div class="field">
+              <label class="lab">Surface d'investigation S <span class="u">(m²)</span></label>
+              <input id="o_surf" type="number" step="50" min="100" placeholder="2500">
+              <div class="hint">E.2.1 : ξ = 1+(ξ′−1)·√(S/2500). Bornée à 100–2500 m².</div>
+            </div>
+            <div class="field">
+              <label class="lab">Redistribution des charges</label>
+              <select id="o_redis"><option value="non">Non</option><option value="oui">Structure rigide (÷1,1)</option></select>
+              <div class="hint">÷1,1 sur ξ (ξ ≥ 1,0) si la structure redistribue (§9.2.3).</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 2 : SOL ============ -->
+<section class="tabpane" id="tab-sol">
+  <div class="split">
+    <div>
+      <div class="card">
+        <div class="hd"><h2>Profil géotechnique</h2><span class="tag">Couches</span></div>
+        <div class="bd">
+          <div class="soil-tools">
+            <button class="btn" onclick="addLayer()">+ Ajouter une couche</button>
+            <button class="btn ghost" onclick="fillFictitious()">Remplir la fiche fictivement</button>
+            <span class="pill" id="prof-total">—</span>
+          </div>
+          <div style="overflow-x:auto">
+          <table class="layers">
+            <thead>
+              <tr>
+                <th>#</th><th>Nature</th><th>Épais.<span class="u"> m</span></th>
+                <th class="pmt-col">p<sub>l</sub>*<span class="u"> MPa</span></th>
+                <th class="pmt-col">E<sub>M</sub><span class="u"> MPa</span></th>
+                <th class="cpt-col" style="display:none">q<sub>c</sub><span class="u"> MPa</span></th>
+                <th class="cphi-col" style="display:none">c'<span class="u"> kPa</span></th>
+                <th class="cphi-col" style="display:none">φ'<span class="u"> °</span></th>
+                <th>γ<span class="u"> kN/m³</span></th><th></th>
+              </tr>
+            </thead>
+            <tbody id="layer-body"></tbody>
+          </table>
+          </div>
+          <div class="hint" style="margin-top:12px">
+            Renseignez les paramètres correspondant à la méthode choisie (onglet 01). Les colonnes inutiles sont masquées.
+            La <b>nature</b> détermine la catégorie de sol et la courbe de frottement de la norme.
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Pénétrogramme CPT (méthode pénétromètre statique) ===== -->
+      <div class="card cpt-only" id="penetro-card" style="display:none;margin-top:18px">
+        <div class="hd"><h2>Pénétrogramme q<sub>c</sub>(z)</h2><span class="tag">Pénétromètre statique</span></div>
+        <div class="bd">
+          <div class="soil-tools">
+            <button class="btn" onclick="genPenetrogram();renderPenetro()">↻ Générer depuis les couches</button>
+            <button class="btn ghost" onclick="addPenetroPoint()">+ Point</button>
+            <span class="pill">Pas&nbsp;:
+              <input type="number" id="cpt_step" value="0.20" step="0.05" min="0.05"
+                style="width:60px;display:inline-block;padding:2px 5px;font-size:11px"
+                oninput="state.cpt.step=+this.value"></span>
+          </div>
+          <div class="hint" style="margin:2px 0 12px">
+            Saisissez la courbe de pénétration réelle, ou collez un sondage (une ligne <code>z&nbsp;q<sub>c</sub></code> par profondeur).
+            q<sub>ce</sub> et le frottement sont calculés sur ce pénétrogramme.
+          </div>
+          <textarea id="cpt_paste" placeholder="Coller : profondeur(m)  qc(MPa)  — ex : 1.0 3.2"
+            style="width:100%;height:60px;font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:2px;padding:8px;resize:vertical"></textarea>
+          <div class="btn-row"><button class="btn" onclick="importPenetro()">Importer le collage</button></div>
+          <div style="max-height:260px;overflow:auto;margin-top:10px">
+            <table class="layers" style="font-size:12px">
+              <thead><tr><th>z <span class="u">m</span></th><th>q<sub>c</sub> <span class="u">MPa</span></th><th></th></tr></thead>
+              <tbody id="penetro-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="coupe-wrap">
+      <div class="card coupe-card">
+        <div class="hd"><h2>Coupe géotechnique</h2><span class="tag">Live</span></div>
+        <div class="bd">
+          <svg class="coupe" id="coupe" viewBox="0 0 360 520" preserveAspectRatio="xMidYMid meet"></svg>
+          <div class="coupe-legend" id="coupe-legend"></div>
+        </div>
+      </div>
+      <!-- log qc(z) à côté de la coupe en mode CPT -->
+      <div class="card cpt-only" id="qclog-card" style="display:none;margin-top:18px">
+        <div class="hd"><h2>Log q<sub>c</sub>(z)</h2><span class="tag">CPT</span></div>
+        <div class="bd" style="background:#F7F9FC">
+          <svg id="qclog" viewBox="0 0 280 460" style="width:100%"></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 3 : COEFFICIENTS ============ -->
+<section class="tabpane" id="tab-coef">
+  <div class="notice" style="background:#eef5ee;border-color:#9cc09c;border-left-color:var(--green);color:#33502f">
+    <b>✓ Coefficients NF P 94-262.</b> Toutes les valeurs ci-dessous sont extraites de la norme (juillet 2012) :
+    facteurs de portance k<sub>p,max</sub> (F.4.2.1) / k<sub>c,max</sub> (G.4.2.1) par classe de pieu, courbes de frottement
+    (F.5.2.2 / G.5.2.2), α<sub>pieu-sol</sub> (F.5.2.1 / G.5.2.1) et q<sub>s,max</sub> (F.5.2.3) par catégorie, coefficient de modèle
+    γ<sub>R;d1</sub> (F.2.1) et facteurs de corrélation ξ (C.2.4.2). Les facteurs partiels restent ajustables ci-dessous.
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <div class="hd"><h2>Facteurs partiels</h2><span class="tag">Annexe C</span></div>
+      <div class="bd">
+        <div class="subhd">Pondération résistances ELU (C.2.3.1)</div>
+        <table class="coef">
+          <tr><td>γ<sub>b</sub> — pointe</td><td><input id="k_gb" type="number" step="0.05" value="1.10"></td>
+              <td>γ<sub>s</sub> — frottement</td><td><input id="k_gs" type="number" step="0.05" value="1.10"></td></tr>
+          <tr><td>γ<sub>t</sub> — total</td><td><input id="k_gt" type="number" step="0.05" value="1.10"></td>
+              <td>γ<sub>s;t</sub> — traction</td><td><input id="k_gst" type="number" step="0.05" value="1.15"></td></tr>
+        </table>
+        <div class="subhd">Coefficient de modèle γ<sub>R;d1</sub> (F.2.1)</div>
+        <div class="hint">Déterminé automatiquement : <b>1,15</b> (compression courante) · <b>1,40</b> si ancré dans la craie ·
+          <b>2,0</b> pour les pieux à injection (cat. 10, 15, 17–20). En traction : 1,4 / 1,7 / 2,0.</div>
+        <div class="subhd">Pondération actions</div>
+        <table class="coef">
+          <tr><td>γ<sub>G</sub> (défav.)</td><td><input id="k_gG" type="number" step="0.05" value="1.35"></td>
+              <td>γ<sub>Q</sub> (défav.)</td><td><input id="k_gQ" type="number" step="0.05" value="1.50"></td></tr>
+          <tr><td>ψ₀ (caract.)</td><td><input id="k_psi0" type="number" step="0.1" value="0.7"></td>
+              <td>ψ₂ (q-perm.)</td><td><input id="k_psi2" type="number" step="0.1" value="0.3"></td></tr>
+        </table>
+        <div class="subhd">Facteurs de corrélation ξ (C.2.4.2, selon N profils)</div>
+        <div class="hint" id="xi-info">N = 1 profil → ξ₃ = 1.40 · ξ₄ = 1.40</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hd"><h2>Charge de fluage (ELS)</h2><span class="tag">14.2.2</span></div>
+      <div class="bd">
+        <div class="coef-note">Charge de fluage caractéristique à partir de R<sub>b;k</sub> et R<sub>s;k</sub> (formules 14.2.2.1 à 14.2.2.4).</div>
+        <div class="subhd">Pieux refoulant le sol (battus, vissés)</div>
+        <table class="coef">
+          <tr><td>R<sub>c;cr</sub> = </td><td><input id="cr_b_b" type="number" step="0.05" value="0.70"></td><td>· R<sub>b;k</sub> +</td>
+              <td><input id="cr_b_s" type="number" step="0.05" value="0.70"></td><td>· R<sub>s;k</sub></td></tr>
+        </table>
+        <div class="subhd">Pieux ne refoulant pas le sol (forés)</div>
+        <table class="coef">
+          <tr><td>R<sub>c;cr</sub> = </td><td><input id="cr_f_b" type="number" step="0.05" value="0.50"></td><td>· R<sub>b;k</sub> +</td>
+              <td><input id="cr_f_s" type="number" step="0.05" value="0.70"></td><td>· R<sub>s;k</sub></td></tr>
+        </table>
+        <div class="subhd">Facteurs γ<sub>cr</sub> sur charge de fluage (14.2.1.1 / 14.2.1.2)</div>
+        <table class="coef">
+          <tr><td>Compression</td><td>caract. <input id="cr_car" type="number" step="0.05" value="0.90" style="width:64px"></td>
+              <td>q-perm. <input id="cr_qp" type="number" step="0.05" value="1.10" style="width:64px"></td></tr>
+          <tr><td>Traction (γ<sub>s;cr</sub>)</td><td>caract. <input id="cr_car_t" type="number" step="0.05" value="1.10" style="width:64px"></td>
+              <td>q-perm. <input id="cr_qp_t" type="number" step="0.05" value="1.50" style="width:64px"></td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <div class="hd"><h2>Facteurs appliqués au pieu sélectionné</h2><span class="tag" id="coef-pile-tag">Annexes F &amp; G</span></div>
+    <div class="bd">
+      <div class="coef-note">
+        Valeurs retenues pour la <b id="coef-pile-name">catégorie courante</b> selon sa classe et chaque nature de sol.
+        Changez le type de pieu à l'onglet 01 pour mettre à jour. « — » : combinaison non couverte par la norme (étude particulière).
+      </div>
+      <div style="overflow-x:auto">
+      <table class="coef" id="soil-coef-table"></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <div class="hd"><h2>Approches de calcul &amp; facteurs partiels</h2><span class="tag">NF EN 1997-1 — Annexe A</span></div>
+    <div class="bd">
+      <div class="coef-note">
+        Jeux de facteurs partiels de l'Eurocode 7 (valeurs recommandées de l'Annexe A). L'<b>approche de calcul</b> se choisit à l'onglet 01.
+        DA1 : A1+M1+R1 et A2+M1+R4 (deux combinaisons). DA2 (France/NF P 94-262) : A1+M1+R2. DA3 : (A1/A2)+M2+R3.
+        Les R dépendent de la famille de pieu : battu (A.6), foré (A.7), tarière creuse/CFA (A.8).
+      </div>
+      <div class="grid2">
+        <div>
+          <div class="subhd">Actions — Tableau A.3 (γ<sub>F</sub>)</div>
+          <table class="coef">
+            <tr><th>Action</th><th>A1</th><th>A2</th></tr>
+            <tr><td>Permanente G défav.</td><td>1,35</td><td>1,00</td></tr>
+            <tr><td>Permanente G favor.</td><td>1,00</td><td>1,00</td></tr>
+            <tr><td>Variable Q défav.</td><td>1,50</td><td>1,30</td></tr>
+          </table>
+          <div class="subhd">Paramètres de sol — Tableau A.4 (γ<sub>M</sub>)</div>
+          <table class="coef">
+            <tr><th>Paramètre</th><th>M1</th><th>M2</th></tr>
+            <tr><td>tan φ'</td><td>1,00</td><td>1,25</td></tr>
+            <tr><td>Cohésion c'</td><td>1,00</td><td>1,25</td></tr>
+            <tr><td>Cohésion non drainée c<sub>u</sub></td><td>1,00</td><td>1,40</td></tr>
+            <tr><td>Poids volumique γ</td><td>1,00</td><td>1,00</td></tr>
+          </table>
+        </div>
+        <div>
+          <div class="subhd">Résistances de pieux — Tableaux A.6 / A.7 / A.8 (γ<sub>R</sub>)</div>
+          <table class="coef">
+            <tr><th>Famille</th><th></th><th>R1</th><th>R2</th><th>R3</th><th>R4</th></tr>
+            <tr><td rowspan="3">Battu<br>(A.6)</td><td>pointe γ<sub>b</sub></td><td>1,0</td><td>1,1</td><td>1,0</td><td>1,3</td></tr>
+            <tr><td>frott. γ<sub>s</sub></td><td>1,0</td><td>1,1</td><td>1,0</td><td>1,3</td></tr>
+            <tr><td>tract. γ<sub>s;t</sub></td><td>1,25</td><td>1,15</td><td>1,1</td><td>1,6</td></tr>
+            <tr><td rowspan="3">Foré<br>(A.7)</td><td>pointe γ<sub>b</sub></td><td>1,25</td><td>1,1</td><td>1,0</td><td>1,6</td></tr>
+            <tr><td>frott. γ<sub>s</sub></td><td>1,0</td><td>1,1</td><td>1,0</td><td>1,3</td></tr>
+            <tr><td>tract. γ<sub>s;t</sub></td><td>1,25</td><td>1,15</td><td>1,1</td><td>1,6</td></tr>
+            <tr><td rowspan="3">CFA<br>(A.8)</td><td>pointe γ<sub>b</sub></td><td>1,1</td><td>1,1</td><td>1,0</td><td>1,45</td></tr>
+            <tr><td>frott. γ<sub>s</sub></td><td>1,0</td><td>1,1</td><td>1,0</td><td>1,3</td></tr>
+            <tr><td>tract. γ<sub>s;t</sub></td><td>1,25</td><td>1,15</td><td>1,1</td><td>1,6</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="coef-note" style="margin-top:14px;margin-bottom:0">
+        Pour DA2, CASAGRANDE applique les valeurs éditables ci-dessus (NA française = R2). Pour DA1/DA3, il applique
+        automatiquement les jeux recommandés de l'Annexe A. Le modèle de résistance reste celui de la NF P 94-262
+        (pressio/pénétro/c-φ), avec ξ et γ<sub>R;d1</sub> conservés.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TAB 4 : RESULTATS ============ -->
+<section class="tabpane" id="tab-res">
+  <div id="res-content"></div>
+</section>
+
+<!-- ============ TAB 5 : FROTTEMENT NEGATIF ============ -->
+<section class="tabpane" id="tab-fn">
+  <div class="split">
+    <div>
+      <div class="card" style="margin-bottom:18px">
+        <div class="hd"><h2>Zone de frottement négatif</h2><span class="tag">Point neutre</span></div>
+        <div class="bd">
+          <div class="field">
+            <div class="seg" id="seg-fnmode">
+              <button class="on" data-fnmode="auto">Automatique</button>
+              <button data-fnmode="impose">Hauteur imposée</button>
+            </div>
+          </div>
+          <div id="fn-auto">
+            <div class="row-inline">
+              <div class="field"><label class="lab">Tassement en surface s₀ <span class="u">(mm)</span></label><input id="fn_s0" type="number" step="5" placeholder="90"></div>
+              <div class="field"><label class="lab">Profondeur compressible H<sub>c</sub> <span class="u">(m)</span></label><input id="fn_hc" type="number" step="0.5" placeholder="9.0"></div>
+            </div>
+            <div class="hint">Le point neutre est déterminé par compatibilité des déplacements : le tassement libre du sol décroît de s₀ en surface à 0 à la profondeur H<sub>c</sub>, et le point neutre est la cote où le déplacement relatif sol-pieu s'annule.</div>
+          </div>
+          <div id="fn-impose" style="display:none">
+            <div class="row-inline">
+              <div class="field"><label class="lab">Frottement négatif de <span class="u">(m)</span></label><input id="fn_zt" type="number" step="0.5" placeholder="0.0"></div>
+              <div class="field"><label class="lab">… jusqu'à <span class="u">(m)</span></label><input id="fn_zb" type="number" step="0.5" placeholder="9.0"></div>
+            </div>
+            <div class="hint">Vous fixez directement la portion du pieu soumise au frottement négatif. Sur cette hauteur, il est appliqué à sa valeur limite q<sub>sn</sub> = K·tanδ·σ'<sub>v</sub> (méthode à la rupture, Combarieu — Annexe H) ; le point neutre est pris à la base de la zone, et le frottement positif reprend la charge en dessous.</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hd"><h2>Interaction sol-pieu</h2><span class="tag">Annexe H</span></div>
+        <div class="bd">
+          <div class="field"><label class="lab">Charge structurelle en tête Q <span class="u">(kN)</span></label><input id="fn_Q" type="number" step="10" placeholder="800"></div>
+          <div class="field"><label class="lab">Terme K·tanδ <span class="u">(frottement négatif)</span></label><input id="fn_ktd" type="number" step="0.05" placeholder="0.30"></div>
+          <div class="hint">Le frottement négatif est plafonné à q<sub>sn</sub> = K·tanδ·σ'<sub>v</sub> (Combarieu, Tableau 31) au-dessus du point neutre ; en dessous, le frottement positif q<sub>s</sub> de la méthode choisie reprend la charge.</div>
+          <div class="btn-row" style="margin-top:14px;justify-content:flex-end">
+            <button class="btn" onclick="fnFromProject()">Reprendre Q et la coupe du projet</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="fn-content"></div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <b>CASAGRANDE v1</b> — calcul de fondations profondes selon NF P 94-262 (Eurocode 7), juillet 2012.
+  Coefficients issus de la norme (Annexes A, C, F, G). Outil d'aide au prédimensionnement — les résultats doivent être validés par un ingénieur géotechnicien.
+</footer>
+
+<script>
+/* ==================================================================
+   CASAGRANDE — moteur de calcul NF P 94-262
+   ================================================================== */
+
+/* --- Catégories de sol (Tableau NF P 94-262) --- */
+const SOILS = {
+  argile : {label:"Argile / Limon",   color:"var(--s-argile)", hatch:"clay"},
+  sable  : {label:"Sable / Grave",    color:"var(--s-sable)",  hatch:"sand"},
+  craie  : {label:"Craie",            color:"var(--s-craie)",  hatch:"chalk"},
+  marne  : {label:"Marne / M-calc.",  color:"var(--s-marne)",  hatch:"marl"},
+  roche  : {label:"Roche altérée",    color:"var(--s-roche)",  hatch:"rock"}
+};
+
+/* --- 20 catégories de pieux → 8 classes (Tableau A.1, NF P 94-262) ---
+   cat = n° de catégorie ; cls = classe (pour kp/kc) ; refoule = avec refoulement
+   (battage/fonçage → fluage 0,7·Rb) ; micro = micropieu (pas de résistance de pointe) */
+const PILES = [
+  {cat:1,  ab:"FS",        name:"Foré simple (pieux et barrettes)",          cls:1, refoule:false},
+  {cat:2,  ab:"FB",        name:"Foré boue (pieux et barrettes)",            cls:1, refoule:false},
+  {cat:3,  ab:"FTP",       name:"Foré tubé (virole perdue)",                 cls:1, refoule:false},
+  {cat:4,  ab:"FTR",       name:"Foré tubé (virole récupérée)",              cls:1, refoule:false},
+  {cat:5,  ab:"FSR/FBR/PU",name:"Foré simple/boue avec rainurage ou puits",  cls:1, refoule:false},
+  {cat:6,  ab:"FTC/FTCD",  name:"Foré tarière creuse simple/double rotation",cls:2, refoule:false},
+  {cat:7,  ab:"VM",        name:"Vissé moulé",                               cls:3, refoule:true},
+  {cat:8,  ab:"VT",        name:"Vissé tubé",                                cls:3, refoule:true},
+  {cat:9,  ab:"BPF/BPR",   name:"Battu béton préfabriqué ou précontraint",   cls:4, refoule:true},
+  {cat:10, ab:"BE",        name:"Battu enrobé (béton/mortier/coulis)",       cls:4, refoule:true},
+  {cat:11, ab:"BM",        name:"Battu moulé",                               cls:4, refoule:true},
+  {cat:12, ab:"BAF",       name:"Battu acier fermé",                         cls:4, refoule:true},
+  {cat:13, ab:"BAO",       name:"Battu acier ouvert",                        cls:5, refoule:true},
+  {cat:14, ab:"HB",        name:"Profilé H battu",                           cls:6, refoule:true},
+  {cat:15, ab:"HBi",       name:"Profilé H battu injecté",                   cls:6, refoule:true},
+  {cat:16, ab:"PP",        name:"Palplanches battues",                       cls:7, refoule:true},
+  {cat:17, ab:"M1",        name:"Micropieu type I",                          cls:1, refoule:false, micro:true},
+  {cat:18, ab:"M2",        name:"Micropieu type II",                         cls:1, refoule:false, micro:true},
+  {cat:19, ab:"PIGU/MIGU", name:"Pieu/micropieu injecté IGU (type III)",     cls:8, refoule:false},
+  {cat:20, ab:"PIRS/MIRS", name:"Pieu/micropieu injecté IRS (type IV)",      cls:8, refoule:false}
+];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ===== EUROCODE 7 — NF EN 1997-1 : Annexe A (valeurs recommandées) =====
+   A.3 actions · A.4 paramètres de sol · A.6/A.7/A.8 résistances de pieux */
+const EC7 = {
+  A:{ A1:{gG:1.35,gGfav:1.0,gQ:1.5}, A2:{gG:1.0,gGfav:1.0,gQ:1.3} },          // Tableau A.3
+  M:{ M1:{phi:1.0,c:1.0,cu:1.0,g:1.0}, M2:{phi:1.25,c:1.25,cu:1.4,g:1.0} },   // Tableau A.4
+  R:{ // {b:pointe, s:frottement, t:total, st:traction}
+    battu:{R1:{b:1.0,s:1.0,t:1.0,st:1.25}, R2:{b:1.1,s:1.1,t:1.1,st:1.15}, R3:{b:1.0,s:1.0,t:1.0,st:1.1}, R4:{b:1.3,s:1.3,t:1.3,st:1.6}},   // A.6
+    fore :{R1:{b:1.25,s:1.0,t:1.15,st:1.25},R2:{b:1.1,s:1.1,t:1.1,st:1.15}, R3:{b:1.0,s:1.0,t:1.0,st:1.1}, R4:{b:1.6,s:1.3,t:1.5,st:1.6}},   // A.7
+    cfa  :{R1:{b:1.1,s:1.0,t:1.1,st:1.25}, R2:{b:1.1,s:1.1,t:1.1,st:1.15}, R3:{b:1.0,s:1.0,t:1.0,st:1.1}, R4:{b:1.45,s:1.3,t:1.4,st:1.6}}    // A.8
+  }
+};
+/* combinaisons par approche de calcul (§ 2.4.7.3.4) — pieux sous charge axiale */
+const DA_COMBOS = {
+  da1:[{lab:"DA1·C1",A:"A1",M:"M1",R:"R1"}, {lab:"DA1·C2",A:"A2",M:"M1",R:"R4"}], // A1+M1+R1  /  A2+(M1)+R4
+  da2:[{lab:"DA2",   A:"A1",M:"M1",R:"R2"}],                                       // A1+M1+R2 (France)
+  da3:[{lab:"DA3",   A:"A1",M:"M2",R:"R3"}]                                        // (A1/A2)+M2+R3
+};
+/* famille de pieu au sens EN 1997-1 (A.6 battu / A.7 foré / A.8 CFA) */
+function pileFamily(pile){ return pile.cat===6 ? 'cfa' : pile.refoule ? 'battu' : 'fore'; }
+
+
+/* --- état --- */
+let state = {
+  section:"circ", sens:"comp", meth:"pmt", da:"da2", arm:"arme", k3:"1.0", essais:"non",
+  layers:[],
+  cpt:{ step:0.20, pts:[] }    /* pénétrogramme q_c(z) : [{z, qc}] en (m, MPa) */
+};
+
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const num = id => parseFloat($(id).value)||0;
+/* ===================== BRIDGE + MAPPING (injecté — clone excisé, ADR 0015) ===================== */
+(function(){
+  var TOOL_ID="casagrande", ENGINE_ID="pieux";
+  var pending=Object.create(null), seq=0;
+  var ctx={ engineId:ENGINE_ID, orgSlug:null, projectLabel:null, readOnly:false };
+  function post(msg){ try{ window.parent.postMessage(msg,"*"); }catch(e){} }
+  window.addEventListener("message", function(ev){
+    if(ev.source !== window.parent) return;
+    var d=ev.data; if(!d || d.v!==1 || typeof d.type!=="string") return;
+    if(d.type==="init"){ ctx=Object.assign(ctx, d.payload||{}); return; }
+    if(d.type==="calc:response"){ var p=pending[d.id]; if(!p) return; delete pending[d.id]; p(d.payload||{ok:false,error:{message:"réponse vide"}}); return; }
+  });
+  window.__geofamBridge={
+    calc:function(params){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:ENGINE_ID,label:(params&&params.projet)||null,params:params}}); }); },
+    emitPv:function(calcResultId){ post({v:1,type:"pv:request",payload:{calcResultId:calcResultId}}); },
+    context:function(){ return ctx; }
+  };
+  post({v:1,type:"ready",payload:{toolId:TOOL_ID}});
+})();
+
+/* Coefficients partiels NORMATIFS (NA France DA2 + fluage 14.2.2) — AUTORITATIFS SERVEUR.
+   Le contrat REJETTE (400) toute valeur non normative : on envoie la constante, jamais les
+   champs editables de l\u2019onglet 04 (audit adverse : coeffs falsifiables -> verdict truque). */
+var CASAGRANDE_COEFFS={k_gG:1.35,k_gQ:1.5,k_gb:1.1,k_gs:1.1,k_gst:1.15,k_psi2:0.3,cr_b_b:0.7,cr_b_s:0.7,cr_f_b:0.5,cr_f_s:0.7,cr_car:0.9,cr_qp:1.1,cr_car_t:1.1,cr_qp_t:1.5};
+
+/* Nombre fini de la sortie serveur, sinon NaN (les renderers affichent « — » via fmt). */
+function sv(v){ return (typeof v==="number" && isFinite(v)) ? v : NaN; }
+/* Echappement HTML minimal (messages d\u2019erreur). */
+function escPieux(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+/* Message d\u2019erreur borne (402 EXPIRED/QUOTA, 403 MODULE_NOT_IN_PACK, pont). */
+function fmtCalcErr(err){ if(!err) return "Réponse de calcul vide."; if(typeof err==="string") return err; var m=err.message||"Calcul indisponible."; var r=err.reason?(" ("+err.reason+")"):""; return m+r; }
+
+/* ETAT outil -> PieuxInputSchema. Reprise fidele des champs (aucune conversion d\u2019unite).
+   section « carr » (HTML) -> « carre » (contrat). coeffs = constante normative. */
+function buildPieuxInput(withFn){
+  var geom={ section:(state.section==="carr"?"carre":state.section) };
+  var B=num('g_B'); if(B>0) geom.g_B=B;
+  var b2=num('g_b2'); if(b2>0) geom.g_b2=b2;
+  var Ap=num('g_Ap'); if(Ap>0) geom.g_Ap=Ap;
+  var P=num('g_P'); if(P>0) geom.g_P=P;
+  var p=curPile();
+  var layers=(state.layers||[]).map(function(L){ var o={ soil:L.soil, th:+L.th };
+    if(L.pl!=null) o.pl=+L.pl; if(L.em!=null) o.em=+L.em; if(L.qc!=null) o.qc=+L.qc;
+    if(L.c!=null) o.c=+L.c; if(L.phi!=null) o.phi=+L.phi; if(L.gamma!=null) o.gamma=+L.gamma; return o; });
+  var pts=((state.cpt&&state.cpt.pts)?state.cpt.pts:[]).map(function(q){ return { z:+q.z, qc:+q.qc }; });
+  var inp={ geom:geom, g_z0:num("g_z0"), g_D:num("g_D"), cat:p.cat,
+    meth:state.meth, da:state.da, sens:state.sens, essais:state.essais,
+    c_G:num("c_G"), c_Q:num("c_Q"), o_nappe:num("o_nappe"),
+    o_nprofil:Math.max(1,Math.round(num("o_nprofil"))||1), o_surf:num("o_surf"),
+    o_redis:(($("o_redis")&&$("o_redis").value==="oui")?"oui":"non"),
+    grp:{ grp_n:Math.max(1,Math.round(num("grp_n"))||1), grp_m:Math.max(1,Math.round(num("grp_m"))||1), grp_s:num("grp_s") },
+    coeffs:CASAGRANDE_COEFFS, layers:layers,
+    cpt:{ step:((state.cpt&&state.cpt.step)||0.2), pts:pts },
+    beton:{ arm:state.arm, k3:state.k3 } };
+  var fck=num("b_fck"); if(fck>0) inp.beton.b_fck=fck;
+  var nom=$("p_nom"); if(nom&&nom.value) inp.projet=String(nom.value).slice(0,200);
+  var pieu=$("p_pieu"); if(pieu&&pieu.value) inp.pieu=String(pieu.value).slice(0,200);
+  if(withFn){ inp.frottementNegatif={ mode:(state.fnmode||"auto"), fn_Q:num("fn_Q"), fn_ktd:num("fn_ktd"),
+    fn_s0:num("fn_s0"), fn_hc:num("fn_hc"), fn_zt:num("fn_zt"), fn_zb:num("fn_zb") }; }
+  return inp;
+}
+
+/* Contexte geometrique reconstruit depuis la SAISIE (public : aires/perimetres/zone
+   d'influence). Aucune science NF P 94-262 (pas de k_p, p_le, D_ef). */
+function pieuxGeomCtx(){
+  var PG=pileGeom(); var layers=layerTops(); var D=num("g_D"), z0=num("g_z0");
+  var a=Math.max((PG.B||0.6)/2,0.5);
+  var baseLayer=soilAt(D-0.01,layers)||(layers.length?layers[layers.length-1]:{soil:"argile",ztop:0});
+  var hInLayer=baseLayer?D-baseLayer.ztop:0; var b=Math.min(a,Math.max(hInLayer,0.001));
+  return { PG:PG, layers:layers, D:D, z0:z0, a:a, b:b, baseLayer:baseLayer, hInLayer:hInLayer };
+}
+
+/* SORTIE whitelistee (PieuxOutputSchema) -> objet R attendu par renderResults CONSERVE.
+   Whitelistes : allOk/tauxGouvernant/warnings/RbK/RsK/RcK/RcD/RcrK/verifications/
+   tassementELS/FdCar/methode/sens/D/categorie. RESIDUS FERMES (defaut NON) -> NaN/« — »/[]
+   pour Rb/Rs bruts, RbD/RsD, qbDetail (p_le, q_ce, k_p), xi3/xi4, grd, Def/debR, Ce, fric.
+   Geometrie (Ab/perim/a/b/baseLayer/D/z0/cat/cls) reconstruite depuis la SAISIE (publique). */
+function mapPieuxOutput(out){
+  var g=pieuxGeomCtx(); var p=curPile();
+  var checks=(Array.isArray(out.verifications)?out.verifications:[]).map(function(v){
+    return { nom:(typeof v.nom==="string"?v.nom:""), comb:"", Fd:sv(v.Fd), Rd:sv(v.Rd) }; });
+  var ct=(out.courbeTassement&&Array.isArray(out.courbeTassement.pts))?out.courbeTassement:null;
+  return {
+    err:null, allOk:(out.allOk===true), sens:(out.sens||state.sens),
+    warn:(Array.isArray(out.warnings)?out.warnings.slice():[]), meth:(out.methode||state.meth),
+    govern:sv(out.tauxGouvernant), da:state.da,
+    Rb:NaN, qbDetail:"\u2014", Rs:NaN, D:g.D, z0:g.z0, RcD:sv(out.RcD),
+    settle:{ sEls:sv(out.tassementELS), pts:(ct?ct.pts:[]), EM:NaN, fine:null, Fmax:(ct&&isFinite(ct.Fmax)?ct.Fmax:0) },
+    RbK:sv(out.RbK), RbD:NaN, RsK:sv(out.RsK), RsD:NaN, RcK:sv(out.RcK), RcrK:sv(out.RcrK),
+    xi3:NaN, xi4:NaN, N:Math.max(1,Math.round(num("o_nprofil"))||1),
+    Sinv:Math.min(2500,Math.max(100,(num("o_surf")>0?num("o_surf"):2500))),
+    redis:($("o_redis")&&$("o_redis").value==="oui"), grd:NaN,
+    checks:checks, G:num("c_G"), Q:num("c_Q"), fric:[],
+    cat:(isFinite(out.categorie)?out.categorie:p.cat), pile:p, cls:p.cls,
+    Ab:g.PG.Ab, perim:g.PG.perim, Def:NaN, debR:NaN,
+    baseLayer:(g.baseLayer||{soil:"argile"}), b:g.b, a:g.a, Ce:NaN, CeF:NaN, FdCar:sv(out.FdCar)
+  };
+}
+
+/* Courbe de portance en profondeur — rendue UNIQUEMENT si le serveur fournit
+   courbePortance.rows [{D,elufond,eluacc,elscar,elsqp}] (elargissement gouverne, cf.
+   en-tete). Coupe stratigraphique + reperes de sollicitation depuis la SAISIE. */
+function portanceSvgFromServer(Dcur, cp){
+  var rows=cp.rows; var layers=layerTops(); var z0=num("g_z0");
+  var Hsol=layers.length?layers[layers.length-1].zbot:0; if(!(Hsol>z0)) return "";
+  var series=[{key:"elufond",lab:"ELU fondamentales",color:"#BC3B2A"},{key:"eluacc",lab:"ELU accidentelles",color:"#5A6B79"},{key:"elscar",lab:"ELS caractéristiques",color:"#0E7490"},{key:"elsqp",lab:"ELS quasi-permanentes",color:"#C0872B"}];
+  var maxCap=1; rows.forEach(function(r){ series.forEach(function(s){ if(isFinite(r[s.key])&&r[s.key]>maxCap) maxCap=r[s.key]; }); }); maxCap*=1.06;
+  var G=num("c_G"), Q=num("c_Q"), loadCar=G+Q, loadElu=1.35*G+1.5*Q;
+  var W=720,H=470,mT=26,mB=42,stripX=46,stripW=26,plotL=92,mR=18;
+  var Y=function(z){ return mT+((z-z0)/(Hsol-z0))*(H-mT-mB); };
+  var X=function(v){ return plotL+(v/maxCap)*(W-plotL-mR); };
+  var g='<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="#FBFCFE"/>';
+  var SC={argile:"var(--s-argile)",sable:"var(--s-sable)",craie:"var(--s-craie)",marne:"var(--s-marne)",roche:"var(--s-roche)"};
+  layers.forEach(function(L){ var yt=Y(Math.max(L.ztop,z0)), yb=Y(L.zbot); if(yb<=yt) return; g+='<rect x="'+stripX+'" y="'+yt+'" width="'+stripW+'" height="'+(yb-yt)+'" fill="'+(SC[L.soil]||"#ccc")+'" stroke="#fff" stroke-width="1"/>'; });
+  var nz=Math.min(10,Math.max(4,Math.round((Hsol-z0)/2))), i;
+  for(i=0;i<=nz;i++){ var z=z0+(Hsol-z0)*i/nz, y=Y(z); g+='<line x1="'+plotL+'" y1="'+y+'" x2="'+(W-mR)+'" y2="'+y+'" stroke="#EEF2F7"/><text x="'+(stripX-4)+'" y="'+(y+3)+'" font-size="8.5" fill="#7A8794" text-anchor="end" font-family="var(--mono)">'+z.toFixed(0)+'</text>'; }
+  for(i=0;i<=4;i++){ var v=maxCap*i/4, x=X(v); g+='<line x1="'+x+'" y1="'+mT+'" x2="'+x+'" y2="'+(H-mB)+'" stroke="#EEF2F7"/><text x="'+x+'" y="'+(H-mB+14)+'" font-size="8.5" fill="#7A8794" text-anchor="middle" font-family="var(--mono)">'+(v/1000).toFixed(1)+'</text>'; }
+  g+='<text x="'+(plotL+(W-plotL-mR)/2)+'" y="'+(H-4)+'" font-size="9" fill="#7A8794" text-anchor="middle" font-family="var(--mono)">Capacité du pieu (MN)</text>';
+  [{v:loadElu,c:"#BC3B2A",t:"1,35G+1,5Q"},{v:loadCar,c:"#0E7490",t:"G+Q"}].forEach(function(L){ if(L.v>0&&L.v<maxCap){ var x=X(L.v); g+='<line x1="'+x+'" y1="'+mT+'" x2="'+x+'" y2="'+(H-mB)+'" stroke="'+L.c+'" stroke-dasharray="2 3" stroke-width="1" opacity=".7"/><text x="'+x+'" y="'+(mT-4)+'" font-size="8" fill="'+L.c+'" text-anchor="middle" font-family="var(--mono)">'+L.t+'</text>'; } });
+  series.forEach(function(s){ var d=rows.map(function(r){ return X(r[s.key])+" "+Y(r.D); }); g+='<path d="M'+d.join(" L")+'" fill="none" stroke="'+s.color+'" stroke-width="2"/>'; });
+  if(Dcur>z0 && Dcur<=Hsol){ var yd=Y(Dcur); g+='<line x1="'+plotL+'" y1="'+yd+'" x2="'+(W-mR)+'" y2="'+yd+'" stroke="#0E2330" stroke-dasharray="4 3" stroke-width="1.2"/><text x="'+(W-mR)+'" y="'+(yd-4)+'" font-size="8.5" fill="#0E2330" text-anchor="end" font-family="var(--mono)">D = '+Dcur.toFixed(1)+' m</text>'; }
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block">'+g+'</svg>';
+  var legend='<div class="coupe-legend" style="border-top:1px solid var(--line)">'+series.map(function(s){ return '<span><span class="swatch" style="background:'+s.color+'"></span>'+s.lab+'</span>'; }).join("")+'</div>';
+  return '<div class="card" style="margin-top:20px"><div class="hd"><h2>Courbe de portance avec la profondeur</h2><span class="tag">servie serveur</span></div><div class="bd" style="padding:14px 14px 0">'+svg+'</div>'+legend+'</div>';
+}
+
+/* 3 profils de frottement negatif — rendus UNIQUEMENT si le serveur fournit prof
+   [{z,w,g,f,qsP,qsN,N}] (elargissement gouverne). Port fidele de drawDowndrag. */
+function downdragSvg(prof, m){
+  var PW=292, H=440, mT=24, mB=34, mL=40, mR=14, gap=18;
+  var Y=function(z){ return mT+((z-m.z0)/(m.D-m.z0))*(H-mT-mB); };
+  function axisDepth(){ var g="", i; for(i=0;i<=6;i++){ var z=m.z0+(m.D-m.z0)*i/6, y=Y(z); g+='<line x1="'+mL+'" y1="'+y+'" x2="'+(PW-mR)+'" y2="'+y+'" stroke="#E6ECF2"/><text x="'+(mL-5)+'" y="'+(y+3)+'" font-size="8.5" fill="#7A8794" text-anchor="end" font-family="var(--mono)">'+z.toFixed(0)+'</text>'; } return g; }
+  function panel(title, xmin, xmax, unit, sers, extra){
+    var X=function(v){ return mL+((v-xmin)/(xmax-xmin||1))*(PW-mL-mR); };
+    var g='<rect x="0" y="0" width="'+PW+'" height="'+H+'" fill="#FBFCFE"/>'+axisDepth(); var i;
+    for(i=0;i<=3;i++){ var v=xmin+(xmax-xmin)*i/3, x=X(v); g+='<line x1="'+x+'" y1="'+mT+'" x2="'+x+'" y2="'+(H-mB)+'" stroke="#EEF2F7"/><text x="'+x+'" y="'+(H-mB+13)+'" font-size="8" fill="#7A8794" text-anchor="middle" font-family="var(--mono)">'+(Math.abs(v)>=100?v.toFixed(0):v.toFixed(unit==="m"?2:1))+'</text>'; }
+    if(xmin<0&&xmax>0){ var x0=X(0); g+='<line x1="'+x0+'" y1="'+mT+'" x2="'+x0+'" y2="'+(H-mB)+'" stroke="#C2CDD8" stroke-width="1"/>'; }
+    if(extra) g+=extra(X,Y);
+    sers.forEach(function(s){ var pts=s.data.map(function(d,k){ return (k?"L":"M")+X(d.v)+" "+Y(d.z); }).join(" "); g+='<path d="'+pts+'" fill="none" stroke="'+s.color+'" stroke-width="'+(s.w||2)+'"'+(s.dash?' stroke-dasharray="'+s.dash+'"':"")+'/>'; });
+    g+='<text x="'+(PW/2)+'" y="14" font-size="10" fill="#0E2330" text-anchor="middle" font-family="var(--disp)" font-weight="600">'+title+'</text>';
+    g+='<text x="'+(PW/2)+'" y="'+(H-3)+'" font-size="8" fill="#7A8794" text-anchor="middle" font-family="var(--mono)">'+unit+'</text>'; return g;
+  }
+  var teal="#0E7490", ochre="#C0872B", red="#BC3B2A", ink="#0E2330";
+  var imp=(m.mode==="impose");
+  var band=imp?function(X,Yf){ return '<rect x="'+mL+'" y="'+Yf(m.zt)+'" width="'+(PW-mL-mR)+'" height="'+Math.max(0,Yf(m.zb)-Yf(m.zt))+'" fill="rgba(188,59,42,.07)"/>'; }:null;
+  var withBand=function(extra){ return function(X,Yf){ return (band?band(X,Yf):"")+(extra?extra(X,Yf):""); }; };
+  var wmax=1e-3; prof.forEach(function(p){ var mm=Math.max(p.w,p.g); if(mm>wmax) wmax=mm; }); wmax*=1.05;
+  var s1=[{data:prof.map(function(p){ return {z:p.z,v:p.w*1000}; }),color:teal,w:2}];
+  if(!imp) s1.unshift({data:prof.map(function(p){ return {z:p.z,v:p.g*1000}; }),color:ochre,w:2});
+  var p1=panel(imp?"Tassement du pieu":"Tassement sol / pieu",0,wmax*1000,"mm",s1,band?withBand(null):null);
+  var fM=10; prof.forEach(function(p){ [p.f,p.qsP,p.qsN].forEach(function(x){ if(Math.abs(x)>fM) fM=Math.abs(x); }); }); fM*=1.05;
+  var p2=panel("Frottement axial",-fM,fM,"kPa",[
+    {data:prof.map(function(p){ return {z:p.z,v:p.qsP}; }),color:"#9AA8B4",w:1.3,dash:"4 3"},
+    {data:prof.map(function(p){ return {z:p.z,v:p.qsN}; }),color:red,w:1.3,dash:"4 3"},
+    {data:prof.map(function(p){ return {z:p.z,v:p.f}; }),color:teal,w:2.2}],
+    withBand(m.zN!=null?function(X,Yf){ return '<line x1="'+mL+'" y1="'+Yf(m.zN)+'" x2="'+(PW-mR)+'" y2="'+Yf(m.zN)+'" stroke="'+ink+'" stroke-dasharray="2 3" stroke-width="1"/><text x="'+(PW-mR)+'" y="'+(Yf(m.zN)-4)+'" font-size="8" fill="'+ink+'" text-anchor="end" font-family="var(--mono)">point neutre</text>'; }:null));
+  var Nmx=1; prof.forEach(function(p){ if(p.N>Nmx) Nmx=p.N; }); Nmx*=1.05;
+  var p3=panel("Effort axial N",0,Nmx,"kN",[{data:prof.map(function(p){ return {z:p.z,v:p.N}; }),color:teal,w:2.2}],
+    withBand(m.zN!=null?function(X,Yf){ return '<line x1="'+mL+'" y1="'+Yf(m.zN)+'" x2="'+(PW-mR)+'" y2="'+Yf(m.zN)+'" stroke="'+ink+'" stroke-dasharray="2 3" stroke-width="1"/>'; }:null));
+  var svg='<svg viewBox="0 0 '+(PW*3+gap*2)+' '+H+'" width="100%" style="display:block"><g>'+p1+'</g><g transform="translate('+(PW+gap)+',0)">'+p2+'</g><g transform="translate('+((PW+gap)*2)+',0)">'+p3+'</g></svg>';
+  var legend='<div class="coupe-legend" style="border-top:1px solid var(--line)"><span><span class="swatch" style="background:'+teal+'"></span>Pieu</span>'+(imp?'<span><span class="swatch" style="background:rgba(188,59,42,.18)"></span>Zone de frottement négatif imposée</span>':'<span><span class="swatch" style="background:'+ochre+'"></span>Sol — tassement libre</span>')+'<span><span class="swatch" style="background:'+red+'"></span>q<sub>sn</sub></span></div>';
+  return '<div class="card"><div class="hd"><h2>Profils en profondeur</h2><span class="tag">t-z · servis serveur</span></div><div class="bd" style="padding:14px 14px 0">'+svg+'</div>'+legend+'</div>';
+}
+/* =================== FIN BRIDGE + MAPPING =================== */
+
+const fmt = (v,d=0)=> (v==null||isNaN(v))?"—":v.toLocaleString('fr-FR',{minimumFractionDigits:d,maximumFractionDigits:d});
+
+/* ---------- tabs ---------- */
+function goTab(t){
+  document.querySelectorAll('nav.tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+  document.querySelectorAll('.tabpane').forEach(p=>p.classList.toggle('active',p.id==='tab-'+t));
+  if(t==='res') compute();
+  if(t==='fn') computeDowndrag();
+  if(t==='sol'){ drawCoupe(); if(state.meth==='cpt'){ if(!state.cpt.pts.length) genPenetrogram(); renderPenetro(); } }
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+document.querySelectorAll('nav.tabs button[data-tab]').forEach(b=>b.onclick=()=>goTab(b.dataset.tab));
+
+/* ---------- segmented controls ---------- */
+function bindSeg(segId, key, attr, cb){
+  $(segId).querySelectorAll('button').forEach(btn=>{
+    btn.onclick=()=>{
+      $(segId).querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+      btn.classList.add('on'); state[key]=btn.dataset[attr]; cb&&cb();
+    };
+  });
+}
+bindSeg('seg-section','section','sec',()=>{
+  const q = state.section==='quel';
+  $('f-std').style.display = q?'none':'';
+  $('f-quel').style.display = q?'':'none';
+  $('f-diam').querySelector('.lab').innerHTML = state.section==='circ'
+    ? 'Diamètre B <span class="u">(m)</span>' : 'Côté / largeur B <span class="u">(m)</span>';
+  $('f-larg').style.display = state.section==='rect' ? '' : 'none';
+  drawCoupe();
+});
+bindSeg('seg-essais','essais','essais');
+bindSeg('seg-sens','sens','sens');
+bindSeg('seg-meth','meth','meth',()=>{ updateMethodUI(); });
+bindSeg('seg-da','da','da',()=>{ updateDaInfo(); });
+bindSeg('seg-arm','arm','arm');
+bindSeg('seg-k3','k3','k3');
+bindSeg('seg-fnmode','fnmode','fnmode',()=>{
+  const imp = state.fnmode==='impose';
+  const a=$('fn-auto'), i=$('fn-impose');
+  if(a) a.style.display = imp?'none':'';
+  if(i) i.style.display = imp?'':'none';
+  computeDowndrag();
+});
+function updateDaInfo(){
+  const info={
+    da1:'Approche 1 : deux combinaisons vérifiées — C1 (A1«+»M1«+»R1) et C2 (A2«+»M1«+»R4). La plus défavorable gouverne. Facteurs R selon la famille de pieu (Tab. A.6/A.7/A.8).',
+    da2:'Approche 2 (NF P 94-262, France) : A1 «+» M1 «+» R2 — facteurs partiels sur actions et résistances. Valeurs éditables à l\'onglet 03.',
+    da3:'Approche 3 : (A1/A2) «+» M2 «+» R3. Le jeu M2 réduit c\' et tan φ\' (÷1,25) — effet visible surtout en méthode c-φ.'
+  };
+  const e=$('da-info'); if(e) e.innerHTML=info[state.da];
+}
+
+function updateMethodUI(){
+  const m=state.meth;
+  const info={
+    pmt:'Méthode pressiométrique Ménard : portance à partir de la pression limite nette p<sub>l</sub>* (Annexe F).',
+    cpt:'Méthode pénétrométrique : portance à partir de la résistance de pointe CPT q<sub>c</sub> (Annexe F).',
+    cphi:'Méthode c-φ (essais de laboratoire) : terme de pointe N<sub>q</sub>/N<sub>c</sub> et frottement par contraintes effectives.'
+  };
+  $('meth-info').innerHTML = info[m];
+  document.querySelectorAll('.pmt-col').forEach(e=>e.style.display = m==='pmt'?'':'none');
+  document.querySelectorAll('.cpt-col').forEach(e=>e.style.display = m==='cpt'?'':'none');
+  document.querySelectorAll('.cphi-col').forEach(e=>e.style.display = m==='cphi'?'':'none');
+  document.querySelectorAll('.cpt-only').forEach(e=>e.style.display = m==='cpt'?'':'none');
+  if(m==='cpt'){ if(!state.cpt.pts.length) genPenetrogram(); renderPenetro(); }
+}
+
+/* ---------- pénétrogramme : édition / import / rendu ---------- */
+function renderPenetro(){
+  const tb=$('penetro-body'); if(!tb) return; let h='';
+  state.cpt.pts.forEach((p,i)=>{
+    h+=`<tr>
+      <td><input type="number" step="0.1" value="${p.z}" style="width:70px"
+            oninput="state.cpt.pts[${i}].z=+this.value;drawQcLog()"></td>
+      <td><input type="number" step="0.1" value="${p.qc}" style="width:70px"
+            oninput="state.cpt.pts[${i}].qc=+this.value;drawQcLog()"></td>
+      <td><button class="del-row" onclick="state.cpt.pts.splice(${i},1);renderPenetro();drawQcLog()">×</button></td></tr>`;
+  });
+  tb.innerHTML=h; drawQcLog();
+}
+function addPenetroPoint(){
+  const last=state.cpt.pts[state.cpt.pts.length-1];
+  state.cpt.pts.push({z:last?+(last.z+ (state.cpt.step||0.2)).toFixed(2):0, qc:last?last.qc:2});
+  renderPenetro();
+}
+function importPenetro(){
+  const txt=$('cpt_paste').value.trim(); if(!txt) return;
+  const pts=[];
+  txt.split(/\n+/).forEach(line=>{
+    const m=line.trim().split(/[\s,;\t]+/).map(parseFloat).filter(x=>!isNaN(x));
+    if(m.length>=2) pts.push({z:m[0],qc:m[1]});
+  });
+  if(pts.length){ pts.sort((a,b)=>a.z-b.z); state.cpt.pts=pts; $('cpt_paste').value=''; renderPenetro(); }
+}
+function drawQcLog(D,a,b){
+  const svg=$('qclog'); if(!svg) return;
+  const pts=state.cpt.pts; const W=280,H=460,mT=18,mB=28,mL=34,mR=14;
+  if(!pts.length){ svg.innerHTML=`<text x="${W/2}" y="${H/2}" font-size="11" fill="#8A92A0" text-anchor="middle" font-family="monospace">Aucun pénétrogramme</text>`; return; }
+  const zmax=Math.max(...pts.map(p=>p.z),1), qmax=Math.max(...pts.map(p=>p.qc),1)*1.1;
+  const X=q=>mL+(q/qmax)*(W-mL-mR), Y=z=>mT+(z/zmax)*(H-mT-mB);
+  let g=`<rect x="0" y="0" width="${W}" height="${H}" fill="#F7F9FC"/>`;
+  for(let i=0;i<=5;i++){const x=mL+(W-mL-mR)*i/5;g+=`<line x1="${x}" y1="${mT}" x2="${x}" y2="${H-mB}" stroke="#EEF1F6"/><text x="${x}" y="${H-mB+13}" font-size="8" fill="#8A92A0" text-anchor="middle" font-family="monospace">${(qmax*i/5).toFixed(0)}</text>`;}
+  for(let i=0;i<=5;i++){const y=mT+(H-mT-mB)*i/5;g+=`<line x1="${mL}" y1="${y}" x2="${W-mR}" y2="${y}" stroke="#EEF1F6"/><text x="${mL-4}" y="${y+3}" font-size="8" fill="#8A92A0" text-anchor="end" font-family="monospace">${(zmax*i/5).toFixed(0)}</text>`;}
+  // zone d'influence + écrêtage si calcul dispo
+  const Dd=(D!=null)?D:num('g_D');
+  if(a==null){ // dérive la zone depuis la géométrie courante même sans calcul complet
+    const Bv=state.section==='rect'?Math.min(num('g_B'),num('g_b2')):num('g_B');
+    a=Math.max(Bv/2,0.5);
+    const ls=layerTops(); const bl=soilAt(Dd-0.01,ls); b=bl?Math.min(a,Math.max(Dd-bl.ztop,0.001)):a;
+  }
+  {
+    const qq=window._qceDetail;
+    const yi0=Y(Dd-b), yi1=Y(Dd+3*a);
+    g+=`<rect x="${mL}" y="${Math.min(yi0,yi1)}" width="${W-mL-mR}" height="${Math.max(0,yi1-yi0)}" fill="rgba(192,105,31,.10)"/>`;
+    if(qq){ g+=`<line x1="${X(qq.cap)}" y1="${yi0}" x2="${X(qq.cap)}" y2="${yi1}" stroke="var(--amber)" stroke-dasharray="3 2" stroke-width="1"/>`;
+      g+=`<text x="${X(qq.cap)+3}" y="${yi0+10}" font-size="7.5" fill="var(--amber-deep)" font-family="monospace">1,3·moy</text>`;
+      g+=`<line x1="${X(qq.qce)}" y1="${yi0}" x2="${X(qq.qce)}" y2="${yi1}" stroke="var(--green)" stroke-width="1.4"/>`;
+      g+=`<text x="${X(qq.qce)+3}" y="${yi1-4}" font-size="7.5" fill="var(--green)" font-family="monospace">q_ce ${qq.qce.toFixed(1)}</text>`;
+    }
+  }
+  // courbe qc(z)
+  const path=pts.map((p,i)=>(i?'L':'M')+X(p.qc)+' '+Y(p.z)).join(' ');
+  g+=`<path d="${path}" fill="none" stroke="var(--ink)" stroke-width="1.4"/>`;
+  // ligne base D
+  g+=`<line x1="${mL}" y1="${Y(Dd)}" x2="${W-mR}" y2="${Y(Dd)}" stroke="var(--amber-deep)" stroke-dasharray="2 2"/>`;
+  g+=`<text x="${W-mR}" y="${Y(Dd)-3}" font-size="8" fill="var(--amber-deep)" text-anchor="end" font-family="monospace">D=${fmt(Dd,1)}</text>`;
+  g+=`<text x="${(W)/2}" y="${H-2}" font-size="8.5" fill="#8A92A0" text-anchor="middle" font-family="monospace">q_c (MPa)</text>`;
+  g+=`<text x="9" y="${H/2}" font-size="8.5" fill="#8A92A0" text-anchor="middle" font-family="monospace" transform="rotate(-90 9 ${H/2})">profondeur (m)</text>`;
+  svg.innerHTML=g;
+}
+
+/* ---------- pile select ---------- */
+function initPiles(){
+  const sel=$('g_pieu');
+  PILES.forEach(p=>{const o=document.createElement('option');o.value=p.cat;o.textContent=`${p.cat}. ${p.ab} — ${p.name}`;sel.appendChild(o);});
+  sel.value=1; sel.onchange=()=>{updatePileInfo();}; updatePileInfo();
+}
+function curPile(){ return PILES.find(p=>p.cat==parseInt($('g_pieu').value)) || PILES[0]; }
+function updatePileInfo(){
+  const p=curPile();
+  $('pieu-info').innerHTML = `Catégorie ${p.cat} (${p.ab}) → classe <b>${p.cls}</b> · ${p.refoule?'avec refoulement (fluage 0,7·R<sub>b</sub>)':'sans refoulement (fluage 0,5·R<sub>b</sub>)'}${p.micro?' · <b>micropieu</b> : pointe non comptée':''}.`;
+  buildSoilCoefTable();
+  const nm=$('coef-pile-name'); if(nm) nm.textContent=`catégorie ${p.cat} — ${p.ab} (classe ${p.cls})`;
+  const tg=$('coef-pile-tag'); if(tg) tg.textContent=`Pieu cat. ${p.cat}`;
+}
+
+/* ---------- couches ---------- */
+function addLayer(d={}){
+  state.layers.push({
+    soil:d.soil||'argile', th:d.th??3, pl:d.pl??1.2, em:d.em??12,
+    qc:d.qc??4, c:d.c??20, phi:d.phi??25, gamma:d.gamma??19
+  });
+  renderLayers();
+}
+function delLayer(i){ state.layers.splice(i,1); renderLayers(); }
+function renderLayers(){
+  const tb=$('layer-body'); tb.innerHTML='';
+  state.layers.forEach((L,i)=>{
+    const tr=document.createElement('tr');
+    const opts=Object.keys(SOILS).map(k=>`<option value="${k}" ${k===L.soil?'selected':''}>${SOILS[k].label}</option>`).join('');
+    tr.innerHTML=`
+      <td class="idx">${i+1}</td>
+      <td><span class="swatch" style="background:${SOILS[L.soil].color}"></span>
+          <select onchange="state.layers[${i}].soil=this.value;renderLayers();drawCoupe()" style="width:auto;min-width:120px">${opts}</select></td>
+      <td><input type="number" step="0.1" value="${L.th}" oninput="state.layers[${i}].th=+this.value;drawCoupe();updProf()" style="width:62px"></td>
+      <td class="pmt-col"><input type="number" step="0.1" value="${L.pl}" oninput="state.layers[${i}].pl=+this.value" style="width:62px"></td>
+      <td class="pmt-col"><input type="number" step="1" value="${L.em}" oninput="state.layers[${i}].em=+this.value" style="width:62px"></td>
+      <td class="cpt-col" style="display:none"><input type="number" step="0.5" value="${L.qc}" oninput="state.layers[${i}].qc=+this.value" style="width:62px"></td>
+      <td class="cphi-col" style="display:none"><input type="number" step="1" value="${L.c}" oninput="state.layers[${i}].c=+this.value" style="width:58px"></td>
+      <td class="cphi-col" style="display:none"><input type="number" step="1" value="${L.phi}" oninput="state.layers[${i}].phi=+this.value" style="width:52px"></td>
+      <td><input type="number" step="0.5" value="${L.gamma}" oninput="state.layers[${i}].gamma=+this.value" style="width:58px"></td>
+      <td><button class="del-row" onclick="delLayer(${i})" title="Supprimer">×</button></td>`;
+    tb.appendChild(tr);
+  });
+  updateMethodUI(); updProf();
+}
+function updProf(){
+  const tot=state.layers.reduce((s,L)=>s+L.th,0);
+  $('prof-total').textContent=`Profondeur totale : ${fmt(tot,1)} m`;
+}
+function fillFictitious(){
+  // identification + géométrie + charges + options
+  $('p_nom').value="Projet exemple — Dakar"; $('p_pieu').value="P1";
+  $('g_B').value="0.60"; $('g_b2').value="0.50"; $('g_z0').value="0.0"; $('g_D').value="15.0";
+  $('c_G').value="800"; $('c_Q').value="350";
+  $('o_nappe').value="3.0"; $('o_nprofil').value="1"; $('o_surf').value="2500"; $('o_redis').value="non";
+  $('b_fck').value="25";
+  // profil de sol
+  state.layers=[];
+  addLayer({soil:'argile',th:4,pl:0.6,em:6,qc:1.5,c:15,phi:22,gamma:18});
+  addLayer({soil:'sable',th:5,pl:1.4,em:14,qc:8,c:0,phi:32,gamma:19});
+  addLayer({soil:'argile',th:3,pl:1.0,em:10,qc:3,c:30,phi:24,gamma:19});
+  addLayer({soil:'marne',th:8,pl:3.2,em:45,qc:15,c:60,phi:28,gamma:21});
+  genPenetrogram();
+  if(state.meth==='cpt') renderPenetro();
+  updateXiInfo(); drawCoupe();
+}
+
+/* ---------- géométrie / profondeurs des couches ---------- */
+function layerTops(){
+  let z=0,arr=[];
+  state.layers.forEach(L=>{ arr.push({...L,ztop:z,zbot:z+L.th}); z+=L.th; });
+  return arr;
+}
+function soilAt(z,layers){ return layers.find(L=> z>=L.ztop-1e-9 && z<L.zbot+1e-9) || layers[layers.length-1]; }
+
+/* ---------- pression / résistance équivalente sous la pointe ---------- */
+// échantillonne pl* (ou qc) sur la zone [D-b, D+3a]
+function sample(layers,z0,z1,key){
+  const n=40, arr=[]; for(let i=0;i<=n;i++){const z=z0+(z1-z0)*i/n; const L=soilAt(Math.max(0,z),layers); if(L) arr.push(L[key]);}
+  return arr;
+}
+function geoMean(a){ const v=a.filter(x=>x>0); if(!v.length)return 0; return Math.exp(v.reduce((s,x)=>s+Math.log(x),0)/v.length); }
+function arithMean(a){ return a.length? a.reduce((s,x)=>s+x,0)/a.length : 0; }
+
+/* ========== PÉNÉTROMÈTRE STATIQUE (CPT) — NF P 94-262 ========== */
+
+/* génère un pénétrogramme à partir des q_c de couches (au pas state.cpt.step) */
+function genPenetrogram(){
+  const layers=layerTops(); const H=layers.length?layers[layers.length-1].zbot:0;
+  const step=Math.max(0.05,state.cpt.step||0.2); const pts=[];
+  for(let z=0; z<=H+1e-9; z+=step){ const L=soilAt(Math.min(z,H-1e-6),layers); pts.push({z:+z.toFixed(2), qc:L?L.qc:0}); }
+  state.cpt.pts=pts;
+}
+
+
+
+/* ---------- moteur principal ---------- */
+/* ---------- géométrie centralisée (circ/carré/rect/quelconque avec B_eq) ---------- */
+function pileGeom(){
+  const sec=state.section;
+  if(sec==='quel'){
+    const Ap=num('g_Ap')||0, P=num('g_P')||0;
+    const Beq=Ap>0?2*Math.sqrt(Ap/Math.PI):0.6;
+    return {sec, B:Beq, Bsurf:Beq, Ab:Ap, perim:P};
+  }
+  const Bsurf=num('g_B')||0.6, b2=num('g_b2')||Bsurf;
+  const B=sec==='rect'?Math.min(Bsurf,b2):Bsurf;
+  const Ab=sec==='circ'?Math.PI*Bsurf*Bsurf/4:sec==='rect'?Bsurf*b2:Bsurf*Bsurf;
+  const perim=sec==='circ'?Math.PI*Bsurf:sec==='rect'?2*(Bsurf+b2):4*Bsurf;
+  return {sec,B,Bsurf,Ab,perim};
+}
+
+
+async function compute(){
+  var layers=layerTops(); var z0=num("g_z0"), D=num("g_D");
+  if(!layers.length){ renderResults({err:"Aucune couche de sol définie (onglet 02)."}); return; }
+  if(D<=z0){ renderResults({err:"La profondeur de base D doit être supérieure à la profondeur de tête z\u2080."}); return; }
+  var el=$("res-content"); if(el) el.innerHTML='<div class="notice">Calcul en cours\u2026</div>';
+  var resp;
+  try{ resp=await window.__geofamBridge.calc(buildPieuxInput(false)); }
+  catch(e){ renderResults({err:"Pont de calcul indisponible : "+((e&&e.message)||e)}); return; }
+  if(!resp || !resp.ok){ renderResults({err:fmtCalcErr(resp&&resp.error)}); return; }
+  window.__casagrandeLastCalcResultId=resp.calcResultId||null;
+  var out=resp.output||{};
+  if(out.erreur){ renderResults({err:out.erreur}); return; }
+  var g=pieuxGeomCtx();
+  try{ renderResults(mapPieuxOutput(out)); }catch(e){ if(el) el.innerHTML='<div class="verdict no"><span class="ic">!</span><div class="txt"><b>Erreur de rendu</b><div>'+escPieux(e&&e.message)+'</div></div></div>'; }
+  try{ drawCoupe(g.D,g.a,g.b); }catch(e){}
+  if(state.meth==="cpt"){ try{ drawQcLog(g.D,g.a,g.b); }catch(e){} }
+  try{ drawBeton(out); }catch(e){}
+  try{ drawPortance(g.D,out); }catch(e){}
+}
+
+
+
+/* ---------- tassement Frank & Zhao (loi tri-linéaire simplifiée) ---------- */
+
+
+/* ---------- rendu résultats ---------- */
+function renderResults(R){
+  const el=$('res-content');
+  if(R.err){ el.innerHTML=`<div class="verdict no"><span class="ic">!</span><div class="txt"><b>Calcul impossible</b><div>${R.err}</div></div></div>`; return; }
+  const v=R.allOk;
+  const tx = R.sens==='trac'?'traction':'compression';
+  let html=`
+  ${R.warn.length?`<div class="notice">${R.warn.map(w=>'⚠ '+w).join('<br>')}</div>`:''}
+  <div class="verdict ${v?'ok':'no'}">
+    <span class="ic">${v?'✓':'✗'}</span>
+    <div class="txt"><b>${v?'Portance vérifiée':'Portance NON vérifiée'}</b>
+    <div>Taux de travail le plus défavorable : ${fmt(R.govern*100,0)} % · pieu ${R.meth==='pmt'?'pressiométrique':R.meth==='cpt'?'pénétrométrique':'c-φ'} en ${tx} · approche ${R.da.toUpperCase().replace('DA','DA ')}</div></div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi accent"><div class="lab">R_b — pointe</div><div class="val">${fmt(R.Rb/1000,2)}<span class="un">MN</span></div><div class="sub">${R.qbDetail}</div></div>
+    <div class="kpi accent"><div class="lab">R_s — frottement</div><div class="val">${fmt(R.Rs/1000,2)}<span class="un">MN</span></div><div class="sub">sur ${fmt(R.D-R.z0,1)} m de fût</div></div>
+    <div class="kpi accent"><div class="lab">R_c;d — calcul ELU</div><div class="val">${fmt(R.RcD/1000,2)}<span class="un">MN</span></div><div class="sub">après γ_b, γ_s, ξ</div></div>
+    <div class="kpi blue"><div class="lab">Tassement (ELS car.)</div><div class="val">${fmt(R.settle?R.settle.sEls:0,1)}<span class="un">mm</span></div><div class="sub">Frank &amp; Zhao</div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="hd"><h2>Résistances</h2><span class="tag">kN</span></div>
+      <div class="bd"><table class="res">
+        <tr><th>Terme</th><th class="r">Brut R<sub>m</sub></th><th class="r">Caract. R<sub>k</sub></th><th class="r">Calcul R<sub>d</sub></th></tr>
+        <tr><td class="lbl">Pointe R<sub>b</sub></td><td class="r">${fmt(R.Rb,0)}</td><td class="r">${fmt(R.RbK,0)}</td><td class="r">${fmt(R.RbD,0)}</td></tr>
+        <tr><td class="lbl">Frottement R<sub>s</sub></td><td class="r">${fmt(R.Rs,0)}</td><td class="r">${fmt(R.RsK,0)}</td><td class="r">${fmt(R.RsD,0)}</td></tr>
+        <tr class="total"><td>Total R<sub>c</sub></td><td class="r">${fmt(R.Rb+R.Rs,0)}</td><td class="r">${fmt(R.RcK,0)}</td><td class="r">${fmt(R.RcD,0)}</td></tr>
+        <tr><td class="lbl">Charge fluage R<sub>c;cr;k</sub></td><td class="r" colspan="2">${fmt(R.RcrK,0)}</td><td class="r">—</td></tr>
+      </table>
+      <div class="hint" style="margin-top:10px">ξ₃ = ${fmt(R.xi3,2)} · ξ₄ = ${fmt(R.xi4,2)} (N = ${R.N} profil${R.N>1?'s':''} · S = ${fmt(R.Sinv,0)} m² → √(S/2500) = ${fmt(Math.sqrt(R.Sinv/2500),2)}${R.redis?' · ÷1,1 redistribution':''}) · γ<sub>R;d1</sub> = ${fmt(R.grd,2)}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hd"><h2>Vérifications</h2><span class="tag">ELU / ELS</span></div>
+      <div class="bd"><table class="res">
+        <tr><th>État-limite</th><th class="r">F<sub>d</sub></th><th class="r">R<sub>d</sub></th><th class="r">Taux</th><th class="r"></th></tr>
+        ${R.checks.map(c=>{const ok=c.Fd<=c.Rd;return `<tr>
+          <td class="lbl">${c.nom}<br><span style="font-size:10px;opacity:.7">${c.comb}</span></td>
+          <td class="r">${fmt(c.Fd,0)}</td><td class="r">${fmt(c.Rd,0)}</td>
+          <td class="r">${fmt(c.Fd/c.Rd*100,0)}%</td>
+          <td class="r ${ok?'pass':'fail'}">${ok?'✓':'✗'}</td></tr>`;}).join('')}
+      </table>
+      <div class="hint" style="margin-top:10px">F<sub>d</sub> = sollicitation pondérée · R<sub>d</sub> = résistance de calcul. Charges : G = ${fmt(R.G,0)} kN, Q = ${fmt(R.Q,0)} kN.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <div class="hd"><h2>Frottement latéral par couche</h2><span class="tag">q<sub>s</sub></span></div>
+    <div class="bd"><div style="overflow-x:auto"><table class="res">
+      <tr><th>Couche</th><th class="r">Cote (m)</th><th class="r">Ép. mob. (m)</th><th class="r">q<sub>s</sub> (kPa)</th><th class="r">R<sub>s,i</sub> (kN)</th></tr>
+      ${R.fric.map(f=>`<tr>
+        <td><span class="swatch" style="background:${SOILS[f.soil].color}"></span> ${SOILS[f.soil].label}</td>
+        <td class="r">${fmt(f.top,1)} – ${fmt(f.bot,1)}</td>
+        <td class="r">${fmt(f.dz,2)}</td><td class="r">${fmt(f.qs,0)}</td><td class="r">${fmt(f.dRs,0)}</td></tr>`).join('')}
+      <tr class="total"><td colspan="4">Total R<sub>s</sub></td><td class="r">${fmt(R.Rs,0)}</td></tr>
+    </table></div></div>
+  </div>
+
+  <div class="split" style="margin-top:18px">
+    <div class="card">
+      <div class="hd"><h2>Courbe charge — tassement</h2><span class="tag">Frank &amp; Zhao</span></div>
+      <div class="bd"><svg id="settle-svg" viewBox="0 0 420 300" style="width:100%"></svg>
+      <div class="hint">E<sub>M</sub> couche porteuse = ${fmt(R.settle?R.settle.EM:0,0)} MPa · sol ${R.settle&&R.settle.fine?'fin (k_τ=2,0·E_M/B)':'granulaire (k_τ=0,8·E_M/B)'}. Loi trilinéaire t-z Frank &amp; Zhao résolue par tir (module pieu ≈ 20 GPa).</div></div>
+    </div>
+    <div class="card">
+      <div class="hd"><h2>Synthèse géométrique</h2><span class="tag">Pieu</span></div>
+      <div class="bd"><table class="res">
+        <tr><td class="lbl">Pieu</td><td class="r">cat. ${R.cat} (${R.pile.ab}) → classe ${R.cls}</td></tr>
+        <tr><td class="lbl">Section</td><td class="r">A<sub>b</sub> = ${fmt(R.Ab,3)} m² · périm. = ${fmt(R.perim,2)} m</td></tr>
+        <tr><td class="lbl">Encastrement</td><td class="r">D = ${fmt(R.D,2)} m</td></tr>
+        <tr><td class="lbl">Encastrement équiv. D<sub>ef</sub></td><td class="r">${fmt(R.Def,2)} m · D<sub>ef</sub>/B = ${fmt(R.debR,1)}</td></tr>
+        <tr><td class="lbl">Couche porteuse</td><td class="r">${SOILS[R.baseLayer.soil].label}</td></tr>
+        <tr><td class="lbl">Zone d'influence pointe</td><td class="r">${fmt(R.D-R.b,2)} → ${fmt(R.D+3*R.a,2)} m</td></tr>
+        <tr><td class="lbl">a = max(B/2 ; 0,5) · b = min(a ; h)</td><td class="r">${fmt(R.a,2)} · ${fmt(R.b,2)} m</td></tr>
+        <tr><td class="lbl">Coef. de modèle γ<sub>R;d1</sub></td><td class="r">${fmt(R.grd,2)}</td></tr>
+        <tr><td class="lbl">Effet de groupe C<sub>e</sub></td><td class="r">${fmt(R.Ce,2)}${R.Ce<1?' (groupe flottant — R<sub>s</sub> réduit)':(R.CeF<1?' (pieu non flottant — C<sub>e</sub>=1, J.2(3))':' (pieu isolé / entraxe ≥ 3B)')}</td></tr>
+        <tr><td class="lbl">Charge de fluage</td><td class="r">${R.pile.refoule?'0,7·R<sub>b</sub>+0,7·R<sub>s</sub>':'0,5·R<sub>b</sub>+0,7·R<sub>s</sub>'}</td></tr>
+      </table>
+      <div class="btn-row" style="margin-top:14px"><button class="btn" onclick="window.print()">⎙ Imprimer la note</button></div>
+      </div>
+    </div>
+  </div>`;
+  el.innerHTML=html;
+  if(R.settle) drawSettle(R.settle,R.FdCar);
+}
+
+function drawSettle(s,Fels){
+  var svg=$("settle-svg"); if(!svg) return;
+  var W=420,H=300,mL=52,mR=16,mT=14,mB=40, i;
+  if(!s || !s.pts || !s.pts.length || !(s.Fmax>0)){
+    svg.innerHTML='<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="#F7F9FC"/>'
+      +'<text x="'+(W/2)+'" y="'+(H/2-6)+'" font-size="11" fill="#8A92A0" text-anchor="middle" font-family="monospace">Courbe charge\u2013tassement servie côté serveur</text>'
+      +'<text x="'+(W/2)+'" y="'+(H/2+12)+'" font-size="9.5" fill="#8A92A0" text-anchor="middle" font-family="monospace">(restitution en attente de validation \u2014 défaut NON pieux)</text>';
+    return;
+  }
+  var maxF=s.Fmax, arrS=s.pts.map(function(p){ return p.s; }).concat([s.sEls]);
+  var maxS=(Math.max.apply(null,arrS)*1.1)||10;
+  var X=function(f){ return mL+(f/maxF)*(W-mL-mR); }, Y=function(ss){ return mT+(ss/maxS)*(H-mT-mB); };
+  var g='<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="#F7F9FC"/>';
+  for(i=0;i<=5;i++){ var y=mT+(H-mT-mB)*i/5, val=maxS*i/5; g+='<line x1="'+mL+'" y1="'+y+'" x2="'+(W-mR)+'" y2="'+y+'" stroke="#E5EAF1"/><text x="'+(mL-6)+'" y="'+(y+3)+'" font-size="9" fill="#8A92A0" text-anchor="end" font-family="monospace">'+val.toFixed(0)+'</text>'; }
+  for(i=0;i<=4;i++){ var x=mL+(W-mL-mR)*i/4, vf=maxF*i/4; g+='<line x1="'+x+'" y1="'+mT+'" x2="'+x+'" y2="'+(H-mB)+'" stroke="#EEF1F6"/><text x="'+x+'" y="'+(H-mB+14)+'" font-size="9" fill="#8A92A0" text-anchor="middle" font-family="monospace">'+(vf/1000).toFixed(1)+'</text>'; }
+  var path=s.pts.map(function(p,k){ return (k?"L":"M")+X(p.F)+" "+Y(p.s); }).join(" ");
+  g+='<path d="'+path+'" fill="none" stroke="var(--amber)" stroke-width="2"/>';
+  g+='<line x1="'+X(Fels)+'" y1="'+mT+'" x2="'+X(Fels)+'" y2="'+(H-mB)+'" stroke="var(--blue)" stroke-dasharray="4 3" stroke-width="1.2"/>';
+  g+='<circle cx="'+X(Fels)+'" cy="'+Y(s.sEls)+'" r="4" fill="var(--blue)"/>';
+  g+='<text x="'+(X(Fels)+5)+'" y="'+(Y(s.sEls)-6)+'" font-size="9.5" fill="var(--blue)" font-family="monospace">'+s.sEls.toFixed(1)+' mm</text>';
+  g+='<text x="'+(W/2)+'" y="'+(H-4)+'" font-size="9.5" fill="#8A92A0" text-anchor="middle" font-family="monospace">Charge F (MN)</text>';
+  g+='<text x="12" y="'+(H/2)+'" font-size="9.5" fill="#8A92A0" text-anchor="middle" font-family="monospace" transform="rotate(-90 12 '+(H/2)+')">Tassement (mm)</text>';
+  svg.innerHTML=g;
+}
+
+/* ---------- COUPE géotechnique (signature) ---------- */
+function hatchDefs(){
+  return `<defs>
+   <pattern id="h-clay" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(0)">
+     <rect width="8" height="8" fill="var(--s-argile)"/><line x1="0" y1="4" x2="8" y2="4" stroke="#5d728433" stroke-width="2"/></pattern>
+   <pattern id="h-sand" width="7" height="7" patternUnits="userSpaceOnUse">
+     <rect width="7" height="7" fill="var(--s-sable)"/><circle cx="2" cy="2" r="0.9" fill="#9c7220"/><circle cx="5" cy="5" r="0.9" fill="#9c7220"/></pattern>
+   <pattern id="h-chalk" width="9" height="9" patternUnits="userSpaceOnUse"><rect width="9" height="9" fill="var(--s-craie)"/><path d="M0 9 L9 0" stroke="#c9c0a0" stroke-width="0.8"/></pattern>
+   <pattern id="h-marl" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="var(--s-marne)"/><line x1="0" y1="0" x2="8" y2="8" stroke="#5e6a4d55" stroke-width="1"/><line x1="0" y1="4" x2="4" y2="0" stroke="#5e6a4d33" stroke-width="0.7"/></pattern>
+   <pattern id="h-rock" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="var(--s-roche)"/><path d="M0 0 L10 10 M0 5 L5 0 M5 10 L10 5" stroke="#4f4a40" stroke-width="0.8"/></pattern>
+  </defs>`;
+}
+function drawCoupe(D,a,b){
+  const svg=$('coupe'); if(!svg)return;
+  const layers=layerTops();
+  const totH=layers.length?layers[layers.length-1].zbot:1;
+  const W=360,H=520, mT=24,mB=24,mL=70,mR=20;
+  const Dd=D??num('g_D');
+  const z0=num('g_z0'), nappe=num('o_nappe');
+  const drawH=H-mT-mB;
+  const scale = drawH/Math.max(totH, Dd+ (a?3*a:1)+0.5, 1);
+  const Y=z=>mT+z*scale;
+  const xL=mL, xR=W-mR;
+  let g=hatchDefs();
+  // strates
+  layers.forEach((L,i)=>{
+    const y=Y(L.ztop), h=(L.zbot-L.ztop)*scale;
+    g+=`<rect x="${xL}" y="${y}" width="${xR-xL}" height="${h}" fill="url(#h-${SOILS[L.soil].hatch})" stroke="#fff" stroke-width="1"/>`;
+    g+=`<text x="${xL-6}" y="${y+4}" font-size="9" fill="#8A92A0" text-anchor="end" font-family="monospace">${fmt(L.ztop,1)}</text>`;
+    // label
+    if(h>16) g+=`<text x="${(xL+xR)/2}" y="${y+h/2+3}" font-size="9.5" fill="#173848" text-anchor="middle" font-family="monospace" opacity=".75">${SOILS[L.soil].label.split(' ')[0]}</text>`;
+  });
+  // cote finale
+  if(layers.length) g+=`<text x="${xL-6}" y="${Y(totH)+4}" font-size="9" fill="#8A92A0" text-anchor="end" font-family="monospace">${fmt(totH,1)}</text>`;
+  // surface
+  g+=`<line x1="${xL}" y1="${Y(0)}" x2="${xR}" y2="${Y(0)}" stroke="#173848" stroke-width="1.5"/>`;
+  // nappe
+  if(nappe<totH){const yn=Y(nappe);g+=`<line x1="${xL}" y1="${yn}" x2="${xR}" y2="${yn}" stroke="var(--blue)" stroke-width="1.2" stroke-dasharray="3 3"/><path d="M${xR-26} ${yn-7} l5 5 l5 -5 z" fill="var(--blue)"/><text x="${xR-2}" y="${yn-4}" font-size="8.5" fill="var(--blue)" text-anchor="end" font-family="monospace">nappe</text>`;}
+  // pieu
+  const pileW=Math.max(14,Math.min(40,(pileGeom().Bsurf||0.5)*scale*0.9));
+  const pcx=(xL+xR)/2, px=pcx-pileW/2;
+  const yTop=Y(z0), yBot=Y(Dd);
+  g+=`<rect x="${px}" y="${Math.min(yTop,yBot)}" width="${pileW}" height="${Math.max(0,yBot-yTop)}" fill="#C4CED7" stroke="#173848" stroke-width="1.5"/>`;
+  // hachures béton
+  for(let yy=yTop+5;yy<yBot;yy+=7){g+=`<line x1="${px}" y1="${yy}" x2="${px+pileW}" y2="${yy-5}" stroke="#9b9684" stroke-width="0.5"/>`;}
+  // pointe
+  g+=`<path d="M${px} ${yBot} L${px+pileW} ${yBot} L${pcx} ${yBot+12} z" fill="#173848"/>`;
+  // zone d'influence
+  if(a){
+    const yi0=Y(Dd-b), yi1=Y(Dd+3*a);
+    g+=`<rect x="${px+pileW+6}" y="${yi0}" width="10" height="${yi1-yi0}" fill="none" stroke="var(--amber)" stroke-width="1"/>`;
+    g+=`<line x1="${px+pileW+6}" y1="${yi0}" x2="${px+pileW+16}" y2="${yi0}" stroke="var(--amber)"/><line x1="${px+pileW+6}" y1="${yi1}" x2="${px+pileW+16}" y2="${yi1}" stroke="var(--amber)"/>`;
+    g+=`<text x="${px+pileW+20}" y="${(yi0+yi1)/2+3}" font-size="8" fill="var(--amber-deep)" font-family="monospace">zone q<tspan font-size="6" dy="2">b</tspan></text>`;
+  }
+  // cote D
+  g+=`<line x1="${px-10}" y1="${yBot}" x2="${px}" y2="${yBot}" stroke="var(--amber-deep)"/><text x="${px-12}" y="${yBot+4}" font-size="9" fill="var(--amber-deep)" text-anchor="end" font-family="monospace">D=${fmt(Dd,1)}</text>`;
+  svg.innerHTML=g;
+  // legend
+  const used=[...new Set(layers.map(L=>L.soil))];
+  $('coupe-legend').innerHTML=used.map(s=>`<span><span class="swatch" style="background:${SOILS[s].color}"></span>${SOILS[s].label}</span>`).join('')+
+    `<span><span class="swatch" style="background:#C4CED7;border-color:#173848"></span>Pieu</span>`;
+}
+
+/* ---------- coefficients : valeurs officielles appliquées au pieu courant ---------- */
+function readCoef(){ /* coefficients désormais issus des tables NF P 94-262 (non éditables) */ }
+
+function buildSoilCoefTable(){
+  var t=$("soil-coef-table"); if(!t) return;
+  var p=curPile(); var cls=p.cls;
+  var h='<tr><th rowspan="2">Nature de sol</th><th colspan="2">Pointe \u2014 classe '+cls+'</th><th colspan="2">Frottement pressio</th><th colspan="2">Frottement pénétro</th><th rowspan="2">q<sub>s,max</sub><br>(kPa)</th></tr><tr><th>k<sub>p,max</sub></th><th>k<sub>c,max</sub></th><th>courbe</th><th>\u03b1<sub>PMT</sub></th><th>courbe</th><th>\u03b1<sub>CPT</sub></th></tr>';
+  Object.keys(SOILS).forEach(function(s){ h+='<tr><td><span class="swatch" style="background:'+SOILS[s].color+'"></span> '+SOILS[s].label+'</td><td>\u2014</td><td>\u2014</td><td>\u2014</td><td>\u2014</td><td>\u2014</td><td>\u2014</td><td>\u2014</td></tr>'; });
+  h+='<tr><td colspan="8" style="font-size:10.5px;color:var(--color-text-secondary,#6b7280);text-align:left;line-height:1.5">Coefficients de portance et de frottement (Tableaux NF P 94-262 F.4.2.1 / G.4.2.1 / F.5.2 / G.5.2) appliqués côté serveur \u2014 restitution détaillée en attente de validation (expert + titulaire, défaut NON pieux).</td></tr>';
+  t.innerHTML=h;
+}
+function updateXiInfo(){
+  var el=$("xi-info"); if(!el) return;
+  var N=Math.max(1,Math.round(num("o_nprofil")));
+  var S=Math.min(2500,Math.max(100,(num("o_surf")>0?num("o_surf"):2500)));
+  var redis=$("o_redis") && $("o_redis").value==="oui";
+  el.innerHTML="N = "+N+" profil"+(N>1?"s":"")+" \u00b7 S = "+fmt(S,0)+" m\u00b2 (\u221a(S/2500) = "+fmt(Math.sqrt(S/2500),2)+")"+(redis?" \u00b7 \u00f71,1":"")+" \u2192 \u03be\u2083 \u00b7 \u03be\u2084 servis côté serveur (Tableau C.2.4.2).";
+}
+
+/* ---------- init ---------- */
+
+function drawBeton(out){
+  var el=$("res-content"); if(!el) return;
+  var applicable=out.betonApplicable;
+  if(applicable===false){
+    el.insertAdjacentHTML("beforeend", '<div class="card" style="margin-top:20px"><div class="hd"><h2>Résistance du béton (structure)</h2><span class="tag">§4.4</span></div><div class="bd"><div class="coef-note" style="margin:0">Vérification non applicable : pieu en traction (résistance assurée par les armatures) ou catégorie non couverte (acier, préfabriqué, micropieu, injecté).</div></div></div>');
+    return;
+  }
+  if(applicable==null) return;
+  var okELU=(out.betonOkELU===true), okELS=(out.betonOkELS===true), ok=okELU&&okELS;
+  var taux=Math.max((isFinite(out.betonTauxELU)?out.betonTauxELU:0),(isFinite(out.betonTauxELS)?out.betonTauxELS:0));
+  var verdict='<div class="verdict '+(ok?"ok":"no")+'" style="margin:0 0 16px"><div class="ic">'+(ok?"\u2713":"\u2717")+'</div><div class="txt"><b>Béton '+(ok?"vérifié":"NON vérifié")+'</b><div>Contrainte la plus défavorable : '+fmt(taux*100,0)+' % \u00b7 f<sub>cd</sub> = '+fmt(out.betonFcd,1)+' MPa</div></div></div>';
+  var rows='<tr><td class="lbl">\u03c3 ELU = N<sub>d</sub>/A<sub>b</sub></td><td class="r">\u2014</td><td class="r">'+fmt(out.betonFcd,2)+'</td><td class="r"><span class="'+(okELU?"pass":"fail")+'">'+fmt(out.betonTauxELU*100,0)+' %</span></td><td class="r">'+(okELU?"\u2713":"\u2717")+'</td></tr>'
+    +'<tr><td class="lbl">\u03c3 ELS car. = N<sub>ser</sub>/A<sub>b</sub></td><td class="r">\u2014</td><td class="r">\u2014</td><td class="r"><span class="'+(okELS?"pass":"fail")+'">'+fmt(out.betonTauxELS*100,0)+' %</span></td><td class="r">'+(okELS?"\u2713":"\u2717")+'</td></tr>';
+  el.insertAdjacentHTML("beforeend", '<div class="card" style="margin-top:20px"><div class="hd"><h2>Résistance du béton (structure)</h2><span class="tag">NF P 94-262 §4.4</span></div><div class="bd">'+verdict+'<table class="res"><tr><th>Combinaison</th><th class="r">\u03c3 (MPa)</th><th class="r">limite (MPa)</th><th class="r">taux</th><th class="r"></th></tr>'+rows+'</table><div class="coef-note" style="margin-top:14px">Résistance de calcul du béton f<sub>cd</sub> = '+fmt(out.betonFcd,1)+' MPa (NF P 94-262 §4.4). Les contraintes appliquées \u03c3 et le détail des facteurs (C<sub>max</sub>, k\u2081, k\u2082, f<sub>ck</sub>*) sont calculés côté serveur.</div></div></div>');
+}
+
+
+
+function drawPortance(Dcur, out){
+  var el=$("res-content"); if(!el) return;
+  if(out && out.courbePortance && Array.isArray(out.courbePortance.rows) && out.courbePortance.rows.length>=2){
+    try{ var svg=portanceSvgFromServer(Dcur,out.courbePortance); if(svg){ el.insertAdjacentHTML("beforeend",svg); return; } }catch(e){}
+  }
+  el.insertAdjacentHTML("beforeend", '<div class="card" style="margin-top:20px"><div class="hd"><h2>Courbe de portance avec la profondeur</h2><span class="tag">'+(state.sens==="trac"?"traction":"compression")+' \u00b7 '+(state.meth==="pmt"?"pressio":state.meth==="cpt"?"pénétro":"c-\u03c6")+'</span></div><div class="bd"><div class="coef-note" style="margin:0">La courbe de portance en fonction de la profondeur d\u2019ancrage (aide au choix de l\u2019ancrage) est construite à partir de la capacité calculée côté serveur à chaque profondeur (méthode NF P 94-262 confidentielle). Sa restitution graphique est en attente de validation (élargissement de contrat, expert + titulaire \u2014 défaut NON pieux). Le verdict et les résistances ci-dessus sont issus du calcul serveur scellé au PV.</div></div></div>');
+}
+/* ================= FROTTEMENT NÉGATIF — interaction sol-pieu (t-z) =================
+   Méthode de transfert de charge Frank & Zhao étendue au frottement négatif (guide
+   CEREMA, ch. 12 ; NF P 94-262 Annexe H). Le tassement libre du sol g(z) impose un
+   déplacement relatif sol-pieu ; au-dessus du point neutre (g>w) le frottement est
+   négatif, plafonné à q_sn = K·tanδ·σ'v (Combarieu) ; en dessous, le frottement
+   positif q_s reprend la charge. Résolution par tir sur le tassement en tête. */
+function fnFromProject(){
+  const G=num('c_G'); if(G) $('fn_Q').value=G;
+  const p=curPile(); const ktd = p.refoule?0.30:0.20;
+  if(!$('fn_ktd').value) $('fn_ktd').value=ktd.toFixed(2);
+  if(!$('fn_s0').value) $('fn_s0').value="90";
+  if(!$('fn_hc').value) $('fn_hc').value="9.0";
+  const z0=num('g_z0'), D=num('g_D');
+  if(!$('fn_zt').value) $('fn_zt').value=fmt(z0||0,1);
+  if(!$('fn_zb').value) $('fn_zb').value=fmt(num('fn_hc')|| (D? 0.6*D : 9),1);
+  computeDowndrag();
+}
+async function computeDowndrag(){
+  var host=$("fn-content"); if(!host) return;
+  var layers=layerTops();
+  if(!layers.length){ host.innerHTML='<div class="card"><div class="bd"><div class="coef-note">Définissez d\u2019abord un profil de sol (onglet 03) et la géométrie du pieu (onglet 01), puis revenez ici. Le bouton \u00ab Reprendre Q et la coupe du projet \u00bb initialise les données.</div></div></div>'; return; }
+  var z0=num("g_z0"), D=num("g_D");
+  if(!(D>z0)){ host.innerHTML='<div class="card"><div class="bd"><div class="coef-note">Géométrie incomplète : la base D doit être sous la tête z\u2080 (onglet 01).</div></div></div>'; return; }
+  host.innerHTML='<div class="card"><div class="bd"><div class="coef-note">Calcul du frottement négatif\u2026</div></div></div>';
+  var resp;
+  try{ resp=await window.__geofamBridge.calc(buildPieuxInput(true)); }
+  catch(e){ host.innerHTML='<div class="card"><div class="bd"><div class="coef-note">Pont de calcul indisponible : '+escPieux((e&&e.message)||e)+'</div></div></div>'; return; }
+  if(!resp || !resp.ok){ host.innerHTML='<div class="card"><div class="bd"><div class="coef-note">'+escPieux(fmtCalcErr(resp&&resp.error))+'</div></div></div>'; return; }
+  window.__casagrandeLastCalcResultId=resp.calcResultId||null;
+  var out=resp.output||{};
+  if(out.erreur){ host.innerHTML='<div class="card"><div class="bd"><div class="coef-note">'+escPieux(out.erreur)+'</div></div></div>'; return; }
+  var mode=state.fnmode||"auto";
+  var zt=Math.max(z0,num("fn_zt")||z0), zb=Math.min(D,num("fn_zb")||0);
+  if(mode==="impose" && zb<=zt) zb=Math.min(D,zt+0.01);
+  var pd=(out.profilsDowndrag&&Array.isArray(out.profilsDowndrag.prof))?out.profilsDowndrag:null;
+  drawDowndrag(pd?pd.prof:null, { z0:z0, D:D, B:(pileGeom().B||0.6), Q:num("fn_Q"),
+    Nmax:sv(out.Nmax), Gsn:sv(out.Gsn), zN:(out.pointNeutre==null?null:out.pointNeutre),
+    wHead:(pd&&isFinite(pd.wHead)?pd.wHead:NaN),
+    s0:num("fn_s0"), Hc:num("fn_hc"), KtanD:num("fn_ktd"), meth:state.meth, mode:mode, zt:zt, zb:zb });
+}
+function drawDowndrag(prof, m){
+  var host=$("fn-content"); if(!host) return;
+  var kpis='<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">'
+    +'<div class="kpi accent"><div class="lab">Effort axial max</div><div class="val">'+fmt(m.Nmax/1000,2)+'<span class="un">MN</span></div><div class="sub">au point neutre</div></div>'
+    +'<div class="kpi"><div class="lab">Frottement négatif G<sub>sn</sub></div><div class="val">'+fmt(m.Gsn/1000,2)+'<span class="un">MN</span></div><div class="sub">N<sub>max</sub> \u2212 Q</div></div>'
+    +'<div class="kpi"><div class="lab">Point neutre</div><div class="val">'+(m.zN!=null?fmt(m.zN,1):"\u2014")+'<span class="un">m</span></div><div class="sub">déplacement relatif nul</div></div>'
+    +'<div class="kpi blue"><div class="lab">Tassement tête pieu</div><div class="val">'+fmt(m.wHead,1)+'<span class="un">mm</span></div><div class="sub">'+(m.mode==="impose"?("zone F.N. : "+fmt(m.zt,1)+"\u2013"+fmt(m.zb,1)+" m"):("sol en surface : "+fmt(m.s0,0)+" mm"))+'</div></div>'
+    +'</div>';
+  var fig;
+  if(prof && prof.length){ try{ fig=downdragSvg(prof,m); }catch(e){ fig=""; } }
+  else { fig='<div class="card"><div class="hd"><h2>Profils en profondeur</h2><span class="tag">t-z</span></div><div class="bd"><div class="coef-note" style="margin:0">Les profils détaillés (tassement, frottement axial, effort N en profondeur) sont calculés côté serveur (méthode confidentielle). Leur restitution graphique est en attente de validation (élargissement de contrat, expert + titulaire \u2014 défaut NON pieux). Les grandeurs de synthèse ci-dessus (N<sub>max</sub>, G<sub>sn</sub>, point neutre) sont issues du calcul serveur scellé au PV.</div></div></div>'; }
+  host.innerHTML=kpis+fig
+    +'<div class="notice" style="margin-top:18px">Le frottement négatif (G<sub>sn</sub> = '+fmt(m.Gsn/1000,2)+' MN) est une action permanente à <b>ajouter</b> à la charge en tête pour les vérifications (ch. 11 du guide). Au-dessus du point neutre ('+(m.zN!=null?fmt(m.zN,1)+" m":"\u2014")+') le sol entraîne le pieu vers le bas ; en dessous, frottement positif et pointe équilibrent l\u2019effort maximal N<sub>max</sub> = '+fmt(m.Nmax/1000,2)+' MN. Modèle t-z à valider par une étude \u0153dométrique.</div>';
+}
+function init(){
+  initPiles();
+  buildSoilCoefTable();
+  renderLayers();          // démarrage à vide (aucune couche)
+  updateMethodUI();
+  updateDaInfo();
+  drawCoupe();
+  updateXiInfo();
+  $('o_nprofil').addEventListener('input',updateXiInfo);
+  $('o_surf').addEventListener('input',updateXiInfo);
+  $('o_redis').addEventListener('change',updateXiInfo);
+  ['g_B','g_b2','g_D','g_z0','o_nappe','g_Ap','g_P'].forEach(id=>$(id).addEventListener('input',()=>drawCoupe()));
+}
+init();
+</script>
+</body>
+</html>
