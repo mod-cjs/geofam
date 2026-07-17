@@ -499,7 +499,7 @@ describe('PV 5 corps dédiés — rendu PDF réel borné', () => {
   it.each([
     [
       'plane-strain',
-      { opts: { foundD: 1.5, decol: true } } as SealableValue,
+      { opts: { foundD: 1.5, decol: true } },
       {
         erreur: null,
         warnings: [],
@@ -514,11 +514,11 @@ describe('PV 5 corps dédiés — rendu PDF réel borné', () => {
         z0: 1.5,
         decolN: 0,
         EI: 54321,
-      } as SealableValue,
+      },
     ],
     [
       'axi-plaque',
-      { o: { foundD: 0 } } as SealableValue,
+      { o: { foundD: 0 } },
       {
         wc: 5.5,
         wEdge: 2.2,
@@ -531,11 +531,11 @@ describe('PV 5 corps dédiés — rendu PDF réel borné', () => {
         totalLoad: 800,
         sumReact: 800,
         z0: 0,
-      } as SealableValue,
+      },
     ],
     [
       'radier-tri',
-      { opts: { foundD: 0 } } as SealableValue,
+      { opts: { foundD: 0 } },
       {
         erreur: null,
         warnings: [],
@@ -547,11 +547,11 @@ describe('PV 5 corps dédiés — rendu PDF réel borné', () => {
         sumReact: 1499,
         nRaft: 2,
         z0: 0,
-      } as SealableValue,
+      },
     ],
     [
       'pressio-etalonnage',
-      {} as SealableValue,
+      {},
       {
         Vs: 535,
         Pe: 1.2,
@@ -561,11 +561,11 @@ describe('PV 5 corps dédiés — rendu PDF réel borné', () => {
         vsReel: 540,
         vPe: 648,
         residus: [{ p: 1, vMesure: 10, vAjuste: 9.8, residu: 0.2 }],
-      } as SealableValue,
+      },
     ],
     [
       'pressio-calibrage',
-      {} as SealableValue,
+      {},
       {
         a: 0.048,
         R2: 0.9995,
@@ -574,7 +574,7 @@ describe('PV 5 corps dédiés — rendu PDF réel borné', () => {
         c1: 0.002,
         c2: 0.000012,
         residus: [{ p: 1, v60Mesure: 12, v60Ajuste: 11.9, residu: 0.1 }],
-      } as SealableValue,
+      },
     ],
   ])(
     '%s : PDF réel produit (sceau valide, non vide)',

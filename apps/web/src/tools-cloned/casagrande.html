@@ -804,30 +804,43 @@ function pieuxGeomCtx(){
   return { PG:PG, layers:layers, D:D, z0:z0, a:a, b:b, baseLayer:baseLayer, hInLayer:hInLayer };
 }
 
-/* SORTIE whitelistee (PieuxOutputSchema) -> objet R attendu par renderResults CONSERVE.
-   Whitelistes : allOk/tauxGouvernant/warnings/RbK/RsK/RcK/RcD/RcrK/verifications/
-   tassementELS/FdCar/methode/sens/D/categorie. RESIDUS FERMES (defaut NON) -> NaN/« — »/[]
-   pour Rb/Rs bruts, RbD/RsD, qbDetail (p_le, q_ce, k_p), xi3/xi4, grd, Def/debR, Ce, fric.
-   Geometrie (Ab/perim/a/b/baseLayer/D/z0/cat/cls) reconstruite depuis la SAISIE (publique). */
+ 
 function mapPieuxOutput(out){
   var g=pieuxGeomCtx(); var p=curPile();
   var checks=(Array.isArray(out.verifications)?out.verifications:[]).map(function(v){
     return { nom:(typeof v.nom==="string"?v.nom:""), comb:"", Fd:sv(v.Fd), Rd:sv(v.Rd) }; });
   var ct=(out.courbeTassement&&Array.isArray(out.courbeTassement.pts))?out.courbeTassement:null;
+  /* Frottement lateral par couche (out.fric[], whitelist elargie) -> tableau consomme
+     tel quel par renderResults (soil/top/bot/dz/qs/dRs). null/[] si non fourni. */
+  var fric=(Array.isArray(out.fric)?out.fric:[]).map(function(f){
+    return { soil:(typeof f.soil==="string"?f.soil:"argile"), top:sv(f.top), bot:sv(f.bot),
+      dz:sv(f.dz), qs:sv(f.qs), dRs:sv(f.dRs), qsm:(f.qsm==null?null:sv(f.qsm)), deg:(f.deg===true) }; });
+  /* Sous-texte de la KPI R_b (detail de portance) reconstruit depuis les SCALAIRES
+     serveur whitelistes (ple/qce/debR/kfac/kmax) — jamais une re-derivation de science.
+     L\u2019ecretage q_ce (cap) et le detail c-\u03c6 (Nc/\u03c3\u2032v) restent confidentiels -> omis. */
+  var meth=(out.methode||state.meth);
+  var qbDetail="\u2014";
+  if(meth==="pmt" && out.ple!=null){
+    qbDetail="p<sub>le</sub>* = "+fmt(sv(out.ple),2)+" MPa (zone D\u2212b\u2026D+3a) \u00b7 D<sub>ef</sub>/B = "+fmt(sv(out.debR),1)+" (int\u00e9gr\u00e9 sur 10B au\u2011dessus de la pointe) \u00b7 k<sub>p</sub> = "+fmt(sv(out.kfac),2)+" (k<sub>p,max</sub>="+fmt(sv(out.kmax),2)+")";
+  } else if(meth==="cpt" && out.qce!=null){
+    qbDetail="q<sub>ce</sub> = "+fmt(sv(out.qce),2)+" MPa \u00b7 D<sub>ef</sub>/B = "+fmt(sv(out.debR),1)+" (int\u00e9gr\u00e9 sur 10B au\u2011dessus de la pointe) \u00b7 k<sub>c</sub> = "+fmt(sv(out.kfac),2)+" (k<sub>c,max</sub>="+fmt(sv(out.kmax),2)+")";
+  } else if(meth==="cphi" && out.kfac!=null){
+    qbDetail="N<sub>q</sub> = "+fmt(sv(out.kfac),1)+" \u00b7 D<sub>ef</sub>/B = "+fmt(sv(out.debR),1);
+  }
   return {
     err:null, allOk:(out.allOk===true), sens:(out.sens||state.sens),
     warn:(Array.isArray(out.warnings)?out.warnings.slice():[]), meth:(out.methode||state.meth),
     govern:sv(out.tauxGouvernant), da:state.da,
-    Rb:NaN, qbDetail:"\u2014", Rs:NaN, D:g.D, z0:g.z0, RcD:sv(out.RcD),
+    Rb:sv(out.Rb), qbDetail:qbDetail, Rs:sv(out.Rs), D:g.D, z0:g.z0, RcD:sv(out.RcD),
     settle:{ sEls:sv(out.tassementELS), pts:(ct?ct.pts:[]), EM:NaN, fine:null, Fmax:(ct&&isFinite(ct.Fmax)?ct.Fmax:0) },
     RbK:sv(out.RbK), RbD:NaN, RsK:sv(out.RsK), RsD:NaN, RcK:sv(out.RcK), RcrK:sv(out.RcrK),
-    xi3:NaN, xi4:NaN, N:Math.max(1,Math.round(num("o_nprofil"))||1),
+    xi3:sv(out.xi3), xi4:sv(out.xi4), N:Math.max(1,Math.round(num("o_nprofil"))||1),
     Sinv:Math.min(2500,Math.max(100,(num("o_surf")>0?num("o_surf"):2500))),
-    redis:($("o_redis")&&$("o_redis").value==="oui"), grd:NaN,
-    checks:checks, G:num("c_G"), Q:num("c_Q"), fric:[],
+    redis:($("o_redis")&&$("o_redis").value==="oui"), grd:sv(out.gammaRd1),
+    checks:checks, G:num("c_G"), Q:num("c_Q"), fric:fric,
     cat:(isFinite(out.categorie)?out.categorie:p.cat), pile:p, cls:p.cls,
-    Ab:g.PG.Ab, perim:g.PG.perim, Def:NaN, debR:NaN,
-    baseLayer:(g.baseLayer||{soil:"argile"}), b:g.b, a:g.a, Ce:NaN, CeF:NaN, FdCar:sv(out.FdCar)
+    Ab:g.PG.Ab, perim:g.PG.perim, Def:sv(out.Def), debR:sv(out.debR),
+    baseLayer:(g.baseLayer||{soil:"argile"}), b:g.b, a:g.a, Ce:sv(out.Ce), CeF:NaN, FdCar:sv(out.FdCar)
   };
 }
 
@@ -1262,8 +1275,7 @@ function drawSettle(s,Fels){
   var W=420,H=300,mL=52,mR=16,mT=14,mB=40, i;
   if(!s || !s.pts || !s.pts.length || !(s.Fmax>0)){
     svg.innerHTML='<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="#F7F9FC"/>'
-      +'<text x="'+(W/2)+'" y="'+(H/2-6)+'" font-size="11" fill="#8A92A0" text-anchor="middle" font-family="monospace">Courbe charge\u2013tassement servie côté serveur</text>'
-      +'<text x="'+(W/2)+'" y="'+(H/2+12)+'" font-size="9.5" fill="#8A92A0" text-anchor="middle" font-family="monospace">(restitution en attente de validation \u2014 défaut NON pieux)</text>';
+      +'<text x="'+(W/2)+'" y="'+(H/2)+'" font-size="11" fill="#8A92A0" text-anchor="middle" font-family="monospace">Tassement non calculable (résistance nulle)</text>';
     return;
   }
   var maxF=s.Fmax, arrS=s.pts.map(function(p){ return p.s; }).concat([s.sEls]);
@@ -1353,7 +1365,7 @@ function buildSoilCoefTable(){
   var p=curPile(); var cls=p.cls;
   var h='<tr><th rowspan="2">Nature de sol</th><th colspan="2">Pointe \u2014 classe '+cls+'</th><th colspan="2">Frottement pressio</th><th colspan="2">Frottement pénétro</th><th rowspan="2">q<sub>s,max</sub><br>(kPa)</th></tr><tr><th>k<sub>p,max</sub></th><th>k<sub>c,max</sub></th><th>courbe</th><th>\u03b1<sub>PMT</sub></th><th>courbe</th><th>\u03b1<sub>CPT</sub></th></tr>';
   Object.keys(SOILS).forEach(function(s){ h+='<tr><td><span class="swatch" style="background:'+SOILS[s].color+'"></span> '+SOILS[s].label+'</td><td>\u2014</td><td>\u2014</td><td>\u2014</td><td>\u2014</td><td>\u2014</td><td>\u2014</td><td>\u2014</td></tr>'; });
-  h+='<tr><td colspan="8" style="font-size:10.5px;color:var(--color-text-secondary,#6b7280);text-align:left;line-height:1.5">Coefficients de portance et de frottement (Tableaux NF P 94-262 F.4.2.1 / G.4.2.1 / F.5.2 / G.5.2) appliqués côté serveur \u2014 restitution détaillée en attente de validation (expert + titulaire, défaut NON pieux).</td></tr>';
+  h+='<tr><td colspan="8" style="font-size:10.5px;color:var(--color-text-secondary,#6b7280);text-align:left;line-height:1.5">Coefficients de portance et de frottement (Tableaux NF P 94-262 F.4.2.1 / G.4.2.1 / F.5.2 / G.5.2) appliqués côté serveur. Le facteur retenu k<sub>p</sub>/k<sub>c</sub> et son plafond figurent dans le détail de portance du panneau Résultats après calcul.</td></tr>';
   t.innerHTML=h;
 }
 function updateXiInfo(){
@@ -1386,10 +1398,11 @@ function drawBeton(out){
 
 function drawPortance(Dcur, out){
   var el=$("res-content"); if(!el) return;
+  /* courbePortance servie par le serveur (grille re-echantillonnee) -> SVG. Absente =
+     pas de carte (l\u2019outil natif ne dessine rien quand la serie a < 2 points). */
   if(out && out.courbePortance && Array.isArray(out.courbePortance.rows) && out.courbePortance.rows.length>=2){
-    try{ var svg=portanceSvgFromServer(Dcur,out.courbePortance); if(svg){ el.insertAdjacentHTML("beforeend",svg); return; } }catch(e){}
+    try{ var svg=portanceSvgFromServer(Dcur,out.courbePortance); if(svg){ el.insertAdjacentHTML("beforeend",svg); } }catch(e){}
   }
-  el.insertAdjacentHTML("beforeend", '<div class="card" style="margin-top:20px"><div class="hd"><h2>Courbe de portance avec la profondeur</h2><span class="tag">'+(state.sens==="trac"?"traction":"compression")+' \u00b7 '+(state.meth==="pmt"?"pressio":state.meth==="cpt"?"pénétro":"c-\u03c6")+'</span></div><div class="bd"><div class="coef-note" style="margin:0">La courbe de portance en fonction de la profondeur d\u2019ancrage (aide au choix de l\u2019ancrage) est construite à partir de la capacité calculée côté serveur à chaque profondeur (méthode NF P 94-262 confidentielle). Sa restitution graphique est en attente de validation (élargissement de contrat, expert + titulaire \u2014 défaut NON pieux). Le verdict et les résistances ci-dessus sont issus du calcul serveur scellé au PV.</div></div></div>');
 }
 /* ================= FROTTEMENT NÉGATIF — interaction sol-pieu (t-z) =================
    Méthode de transfert de charge Frank & Zhao étendue au frottement négatif (guide
@@ -1439,9 +1452,11 @@ function drawDowndrag(prof, m){
     +'<div class="kpi"><div class="lab">Point neutre</div><div class="val">'+(m.zN!=null?fmt(m.zN,1):"\u2014")+'<span class="un">m</span></div><div class="sub">déplacement relatif nul</div></div>'
     +'<div class="kpi blue"><div class="lab">Tassement tête pieu</div><div class="val">'+fmt(m.wHead,1)+'<span class="un">mm</span></div><div class="sub">'+(m.mode==="impose"?("zone F.N. : "+fmt(m.zt,1)+"\u2013"+fmt(m.zb,1)+" m"):("sol en surface : "+fmt(m.s0,0)+" mm"))+'</div></div>'
     +'</div>';
-  var fig;
+  /* profilsDowndrag servi par le serveur (whitelist elargie) -> 3 panneaux SVG (port
+     fidele de drawDowndrag d\u2019origine). Absent = pas de carte (l\u2019outil natif dessine
+     toujours ; les KPI de synthese ci-dessus restent affiches). */
+  var fig="";
   if(prof && prof.length){ try{ fig=downdragSvg(prof,m); }catch(e){ fig=""; } }
-  else { fig='<div class="card"><div class="hd"><h2>Profils en profondeur</h2><span class="tag">t-z</span></div><div class="bd"><div class="coef-note" style="margin:0">Les profils détaillés (tassement, frottement axial, effort N en profondeur) sont calculés côté serveur (méthode confidentielle). Leur restitution graphique est en attente de validation (élargissement de contrat, expert + titulaire \u2014 défaut NON pieux). Les grandeurs de synthèse ci-dessus (N<sub>max</sub>, G<sub>sn</sub>, point neutre) sont issues du calcul serveur scellé au PV.</div></div></div>'; }
   host.innerHTML=kpis+fig
     +'<div class="notice" style="margin-top:18px">Le frottement négatif (G<sub>sn</sub> = '+fmt(m.Gsn/1000,2)+' MN) est une action permanente à <b>ajouter</b> à la charge en tête pour les vérifications (ch. 11 du guide). Au-dessus du point neutre ('+(m.zN!=null?fmt(m.zN,1)+" m":"\u2014")+') le sol entraîne le pieu vers le bas ; en dessous, frottement positif et pointe équilibrent l\u2019effort maximal N<sub>max</sub> = '+fmt(m.Nmax/1000,2)+' MN. Modèle t-z à valider par une étude \u0153dométrique.</div>';
 }

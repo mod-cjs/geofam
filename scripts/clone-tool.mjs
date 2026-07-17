@@ -1289,7 +1289,7 @@ const GEOPLAQUE_REFRESHRESULTS = [
   '  if(R.dipOn) h+=st("Pendage stratigraphie", "∂/∂x "+(R.dipX).toFixed(2)+" · ∂/∂y "+(R.dipY).toFixed(2)+" m/m");',
   '  if(R.recOn) h+=st("Recompression (fond de fouille)", "σv0 "+(R.sigV0).toFixed(0)+" kPa · k "+(R.kRec).toFixed(2));',
   '  if(R.overCap) h+=\'<div style="margin-top:10px;padding:9px 11px;border:1px solid var(--err);border-radius:7px;background:rgba(239,106,90,.10);color:var(--err);font-size:11px;line-height:1.45"><b>⚠ Capacité de l\\u2019interface dépassée (poinçonnement)</b> — la réaction requise excède q_lim sans équilibre admissible. Résultats à considérer comme non valides. Augmenter q_lim, élargir la fondation ou réduire la charge.</div>\';',
-  '  h+=\'<p style="font-size:10.5px;color:var(--ink-dim);margin-top:10px;line-height:1.5">θx = ∂w/∂y (rotation autour de X), θy = −∂w/∂x. La distorsion β est la pente résiduelle après retrait du plan moyen de chaque plaque ; l\\u2019inclinaison ϖ est ce basculement. Hypothèses : plaque mince de Kirchhoff, sol élastique linéaire (Steinbrenner + Boussinesq, substratum rigide). Calcul et cartographie exécutés côté serveur (méthode confidentielle) ; la carte est une grille d\\u2019affichage ré-échantillonnée (48×48) découplée du maillage.</p>\';',
+  '  h+=\'<p style="font-size:10.5px;color:var(--ink-dim);margin-top:10px;line-height:1.5">θx = ∂w/∂y (rotation autour de X), θy = −∂w/∂x (autour de Y). La distorsion β est la pente résiduelle après retrait du plan moyen (basculement) de chaque plaque ; l\\u2019inclinaison ϖ est ce basculement. Valeurs limites indicatives (EC7 annexe H) : à confronter au type de structure portée. Hypothèses : plaque mince de Kirchhoff, sol élastique linéaire (Steinbrenner + Boussinesq, substratum rigide). Fondation supposée posée en surface ; la recompression d\\u2019un fond de fouille est modélisable (k = E_ur/E₀), mais pour le sol vierge la pression nette et le facteur de profondeur ne sont pas appliqués (tassement conservatif si encastrée). Appuis additionnels (Winkler, ressorts ponctuels et linéiques) en parallèle du sol, linéaires-élastiques.</p>\';',
   '  b.innerHTML=h;',
   '  b.querySelectorAll("button[data-f]").forEach(function(btn){ btn.onclick=function(){ bakeField(btn.dataset.f); refreshResults(); draw(); }; });',
   '  var cb=document.getElementById("opt-crit"); if(cb) cb.onchange=function(){ R.showCrit=cb.checked; draw(); };',
@@ -1587,24 +1587,31 @@ const GEOPLAQUE_TRIRUN = [
 //    renderResults (fed par mapPieuxOutput), initPiles/curPile/PILES (Tableau A.1 =
 //    classes publiques), SOILS/EC7/DA_COMBOS (publics).
 //  - REECRIT (bridge / sortie whitelistee) : compute (async), computeDowndrag (async),
-//    drawBeton (verdict/taux/f_cd whitelistes ; sigma « — »), buildSoilCoefTable
-//    (libelles de sol + « — », abaques servies serveur), updateXiInfo (N/S saisie,
-//    xi3/xi4 « — »), drawSettle (courbe si servie, sinon placeholder), drawPortance
-//    (idem), drawDowndrag (KPI N_max/G_sn/point neutre WHITELISTES ; wHead « — » ;
-//    3 profils = placeholder tant que non elargi).
+//    drawBeton (verdict/taux/f_cd whitelistes ; sigma « — » — cf. RESIDU ci-dessous),
+//    buildSoilCoefTable (libelles de sol + « — » : abaques servies serveur, table non
+//    exposee), updateXiInfo (N/S saisie ; xi3/xi4 servis serveur — affiches apres calcul
+//    dans renderResults), drawSettle (courbe si servie, sinon message natif « non
+//    calculable »), drawPortance (courbe si servie, sinon rien — comme l'outil natif),
+//    drawDowndrag (KPI N_max/G_sn/point neutre + 3 profils SERVIS via profilsDowndrag).
 //
-// RESIDUS FERMES §8 (« defaut NON ») affiches « — » cote clone — VALEURS AFFICHEES par
-// l'outil d'origine mais NON whitelistees par PieuxOutputSchema : R_b/R_s bruts, R_d par
-// terme, p_le*/q_ce/k_p/k_c/D_ef (qbDetail), xi3/xi4, gamma_R;d1, C_e, frottement par
-// couche (fric[]), la courbe charge-tassement (settle.pts), les 3 profils de frottement
-// negatif, la courbe de portance en profondeur, et les abaques de l'onglet Coefficients.
-// >>> DECISION REQUISE (expert + titulaire) : ces grandeurs sont des intermediaires
-// PUBLIES de la norme (memes annexes que terzaghi, ADR 0015 reco A). Leur exposition =
-// ELARGISSEMENT gouverne du contrat pieux (comme terzaghi l'a eu). Le clone est deja
-// CABLE pour les consommer (champs serveur optionnels courbePortance/courbeTassement/
-// profilsDowndrag/wHead + colonnes fric) : leur arrivee au contrat allume les figures
-// SANS retoucher le clone. Tant que non decide, affichage « — » / placeholder (fidele
-// au regime de confidentialite actuel), signale comme ecart a trancher.
+// ELARGISSEMENT WHITELIST §8 (ADR 0015 reco A, decide expert + titulaire) : PieuxOutputSchema
+// expose desormais les intermediaires d'AFFICHAGE de la norme (memes annexes que terzaghi),
+// BRANCHES sur les cellules d'origine par mapPieuxOutput : R_b/R_s bruts (colonne « Brut R_m »),
+// p_le*/q_ce/k_p/k_c/D_ef (sous-texte KPI R_b via qbDetail), xi3/xi4/gamma_R;d1 (encart des
+// resistances), C_e/D_ef (synthese geometrique), frottement par couche (fric[] -> table q_s),
+// et les 3 courbes (courbePortance/courbeTassement/profilsDowndrag -> figures SVG). AUCUNE
+// re-derivation cliente : chaque nombre affiche vient d'un champ serveur whiteliste.
+//
+// RESIDUS FERMES §8 (toujours confidentiels — pas dans l'elargissement) affiches « — » :
+//  - R_d PAR TERME (RbD/RsD) : necessitent les coeffs partiels gouvernants (govElu.Rbf/Rsf),
+//    non exposes ; le R_d TOTAL (RcD) l'est. Le total « Brut R_m » = R_b + R_s (somme de deux
+//    valeurs deja affichees, comme dans renderResults d'origine).
+//  - sigma appliquees beton (sELU/sELS) + limite ELS : hors whitelist ; l'exposer = un-liner
+//    serveur (index.ts shapeOutput), PAS une re-derivation cliente (regle §8 titulaire, cf.
+//    burmister adm50). SIGNALE comme ecart a trancher.
+//  - abaques COMPLETES de l'onglet Coefficients (kp,max/kc,max/alpha/qs,max par sol x classe)
+//    + C_e;F (effet de groupe non-flottant) + ecretage q_ce (cap) + detail c-φ (Nc/σ′v) :
+//    science confidentielle, non exposee.
 //
 // UNITES : aucune conversion (le contrat PieuxInputSchema reprend les champs du HTML tels
 // quels — G/Q en kN, pl*/qc en MPa, gamma en kN/m3). SEULE reconciliation : la valeur de
@@ -1710,29 +1717,49 @@ const CASAGRANDE_BRIDGE_AND_SHIM = [
   '}',
   '',
   '/* SORTIE whitelistee (PieuxOutputSchema) -> objet R attendu par renderResults CONSERVE.',
-  '   Whitelistes : allOk/tauxGouvernant/warnings/RbK/RsK/RcK/RcD/RcrK/verifications/',
-  '   tassementELS/FdCar/methode/sens/D/categorie. RESIDUS FERMES (defaut NON) -> NaN/« — »/[]',
-  '   pour Rb/Rs bruts, RbD/RsD, qbDetail (p_le, q_ce, k_p), xi3/xi4, grd, Def/debR, Ce, fric.',
-  '   Geometrie (Ab/perim/a/b/baseLayer/D/z0/cat/cls) reconstruite depuis la SAISIE (publique). */',
+  '   Whitelistes BRANCHES : allOk/tauxGouvernant/warnings/methode/sens + resistances',
+  '   RbK/RsK/RcK/RcD/RcrK + Rb/Rs bruts + xi3/xi4/gammaRd1 + Def/debR + Ce + fric[] +',
+  '   tassementELS/FdCar/verifications/categorie. Le sous-texte qbDetail est reconstruit des',
+  '   scalaires ple/qce/kfac/kmax/debR (methode-dependant). RESIDUS FERMES -> NaN/« — » : RbD/RsD',
+  '   (coeffs partiels gouvernants non exposes ; RcD total l\\u2019est) et CeF (effet de groupe',
+  '   non-flottant, science confidentielle). Geometrie (Ab/perim/a/b/baseLayer/D/z0/cat/cls)',
+  '   reconstruite depuis la SAISIE (publique). */',
   'function mapPieuxOutput(out){',
   '  var g=pieuxGeomCtx(); var p=curPile();',
   '  var checks=(Array.isArray(out.verifications)?out.verifications:[]).map(function(v){',
   '    return { nom:(typeof v.nom==="string"?v.nom:""), comb:"", Fd:sv(v.Fd), Rd:sv(v.Rd) }; });',
   '  var ct=(out.courbeTassement&&Array.isArray(out.courbeTassement.pts))?out.courbeTassement:null;',
+  '  /* Frottement lateral par couche (out.fric[], whitelist elargie) -> tableau consomme',
+  '     tel quel par renderResults (soil/top/bot/dz/qs/dRs). null/[] si non fourni. */',
+  '  var fric=(Array.isArray(out.fric)?out.fric:[]).map(function(f){',
+  '    return { soil:(typeof f.soil==="string"?f.soil:"argile"), top:sv(f.top), bot:sv(f.bot),',
+  '      dz:sv(f.dz), qs:sv(f.qs), dRs:sv(f.dRs), qsm:(f.qsm==null?null:sv(f.qsm)), deg:(f.deg===true) }; });',
+  '  /* Sous-texte de la KPI R_b (detail de portance) reconstruit depuis les SCALAIRES',
+  '     serveur whitelistes (ple/qce/debR/kfac/kmax) — jamais une re-derivation de science.',
+  '     L\\u2019ecretage q_ce (cap) et le detail c-\\u03c6 (Nc/\\u03c3\\u2032v) restent confidentiels -> omis. */',
+  '  var meth=(out.methode||state.meth);',
+  '  var qbDetail="\\u2014";',
+  '  if(meth==="pmt" && out.ple!=null){',
+  '    qbDetail="p<sub>le</sub>* = "+fmt(sv(out.ple),2)+" MPa (zone D\\u2212b\\u2026D+3a) \\u00b7 D<sub>ef</sub>/B = "+fmt(sv(out.debR),1)+" (int\\u00e9gr\\u00e9 sur 10B au\\u2011dessus de la pointe) \\u00b7 k<sub>p</sub> = "+fmt(sv(out.kfac),2)+" (k<sub>p,max</sub>="+fmt(sv(out.kmax),2)+")";',
+  '  } else if(meth==="cpt" && out.qce!=null){',
+  '    qbDetail="q<sub>ce</sub> = "+fmt(sv(out.qce),2)+" MPa \\u00b7 D<sub>ef</sub>/B = "+fmt(sv(out.debR),1)+" (int\\u00e9gr\\u00e9 sur 10B au\\u2011dessus de la pointe) \\u00b7 k<sub>c</sub> = "+fmt(sv(out.kfac),2)+" (k<sub>c,max</sub>="+fmt(sv(out.kmax),2)+")";',
+  '  } else if(meth==="cphi" && out.kfac!=null){',
+  '    qbDetail="N<sub>q</sub> = "+fmt(sv(out.kfac),1)+" \\u00b7 D<sub>ef</sub>/B = "+fmt(sv(out.debR),1);',
+  '  }',
   '  return {',
   '    err:null, allOk:(out.allOk===true), sens:(out.sens||state.sens),',
   '    warn:(Array.isArray(out.warnings)?out.warnings.slice():[]), meth:(out.methode||state.meth),',
   '    govern:sv(out.tauxGouvernant), da:state.da,',
-  '    Rb:NaN, qbDetail:"\\u2014", Rs:NaN, D:g.D, z0:g.z0, RcD:sv(out.RcD),',
+  '    Rb:sv(out.Rb), qbDetail:qbDetail, Rs:sv(out.Rs), D:g.D, z0:g.z0, RcD:sv(out.RcD),',
   '    settle:{ sEls:sv(out.tassementELS), pts:(ct?ct.pts:[]), EM:NaN, fine:null, Fmax:(ct&&isFinite(ct.Fmax)?ct.Fmax:0) },',
   '    RbK:sv(out.RbK), RbD:NaN, RsK:sv(out.RsK), RsD:NaN, RcK:sv(out.RcK), RcrK:sv(out.RcrK),',
-  '    xi3:NaN, xi4:NaN, N:Math.max(1,Math.round(num("o_nprofil"))||1),',
+  '    xi3:sv(out.xi3), xi4:sv(out.xi4), N:Math.max(1,Math.round(num("o_nprofil"))||1),',
   '    Sinv:Math.min(2500,Math.max(100,(num("o_surf")>0?num("o_surf"):2500))),',
-  '    redis:($("o_redis")&&$("o_redis").value==="oui"), grd:NaN,',
-  '    checks:checks, G:num("c_G"), Q:num("c_Q"), fric:[],',
+  '    redis:($("o_redis")&&$("o_redis").value==="oui"), grd:sv(out.gammaRd1),',
+  '    checks:checks, G:num("c_G"), Q:num("c_Q"), fric:fric,',
   '    cat:(isFinite(out.categorie)?out.categorie:p.cat), pile:p, cls:p.cls,',
-  '    Ab:g.PG.Ab, perim:g.PG.perim, Def:NaN, debR:NaN,',
-  '    baseLayer:(g.baseLayer||{soil:"argile"}), b:g.b, a:g.a, Ce:NaN, CeF:NaN, FdCar:sv(out.FdCar)',
+  '    Ab:g.PG.Ab, perim:g.PG.perim, Def:sv(out.Def), debR:sv(out.debR),',
+  '    baseLayer:(g.baseLayer||{soil:"argile"}), b:g.b, a:g.a, Ce:sv(out.Ce), CeF:NaN, FdCar:sv(out.FdCar)',
   '  };',
   '}',
   '',
@@ -1853,8 +1880,9 @@ const CASAGRANDE_DOWNDRAG = [
   '}',
 ].join('\n');
 
-/** drawDowndrag() RÉÉCRIT : 4 KPI (N_max/G_sn/point neutre WHITELISTÉS ; wHead « — ») +
- * 3 profils si servis serveur (downdragSvg), sinon placeholder (défaut NON). */
+/** drawDowndrag() RÉÉCRIT : 4 KPI (N_max/G_sn/point neutre + wHead WHITELISTÉS via
+ * profilsDowndrag.wHead) + 3 profils servis serveur (downdragSvg) ; absent = pas de carte
+ * (port fidèle — l'outil natif dessine toujours), jamais de placeholder texte. */
 const CASAGRANDE_DRAWDOWNDRAG = [
   'function drawDowndrag(prof, m){',
   '  var host=$("fn-content"); if(!host) return;',
@@ -1864,23 +1892,25 @@ const CASAGRANDE_DRAWDOWNDRAG = [
   '    +\'<div class="kpi"><div class="lab">Point neutre</div><div class="val">\'+(m.zN!=null?fmt(m.zN,1):"\\u2014")+\'<span class="un">m</span></div><div class="sub">déplacement relatif nul</div></div>\'',
   '    +\'<div class="kpi blue"><div class="lab">Tassement tête pieu</div><div class="val">\'+fmt(m.wHead,1)+\'<span class="un">mm</span></div><div class="sub">\'+(m.mode==="impose"?("zone F.N. : "+fmt(m.zt,1)+"\\u2013"+fmt(m.zb,1)+" m"):("sol en surface : "+fmt(m.s0,0)+" mm"))+\'</div></div>\'',
   "    +'</div>';",
-  '  var fig;',
+  '  /* profilsDowndrag servi par le serveur (whitelist elargie) -> 3 panneaux SVG (port',
+  '     fidele de drawDowndrag d\\u2019origine). Absent = pas de carte (l\\u2019outil natif dessine',
+  '     toujours ; les KPI de synthese ci-dessus restent affiches). */',
+  '  var fig="";',
   '  if(prof && prof.length){ try{ fig=downdragSvg(prof,m); }catch(e){ fig=""; } }',
-  '  else { fig=\'<div class="card"><div class="hd"><h2>Profils en profondeur</h2><span class="tag">t-z</span></div><div class="bd"><div class="coef-note" style="margin:0">Les profils détaillés (tassement, frottement axial, effort N en profondeur) sont calculés côté serveur (méthode confidentielle). Leur restitution graphique est en attente de validation (élargissement de contrat, expert + titulaire \\u2014 défaut NON pieux). Les grandeurs de synthèse ci-dessus (N<sub>max</sub>, G<sub>sn</sub>, point neutre) sont issues du calcul serveur scellé au PV.</div></div></div>\'; }',
   '  host.innerHTML=kpis+fig',
   '    +\'<div class="notice" style="margin-top:18px">Le frottement négatif (G<sub>sn</sub> = \'+fmt(m.Gsn/1000,2)+\' MN) est une action permanente à <b>ajouter</b> à la charge en tête pour les vérifications (ch. 11 du guide). Au-dessus du point neutre (\'+(m.zN!=null?fmt(m.zN,1)+" m":"\\u2014")+\') le sol entraîne le pieu vers le bas ; en dessous, frottement positif et pointe équilibrent l\\u2019effort maximal N<sub>max</sub> = \'+fmt(m.Nmax/1000,2)+\' MN. Modèle t-z à valider par une étude \\u0153dométrique.</div>\';',
   '}',
 ].join('\n');
 
-/** drawSettle() RÉÉCRIT : courbe charge-tassement si servie (courbeTassement), sinon placeholder. */
+/** drawSettle() RÉÉCRIT : courbe charge-tassement si servie (courbeTassement), sinon
+ * message natif « Tassement non calculable (résistance nulle) » (port fidèle). */
 const CASAGRANDE_DRAWSETTLE = [
   'function drawSettle(s,Fels){',
   '  var svg=$("settle-svg"); if(!svg) return;',
   '  var W=420,H=300,mL=52,mR=16,mT=14,mB=40, i;',
   '  if(!s || !s.pts || !s.pts.length || !(s.Fmax>0)){',
   '    svg.innerHTML=\'<rect x="0" y="0" width="\'+W+\'" height="\'+H+\'" fill="#F7F9FC"/>\'',
-  '      +\'<text x="\'+(W/2)+\'" y="\'+(H/2-6)+\'" font-size="11" fill="#8A92A0" text-anchor="middle" font-family="monospace">Courbe charge\\u2013tassement servie côté serveur</text>\'',
-  '      +\'<text x="\'+(W/2)+\'" y="\'+(H/2+12)+\'" font-size="9.5" fill="#8A92A0" text-anchor="middle" font-family="monospace">(restitution en attente de validation \\u2014 défaut NON pieux)</text>\';',
+  '      +\'<text x="\'+(W/2)+\'" y="\'+(H/2)+\'" font-size="11" fill="#8A92A0" text-anchor="middle" font-family="monospace">Tassement non calculable (résistance nulle)</text>\';',
   '    return;',
   '  }',
   '  var maxF=s.Fmax, arrS=s.pts.map(function(p){ return p.s; }).concat([s.sEls]);',
@@ -1919,14 +1949,16 @@ const CASAGRANDE_DRAWBETON = [
   '}',
 ].join('\n');
 
-/** drawPortance() RÉÉCRIT : courbe si servie (courbePortance), sinon placeholder (défaut NON). */
+/** drawPortance() RÉÉCRIT : courbe si servie (courbePortance), sinon rien (port fidèle —
+ * l'outil natif ne dessine pas de carte quand la série a moins de 2 points). */
 const CASAGRANDE_DRAWPORTANCE = [
   'function drawPortance(Dcur, out){',
   '  var el=$("res-content"); if(!el) return;',
+  '  /* courbePortance servie par le serveur (grille re-echantillonnee) -> SVG. Absente =',
+  '     pas de carte (l\\u2019outil natif ne dessine rien quand la serie a < 2 points). */',
   '  if(out && out.courbePortance && Array.isArray(out.courbePortance.rows) && out.courbePortance.rows.length>=2){',
-  '    try{ var svg=portanceSvgFromServer(Dcur,out.courbePortance); if(svg){ el.insertAdjacentHTML("beforeend",svg); return; } }catch(e){}',
+  '    try{ var svg=portanceSvgFromServer(Dcur,out.courbePortance); if(svg){ el.insertAdjacentHTML("beforeend",svg); } }catch(e){}',
   '  }',
-  '  el.insertAdjacentHTML("beforeend", \'<div class="card" style="margin-top:20px"><div class="hd"><h2>Courbe de portance avec la profondeur</h2><span class="tag">\'+(state.sens==="trac"?"traction":"compression")+\' \\u00b7 \'+(state.meth==="pmt"?"pressio":state.meth==="cpt"?"pénétro":"c-\\u03c6")+\'</span></div><div class="bd"><div class="coef-note" style="margin:0">La courbe de portance en fonction de la profondeur d\\u2019ancrage (aide au choix de l\\u2019ancrage) est construite à partir de la capacité calculée côté serveur à chaque profondeur (méthode NF P 94-262 confidentielle). Sa restitution graphique est en attente de validation (élargissement de contrat, expert + titulaire \\u2014 défaut NON pieux). Le verdict et les résistances ci-dessus sont issus du calcul serveur scellé au PV.</div></div></div>\');',
   '}',
 ].join('\n');
 
@@ -1938,7 +1970,7 @@ const CASAGRANDE_BUILDSOILCOEF = [
   '  var p=curPile(); var cls=p.cls;',
   '  var h=\'<tr><th rowspan="2">Nature de sol</th><th colspan="2">Pointe \\u2014 classe \'+cls+\'</th><th colspan="2">Frottement pressio</th><th colspan="2">Frottement pénétro</th><th rowspan="2">q<sub>s,max</sub><br>(kPa)</th></tr><tr><th>k<sub>p,max</sub></th><th>k<sub>c,max</sub></th><th>courbe</th><th>\\u03b1<sub>PMT</sub></th><th>courbe</th><th>\\u03b1<sub>CPT</sub></th></tr>\';',
   "  Object.keys(SOILS).forEach(function(s){ h+='<tr><td><span class=\"swatch\" style=\"background:'+SOILS[s].color+'\"></span> '+SOILS[s].label+'</td><td>\\u2014</td><td>\\u2014</td><td>\\u2014</td><td>\\u2014</td><td>\\u2014</td><td>\\u2014</td><td>\\u2014</td></tr>'; });",
-  '  h+=\'<tr><td colspan="8" style="font-size:10.5px;color:var(--color-text-secondary,#6b7280);text-align:left;line-height:1.5">Coefficients de portance et de frottement (Tableaux NF P 94-262 F.4.2.1 / G.4.2.1 / F.5.2 / G.5.2) appliqués côté serveur \\u2014 restitution détaillée en attente de validation (expert + titulaire, défaut NON pieux).</td></tr>\';',
+  '  h+=\'<tr><td colspan="8" style="font-size:10.5px;color:var(--color-text-secondary,#6b7280);text-align:left;line-height:1.5">Coefficients de portance et de frottement (Tableaux NF P 94-262 F.4.2.1 / G.4.2.1 / F.5.2 / G.5.2) appliqués côté serveur. Le facteur retenu k<sub>p</sub>/k<sub>c</sub> et son plafond figurent dans le détail de portance du panneau Résultats après calcul.</td></tr>\';',
   '  t.innerHTML=h;',
   '}',
 ].join('\n');
