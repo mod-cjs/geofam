@@ -34,6 +34,8 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     '.next/**',
+    // distDirs alternatifs (ROADSEN_DISTDIR, specs de fidelite) — artefacts generes.
+    '.next-*/**',
     'out/**',
     'build/**',
     'next-env.d.ts',

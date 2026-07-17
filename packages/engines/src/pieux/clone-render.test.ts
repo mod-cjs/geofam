@@ -191,16 +191,52 @@ d(
       expect(p.coeffs.k_gG).toBe(1.35);
       expect(p.layers.length).toBe(fx.input.layers.length);
       expect(p.geom.section).toBe(fx.input.geom.section);
-      // 5. RÉSIDUS FERMÉS (défaut NON) : p_le*/q_ce/k_p (qbDetail), frottement par couche,
-      //    R_b/R_s bruts -> jamais affichés numériquement, table frottement vide (« — »).
+      // 5. AFFICHAGE DÉTAILLÉ (whitelist élargie) branché sur les cellules d'origine —
+      //    plus AUCUN « — » pour un champ que le serveur FOURNIT. Chaque valeur affichée
+      //    == valeur serveur exacte (arbitre : la sortie serveur runPieux).
+      // 5a. colonne « Brut R_m » : R_b et R_s bruts.
+      expect(out.Rb, 'PMT nominal doit produire R_b brut').not.toBeNull();
+      expect(out.Rs, 'PMT nominal doit produire R_s brut').not.toBeNull();
+      if (out.Rb != null) expect(rc).toContain(fmt(out.Rb, 0));
+      if (out.Rs != null) expect(rc).toContain(fmt(out.Rs, 0));
+      // 5b. sous-texte KPI R_b : p_le* / k_p / k_p,max (scalaires serveur, méthode pressio).
+      expect(out.ple, 'PMT -> p*le servi').not.toBeNull();
+      if (out.ple != null) {
+        expect(rc).toContain('p<sub>le</sub>* = ' + fmt(out.ple, 2) + ' MPa');
+      }
+      if (out.kfac != null) expect(rc).toContain('k<sub>p</sub> = ' + fmt(out.kfac, 2));
+      if (out.kmax != null) expect(rc).toContain('k<sub>p,max</sub>=' + fmt(out.kmax, 2));
+      // 5c. encart des résistances : ξ₃ / ξ₄ / γ_R;d1.
+      if (out.xi3 != null) expect(rc).toContain('ξ₃ = ' + fmt(out.xi3, 2));
+      if (out.xi4 != null) expect(rc).toContain('ξ₄ = ' + fmt(out.xi4, 2));
+      if (out.gammaRd1 != null)
+        expect(rc).toContain('γ<sub>R;d1</sub> = ' + fmt(out.gammaRd1, 2));
+      // 5d. synthèse géométrique : D_ef · D_ef/B et effet de groupe C_e.
+      if (out.Def != null && out.debR != null)
+        expect(rc).toContain(
+          fmt(out.Def, 2) + ' m · D<sub>ef</sub>/B = ' + fmt(out.debR, 1),
+        );
+      if (out.Ce != null)
+        expect(rc).toContain(
+          'Effet de groupe C<sub>e</sub></td><td class="r">' + fmt(out.Ce, 2),
+        );
+      // 5e. table « Frottement latéral par couche » remplie depuis fric[] (cote de couche).
+      expect(out.fric, 'PMT -> fric[] servi').not.toBeNull();
+      expect(rc).toContain('Frottement latéral par couche');
+      if (out.fric && out.fric.length) {
+        const f0 = out.fric[0]!;
+        expect(rc).toContain(fmt(f0.top, 1) + ' – ' + fmt(f0.bot, 1));
+      }
+      // 6. RÉSIDUS ENCORE FERMÉS : R_d PAR TERME (RbD/RsD) hors whitelist -> « — » présent.
+      //    Aucun symbole MOTEUR brut (underscore) ne fuit malgré l'affichage détaillé.
       expect(rc).toContain('—');
       expect(rc).not.toContain('p_le');
       expect(rc).not.toContain('q_ce');
-      // 6. aucune fuite grossière ni valeur non définie.
+      // 7. aucune fuite grossière ni valeur non définie.
       expect(rc).not.toContain('undefined');
       expect(rc).not.toContain('[object Object]');
       expect(/\bNaN\b/.test(rc)).toBe(false);
-      // 7. aucun symbole moteur dans le DOM rendu.
+      // 8. aucun symbole moteur dans le DOM rendu.
       expect(rc).not.toMatch(/portanceCore|settlement|betonCheck|kpMax|alphaPMT/);
 
       win.close?.();

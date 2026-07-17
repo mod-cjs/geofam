@@ -29,6 +29,35 @@ import { TOOLS, stripCommentsAndStrings, scanForbiddenComments } from './clone-t
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '..');
 
+/**
+ * PHRASES INTERDITES dans TOUT clone servi (directive titulaire) : plus aucun texte
+ * « placeholder » du type « en attente de validation » — chaque restitution est soit
+ * le rendu réel de la sortie serveur, soit le comportement natif de l'outil. NB : on ne
+ * bannit PAS « méthode confidentielle » ici — c'est une divulgation LÉGITIME et validée
+ * (heatmap GEOPLAQUE design-sûr) ; la bannir casserait un clone conforme.
+ */
+const BANNED_PHRASES = ['attente de validation'];
+
+/** Recense les PHRASES interdites (placeholders bannis) dans le HTML brut d'un clone. */
+function bannedPhraseViolations(html) {
+  const hits = [];
+  for (const phrase of BANNED_PHRASES) {
+    const idx = html.indexOf(phrase);
+    if (idx >= 0) {
+      const from = Math.max(0, idx - 24);
+      hits.push({
+        symbol: phrase,
+        kind: 'phrase',
+        sample: html
+          .slice(from, idx + phrase.length + 8)
+          .replace(/\s+/g, ' ')
+          .trim(),
+      });
+    }
+  }
+  return hits;
+}
+
 /** Concatene le CODE (hors chaines/commentaires) de tous les <script> d'un HTML. */
 function scriptCodeOf(html) {
   const re = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
@@ -83,6 +112,8 @@ export function auditHtml(html, forbiddenSymbols) {
   for (const h of scriptCommentViolations(html, forbiddenSymbols)) {
     violations.push({ symbol: h.symbol, kind: 'prose', sample: h.sample });
   }
+  // PLACEHOLDERS BANNIS (directive titulaire) — transverse à tous les clones.
+  for (const h of bannedPhraseViolations(html)) violations.push(h);
   return violations;
 }
 
@@ -197,6 +228,16 @@ if (isMain()) {
       `[audit] self-test temoin prose (burIntegrateML) capturé : ${proseCaught ? 'OUI' : 'NON'}`,
     );
     if (!proseCaught) allCaught = false;
+
+    // Temoin PHRASE INTERDITE — un clone qui contiendrait un placeholder « en attente de
+    // validation » (rendu ou prose) doit ECHOUER (directive titulaire, transverse aux 5).
+    const phraseWitness =
+      '<html><body><div>Restitution en attente de validation (défaut NON).</div></body></html>';
+    const phraseCaught = auditHtml(phraseWitness, []).some((v) => v.kind === 'phrase');
+    console.log(
+      `[audit] self-test temoin phrase (attente de validation) capturé : ${phraseCaught ? 'OUI' : 'NON'}`,
+    );
+    if (!phraseCaught) allCaught = false;
 
     // Le clone reel DOIT passer.
     let realClean = true;

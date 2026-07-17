@@ -117,7 +117,9 @@ fi
 if $TOUCH_MIG; then
   fail=0
   while IFS= read -r f; do
-    if grep -IniE "drop +(table|column|schema|constraint|index|type|sequence|view)|truncate|delete +from|alter +table .* drop" "$f" >/dev/null 2>&1; then
+    # Les lignes de commentaire SQL (--) sont exclues : un mot-cle DDL cite dans
+    # une explication n'est pas du DDL executable (faux positifs 0006/0022).
+    if grep -IvE '^[[:space:]]*--' "$f" | grep -niE "drop +(table|column|schema|constraint|index|type|sequence|view)|truncate|delete +from|alter +table .* drop" >/dev/null 2>&1; then
       grep -Iq "ROADSEN-MIGRATION-REVIEWED:" "$f" || { echo "   DDL destructeur non revu : $f"; fail=1; }
     fi
   done < <(find "$API/prisma/migrations" -name "migration.sql" 2>/dev/null)
