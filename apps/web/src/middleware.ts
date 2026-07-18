@@ -13,6 +13,16 @@
  *  - Token absent/expiré/invalide → redirect /login?returnTo=...
  *  - Slug non-membre → redirect silencieux vers première org (anti-énumération).
  *
+ * ROUTE RACINE `/` (landing publique — cf. mission landing GEOFAM) :
+ *  - Visiteur authentifié (token valide + ≥1 org) → redirect direct vers son app
+ *    (`/app/[firstOrgSlug]/projets`), comme avant.
+ *  - Visiteur NON authentifié (pas de token, token invalide/expiré, ou token sans
+ *    org) → laissé passer (`NextResponse.next()`) : `/` sert alors la landing
+ *    publique (`src/app/page.tsx`), pas un redirect vers /login. Un token
+ *    invalide est traité comme « non authentifié » (jamais d'erreur ni de boucle
+ *    de redirection) : au pire, la landing s'affiche à un utilisateur dont le
+ *    token a expiré, ce qui est sans risque (page publique).
+ *
  * MODE MOCK (NEXT_PUBLIC_API_BASE_URL absente) :
  *  - Lit le cookie `roadsen_mock_auth` (posé par LoginClient en démo).
  *  - MOCK_ORGS codés en dur, comportement identique à l'original.
@@ -84,14 +94,18 @@ async function realModeMiddleware(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
   const rawToken = request.cookies.get(TOKEN_COOKIE)?.value ?? null;
 
-  // ---- Route racine ----
+  // ---- Route racine — landing publique (visiteur non authentifié) ou
+  // redirect direct vers l'app (visiteur déjà connecté) ----
   if (pathname === '/') {
     if (!rawToken) {
-      return NextResponse.redirect(new URL('/login', request.url));
+      // Pas de token : laisse passer -> src/app/page.tsx rend la landing.
+      return NextResponse.next();
     }
     const claims = await verifyAccessToken(rawToken);
     if (!claims?.orgs?.length) {
-      return NextResponse.redirect(new URL('/login', request.url));
+      // Token présent mais invalide/expiré/sans org : traité comme visiteur
+      // non authentifié -> landing (jamais de redirect /login en boucle ici).
+      return NextResponse.next();
     }
     const firstOrg = claims.orgs[0];
     return NextResponse.redirect(new URL(`/app/${firstOrg.slug}/projets`, request.url));
@@ -182,13 +196,14 @@ async function realModeMiddleware(request: NextRequest): Promise<NextResponse> {
 function mockModeMiddleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
 
-  // Redirect racine → /login ou /app/[firstOrg]/projets
+  // Route racine — landing publique (non authentifié) ou redirect vers l'app
+  // (authentifié), symétrique au mode réel ci-dessus.
   if (pathname === '/') {
     const authCookie = request.cookies.get('roadsen_mock_auth');
     if (authCookie?.value) {
       return NextResponse.redirect(new URL('/app/be-routes-dakar/projets', request.url));
     }
-    return NextResponse.redirect(new URL('/login', request.url));
+    return NextResponse.next();
   }
 
   // Routes auth — si déjà connecté → redirect vers l'app

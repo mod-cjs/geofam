@@ -133,6 +133,13 @@
   --nav-selected:      rgba(255, 255, 255, 0.08);
   --muted-on-nav:      rgba(255, 255, 255, 0.55);
   --border-nav:        rgba(255, 255, 255, 0.08);
+
+  /* --- Marketing (landing publique GEOFAM `/` uniquement) ---
+     Fond du hero + de la nav sticky transparente. Texte blanc dessus ≈ 11,6:1
+     (WCAG 2.2, AAA) — vérifié analytiquement, cf. rapport de mission landing.
+     N'est PAS utilisé dans l'app authentifiée : usage volontairement isolé
+     à src/app/page.tsx + LandingNav.tsx. */
+  --marketing-navy:    #1b3a5b;
 }
 
 /* ------------------------------------------------------------------ */

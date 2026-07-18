@@ -8,6 +8,7 @@ import type { ReactNode } from 'react';
 import { Providers } from '@/providers';
 import { Sidebar } from '@/components/shell/Sidebar';
 import { Topbar } from '@/components/shell/Topbar';
+import { HelpLauncher } from '@/components/shell/HelpLauncher';
 
 interface ShellLayoutProps {
   children: ReactNode;
@@ -44,6 +45,7 @@ export default async function ShellLayout({ children, params }: ShellLayoutProps
 
       <Sidebar orgSlug={orgSlug} />
       <Topbar orgSlug={orgSlug} />
+      <HelpLauncher orgSlug={orgSlug} />
 
       {/* Contenu principal — décalé selon la sidebar */}
       <main

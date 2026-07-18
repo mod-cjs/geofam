@@ -288,14 +288,37 @@ describe('middleware réel — route protégée /app/[orgSlug]/...', () => {
 // Suite 2 — Route racine /
 // ---------------------------------------------------------------------------
 
-describe('middleware réel — route racine /', () => {
-  it('given aucun token, when GET /, then redirect /login', async () => {
-    const req = makeRequest('/', {});
-    const res = await middleware(req);
+describe('middleware réel — route racine / (landing publique GEOFAM)', () => {
+  it(
+    'given aucun token, ' +
+      'when GET /, ' +
+      'then passe (next) — sert la landing publique (src/app/page.tsx), pas /login',
+    async () => {
+      const req = makeRequest('/', {});
+      const res = await middleware(req);
 
-    const redirect = asRedirect(res);
-    expect(new URL(redirect.destination).pathname).toBe('/login');
-  });
+      asNext(res);
+    },
+  );
+
+  it(
+    'given un token invalide/expiré, ' +
+      'when GET /, ' +
+      'then passe (next) — traité comme non authentifié, affiche la landing (pas de boucle /login)',
+    async () => {
+      const token = signValidToken({
+        sub: 'usr_01',
+        typ: 'access',
+        orgs: ORG_CLAIMS,
+        iat: 0,
+        exp: 1, // expiré depuis 1970
+      });
+      const req = makeRequest('/', { roadsen_access_token: token });
+      const res = await middleware(req);
+
+      asNext(res);
+    },
+  );
 
   it('given un token valide, when GET /, then redirect vers première org', async () => {
     const token = await signValidToken({
