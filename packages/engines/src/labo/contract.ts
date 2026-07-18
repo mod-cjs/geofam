@@ -340,10 +340,12 @@ const ClassSchema = z
  * on l'expose NOMINATIVEMENT, en `.strict()` fail-closed (une cle inconnue est rejetee).
  * Chaque sous-objet reflete le miroir DOM d'un kernel (cf. engine.ts DET.*).
  *
- * PORTEE PILOTE (#56) : essais wires a ce jour = teneur en eau, granulometrie, Atterberg,
- * VBS, Proctor (les representatifs : par-ligne + 3 courbes + 3 encarts normatifs). Les
- * autres essais sortent leurs AGREGATS (champs plats ci-dessous) ; leur detail par ligne
- * suit le meme patron (RESIDU documente). `.strict()` empeche toute cle non declaree.
+ * PORTEE COMPLETE (#56 + detail complet) : les 20 essais sont wires au detail par ligne —
+ * teneur en eau, granulometrie, Atterberg, VBS, Proctor, ρs, CBR multi-energies, cisaillement
+ * direct, masse volumique apparente, œdometre, UCS, triaxial UU, triaxial CU/CD, equivalent de
+ * sable, Los Angeles, fragmentation SZ, micro-Deval (norme + campagne), ρ & absorption des
+ * granulats, sulfates. Chaque sous-objet = miroir DOM du kernel (colonnes par ligne + series
+ * de courbe + alertes normatives). `.strict()` empeche toute cle non declaree (fail-closed).
  */
 /** Couple (x, y) d'une serie de courbe (fini des deux cotes). */
 const Point2 = z.tuple([z.number().finite(), z.number().finite()]);
@@ -443,6 +445,205 @@ const DetailSchema = z
       })
       .strict()
       .optional(),
+    /** ρs (pycnometre) : md/ρs par determination (3) + ρw(T)/ρL/moyenne + concordance ≤0,03. */
+    rhos: z
+      .object({
+        rows: z.array(z.object({ md: NumOrNull, rs: NumOrNull }).strict()).max(3),
+        rwT: NumOrNull,
+        rLeff: NumOrNull,
+        mean: NumOrNull,
+        spread: NumOrNull,
+        ok: z.boolean().nullable(),
+        essais: z.number().int().min(0).max(3),
+      })
+      .strict()
+      .optional(),
+    /** CBR multi-energies : par moule (net/ρh/ρd/compacite/gonflement/CBR 2,5-5-maxi) +
+     *  droite CBR-compacite + series de poinconnement (canvas). */
+    cbr: z
+      .object({
+        rows: z
+          .array(
+            z
+              .object({
+                coups: NumOrNull,
+                net: NumOrNull,
+                dh: NumOrNull,
+                ds: NumOrNull,
+                comp: NumOrNull,
+                gp: NumOrNull,
+                c25: NumOrNull,
+                c5: NumOrNull,
+                maxi: NumOrNull,
+              })
+              .strict(),
+          )
+          .max(3),
+        ydCBR: NumOrNull,
+        icbr: NumOrNull,
+        cible: NumOrNull,
+        cbType: z.string().max(8).nullable(),
+        gonfl: NumOrNull,
+        moules: z.number().int().min(0).max(3),
+        varPts: z.array(Point2).max(3),
+        reg: z
+          .object({ a: z.number().finite(), b: z.number().finite() })
+          .strict()
+          .nullable(),
+        pen: z.array(z.array(Point2).max(10)).max(3),
+      })
+      .strict()
+      .optional(),
+    /** Cisaillement direct : σ′v/τpic/τres + ρd/e/SR par eprouvette (4) + droites + R². */
+    cisail: z
+      .object({
+        rows: z
+          .array(
+            z
+              .object({
+                sv: NumOrNull,
+                tp: NumOrNull,
+                tr: NumOrNull,
+                rd: NumOrNull,
+                e: NumOrNull,
+                sr: NumOrNull,
+              })
+              .strict(),
+          )
+          .max(4),
+        c: NumOrNull,
+        phi: NumOrNull,
+        phiR: NumOrNull,
+        cR: NumOrNull,
+        r2: NumOrNull,
+        eprouvettes: z.number().int().min(0).max(4),
+        A_cm2: NumOrNull,
+        ptsP: z.array(Point2).max(4),
+        ptsR: z.array(Point2).max(4),
+        regP: z
+          .object({ a: z.number().finite(), b: z.number().finite() })
+          .strict()
+          .nullable(),
+        regR: z
+          .object({ a: z.number().finite(), b: z.number().finite() })
+          .strict()
+          .nullable(),
+      })
+      .strict()
+      .optional(),
+    /** Masse volumique apparente : volume/ρ/ρd + w utilisee + note V<50 cm³. */
+    dens: z
+      .object({
+        Vcm3: NumOrNull,
+        rho: NumOrNull,
+        rhod: NumOrNull,
+        w: NumOrNull,
+        petitV: z.boolean(),
+      })
+      .strict()
+      .optional(),
+    /** Oedometre : Hf/ε_v/e par palier (12) + e₀/ρd/Hs/A + Cc/Cs + serie e-log(σ'). */
+    oedo: z
+      .object({
+        paliers: z
+          .array(z.object({ Hf: NumOrNull, ev: NumOrNull, e: NumOrNull }).strict())
+          .max(12),
+        e0: NumOrNull,
+        rd: NumOrNull,
+        Hs: NumOrNull,
+        A: NumOrNull,
+        Cc: NumOrNull,
+        Cs: NumOrNull,
+        points: z.number().int().min(0).max(12),
+        curvePts: z.array(Point2).max(12),
+      })
+      .strict()
+      .optional(),
+    /** Compression simple (UCS) : qu + cu = qu/2. */
+    ucs: z.object({ qu: NumOrNull, cu: NumOrNull }).strict().optional(),
+    /** Triaxial UU : σ1/cu par eprouvette (3) + cu moyen. */
+    triuu: z
+      .object({
+        rows: z.array(z.object({ s1: NumOrNull, cu: NumOrNull }).strict()).max(3),
+        cu_uu: NumOrNull,
+        eprouvettes: z.number().int().min(0).max(3),
+      })
+      .strict()
+      .optional(),
+    /** Triaxial CU/CD : s/t (centre/rayon de Mohr) par eprouvette (3) + c′/φ′. */
+    tricu: z
+      .object({
+        rows: z.array(z.object({ s: NumOrNull, t: NumOrNull }).strict()).max(3),
+        c: NumOrNull,
+        phi: NumOrNull,
+        eprouvettes: z.number().int().min(0).max(3),
+      })
+      .strict()
+      .optional(),
+    /** Equivalent de sable : SE par essai (2) + SE moyen. */
+    es: z
+      .object({
+        rows: z.array(z.object({ se: NumOrNull }).strict()).max(2),
+        es: NumOrNull,
+        essais: z.number().int().min(0).max(2),
+      })
+      .strict()
+      .optional(),
+    /** Los Angeles : LA + prise M + conformite granulaire. */
+    la: z
+      .object({
+        la: NumOrNull,
+        M: NumOrNull,
+        label: z.string().max(8).nullable(),
+        conformite: z.string().max(80).nullable(),
+      })
+      .strict()
+      .optional(),
+    /** Fragmentation SZ : refus/passant par tamis (5) + Σ passant + SZ. */
+    sz: z
+      .object({
+        rows: z
+          .array(
+            z.object({ s: z.number().finite(), ref: NumOrNull, pas: NumOrNull }).strict(),
+          )
+          .max(5),
+        sumPass: NumOrNull,
+        sz: NumOrNull,
+      })
+      .strict()
+      .optional(),
+    /** Micro-Deval : mode norme (coefficient par eprouvette + conformite) OU campagne
+     *  (4 pertes + CMDS/CMDE/CMD). Champs optionnels selon le mode (discrimine par `mode`). */
+    mde: z
+      .object({
+        mode: z.enum(['norme', 'camp']),
+        rows: z
+          .array(z.object({ cc: NumOrNull }).strict())
+          .max(2)
+          .optional(),
+        mde: NumOrNull,
+        essais: z.number().int().min(0).max(2).optional(),
+        label: z.string().max(12).nullable().optional(),
+        conformite: z.string().max(120).nullable().optional(),
+        pertes: z.array(NumOrNull).max(4).optional(),
+        cmds: NumOrNull.optional(),
+        cmde: NumOrNull.optional(),
+        cmd: NumOrNull.optional(),
+      })
+      .strict()
+      .optional(),
+    /** Masse volumique & absorption des granulats : ρa/ρrd/ρssd + WA24. */
+    rho: z
+      .object({
+        ra: NumOrNull,
+        rrd: NumOrNull,
+        rssd: NumOrNull,
+        wa: NumOrNull,
+      })
+      .strict()
+      .optional(),
+    /** Sulfates : SO₃ + SO₄ = SO₃·1,2. */
+    sulf: z.object({ so3: NumOrNull, so4: NumOrNull }).strict().optional(),
   })
   .strict();
 

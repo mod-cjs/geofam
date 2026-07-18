@@ -438,7 +438,7 @@ function calcVbs(state, D, num, DET) {
 function rhoWaterT(T) {
   return T == null ? null : 1 / (1 + (Math.pow(2.31 * T - 2, 2) - 182) * 1e-6);
 }
-function calcRhos(state, D, num, modes) {
+function calcRhos(state, D, num, modes, DET) {
   const T = num('rs_T'),
     liq = state['rs_liq'] || 'water';
   const rwT = rhoWaterT(T);
@@ -448,6 +448,7 @@ function calcRhos(state, D, num, modes) {
   }
   const rLeff = rL != null ? rL : rwT || 0.998;
   const vals = [];
+  const rows = [];
   for (let i = 1; i <= 3; i++) {
     const m0 = num('rs2_m0_' + i),
       m1 = num('rs2_m1_' + i),
@@ -472,10 +473,22 @@ function calcRhos(state, D, num, modes) {
         vals.push(rs);
       }
     }
+    rows.push({ md, rs }); // $('rs_md'+i)=md.toFixed(2), $('rs_rs'+i)=rs.toFixed(3)
   }
   let mean = null;
   if (vals.length) mean = vals.reduce((a, b) => a + b, 0) / vals.length;
   D.rhos = mean == null ? null : +mean.toFixed(2);
+  if (DET) {
+    // Miroir du bloc concordance de calcRhos (HTML L.1140-1145) : ecart entre determinations
+    // et controle <= 0,03 Mg/m³ (chip « Concordance »). Valeurs deja calculees, aucune science.
+    let spread = null,
+      ok = null;
+    if (vals.length >= 2) {
+      spread = Math.max(...vals) - Math.min(...vals);
+      ok = spread <= 0.03;
+    }
+    DET.rhos = { rows, rwT, rLeff, mean, spread, ok, essais: vals.length };
+  }
 }
 
 function fitPar(pts) {
@@ -585,7 +598,7 @@ function calcProctor(state, D, num, modes, DET) {
   }
 }
 
-function calcCbr(state, D, num, modes) {
+function calcCbr(state, D, num, modes, DET) {
   // reference OPM (auto depuis Proctor si vide)
   let ydmax = num('cb_ydmax');
   if (ydmax == null) ydmax = D.rdmax;
@@ -595,10 +608,12 @@ function calcCbr(state, D, num, modes) {
   const Fr25 = num('cb_s25') || 13.35,
     Fr5 = num('cb_s5') || 20,
     K = num('cb_K') || 1;
+  const ydCBR = ydmax != null ? (cible / 100) * ydmax : null; // setv cb_ydcbr (HTML L.1196)
   const i25 = CBR_ENF.indexOf(2.5),
     i5 = CBR_ENF.indexOf(5);
   const pts = [];
   const moulds = [];
+  const rows = [];
   for (let m = 0; m < 3; m++) {
     const tot = num('cb_tot' + m),
       moule = num('cb_moule' + m),
@@ -626,6 +641,9 @@ function calcCbr(state, D, num, modes) {
     if (c25 != null || c5 != null) maxi = Math.max(c25 || 0, c5 || 0);
     moulds.push({ coups: CBR_MOULDS[m], comp, maxi, c25, c5, gp });
     if (comp != null && maxi != null) pts.push([comp, maxi]);
+    // DETAIL par moule : miroir des cellules cb_net/cb_dh/cb_ds/cb_comp/cb_compf_/cb_gpct/
+    // cb_c25_/cb_c5_/cb_maxi_ du HTML calcCbr (L.1208-1222). Valeurs deja calculees.
+    if (DET) rows.push({ coups: CBR_MOULDS[m], net, dh, ds, comp, gp, c25, c5, maxi });
   }
   let icbr = null;
   const reg = lreg(pts);
@@ -639,9 +657,34 @@ function calcCbr(state, D, num, modes) {
     if (o.gp != null) gmax = Math.max(gmax == null ? -1 : gmax, o.gp);
   });
   D.gonfl = modes.cbType === 'cbr' ? gmax : null;
+  if (DET) {
+    // Series des canvas (miroir de drawCbrPen/drawCbrVar) : pen = efforts de poinconnement
+    // (enfoncement, effort·K) par moule (HTML L.1246) ; varPts = [compacite, CBR maxi] +
+    // droite reg (HTML drawCbrVar L.1265-1273). Efforts·K = echo des saisies, aucune science.
+    const pen = [0, 1, 2].map((m) => {
+      const s = [];
+      for (let i = 0; i < CBR_ENF.length; i++) {
+        const v = num('cb_pen_' + m + '_' + i);
+        if (v != null) s.push([CBR_ENF[i], v * (K || 1)]);
+      }
+      return s;
+    });
+    DET.cbr = {
+      rows,
+      ydCBR,
+      icbr: D.cbr,
+      cible,
+      cbType: modes.cbType,
+      gonfl: D.gonfl,
+      moules: pts.length,
+      varPts: pts.map((p) => [p[0], p[1]]),
+      reg: reg ? { a: reg.a, b: reg.b } : null,
+      pen,
+    };
+  }
 }
 
-function calcCisail(state, D, num, modes) {
+function calcCisail(state, D, num, modes, DET) {
   const box = modes.ciMethod === 'box';
   let A_m2 = null;
   if (box) {
@@ -661,6 +704,7 @@ function calcCisail(state, D, num, modes) {
     Ri = num('ci_Ri');
   const ptsP = [],
     ptsR = [];
+  const rows = DET ? [] : null;
   for (let i = 1; i <= 4; i++) {
     const N = num('ci_N' + i),
       P = num('ci_P' + i),
@@ -681,6 +725,20 @@ function calcCisail(state, D, num, modes) {
     }
     if (sv != null && tp != null) ptsP.push([sv, tp]);
     if (sv != null && tr != null) ptsR.push([sv, tr]);
+    if (rows) {
+      // Identification des eprouvettes (rd/e/sr) : bloc PRESENTATION du HTML calcCisail
+      // (L.1319-1329) — ci_rdd/ci_e/ci_sr. N'affecte PAS D ; capture pour le detail seul.
+      const rs = num('ci_rs'),
+        rho = num('ci_rho' + i),
+        w = num('ci_w' + i);
+      let rd = null,
+        e = null,
+        sr = null;
+      if (rho != null && w != null) rd = rho / (1 + w / 100);
+      if (rd != null && rs) e = (rs * 1000) / rd - 1;
+      if (e != null && e > 0 && w != null && rs) sr = (w * rs) / e;
+      rows.push({ sv, tp, tr, rd, e, sr });
+    }
   }
   const regP = lreg(ptsP),
     regR = lreg(ptsR);
@@ -697,9 +755,29 @@ function calcCisail(state, D, num, modes) {
   D.phi_cis = phi;
   D.c_cis = c;
   D.phiR_cis = phiR;
+  if (DET) {
+    // cR (cohesion residuelle) et r2 : calcules par le HTML (chips R²/c′R) mais absents de
+    // D — miroir. A_cm2 = aire affichee (ci_A/ci_Aring). Aucune science ajoutee.
+    const cR = regR && regR.a > 0 ? Math.max(0, regR.b) : null;
+    const r2 = rsq(ptsP, regP);
+    DET.cisail = {
+      rows,
+      c,
+      phi,
+      phiR,
+      cR,
+      r2,
+      eprouvettes: ptsP.length,
+      A_cm2: A_m2 != null ? A_m2 * 1e4 : null,
+      ptsP: ptsP.map((p) => [p[0], p[1]]),
+      ptsR: ptsR.map((p) => [p[0], p[1]]),
+      regP: regP ? { a: regP.a, b: regP.b } : null,
+      regR: regR ? { a: regR.a, b: regR.b } : null,
+    };
+  }
 }
 
-function calcDens(state, D, num, modes) {
+function calcDens(state, D, num, modes, DET) {
   let V = null,
     m = null;
   if (modes.densMethod === 'lin') {
@@ -748,9 +826,21 @@ function calcDens(state, D, num, modes) {
   if (rho != null && w != null) rhod = rho / (1 + w / 100);
   D.rho_app = rho;
   D.rhod_app = rhod;
+  if (DET) {
+    // Miroir des chips de calcDens (HTML L.1384-1387) : volume affiche en cm³, w utilisee,
+    // note V<50 cm³. rho/rhod deja dans D. Aucune science ajoutee.
+    const Vcm3 = V != null ? V * 1e6 : null;
+    DET.dens = {
+      Vcm3,
+      rho,
+      rhod,
+      w,
+      petitV: Vcm3 != null && Vcm3 < 50,
+    };
+  }
 }
 
-function calcOedo(state, D, num) {
+function calcOedo(state, D, num, DET) {
   const H0 = num('oe_H0'),
     Dia = num('oe_D'),
     md = num('oe_md'),
@@ -762,6 +852,7 @@ function calcOedo(state, D, num) {
   const e0calc = Hs && H0 ? (H0 - Hs) / Hs : null;
   const e0 = e0calc != null ? e0calc : e0man;
   const rows = [];
+  const paliers = DET ? [] : null; // detail par palier (Hf/ev/e) — miroir cellules oe_hf/oe_ev/oe_e
   for (let i = 1; i <= 12; i++) {
     const s = num('oe_s' + i),
       dh = num('oe_dh' + i);
@@ -775,6 +866,7 @@ function calcOedo(state, D, num) {
       else if (e0 != null) e = e0 - ((1 + e0) * dh) / H0;
       if (e != null) rows.push([s, e]);
     }
+    if (paliers) paliers.push({ Hf, ev, e });
   }
   let Cc = null,
     Cs = null;
@@ -794,49 +886,76 @@ function calcOedo(state, D, num) {
   D.Cc_oedo = Cc;
   D.Cs_oedo = Cs;
   D.e0_oedo = e0;
+  if (DET) {
+    // A (setv oe_A), rd (oe_rd), Hs (oe_Hs) affiches par le HTML ; curvePts = serie de la
+    // courbe e-log(σ') (drawOedo, rows [s,e]). Valeurs deja calculees, aucune science.
+    DET.oedo = {
+      paliers,
+      e0,
+      rd,
+      Hs,
+      A,
+      Cc,
+      Cs,
+      points: rows.length,
+      curvePts: rows.map((r) => [r[0], r[1]]),
+    };
+  }
 }
 
-function calcUcs(state, D, num) {
+function calcUcs(state, D, num, DET) {
   const d = num('uc_d'),
     h = num('uc_h'),
     F = num('uc_f'),
     dl = num('uc_dl');
-  let qu = null;
+  let qu = null,
+    cu = null;
   if (d && h && F != null) {
     const A0 = (Math.PI * d * d) / 4;
     const eps = dl != null ? dl / h : 0;
     const Ac = A0 / (1 - eps);
     qu = (F * 1000) / Ac;
+    cu = qu / 2; // chip « cu » du HTML calcUcs (L.1433) — cu = qu/2 (kPa apres ·1000)
   }
   D.qu = qu;
+  if (DET) DET.ucs = { qu, cu };
 }
 
-function calcTriUU(state, D, num) {
+function calcTriUU(state, D, num, DET) {
   let s = 0,
     n = 0;
+  const rows = DET ? [] : null;
   for (let i = 1; i <= 3; i++) {
     const s3 = num('tu_s3_' + i),
       df = num('tu_df_' + i);
-    let cu = null;
+    let s1 = null,
+      cu = null;
     if (s3 != null && df != null) {
+      s1 = s3 + df; // $('tu_s1_'+i)=s1.toFixed(0) (HTML L.1436)
       cu = df / 2;
       s += cu;
       n++;
     }
+    if (rows) rows.push({ s1, cu });
   }
   D.cu_uu = n ? s / n : null;
+  if (DET) DET.triuu = { rows, cu_uu: D.cu_uu, eprouvettes: n };
 }
 
-function calcTriCU(state, D, num) {
+function calcTriCU(state, D, num, DET) {
   const pts = [];
+  const rows = DET ? [] : null;
   for (let i = 1; i <= 3; i++) {
     const s3 = num('tc_s3_' + i),
       s1 = num('tc_s1_' + i);
+    let sMid = null,
+      t = null;
     if (s3 != null && s1 != null) {
-      const sMid = (s1 + s3) / 2,
-        t = (s1 - s3) / 2;
+      sMid = (s1 + s3) / 2;
+      t = (s1 - s3) / 2;
       pts.push([sMid, t]);
     }
+    if (rows) rows.push({ s: sMid, t }); // $('tc_s_'+i)/$('tc_t_'+i)=toFixed(0) (HTML L.1437)
   }
   let phi = null,
     c = null;
@@ -847,6 +966,7 @@ function calcTriCU(state, D, num) {
   }
   D.phi = phi;
   D.c = c;
+  if (DET) DET.tricu = { rows, c, phi, eprouvettes: pts.length };
 }
 
 function calcPerm(state, D, num, modes) {
@@ -871,43 +991,87 @@ function calcPerm(state, D, num, modes) {
   D.k = k;
 }
 
-function calcEs(state, D, num) {
+function calcEs(state, D, num, DET) {
   let s = 0,
     n = 0;
+  const rows = DET ? [] : null;
   for (let i = 1; i <= 2; i++) {
     const h1 = num('es_h1_' + i),
       h2 = num('es_h2_' + i);
+    let se = null;
     if (h1 && h2 != null && h1 > 0) {
-      const se = (h2 / h1) * 100;
+      se = (h2 / h1) * 100;
       s += se;
       n++;
     }
+    if (rows) rows.push({ se }); // $('es_r'+i)=se.toFixed(1) (HTML L.1443)
   }
   D.es = n ? s / n : null;
+  if (DET) DET.es = { rows, es: D.es, essais: n };
 }
 
-function calcLa(state, D, num) {
+function calcLa(state, D, num, modes, DET) {
   const M = num('la_M'),
     m = num('la_m');
   let la = null;
   if (M && m != null && M > 0) la = Math.round(((M - m) / M) * 100);
   D.la = la;
+  if (DET) {
+    // Conformite granulaire de la prise (chip la_gran du HTML calcLa L.1451-1452) : mesure
+    // vs plage normative selon le tamis intermediaire. Miroir texte, aucune science ajoutee.
+    const ti = num('la_ti'),
+      pi = num('la_pi');
+    let g = null;
+    if (pi != null) {
+      let ok = false,
+        rng = '';
+      if (Math.abs(ti - 12.5) < 0.6) {
+        ok = pi >= 60 && pi <= 70;
+        rng = '60–70 % à 12,5 mm';
+      } else if (Math.abs(ti - 11.2) < 0.6) {
+        ok = pi >= 30 && pi <= 40;
+        rng = '30–40 % à 11,2 mm';
+      } else {
+        rng = 'cf. Annexe B';
+        ok = null;
+      }
+      g =
+        ok === true
+          ? `✓ Conforme (${rng})`
+          : ok === false
+            ? `✗ Hors plage (${rng})`
+            : `Vérifier : ${rng}`;
+    }
+    DET.la = {
+      la,
+      M,
+      label: modes.laVar === 'rb' ? 'LARB' : 'LA',
+      conformite: g,
+    };
+  }
 }
 
-function calcSZ(state, D, num) {
+function calcSZ(state, D, num, DET) {
   const M = num('sz_M');
   let sumPass = 0,
     n = 0;
+  const rows = DET ? [] : null;
   for (const sv of SZS) {
     const r = num('sz_' + String(sv).replace('.', '_'));
+    let rp = null,
+      pp = null;
     if (M && r != null) {
-      const pp = 100 - (r / M) * 100;
+      rp = (r / M) * 100;
+      pp = 100 - rp;
       sumPass += pp;
       n++;
     }
+    // .sz_ref[data-s]=rp.toFixed(1), .sz_pas[data-s]=pp.toFixed(1) (HTML calcSZ L.1456)
+    if (rows) rows.push({ s: sv, ref: rp, pas: pp });
   }
   let sz = n === 5 ? sumPass / 5 : null;
   D.sz = sz;
+  if (DET) DET.sz = { rows, sumPass: n === 5 ? sumPass : null, sz };
 }
 
 function mdeClassKey(state, modes) {
@@ -917,65 +1081,111 @@ function mdeClassKey(state, modes) {
       ? '31.5/50'
       : state['mde_class'] || '4/6.3';
 }
-function calcMde(state, D, num, modes) {
+function calcMde(state, D, num, modes, DET) {
   if (modes.mdeMode === 'camp') {
-    calcMdeCamp(state, D, num);
+    calcMdeCamp(state, D, num, DET);
     return;
   }
+  const k = mdeClassKey(state, modes);
+  const c = MDE_CLASS[k] || {};
   const vals = [];
+  const rows = DET ? [] : null;
   for (let i = 1; i <= 2; i++) {
     const M = num('md_M' + i),
       m = num('md_m' + i);
+    let cc = null;
     if (M && m != null && M > 0) {
-      vals.push(((M - m) / M) * 100);
+      cc = ((M - m) / M) * 100;
+      vals.push(cc);
     }
+    if (rows) rows.push({ cc }); // $('md_r'+i)=cc.toFixed(1) (HTML calcMde L.1486)
   }
   const mde = vals.length
     ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
     : null;
   D.mde = mde;
+  if (DET) {
+    // Conformite granulaire de la prise (chip mde_gran du HTML L.1490-1497) — miroir texte.
+    const label = modes.mdeVar === 'rb' ? 'MDE_RB' : modes.mdeWet === 's' ? 'MDS' : 'MDE';
+    const pi = num('mde_pi');
+    let g = null;
+    if (modes.mdeVar === 'rb') {
+      g = 'Ballast : pas de tamis intermédiaire normalisé (Annexe A).';
+    } else if (pi != null && c.ti != null) {
+      const ranges = [[c.lo, c.hi]];
+      if (c.alt2) ranges.push([c.alt2[1], c.alt2[2]]);
+      const ok = ranges.some(([lo, hi]) => pi >= lo && pi <= hi);
+      const desc =
+        modes.mdeVar === 'std'
+          ? '30–40 % à 11,2 mm ou 60–70 % à 12,5 mm'
+          : `${c.lo}–${c.hi} % à ${c.ti} mm`;
+      g = ok ? `✓ Conforme (${desc})` : `✗ Hors plage (${desc})`;
+    }
+    DET.mde = {
+      mode: 'norme',
+      rows,
+      mde,
+      essais: vals.length,
+      label,
+      conformite: g,
+    };
+  }
 }
-function calcMdeCamp(state, D, num) {
+function calcMdeCamp(state, D, num, DET) {
   const pertes = [];
   for (let i = 0; i < 4; i++) {
     const A = num('mc_A' + i),
       B = num('mc_B' + i);
     let p = A && B != null && A > 0 ? ((A - B) / A) * 100 : null;
-    pertes.push(p);
+    pertes.push(p); // $('mc_p'+i)=p.toFixed(1) (HTML calcMdeCamp L.1511)
   }
   const mean = (arr) => {
     const v = arr.filter((x) => x != null);
     return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
   };
+  const cmds = mean([pertes[0], pertes[1]]);
   const cmde = mean([pertes[2], pertes[3]]);
+  const cmd = mean(pertes);
   D.mde = cmde != null ? Math.round(cmde) : null;
+  if (DET) {
+    // mc_cmds/mc_cmde/mc_cmd du HTML (L.1517-1519) — moyennes deja calculees. Aucune science.
+    DET.mde = { mode: 'camp', pertes, cmds, cmde, cmd, mde: D.mde };
+  }
 }
 
-function calcRho(state, D, num) {
+function calcRho(state, D, num, DET) {
   const M1 = num('ra_M1'),
     M2 = num('ra_M2'),
     M3 = num('ra_M3'),
     M4 = num('ra_M4'),
     rw = num('ra_rw') || 0.998;
   let ra = null,
+    rrd = null,
+    rssd = null,
     wa = null;
   const den = M2 != null && M3 != null ? M2 - M3 : null;
   if (M4 && den != null && M4 - den > 0) ra = (rw * M4) / (M4 - den);
   if (M4 && M1 && den != null && M1 - den > 0) {
+    rrd = (rw * M4) / (M1 - den); // chips ρrd/ρssd du HTML calcRho (L.1526) — miroir
+    rssd = (rw * M1) / (M1 - den);
     wa = (100 * (M1 - M4)) / M4;
   }
   D.wa = wa;
+  if (DET) DET.rho = { ra, rrd, rssd, wa };
 }
 
-function calcSulf(state, D, num) {
+function calcSulf(state, D, num, DET) {
   const ba = num('su_ba'),
     M = num('su_M'),
     fac = num('su_f') || 0.343;
-  let so3 = null;
+  let so3 = null,
+    so4 = null;
   if (ba != null && M) {
     so3 = ((fac * ba) / M) * 100;
+    so4 = so3 * 1.2; // chip SO₄ du HTML calcSulf (L.1529) — SO₄ = SO₃·1,2. Miroir.
   }
   D.so3 = so3;
+  if (DET) DET.sulf = { so3, so4 };
 }
 
 // ===========================================================================
@@ -1158,22 +1368,22 @@ function computeLaboCore(state, detail) {
   calcGranulo(state, D, num, DET);
   calcAtt(state, D, num, chk, DET);
   calcVbs(state, D, num, DET);
-  calcRhos(state, D, num, modes);
+  calcRhos(state, D, num, modes, DET);
   calcProctor(state, D, num, modes, DET);
-  calcCbr(state, D, num, modes);
-  calcCisail(state, D, num, modes);
-  calcDens(state, D, num, modes);
-  calcOedo(state, D, num);
-  calcUcs(state, D, num);
-  calcTriUU(state, D, num);
-  calcTriCU(state, D, num);
+  calcCbr(state, D, num, modes, DET);
+  calcCisail(state, D, num, modes, DET);
+  calcDens(state, D, num, modes, DET);
+  calcOedo(state, D, num, DET);
+  calcUcs(state, D, num, DET);
+  calcTriUU(state, D, num, DET);
+  calcTriCU(state, D, num, DET);
   calcPerm(state, D, num, modes);
-  calcEs(state, D, num);
-  calcLa(state, D, num);
-  calcSZ(state, D, num);
-  calcMde(state, D, num, modes);
-  calcRho(state, D, num);
-  calcSulf(state, D, num);
+  calcEs(state, D, num, DET);
+  calcLa(state, D, num, modes, DET);
+  calcSZ(state, D, num, DET);
+  calcMde(state, D, num, modes, DET);
+  calcRho(state, D, num, DET);
+  calcSulf(state, D, num, DET);
   const cls = classify(state, D, CFG, modes.forcedState);
   return DET ? { D, cls, det: DET } : { D, cls };
 }

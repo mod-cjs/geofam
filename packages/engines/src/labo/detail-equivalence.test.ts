@@ -149,6 +149,30 @@ d(
         expect(fmt(row?.rd, 3), `pr_rd${i}`).toBe(cellById(dom, `pr_rd${i}`));
       }
 
+      // 6. Cisaillement direct (boite) — σ′v/τpic + identification ρd/e/SR par eprouvette.
+      expect(det.cisail, 'detail.cisail absent').toBeDefined();
+      expect(cellById(dom, 'ci_sv1'), 'DOM ci_sv1 vide').not.toBe('—');
+      for (let i = 1; i <= 4; i++) {
+        const row = det.cisail?.rows[i - 1];
+        expect(fmt(row?.sv, 1), `ci_sv${i}`).toBe(cellById(dom, `ci_sv${i}`));
+        expect(fmt(row?.tp, 1), `ci_tp${i}`).toBe(cellById(dom, `ci_tp${i}`));
+        expect(fmt(row?.rd, 2), `ci_rdd${i}`).toBe(cellById(dom, `ci_rdd${i}`));
+        expect(fmt(row?.e, 2), `ci_e${i}`).toBe(cellById(dom, `ci_e${i}`));
+        expect(fmt(row?.sr, 2), `ci_sr${i}`).toBe(cellById(dom, `ci_sr${i}`));
+      }
+      expect(fmt(det.cisail?.c, 2), 'ci_res_c').toBe(cellById(dom, 'ci_res_c'));
+      expect(fmt(det.cisail?.phi, 2), 'ci_res_phi').toBe(cellById(dom, 'ci_res_phi'));
+
+      // 7. Œdometre — Hf/ε_v/e par palier ($('oe_hf'+i)=3, $('oe_ev'+i)=2, $('oe_e'+i)=3).
+      expect(det.oedo, 'detail.oedo absent').toBeDefined();
+      expect(cellById(dom, 'oe_e1'), 'DOM oe_e1 vide').not.toBe('—');
+      for (let i = 1; i <= 12; i++) {
+        const p = det.oedo?.paliers[i - 1];
+        expect(fmt(p?.Hf, 3), `oe_hf${i}`).toBe(cellById(dom, `oe_hf${i}`));
+        expect(fmt(p?.ev, 2), `oe_ev${i}`).toBe(cellById(dom, `oe_ev${i}`));
+        expect(fmt(p?.e, 3), `oe_e${i}`).toBe(cellById(dom, `oe_e${i}`));
+      }
+
       // Laisse le loadDB() async du boot (fire-and-forget) se resoudre AVANT close :
       // sinon renderDB accede a `document` apres fermeture (unhandled rejection parasite).
       await new Promise((r) => setTimeout(r, 30));
@@ -182,6 +206,141 @@ d(
       // sinon renderDB accede a `document` apres fermeture (unhandled rejection parasite).
       await new Promise((r) => setTimeout(r, 30));
       dom.window.close();
+    });
+
+    // -----------------------------------------------------------------------
+    // Essais restants (detail complet) : serveur.detail == cellules du HTML gele.
+    // Chaque cas pilote le HTML d'origine via writeForm(fixture) et compare les
+    // cellules par ligne, avec garde anti-« — » (le rendu DOIT produire des valeurs).
+    // -----------------------------------------------------------------------
+
+    /** Charge le HTML, pilote la fixture, renvoie { dom, det } (serveur). */
+    function run(fxId: string) {
+      const fx = LABO_FIXTURES.find((f) => f.id === fxId);
+      expect(fx, `fixture ${fxId} absente`).toBeDefined();
+      const env = runLabo(fx!.input);
+      expect(env.ok).toBe(true);
+      const det = env.ok ? env.output.detail : null;
+      expect(det, `detail serveur absent (${fxId})`).not.toBeNull();
+      const dom = loadDom();
+      drive(dom, fx!.input);
+      return { dom, det: det! };
+    }
+    async function done(dom: JSDOM): Promise<void> {
+      await new Promise((r) => setTimeout(r, 30));
+      dom.window.close();
+    }
+
+    it('ρs (pycnometre) : md/ρs par determination == DOM client', async () => {
+      const { dom, det } = run('kernel-rhos-methodeA');
+      expect(det.rhos, 'detail.rhos absent').toBeDefined();
+      expect(cellById(dom, 'rs_rs1'), 'DOM rs_rs1 vide').not.toBe('—');
+      for (let i = 1; i <= 3; i++) {
+        const r = det.rhos?.rows[i - 1];
+        expect(fmt(r?.md, 2), `rs_md${i}`).toBe(cellById(dom, `rs_md${i}`));
+        expect(fmt(r?.rs, 3), `rs_rs${i}`).toBe(cellById(dom, `rs_rs${i}`));
+      }
+      await done(dom);
+    });
+
+    it('CBR multi-energies : ρd/compacite/gonflement/CBR 2,5-5-maxi par moule == DOM client', async () => {
+      const { dom, det } = run('kernel-cbr-complet');
+      expect(det.cbr, 'detail.cbr absent').toBeDefined();
+      expect(cellById(dom, 'cb_maxi_0'), 'DOM cb_maxi_0 vide').not.toBe('—');
+      for (let m = 0; m < 3; m++) {
+        const r = det.cbr?.rows[m];
+        expect(fmt(r?.dh, 3), `cb_dh${m}`).toBe(cellById(dom, `cb_dh${m}`));
+        expect(fmt(r?.ds, 3), `cb_ds${m}`).toBe(cellById(dom, `cb_ds${m}`));
+        expect(fmt(r?.comp, 1), `cb_comp${m}`).toBe(cellById(dom, `cb_comp${m}`));
+        expect(fmt(r?.comp, 1), `cb_compf_${m}`).toBe(cellById(dom, `cb_compf_${m}`));
+        expect(fmt(r?.gp, 2), `cb_gpct${m}`).toBe(cellById(dom, `cb_gpct${m}`));
+        expect(fmt(r?.c25, 1), `cb_c25_${m}`).toBe(cellById(dom, `cb_c25_${m}`));
+        expect(fmt(r?.c5, 1), `cb_c5_${m}`).toBe(cellById(dom, `cb_c5_${m}`));
+        expect(fmt(r?.maxi, 1), `cb_maxi_${m}`).toBe(cellById(dom, `cb_maxi_${m}`));
+      }
+      await done(dom);
+    });
+
+    it('Cisaillement annulaire (ring) : σ′v/τ par eprouvette == DOM client', async () => {
+      const { dom, det } = run('kernel-cisail-ring');
+      expect(det.cisail, 'detail.cisail absent').toBeDefined();
+      expect(cellById(dom, 'ci_sv1'), 'DOM ci_sv1 vide').not.toBe('—');
+      for (let i = 1; i <= 4; i++) {
+        const r = det.cisail?.rows[i - 1];
+        expect(fmt(r?.sv, 1), `ci_sv${i}`).toBe(cellById(dom, `ci_sv${i}`));
+        expect(fmt(r?.tp, 1), `ci_tp${i}`).toBe(cellById(dom, `ci_tp${i}`));
+      }
+      await done(dom);
+    });
+
+    it('Triaxial UU : σ1/cu par eprouvette == DOM client', async () => {
+      const { dom, det } = run('tri-uu-es');
+      expect(det.triuu, 'detail.triuu absent').toBeDefined();
+      expect(cellById(dom, 'tu_cu_1'), 'DOM tu_cu_1 vide').not.toBe('—');
+      for (let i = 1; i <= 3; i++) {
+        const r = det.triuu?.rows[i - 1];
+        expect(fmt(r?.s1, 0), `tu_s1_${i}`).toBe(cellById(dom, `tu_s1_${i}`));
+        expect(fmt(r?.cu, 0), `tu_cu_${i}`).toBe(cellById(dom, `tu_cu_${i}`));
+      }
+      // Equivalent de sable (meme fixture) — SE par essai.
+      expect(det.es, 'detail.es absent').toBeDefined();
+      expect(cellById(dom, 'es_r1'), 'DOM es_r1 vide').not.toBe('—');
+      for (let i = 1; i <= 2; i++) {
+        expect(fmt(det.es?.rows[i - 1]?.se, 1), `es_r${i}`).toBe(
+          cellById(dom, `es_r${i}`),
+        );
+      }
+      await done(dom);
+    });
+
+    it('Triaxial CU/CD : s/t (Mohr) par eprouvette == DOM client', async () => {
+      const { dom, det } = run('perm-tricu-divers');
+      expect(det.tricu, 'detail.tricu absent').toBeDefined();
+      expect(cellById(dom, 'tc_t_1'), 'DOM tc_t_1 vide').not.toBe('—');
+      for (let i = 1; i <= 3; i++) {
+        const r = det.tricu?.rows[i - 1];
+        expect(fmt(r?.s, 0), `tc_s_${i}`).toBe(cellById(dom, `tc_s_${i}`));
+        expect(fmt(r?.t, 0), `tc_t_${i}`).toBe(cellById(dom, `tc_t_${i}`));
+      }
+      await done(dom);
+    });
+
+    it('Fragmentation SZ + Los Angeles + Micro-Deval (norme) == DOM client', async () => {
+      const { dom, det } = run('granulaire-R-LA-MDE');
+      // SZ — refus/passant par tamis.
+      expect(det.sz, 'detail.sz absent').toBeDefined();
+      expect(cellBySel(dom, '.sz_pas[data-s="8"]'), 'DOM sz_pas vide').not.toBe('—');
+      for (const r of det.sz?.rows ?? []) {
+        const s = String(r.s);
+        expect(fmt(r.ref, 1), `sz_ref ${s}`).toBe(
+          cellBySel(dom, `.sz_ref[data-s="${s}"]`),
+        );
+        expect(fmt(r.pas, 1), `sz_pas ${s}`).toBe(
+          cellBySel(dom, `.sz_pas[data-s="${s}"]`),
+        );
+      }
+      // Micro-Deval norme — coefficient par eprouvette.
+      expect(det.mde?.mode, 'mde mode').toBe('norme');
+      expect(cellById(dom, 'md_r1'), 'DOM md_r1 vide').not.toBe('—');
+      for (let i = 1; i <= 2; i++) {
+        expect(fmt(det.mde?.rows?.[i - 1]?.cc, 1), `md_r${i}`).toBe(
+          cellById(dom, `md_r${i}`),
+        );
+      }
+      await done(dom);
+    });
+
+    it('Micro-Deval CAMPAGNE : pertes + CMDS/CMDE/CMD == DOM client', async () => {
+      const { dom, det } = run('kernel-mde-campagne');
+      expect(det.mde?.mode, 'mde mode').toBe('camp');
+      expect(cellById(dom, 'mc_p0'), 'DOM mc_p0 vide').not.toBe('—');
+      for (let i = 0; i < 4; i++) {
+        expect(fmt(det.mde?.pertes?.[i], 1), `mc_p${i}`).toBe(cellById(dom, `mc_p${i}`));
+      }
+      expect(fmt(det.mde?.cmds, 1), 'mc_cmds').toBe(cellById(dom, 'mc_cmds'));
+      expect(fmt(det.mde?.cmde, 1), 'mc_cmde').toBe(cellById(dom, 'mc_cmde'));
+      expect(fmt(det.mde?.cmd, 2), 'mc_cmd').toBe(cellById(dom, 'mc_cmd'));
+      await done(dom);
     });
   },
 );

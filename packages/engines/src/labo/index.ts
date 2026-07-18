@@ -294,7 +294,196 @@ function shapeDetail(det: unknown): unknown {
       horsTableau: bo(p.horsTableau),
     };
   }
+  if (d.rhos) {
+    const r = rec(d.rhos);
+    out.rhos = {
+      rows: (Array.isArray(r.rows) ? r.rows : []).map((x) => {
+        const rr = rec(x);
+        return { md: nn(rr.md), rs: nn(rr.rs) };
+      }),
+      rwT: nn(r.rwT),
+      rLeff: nn(r.rLeff),
+      mean: nn(r.mean),
+      spread: nn(r.spread),
+      ok: typeof r.ok === 'boolean' ? r.ok : null,
+      essais: iv(r.essais),
+    };
+  }
+  if (d.cbr) {
+    const c = rec(d.cbr);
+    out.cbr = {
+      rows: (Array.isArray(c.rows) ? c.rows : []).map((x) => {
+        const rr = rec(x);
+        return {
+          coups: nn(rr.coups),
+          net: nn(rr.net),
+          dh: nn(rr.dh),
+          ds: nn(rr.ds),
+          comp: nn(rr.comp),
+          gp: nn(rr.gp),
+          c25: nn(rr.c25),
+          c5: nn(rr.c5),
+          maxi: nn(rr.maxi),
+        };
+      }),
+      ydCBR: nn(c.ydCBR),
+      icbr: nn(c.icbr),
+      cible: nn(c.cible),
+      cbType: sn(c.cbType),
+      gonfl: nn(c.gonfl),
+      moules: iv(c.moules),
+      varPts: points2(c.varPts),
+      reg: reg2(c.reg),
+      pen: (Array.isArray(c.pen) ? c.pen : []).map((s) => points2(s)),
+    };
+  }
+  if (d.cisail) {
+    const c = rec(d.cisail);
+    out.cisail = {
+      rows: (Array.isArray(c.rows) ? c.rows : []).map((x) => {
+        const rr = rec(x);
+        return {
+          sv: nn(rr.sv),
+          tp: nn(rr.tp),
+          tr: nn(rr.tr),
+          rd: nn(rr.rd),
+          e: nn(rr.e),
+          sr: nn(rr.sr),
+        };
+      }),
+      c: nn(c.c),
+      phi: nn(c.phi),
+      phiR: nn(c.phiR),
+      cR: nn(c.cR),
+      r2: nn(c.r2),
+      eprouvettes: iv(c.eprouvettes),
+      A_cm2: nn(c.A_cm2),
+      ptsP: points2(c.ptsP),
+      ptsR: points2(c.ptsR),
+      regP: reg2(c.regP),
+      regR: reg2(c.regR),
+    };
+  }
+  if (d.dens) {
+    const x = rec(d.dens);
+    out.dens = {
+      Vcm3: nn(x.Vcm3),
+      rho: nn(x.rho),
+      rhod: nn(x.rhod),
+      w: nn(x.w),
+      petitV: bo(x.petitV),
+    };
+  }
+  if (d.oedo) {
+    const o = rec(d.oedo);
+    out.oedo = {
+      paliers: (Array.isArray(o.paliers) ? o.paliers : []).map((x) => {
+        const rr = rec(x);
+        return { Hf: nn(rr.Hf), ev: nn(rr.ev), e: nn(rr.e) };
+      }),
+      e0: nn(o.e0),
+      rd: nn(o.rd),
+      Hs: nn(o.Hs),
+      A: nn(o.A),
+      Cc: nn(o.Cc),
+      Cs: nn(o.Cs),
+      points: iv(o.points),
+      curvePts: points2(o.curvePts),
+    };
+  }
+  if (d.ucs) {
+    const x = rec(d.ucs);
+    out.ucs = { qu: nn(x.qu), cu: nn(x.cu) };
+  }
+  if (d.triuu) {
+    const t = rec(d.triuu);
+    out.triuu = {
+      rows: (Array.isArray(t.rows) ? t.rows : []).map((x) => {
+        const rr = rec(x);
+        return { s1: nn(rr.s1), cu: nn(rr.cu) };
+      }),
+      cu_uu: nn(t.cu_uu),
+      eprouvettes: iv(t.eprouvettes),
+    };
+  }
+  if (d.tricu) {
+    const t = rec(d.tricu);
+    out.tricu = {
+      rows: (Array.isArray(t.rows) ? t.rows : []).map((x) => {
+        const rr = rec(x);
+        return { s: nn(rr.s), t: nn(rr.t) };
+      }),
+      c: nn(t.c),
+      phi: nn(t.phi),
+      eprouvettes: iv(t.eprouvettes),
+    };
+  }
+  if (d.es) {
+    const e = rec(d.es);
+    out.es = {
+      rows: (Array.isArray(e.rows) ? e.rows : []).map((x) => ({ se: nn(rec(x).se) })),
+      es: nn(e.es),
+      essais: iv(e.essais),
+    };
+  }
+  if (d.la) {
+    const l = rec(d.la);
+    out.la = {
+      la: nn(l.la),
+      M: nn(l.M),
+      label: sn(l.label),
+      conformite: sn(l.conformite),
+    };
+  }
+  if (d.sz) {
+    const s = rec(d.sz);
+    out.sz = {
+      rows: (Array.isArray(s.rows) ? s.rows : []).map((x) => {
+        const rr = rec(x);
+        return { s: fin(rr.s) ? rr.s : 0, ref: nn(rr.ref), pas: nn(rr.pas) };
+      }),
+      sumPass: nn(s.sumPass),
+      sz: nn(s.sz),
+    };
+  }
+  if (d.mde) {
+    const m = rec(d.mde);
+    const mode = m.mode === 'camp' ? 'camp' : 'norme';
+    if (mode === 'camp') {
+      out.mde = {
+        mode: 'camp',
+        pertes: (Array.isArray(m.pertes) ? m.pertes : []).map(nn),
+        cmds: nn(m.cmds),
+        cmde: nn(m.cmde),
+        cmd: nn(m.cmd),
+        mde: nn(m.mde),
+      };
+    } else {
+      out.mde = {
+        mode: 'norme',
+        rows: (Array.isArray(m.rows) ? m.rows : []).map((x) => ({ cc: nn(rec(x).cc) })),
+        mde: nn(m.mde),
+        essais: iv(m.essais),
+        label: sn(m.label),
+        conformite: sn(m.conformite),
+      };
+    }
+  }
+  if (d.rho) {
+    const r = rec(d.rho);
+    out.rho = { ra: nn(r.ra), rrd: nn(r.rrd), rssd: nn(r.rssd), wa: nn(r.wa) };
+  }
+  if (d.sulf) {
+    const s = rec(d.sulf);
+    out.sulf = { so3: nn(s.so3), so4: nn(s.so4) };
+  }
   return out;
+}
+
+/** Projette une droite de regression { a, b } (NaN/∞ ecarte -> null). */
+function reg2(x: unknown): { a: number; b: number } | null {
+  const r = rec(x);
+  return fin(r.a) && fin(r.b) ? { a: r.a, b: r.b } : null;
 }
 
 /**
@@ -324,6 +513,38 @@ function collectWarnings(det: unknown): string[] {
     w.push(
       'Proctor — combinaison moule + dame hors Tableau 5 (EN 13286-2) : la dame 15 kg s emploie avec le moule C.',
     );
+  // ρs (pycnometre) — concordance des determinations (NF P 94-054, ≤ 0,03 Mg/m³).
+  const rhos = rec(d.rhos);
+  if (rhos.ok === false)
+    w.push(
+      'ρs — ecart entre determinations > 0,03 Mg/m³ (concordance NF P 94-054) : repeter l essai.',
+    );
+  // CBR — interpolation CBR/compacite (≥ 2 moules requis).
+  const cbr = rec(d.cbr);
+  if (iv(cbr.moules) > 0 && iv(cbr.moules) < 2)
+    w.push('CBR — moins de 2 moules valides : interpolation CBR/compacite impossible.');
+  // Cisaillement — regression c′/φ′ (min. 3 eprouvettes, Annexe B).
+  const ci = rec(d.cisail);
+  if (iv(ci.eprouvettes) > 0 && iv(ci.eprouvettes) < 3)
+    w.push('Cisaillement — moins de 3 eprouvettes (Annexe B) : droite c′/φ′ peu fiable.');
+  // Masse volumique apparente — representativite (V ≥ 50 cm³).
+  const dens = rec(d.dens);
+  if (dens.petitV === true)
+    w.push('Masse volumique — V < 50 cm³ : eprouvette moins representative.');
+  // Œdometre — nombre de paliers (min. 7 conseilles).
+  const oedo = rec(d.oedo);
+  if (iv(oedo.points) > 0 && iv(oedo.points) < 7)
+    w.push('Œdometre — moins de 7 paliers : Cc/Cs calcules sur peu de points.');
+  // Los Angeles — conformite granulaire de la prise (hors plage).
+  const la = rec(d.la);
+  if (typeof la.conformite === 'string' && la.conformite.startsWith('✗'))
+    w.push(`Los Angeles — prise d essai hors plage granulaire : ${la.conformite}`);
+  // Micro-Deval — conformite granulaire + nombre d eprouvettes (Art. 6).
+  const mde = rec(d.mde);
+  if (typeof mde.conformite === 'string' && mde.conformite.startsWith('✗'))
+    w.push(`Micro-Deval — prise d essai hors plage granulaire : ${mde.conformite}`);
+  if (mde.mode === 'norme' && iv(mde.essais) === 1)
+    w.push('Micro-Deval — 2 eprouvettes requises (Art. 6).');
   return w;
 }
 
