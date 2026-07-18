@@ -428,13 +428,15 @@ describe('PDF du PV — surface tenant (e2e)', () => {
     expect(text).toContain(pv.pvNumber); // en-tête répété (toutes pages)
     expect(text).toContain(pv.contentHash); // bloc scellement présent
     expect(text).toContain('SCELLEMENT');
-    // Sections MÉTIER dédiées (buildLaboBody), PAS le gabarit générique.
-    expect(text).toContain('CLASSIFICATION GTR');
-    expect(text).toContain('PARAMÈTRES');
-    expect(text).toContain('IDENTIFICATION');
+    // Gabarit MÉTIER dédié (buildLaboBody = fac-similé du procès-verbal
+    // multi-fiches de FASTLAB, décision titulaire 18/07), PAS le gabarit générique.
+    // NB : collectPvPdfText ne collecte PAS les titres de section (style `section`) ;
+    // on assert donc sur du CONTENU collectable toujours rendu (en-tête + visa).
+    expect(text).toContain('procès-verbal d’essais'); // en-tête du PV d'essai natif
+    expect(text).toContain('L’ingénieur chargé de l’étude'); // bloc visa (toujours rendu)
     // Le gabarit générique (vidage) n'est PAS utilisé pour labo.
     expect(text).not.toContain('DONNÉES D’ENTRÉE'.toUpperCase());
-    // Table d'identification présente : en-tête « Paramètre » (1 table métier).
+    // Table d'identification présente : en-tête de colonne « Paramètre ».
     const paramHeaderCount = (text.match(/Paramètre/g) ?? []).length;
     expect(paramHeaderCount).toBeGreaterThanOrEqual(1);
     // ZÉRO fuite de science : aucun paramètre de méthode / marqueur interne.

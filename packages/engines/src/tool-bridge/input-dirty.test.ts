@@ -147,9 +147,10 @@ for (const file of ['terzaghi', 'roadsens'] as const) {
       );
       // Contrat exact : v/type/payload.toolId == toolId de `ready`.
       const msg = after[after.length - 1];
-      expect(msg.v).toBe(1);
-      expect(msg.type).toBe('input:dirty');
-      expect(msg.payload?.toolId).toBe(toolId);
+      expect(msg, 'message input:dirty absent').toBeDefined();
+      expect(msg!.v).toBe(1);
+      expect(msg!.type).toBe('input:dirty');
+      expect(msg!.payload?.toolId).toBe(toolId);
 
       dom.window.close();
     });
