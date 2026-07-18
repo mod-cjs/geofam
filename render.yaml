@@ -121,44 +121,6 @@ services:
       # n'en a pas besoin.
 
   # ---------------------------------------------------------------------------
-  # Front Next.js (recette) — remplace l'hébergement Vercel (compte bloqué
-  # DEPLOYMENT_DISABLED, 18/07/2026). Même patron que roadsen-web (render.prod.yaml).
-  # ---------------------------------------------------------------------------
-  - type: web
-    name: roadsen-web-recette
-    runtime: node
-    region: frankfurt
-    plan: starter
-
-    rootDir: 05-Plateforme
-
-    # Le build web n'a pas besoin des moteurs dans le bundle (garde-fou §8 :
-    # aucun import @roadsen/engines côté web) mais le workspace les installe.
-    buildCommand: npm install -g pnpm@9.12.0 && pnpm install --frozen-lockfile && pnpm --filter @roadsen/web build
-
-    startCommand: pnpm --filter @roadsen/web start
-
-    healthCheckPath: /login
-
-    envVars:
-      # URL publique de l'API recette — consommée par http-client.ts (_USE_REAL_BACKEND).
-      - key: NEXT_PUBLIC_API_BASE_URL
-        value: https://roadsen.onrender.com
-
-      # Secret HS256 du middleware Edge (vérification du cookie roadsen_access_token).
-      # DOIT être IDENTIQUE au JWT_SECRET du service roadsen-api-recette.
-      # ACTION HUMAINE : saisir dans Dashboard → roadsen-web-recette → Environment
-      # (copier la valeur depuis roadsen-api-recette).
-      - key: JWT_SECRET
-        sync: false
-
-      - key: NODE_ENV
-        value: production
-
-      - key: NODE_VERSION
-        value: '20'
-
-  # ---------------------------------------------------------------------------
   # Base de données — PostgreSQL 16 managée (recette)
   # ---------------------------------------------------------------------------
 databases:
