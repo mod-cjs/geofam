@@ -85,7 +85,10 @@ function det(o: Record<string, unknown>, key: string): Record<string, unknown> {
 }
 
 /** Tableau d'objets d'une sous-clé (filtre les non-objets). */
-function rows(o: Record<string, unknown>, key: string): Record<string, unknown>[] {
+function rows(
+  o: Record<string, unknown>,
+  key: string,
+): Record<string, unknown>[] {
   const a = o[key];
   return Array.isArray(a) ? a.filter(isPlainObject) : [];
 }
@@ -259,7 +262,11 @@ function safeLaboPathPv(path: unknown): string[] {
 }
 
 // Qualificatif du module de finesse (SABLES) — ensemble FERMÉ produit par l'outil client.
-const LABO_MFQ_ALLOWED: ReadonlySet<string> = new Set(['très fin', 'idéal', 'grossier']);
+const LABO_MFQ_ALLOWED: ReadonlySet<string> = new Set([
+  'très fin',
+  'idéal',
+  'grossier',
+]);
 function safeLaboMfqPv(mfq: unknown): string {
   if (typeof mfq !== 'string') return '';
   const t = mfq.trim();
@@ -400,7 +407,11 @@ function ficheGran(o: Record<string, unknown>): Content[] {
     ficheHead('Analyse granulométrique', 'NF EN ISO 17892-4 / EN 933-1'),
   ];
   const t: TableCell[][] = [
-    [head('Tamis (mm)', 'right'), head('Refus cumulé (g)', 'right'), head('Passant (%)', 'right')],
+    [
+      head('Tamis (mm)', 'right'),
+      head('Refus cumulé (g)', 'right'),
+      head('Passant (%)', 'right'),
+    ],
   ];
   for (const r of gr) {
     if (fin(r.cum) === null && fin(r.pass) === null) continue;
@@ -456,10 +467,22 @@ function ficheVbs(o: Record<string, unknown>): Content[] {
   const vr = rows(d, 'rows');
   if (vr.length > 0) {
     const t: TableCell[][] = [
-      [head('Essai', 'right'), head('M1 (g)', 'right'), head('Mb (g)', 'right'), head('VBS 0/5', 'right'), head('VBS sol', 'right')],
+      [
+        head('Essai', 'right'),
+        head('M1 (g)', 'right'),
+        head('Mb (g)', 'right'),
+        head('VBS 0/5', 'right'),
+        head('VBS sol', 'right'),
+      ],
     ];
     vr.forEach((r, i) => {
-      t.push([cell(String(i + 1)), cell(num(r.M1, 1)), cell(num(r.Mb, 1)), cell(num(r.v05, 2)), cell(num(r.vs, 2))]);
+      t.push([
+        cell(String(i + 1)),
+        cell(num(r.M1, 1)),
+        cell(num(r.Mb, 1)),
+        cell(num(r.v05, 2)),
+        cell(num(r.vs, 2)),
+      ]);
     });
     pushKv2(out, t, ['auto', '*', '*', '*', '*']);
   }
@@ -480,7 +503,11 @@ function ficheRhos(o: Record<string, unknown>): Content[] {
   const rr = rows(d, 'rows');
   if (rr.length > 0) {
     const t: TableCell[][] = [
-      [head('Détermination', 'right'), head('m_d (g)', 'right'), head('ρs (Mg/m³)', 'right')],
+      [
+        head('Détermination', 'right'),
+        head('m_d (g)', 'right'),
+        head('ρs (Mg/m³)', 'right'),
+      ],
     ];
     rr.forEach((r, i) => {
       t.push([cell(String(i + 1)), cell(num(r.md, 2)), cell(num(r.rs, 3))]);
@@ -502,7 +529,11 @@ function ficheProctor(o: Record<string, unknown>): Content[] {
   const pr = rows(d, 'rows');
   if (pr.length > 0) {
     const t: TableCell[][] = [
-      [head('Point', 'right'), head('w (%)', 'right'), head('ρd (t/m³)', 'right')],
+      [
+        head('Point', 'right'),
+        head('w (%)', 'right'),
+        head('ρd (t/m³)', 'right'),
+      ],
     ];
     pr.forEach((r, i) => {
       if (fin(r.w) === null && fin(r.rd) === null) return;
@@ -512,7 +543,11 @@ function ficheProctor(o: Record<string, unknown>): Content[] {
   }
   const kv: TableCell[][] = [[head('Paramètre'), head('Valeur', 'right')]];
   kvRow(kv, 'Teneur en eau optimale w_OPN', num(o.wopn ?? d.wopn, 1, '%'));
-  kvRow(kv, 'Densité sèche maximale ρd;max', num(o.rdmax ?? d.rdmax, 3, 't/m³'));
+  kvRow(
+    kv,
+    'Densité sèche maximale ρd;max',
+    num(o.rdmax ?? d.rdmax, 3, 't/m³'),
+  );
   pushKv(out, kv);
   return out;
 }
@@ -526,16 +561,34 @@ function ficheCbr(o: Record<string, unknown>): Content[] {
   const cr = rows(d, 'rows');
   if (cr.length > 0) {
     const t: TableCell[][] = [
-      [head('Coups', 'right'), head('ρd (t/m³)', 'right'), head('Compacité (%)', 'right'), head('CBR 2,5', 'right'), head('CBR 5', 'right'), head('CBR maxi', 'right')],
+      [
+        head('Coups', 'right'),
+        head('ρd (t/m³)', 'right'),
+        head('Compacité (%)', 'right'),
+        head('CBR 2,5', 'right'),
+        head('CBR 5', 'right'),
+        head('CBR maxi', 'right'),
+      ],
     ];
     for (const r of cr) {
-      t.push([cell(num(r.coups, 0)), cell(num(r.ds, 3)), cell(num(r.comp, 1)), cell(num(r.c25, 0)), cell(num(r.c5, 0)), cell(num(r.maxi, 0))]);
+      t.push([
+        cell(num(r.coups, 0)),
+        cell(num(r.ds, 3)),
+        cell(num(r.comp, 1)),
+        cell(num(r.c25, 0)),
+        cell(num(r.c5, 0)),
+        cell(num(r.maxi, 0)),
+      ]);
     }
     pushKv2(out, t, ['auto', '*', '*', '*', '*', '*']);
   }
   const kv: TableCell[][] = [[head('Paramètre'), head('Valeur', 'right')]];
   const ipi = o.cbrType === 'ipi';
-  kvRow(kv, ipi ? 'IPI (Indice Portant Immédiat)' : 'Indice CBR', num(o.cbr ?? d.icbr, 0));
+  kvRow(
+    kv,
+    ipi ? 'IPI (Indice Portant Immédiat)' : 'Indice CBR',
+    num(o.cbr ?? d.icbr, 0),
+  );
   kvRow(kv, 'Compacité cible', num(d.cible, 0, '%'));
   kvRow(kv, 'Gonflement', num(o.gonfl ?? d.gonfl, 1, '%'));
   pushKv(out, kv);
@@ -553,10 +606,20 @@ function ficheOedo(o: Record<string, unknown>): Content[] {
   ];
   if (paliers.length > 0) {
     const t: TableCell[][] = [
-      [head('Palier', 'right'), head('Hf (mm)', 'right'), head('ε_v (%)', 'right'), head('e', 'right')],
+      [
+        head('Palier', 'right'),
+        head('Hf (mm)', 'right'),
+        head('ε_v (%)', 'right'),
+        head('e', 'right'),
+      ],
     ];
     paliers.forEach((r, i) => {
-      t.push([cell(String(i + 1)), cell(num(r.Hf, 3)), cell(num(r.ev, 2)), cell(num(r.e, 3))]);
+      t.push([
+        cell(String(i + 1)),
+        cell(num(r.Hf, 3)),
+        cell(num(r.ev, 2)),
+        cell(num(r.e, 3)),
+      ]);
     });
     pushKv2(out, t, ['auto', '*', '*', '*']);
   }
@@ -576,7 +639,11 @@ function ficheUcs(o: Record<string, unknown>): Content[] {
     ficheHead('Compression simple (Rc / cu)', 'NF EN ISO 17892-7'),
   ];
   const kv: TableCell[][] = [[head('Paramètre'), head('Valeur', 'right')]];
-  kvRow(kv, 'Résistance à la compression simple q_u', num(o.qu ?? d.qu, 2, 'MPa'));
+  kvRow(
+    kv,
+    'Résistance à la compression simple q_u',
+    num(o.qu ?? d.qu, 2, 'MPa'),
+  );
   kvRow(kv, 'Cohésion non drainée cu = qu/2', num(d.cu, 1, 'kPa'));
   pushKv(out, kv);
   return out;
@@ -591,7 +658,11 @@ function ficheTriuu(o: Record<string, unknown>): Content[] {
   const tr = rows(d, 'rows');
   if (tr.length > 0) {
     const t: TableCell[][] = [
-      [head('Éprouvette', 'right'), head('σ1 (kPa)', 'right'), head('cu (kPa)', 'right')],
+      [
+        head('Éprouvette', 'right'),
+        head('σ1 (kPa)', 'right'),
+        head('cu (kPa)', 'right'),
+      ],
     ];
     tr.forEach((r, i) => {
       t.push([cell(String(i + 1)), cell(num(r.s1, 1)), cell(num(r.cu, 1))]);
@@ -613,7 +684,11 @@ function ficheTricu(o: Record<string, unknown>): Content[] {
   const tr = rows(d, 'rows');
   if (tr.length > 0) {
     const t: TableCell[][] = [
-      [head('Éprouvette', 'right'), head('s (kPa)', 'right'), head('t (kPa)', 'right')],
+      [
+        head('Éprouvette', 'right'),
+        head('s (kPa)', 'right'),
+        head('t (kPa)', 'right'),
+      ],
     ];
     tr.forEach((r, i) => {
       t.push([cell(String(i + 1)), cell(num(r.s, 1)), cell(num(r.t, 1))]);
@@ -645,7 +720,9 @@ function ficheEs(o: Record<string, unknown>): Content[] {
   const out: Content[] = [ficheHead('Équivalent de sable', 'NF EN 933-8')];
   const er = rows(d, 'rows');
   if (er.length > 0) {
-    const t: TableCell[][] = [[head('Essai', 'right'), head('SE (%)', 'right')]];
+    const t: TableCell[][] = [
+      [head('Essai', 'right'), head('SE (%)', 'right')],
+    ];
     er.forEach((r, i) => {
       t.push([cell(String(i + 1)), cell(num(r.se, 0))]);
     });
@@ -681,7 +758,11 @@ function ficheSz(o: Record<string, unknown>): Content[] {
   const sr = rows(d, 'rows');
   if (sr.some((r) => fin(r.ref) !== null || fin(r.pas) !== null)) {
     const t: TableCell[][] = [
-      [head('Tamis (mm)', 'right'), head('Refus (g)', 'right'), head('Passant (%)', 'right')],
+      [
+        head('Tamis (mm)', 'right'),
+        head('Refus (g)', 'right'),
+        head('Passant (%)', 'right'),
+      ],
     ];
     for (const r of sr) {
       if (fin(r.ref) === null && fin(r.pas) === null) continue;
@@ -703,13 +784,17 @@ function ficheMde(o: Record<string, unknown>): Content[] {
   const kv: TableCell[][] = [[head('Paramètre'), head('Valeur', 'right')]];
   if (d.mode === 'camp') {
     const pertes = Array.isArray(d.pertes) ? d.pertes : [];
-    pertes.forEach((p, i) => kvRow(kv, `Perte éprouvette ${i + 1}`, num(p, 1, '%')));
+    pertes.forEach((p, i) =>
+      kvRow(kv, `Perte éprouvette ${i + 1}`, num(p, 1, '%')),
+    );
     kvRow(kv, 'CMDS (sec)', num(d.cmds, 1));
     kvRow(kv, 'CMDE (humide)', num(d.cmde, 1));
     kvRow(kv, 'CMD', num(d.cmd, 1));
   } else {
     const mr = rows(d, 'rows');
-    mr.forEach((r, i) => kvRow(kv, `Coefficient éprouvette ${i + 1}`, num(r.cc, 1)));
+    mr.forEach((r, i) =>
+      kvRow(kv, `Coefficient éprouvette ${i + 1}`, num(r.cc, 1)),
+    );
     const conf = typeof d.conformite === 'string' ? d.conformite.trim() : '';
     if (conf) kvRow(kv, 'Classe granulaire', conf);
   }
@@ -722,7 +807,10 @@ function ficheMde(o: Record<string, unknown>): Content[] {
 function ficheRho(o: Record<string, unknown>): Content[] {
   const d = det(o, 'rho');
   const any =
-    fin(d.ra) !== null || fin(d.rrd) !== null || fin(d.rssd) !== null || fin(d.wa) !== null;
+    fin(d.ra) !== null ||
+    fin(d.rrd) !== null ||
+    fin(d.rssd) !== null ||
+    fin(d.wa) !== null;
   if (!any) return [];
   const out: Content[] = [
     ficheHead('Masse volumique & absorption des granulats', 'NF EN 1097-6'),
@@ -730,7 +818,11 @@ function ficheRho(o: Record<string, unknown>): Content[] {
   const kv: TableCell[][] = [[head('Paramètre'), head('Valeur', 'right')]];
   kvRow(kv, 'Masse volumique réelle ρa', num(d.ra, 3, 'Mg/m³'));
   kvRow(kv, 'Masse volumique réelle sèche ρrd', num(d.rrd, 3, 'Mg/m³'));
-  kvRow(kv, 'Masse volumique saturée surface sèche ρssd', num(d.rssd, 3, 'Mg/m³'));
+  kvRow(
+    kv,
+    'Masse volumique saturée surface sèche ρssd',
+    num(d.rssd, 3, 'Mg/m³'),
+  );
   kvRow(kv, "Absorption d'eau WA24", num(o.wa ?? d.wa, 1, '%'));
   pushKv(out, kv);
   return out;
@@ -759,17 +851,31 @@ function ficheCisail(o: Record<string, unknown>): Content[] {
   const cr = rows(d, 'rows');
   if (cr.length > 0) {
     const t: TableCell[][] = [
-      [head('Éprouvette', 'right'), head('σ′v (kPa)', 'right'), head('τ pic (kPa)', 'right'), head('τ rés. (kPa)', 'right')],
+      [
+        head('Éprouvette', 'right'),
+        head('σ′v (kPa)', 'right'),
+        head('τ pic (kPa)', 'right'),
+        head('τ rés. (kPa)', 'right'),
+      ],
     ];
     cr.forEach((r, i) => {
-      t.push([cell(String(i + 1)), cell(num(r.sv, 0)), cell(num(r.tp, 1)), cell(num(r.tr, 1))]);
+      t.push([
+        cell(String(i + 1)),
+        cell(num(r.sv, 0)),
+        cell(num(r.tp, 1)),
+        cell(num(r.tr, 1)),
+      ]);
     });
     pushKv2(out, t, ['*', 'auto', 'auto', 'auto']);
   }
   const kv: TableCell[][] = [[head('Paramètre'), head('Valeur', 'right')]];
   kvRow(kv, "Cohésion c' (pic)", num(o.c_cis ?? d.c, 1, 'kPa'));
   kvRow(kv, "Angle de frottement φ' (pic)", num(o.phi_cis ?? d.phi, 1, '°'));
-  kvRow(kv, "Angle de frottement résiduel φ'_R", num(o.phiR_cis ?? d.phiR, 1, '°'));
+  kvRow(
+    kv,
+    "Angle de frottement résiduel φ'_R",
+    num(o.phiR_cis ?? d.phiR, 1, '°'),
+  );
   pushKv(out, kv);
   return out;
 }
@@ -777,20 +883,29 @@ function ficheCisail(o: Record<string, unknown>): Content[] {
 /** Masse volumique apparente ρ — NF EN ISO 17892-2. */
 function ficheDens(o: Record<string, unknown>): Content[] {
   const d = det(o, 'dens');
-  if (fin(d.rho) === null && fin(d.Vcm3) === null && fin(o.rho_app) === null) return [];
+  if (fin(d.rho) === null && fin(d.Vcm3) === null && fin(o.rho_app) === null)
+    return [];
   const out: Content[] = [
     ficheHead('Masse volumique apparente ρ', 'NF EN ISO 17892-2'),
   ];
   const kv: TableCell[][] = [[head('Paramètre'), head('Valeur', 'right')]];
   kvRow(kv, 'Volume de l’éprouvette', num(d.Vcm3, 1, 'cm³'));
   kvRow(kv, 'Masse volumique apparente ρ', num(o.rho_app ?? d.rho, 3, 'Mg/m³'));
-  kvRow(kv, 'Masse volumique sèche apparente ρd', num(o.rhod_app ?? d.rhod, 3, 'Mg/m³'));
+  kvRow(
+    kv,
+    'Masse volumique sèche apparente ρd',
+    num(o.rhod_app ?? d.rhod, 3, 'Mg/m³'),
+  );
   pushKv(out, kv);
   return out;
 }
 
 /** Rend un tableau à colonnes personnalisées si ≥ 1 ligne de donnée. */
-function pushKv2(body: Content[], t: TableCell[][], widths: (string | number)[]): void {
+function pushKv2(
+  body: Content[],
+  t: TableCell[][],
+  widths: (string | number)[],
+): void {
   if (t.length > 1) {
     body.push({
       table: { headerRows: 1, widths, body: t },
@@ -805,7 +920,9 @@ function pushKv2(body: Content[], t: TableCell[][], widths: (string | number)[])
 // ===========================================================================
 
 function buildSyntheseGTR(o: Record<string, unknown>): Content[] {
-  const out: Content[] = [section('Synthèse & classification GTR (NF P 11-300)')];
+  const out: Content[] = [
+    section('Synthèse & classification GTR (NF P 11-300)'),
+  ];
 
   const cl = isPlainObject(o.classe) ? o.classe : {};
   const full = typeof cl.full === 'string' ? cl.full.trim() : '';
@@ -879,7 +996,11 @@ function buildSyntheseGTR(o: Record<string, unknown>): Content[] {
   kvRow(t, 'Masse volumique sèche apparente ρ_d', num(o.rhod_app, 2, 'Mg/m³'));
   kvRow(t, 'Teneur en eau optimale w_OPN', num(o.wopn, 1, '%'));
   kvRow(t, 'Densité sèche max ρ_d;max', num(o.rdmax, 2, 't/m³'));
-  kvRow(t, o.cbrType === 'ipi' ? 'IPI (Indice Portant Immédiat)' : 'Indice CBR', num(o.cbr, 0));
+  kvRow(
+    t,
+    o.cbrType === 'ipi' ? 'IPI (Indice Portant Immédiat)' : 'Indice CBR',
+    num(o.cbr, 0),
+  );
   kvRow(t, 'Gonflement', num(o.gonfl, 1, '%'));
   kvRow(t, 'Équivalent de sable ES', num(o.es, 0, '%'));
   kvRow(t, 'Los Angeles LA', num(o.la, 0));

@@ -212,6 +212,201 @@ export const CHAUSSEE_PRESENTATION: PresentationModel = {
     },
   ],
 
+  // RAPPORT DÉTAILLÉ DE CALCUL (annexe) — équivalent du « Rapport détaillé »
+  // (renderDetails) de l'outil client ROADSENS. Rend les GRANDEURS de sortie
+  // whitelistées `details.*` (contraintes σ, déformations ε, coefficients de la loi
+  // de fatigue LCPC) — EXACTEMENT ce que renderDetails affiche à l'écran
+  // (détails-transparents, ADR 0014 / décision titulaire 13/07). Ce sont des VALEURS
+  // de sortie de la méthode publiée ; le CALAGE (tables e6/σ6/b par matériau, θ_eq) et
+  // le CODE du propagateur restent SERVEUR — on ne rend AUCUNE formule de méthode ni
+  // la matrice de transfert 4×4 (non portées par la sortie scellée, cf. §8).
+  // Ordre & libellés alignés sur renderDetails (l.1481-1585). Les admissibles
+  // basculent µdef->MPa pour les familles rigides (rigideFormat, miroir de `d.sig`).
+  detailReport: {
+    title: 'Rapport détaillé de calcul',
+    subtitle:
+      'Grandeurs de la méthode Burmister multicouche exacte — référentiel ' +
+      'AGEROUTE Sénégal 2015 (LCPC/SETRA 1994). Valeurs de sortie ; le calage et ' +
+      'l’algorithme restent internes.',
+    rootPath: 'details',
+    rigideFlagPath: 'fatigue.rigide',
+    sections: [
+      {
+        // renderDetails §3 (modules pondérés) + plateforme (§1).
+        title: 'Modules pondérés et plateforme',
+        fields: [
+          {
+            path: 'details.E1_pond',
+            label: 'Ē pondérée du paquet lié',
+            format: { decimals: 0, unit: 'MPa' },
+          },
+          {
+            path: 'details.nu1_pond',
+            label: 'ν̄ pondérée du paquet lié',
+            format: { decimals: 3, unit: '' },
+          },
+          {
+            path: 'details.E_psc',
+            label: 'Module de la plateforme (PSC)',
+            format: { decimals: 0, unit: 'MPa' },
+          },
+          {
+            path: 'details.nu_psc',
+            label: 'ν de la plateforme',
+            format: { decimals: 2, unit: '' },
+          },
+          {
+            path: 'details.risque_pct',
+            label: 'Risque de calcul r',
+            format: { decimals: 0, unit: '%' },
+          },
+        ],
+      },
+      {
+        // renderDetails §5 (interface critique) + §8 (sommet PSC). σ en kPa (×1000).
+        title: 'Contraintes à l’interface critique (Burmister exact)',
+        fields: [
+          {
+            path: 'details.sigmaZ_r0',
+            label: 'σ_z à l’interface critique · r=0',
+            format: { decimals: 2, unit: 'kPa' },
+          },
+          {
+            path: 'details.sigmaR_r0',
+            label: 'σ_r à l’interface critique · r=0',
+            format: { decimals: 2, unit: 'kPa' },
+          },
+          {
+            path: 'details.sigmaZ_d2',
+            label: 'σ_z à l’interface critique · r=d/2',
+            format: { decimals: 2, unit: 'kPa' },
+          },
+          {
+            path: 'details.sigmaR_d2',
+            label: 'σ_r à l’interface critique · r=d/2',
+            format: { decimals: 2, unit: 'kPa' },
+          },
+          {
+            path: 'details.sigmaZ_psc_kpa',
+            label: 'σ_z au sommet de la plateforme',
+            format: { decimals: 2, unit: 'kPa' },
+          },
+          {
+            path: 'details.sigmaR_psc_kpa',
+            label: 'σ_r au sommet de la plateforme',
+            format: { decimals: 2, unit: 'kPa' },
+          },
+        ],
+      },
+      {
+        // renderDetails §6 (déformation de fatigue ε_t).
+        title: 'Déformation de fatigue ε_t',
+        fields: [
+          {
+            path: 'details.epsilonT_r0',
+            label: 'ε_t à r=0',
+            format: { decimals: 2, unit: 'µdef' },
+          },
+          {
+            path: 'details.epsilonT_d2',
+            label: 'ε_t à r=d/2 (roues jumelées)',
+            format: { decimals: 2, unit: 'µdef' },
+          },
+          {
+            path: 'details.epsilonT',
+            label: 'ε_t retenue (max)',
+            format: { decimals: 2, unit: 'µdef' },
+          },
+        ],
+      },
+      {
+        // renderDetails §7 (loi de fatigue LCPC 1994). Les admissibles basculent
+        // µdef->MPa pour les familles rigides (rigideFormat, miroir de `d.sig`).
+        title: 'Coefficients de la loi de fatigue (LCPC 1994, VI.4.2)',
+        fields: [
+          {
+            path: 'details.ktheta',
+            label: 'kθ (température)',
+            format: { decimals: 3, unit: '' },
+          },
+          {
+            path: 'details.sn',
+            label: 'SN (écart-type des essais de fatigue)',
+            format: { decimals: 2, unit: '' },
+          },
+          {
+            path: 'details.sh_cm',
+            label: 'Sh (écart-type de construction)',
+            format: { decimals: 2, unit: 'cm' },
+          },
+          {
+            path: 'details.delta',
+            label: 'δ',
+            format: { decimals: 4, unit: '' },
+          },
+          {
+            path: 'details.kr',
+            label: 'kr (risque)',
+            format: { decimals: 4, unit: '' },
+          },
+          {
+            path: 'details.kc',
+            label: 'kc (calage)',
+            format: { decimals: 2, unit: '' },
+          },
+          {
+            path: 'details.ks',
+            label: 'ks (support)',
+            format: { decimals: 4, unit: '' },
+          },
+          {
+            path: 'details.ub',
+            label: '1/b (pente de la loi de fatigue)',
+            format: { decimals: 1, unit: '' },
+          },
+          {
+            path: 'details.epsilonT_adm',
+            label: 'ε_t admissible (au risque r)',
+            format: { decimals: 2, unit: 'µdef' },
+            rigideFormat: { decimals: 3, unit: 'MPa' },
+          },
+          {
+            path: 'details.adm_r50',
+            label: 'ε_t admissible à r=50 %',
+            format: { decimals: 2, unit: 'µdef' },
+            rigideFormat: { decimals: 3, unit: 'MPa' },
+          },
+        ],
+      },
+      {
+        // renderDetails §8 (orniérage ε_z au sommet PSC).
+        title: 'Déformation d’orniérage ε_z',
+        fields: [
+          {
+            path: 'details.epsilonZ_axe',
+            label: 'ε_z à l’axe de la roue',
+            format: { decimals: 2, unit: 'µdef' },
+          },
+          {
+            path: 'details.epsilonZ_mid',
+            label: 'ε_z entre jumelage',
+            format: { decimals: 2, unit: 'µdef' },
+          },
+          {
+            path: 'details.epsilonZ',
+            label: 'ε_z retenue (max)',
+            format: { decimals: 2, unit: 'µdef' },
+          },
+          {
+            path: 'details.epsilonZ_adm',
+            label: 'ε_z admissible',
+            format: { decimals: 2, unit: 'µdef' },
+          },
+        ],
+      },
+    ],
+  },
+
   // MASQUÉS : bruit + confidentialité (fail-closed).
   //  - erreur (si vide) : masqué dynamiquement par le renderer ; listé ici pour
   //    n'être jamais rendu en ligne brute.

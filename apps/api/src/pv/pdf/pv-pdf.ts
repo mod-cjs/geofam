@@ -1385,9 +1385,6 @@ function pushKvTable(body: Content[], rows: TableCell[][]): void {
   }
 }
 
-
-
-
 // ---------------------------------------------------------------------------
 // Corrections métrologiques pressiométriques (étalonnage / calibrage) — miroir de
 // `renderEtalResult` / `renderCalibResult` de pressiometre__1_.html : coefficients

@@ -82,6 +82,39 @@ const OUTPUT = {
   couchesGranulaires: [
     { couche: 2, valeur: 686.12, admissible: 511.5, ok: false, requis: true },
   ],
+  // DETAILS DE CALCUL (annexe « Rapport détaillé », ADR 0014) : grandeurs de sortie
+  // whitelistées affichées par renderDetails. La sentinelle fail-closed doit décider
+  // CHAQUE sous-clé -> chacune est mappée par le detailReport (ou le test rougit).
+  details: {
+    E1_pond: 2100,
+    nu1_pond: 0.437,
+    E_psc: 50,
+    nu_psc: 0.35,
+    risque_pct: 2,
+    sigmaZ_r0: 245.3,
+    sigmaR_r0: -12.4,
+    sigmaZ_d2: 180.1,
+    sigmaR_d2: -6.2,
+    epsilonT_r0: 290.58,
+    epsilonT_d2: 265.1,
+    epsilonT: 290.58,
+    epsilonT_adm: 205.67,
+    epsilonZ_axe: 891.49,
+    epsilonZ_mid: 760.2,
+    epsilonZ: 891.49,
+    epsilonZ_adm: 511.5,
+    ktheta: 1.024,
+    sn: 0.3,
+    sh_cm: 3,
+    delta: 0.412,
+    kr: 0.842,
+    kc: 1.3,
+    ks: 0.94,
+    ub: 5,
+    adm_r50: 244.3,
+    sigmaZ_psc_kpa: 42.1,
+    sigmaR_psc_kpa: 8.7,
+  },
 };
 
 /** Énumère les CHEMINS FEUILLES « décidables » (1er niveau sous un conteneur). */

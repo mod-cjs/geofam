@@ -48,7 +48,10 @@ function num(v: number | null, d = 2, unit?: string): string {
   let n = v;
   if (Math.abs(n) < 0.5 / Math.pow(10, d)) n = 0;
   const s = n
-    .toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d })
+    .toLocaleString('fr-FR', {
+      minimumFractionDigits: d,
+      maximumFractionDigits: d,
+    })
     .replace(/[  ]/g, ' ');
   return unit ? `${s} ${unit}` : s;
 }
@@ -119,7 +122,7 @@ function sealFor(
       projectId: 'p-1',
       projectName: 'Chantier RN1',
     },
-    input: fx.input as unknown,
+    input: fx.input,
     output,
     scienceStatus: 'signed',
     verdict: 'NON_APPLICABLE',
@@ -179,7 +182,16 @@ describe('PV labo — fac-similé du PROCÈS-VERBAL D’ESSAI natif FASTLAB (pri
     // Les sous-objets sont TOUS émis (garde anti faux-vert : sinon le test ne prouve rien).
     const d = output.detail as Record<string, unknown>;
     expect(Object.keys(d)).toEqual(
-      expect.arrayContaining(['rhos', 'cbr', 'dens', 'ucs', 'triuu', 'es', 'la', 'sz']),
+      expect.arrayContaining([
+        'rhos',
+        'cbr',
+        'dens',
+        'ucs',
+        'triuu',
+        'es',
+        'la',
+        'sz',
+      ]),
     );
     const { text } = renderFor(DEMO);
     // …mais VIDES pour le DEMO → aucune fiche rendue (normes absentes).
@@ -210,7 +222,8 @@ describe('PV labo — fac-similé du PROCÈS-VERBAL D’ESSAI natif FASTLAB (pri
     ];
     const idx = seq.map((s) => text.indexOf(s));
     for (const i of idx) expect(i).toBeGreaterThanOrEqual(0);
-    for (let k = 1; k < idx.length; k++) expect(idx[k]).toBeGreaterThan(idx[k - 1]);
+    for (let k = 1; k < idx.length; k++)
+      expect(idx[k]).toBeGreaterThan(idx[k - 1]);
   });
 
   it('valeurs par fiche (DEMO) recalculées depuis la sortie serveur, décimales du dépouillement', () => {
