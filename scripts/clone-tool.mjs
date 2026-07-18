@@ -2236,6 +2236,323 @@ const FASTLAB_SAVESAMPLE = [
   '}',
 ].join('\n');
 
+// ---------------------------------------------------------------------------
+// PRESSIOPRO (essai pressiometrique Menard, NF EN ISO 22476-4) — MULTI-ENGINE
+// (3 slugs tenant : pressiometre / pressio-etalonnage / pressio-calibrage).
+// ---------------------------------------------------------------------------
+
+/**
+ * Symboles MOTEUR (science confidentielle) SUPPRIMES du clone pressiopro. Source de
+ * verite unique pour scripts/audit-excision.mjs (§8). `calcEtalonnage`/`calcCalibrage`/
+ * `doCalc`/`renderProfil`/`updateSeuilPreview` sont REECRITS (nom conserve -> pas ici) ;
+ * ne sont interdits que les fonctions RETIREES integralement (depouillement pressio,
+ * coefficient rheologique alpha, regressions courbe-inverse/lineaire, ajustement 3x3,
+ * detection auto de la plage pseudo-elastique §D.5.1).
+ *
+ * NB calcPh (Ph = 0,1·(Zs+Zc)) : CONSERVE (pas dans cette liste). Arbitrage documente a
+ * la config (assistance de SAISIE d'un parametre, formule PRINTED P15/P19, jumelle du
+ * calcU0 conserve, AUCUN moteur serveur pour Ph) — reversible avant livraison client.
+ */
+const PRESSIO_ENGINE_SYMBOLS = [
+  'calcDepth', // depouillement d'une profondeur (EM/pL/alpha/categorie) — coeur science
+  'getAlpha', // coefficient rheologique alpha de Menard (table)
+  'fitAll', // orchestrateur d'extrapolation §D.4.3
+  'fitRecip', // regression courbe inverse 1/(V-Vs) = A + B·P
+  'linReg', // regression lineaire (moindres carres)
+  'autoDetectPhase', // detection auto de la plage pseudo-elastique + beta §D.5.1
+  'solve3', // elimination de Gauss 3x3 (ajustement polynomial du calibrage)
+];
+
+/** Pont postMessage MULTI-ENGINE (origine opaque) + proxy Store + helpers de mapping
+ * (rejeu des SAISIES + lecture de la sortie serveur whitelistee — AUCUNE science).
+ * Injecte apres `let depths = [], cur = 0, CC = {};` : depths/cur/CC definis ; les
+ * renderers/etats hoistes (etalRows/calibRows/logLayers en `let`, TDZ non touchee au
+ * boot) restent appelables au 1er calcul. L'IIFE poste « ready » avant DOMContentLoaded. */
+const PRESSIO_BRIDGE_AND_SHIM = [
+  '/* ===================== BRIDGE (multi-engine) + MAPPING (injecté — clone excisé, ADR 0015) ===================== */',
+  '(function(){',
+  '  var TOOL_ID="pressiopro";',
+  '  var pending=Object.create(null), stpend=Object.create(null), seq=0, stseq=0;',
+  '  var ctx={ engineId:"pressiometre", orgSlug:null, projectLabel:null, readOnly:false };',
+  '  function post(msg){ try{ window.parent.postMessage(msg,"*"); }catch(e){} }',
+  '  window.addEventListener("message", function(ev){',
+  '    if(ev.source !== window.parent) return;',
+  '    var d=ev.data; if(!d || d.v!==1 || typeof d.type!=="string") return;',
+  '    if(d.type==="init"){ ctx=Object.assign(ctx, d.payload||{}); return; }',
+  '    if(d.type==="calc:response"){ var p=pending[d.id]; if(!p) return; delete pending[d.id]; p(d.payload||{ok:false,error:{message:"réponse vide"}}); return; }',
+  '    if(d.type==="store:value"){ var pr=d.id?stpend[d.id]:null; if(pr){ delete stpend[d.id]; pr(d.payload&&d.payload.value); } return; }',
+  '  });',
+  '  /* calc(engineId, params) : engineId choisi par la PAGE/ACTION (liste fermée validée',
+  '     côté hôte : pressiometre / pressio-etalonnage / pressio-calibrage). */',
+  '  window.__geofamBridge={',
+  '    calc:function(engineId, params){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:engineId,label:(params&&params.projet)||(params&&params.label)||null,params:params}}); }); },',
+  '    emitPv:function(calcResultId){ post({v:1,type:"pv:request",payload:{calcResultId:calcResultId}}); },',
+  '    storeGet:function(key){ var id=TOOL_ID+":s:"+(++stseq); return new Promise(function(resolve){ stpend[id]=resolve; post({v:1,type:"store:get",id:id,payload:{key:key}}); }); },',
+  '    storeSet:function(key,value){ var id=TOOL_ID+":s:"+(++stseq); return new Promise(function(resolve){ stpend[id]=resolve; post({v:1,type:"store:set",id:id,payload:{key:key,value:value}}); }); },',
+  '    context:function(){ return ctx; }',
+  '  };',
+  '  post({v:1,type:"ready",payload:{toolId:TOOL_ID}});',
+  '})();',
+  '',
+  "/* engine ids — LISTE FERMEE (l'hôte rejette tout id hors liste sans appeler l'API). */",
+  'var ENG_ESSAI="pressiometre", ENG_ETAL="pressio-etalonnage", ENG_CALIB="pressio-calibrage";',
+  'var __seuilTimer=null;',
+  'window.__pressioLastCalcResultId=null;',
+  '',
+  '/* --- helpers de mapping (rejeu des SAISIES + lecture whitelistée ; aucune science) --- */',
+  'function _pnum(v,def){ return (typeof v==="number"&&isFinite(v))?v:(def===undefined?0:def); }',
+  'function _escP(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }',
+  'function _gerrP(e){ if(!e) return "Réponse de calcul vide."; if(typeof e==="string") return e; var m=e.message||"Calcul indisponible."; var r=e.reason?(" ("+e.reason+")"):""; return m+r; }',
+  '/* Poids volumique effectif (kN/m³) — parité calcDepth `parseFloat(p_gamma)||19`. */',
+  "function _pGamma(){ var e=document.getElementById('p_gamma'); var g=e?parseFloat(e.value):NaN; return (isFinite(g)&&g>0)?g:19; }",
+  '/* Profondeur nappe (m) — parité nappeVal() (conservé) ; robuste si nappeVal absent. */',
+  "function _pNappe(){ try{ return _pnum(nappeVal(),0); }catch(e){ var n=document.getElementById('p_nappe'); return n?(parseFloat(n.value)||0):0; } }",
+  "/* Paliers VALIDES d'une profondeur -> forme contrat (p/v15/v30/v60 finis). */",
+  "function _essaiRows(d){ return (d&&d.rows?d.rows:[]).filter(function(r){ return r.p!==''&&r.p!=null&&r.v60!==''&&r.v60!=null; }).map(function(r){ return { p:+r.p, v15:+r.v15||0, v30:+r.v30||0, v60:+r.v60 }; }); }",
+  "/* STATE d'une profondeur -> PressiometreInputSchema. getParams() (conservé) divise déjà",
+  '   `a` par 10 (cm³/MPa saisie -> cm³/bar interne), comme le HTML. Rejeu pur des entrées. */',
+  'function buildEssaiInput(idx){',
+  '  var d=depths[idx]; var p=getParams();',
+  '  var inp={ label:String((d&&d.label)||"Profondeur"),',
+  '    params:{ a:_pnum(p.a), Ph:_pnum(p.Ph), Pe:_pnum(p.Pe), V0:_pnum(p.V0,535), k0:_pnum(p.k0) },',
+  '    gamma:_pGamma(), nappe:_pNappe(), rows:_essaiRows(d) };',
+  '  if(d && d.pf_idx!=null && d.pf_idx>=0) inp.pf_idx=d.pf_idx;',
+  '  if(d && d.plm_idx!=null && d.plm_idx>=0) inp.plm_idx=d.plm_idx;',
+  "  var pj=document.getElementById('p_projet'); if(pj&&pj.value) inp.projet=String(pj.value);",
+  '  return inp;',
+  '}',
+  '/* Fermeture de tracé de la courbe inverse (§D.4.3.2) reconstruite depuis les',
+  '   COEFFICIENTS A/B renvoyés par le serveur (ADR 0015 : « le serveur renvoie les',
+  '   coefficients de courbe à tracer ») ; aucune régression cliente. */',
+  'function _recipGen(A,B,V0){ return function(p){ var inv=A+B*p; return inv>0 ? V0+(1/inv) : null; }; }',
+  '/* SORTIE serveur (PressiometreOutputSchema) -> `_res` attendu par renderResults/',
+  '   drawResCharts/renderProfil (conservés). pfI/plmI reconstruits depuis les PHASES',
+  '   contiguës de la courbe serveur (parité HTML L.1255-1258). a/Ph/Pe/V0 rejoués du form. */',
+  'function mapEssaiOutput(out, idx){',
+  '  var p=getParams(); var V0=_pnum(p.V0,535);',
+  '  var courbe=Array.isArray(out.courbe)?out.courbe:[];',
+  '  var C=courbe.map(function(cp){ return { pRaw:_pnum(cp.p), p:_pnum(cp.pCorr), v60:_pnum(cp.v60), dv:_pnum(cp.d6030) }; });',
+  '  var pfI=0; while(pfI<courbe.length && courbe[pfI].phase==="Recompression") pfI++;',
+  '  var plmI=pfI-1; for(var i=pfI;i<courbe.length;i++){ if(courbe[i].phase==="Pseudo-élast.") plmI=i; else break; }',
+  '  var ex=out.extrapolation||{}; var A=_pnum(ex.a), B=_pnum(ex.b);',
+  '  var recip={ A:A, B:B, PLM:_pnum(ex.plmVLim), PLMasym:_pnum(ex.plmAsymptote),',
+  '    errV:(typeof ex.errV==="number"&&isFinite(ex.errV))?ex.errV:Infinity, gen:_recipGen(A,B,V0) };',
+  '  var vol=out.volumes||{}, syn=out.synthese||{};',
+  '  var pLdir=out.pLDirect?_pnum(out.pL):null;',
+  '  var extChoice=(!out.pLDirect && isFinite(recip.PLM) && recip.PLM>_pnum(out.pf))?"recip":null;',
+  '  var _res={ C:C, pfI:pfI, plmI:plmI,',
+  '    pE:_pnum(out.pE), p0:_pnum(out.p0), Pf:_pnum(out.pf), pL:_pnum(out.pL), pL_direct:pLdir,',
+  '    PfS:_pnum(out.pfNette), pLS:_pnum(out.pLNette),',
+  '    VE:_pnum(vol.vE), V0c:_pnum(vol.v0), Vf:_pnum(vol.vf), VsP2V1:_pnum(vol.vLim),',
+  '    EM:_pnum(out.EM), ratio:_pnum(out.ratioEMpL), alpha:_pnum(out.alpha),',
+  '    cat:(typeof out.categorie==="string"?out.categorie:""),',
+  '    catName:(typeof out.categorieLibelle==="string"?out.categorieLibelle:""),',
+  '    catDesc:(typeof out.categorieDescription==="string"?out.categorieDescription:""),',
+  '    consol:(typeof out.consolidation==="string"?out.consolidation:""),',
+  '    fluage:C.map(function(c){ return { p:c.p, dv:c.dv }; }),',
+  '    ext:{recip:recip}, extChoice:extChoice,',
+  '    a:_pnum(p.a), aUsed:_pnum(out.aUsed), aForced:(out.aForced===true),',
+  '    Ph:_pnum(p.Ph), Pe:_pnum(p.Pe), V0:V0,',
+  '    sigH0:_pnum(out.sigmaH0), z:_pnum(out.z),',
+  '    beta:_pnum(syn.beta), mE:_pnum(syn.mE),',
+  '    auto_p0I:_pnum(syn.plageAutoDebut,0), auto_pfI:_pnum(syn.plageAutoFin,0) };',
+  '  if(idx!=null && depths[idx]) depths[idx]._res=_res;',
+  '  return _res;',
+  '}',
+  'function renderCalcErrorRes(msg){ var el=document.getElementById("resCont"); if(el) el.innerHTML=\'<div class="empty" style="color:var(--re)"><div class="eico">⚠️</div><p><strong>Calcul indisponible.</strong><br>\'+_escP(msg)+\'</p></div>\'; }',
+  '/* Calcule UNE profondeur via le pont, mappe -> _res, rend les résultats (exemple/boot). */',
+  'function __pressioCalcAndShow(idx){',
+  '  var d=depths[idx]; if(!d) return;',
+  '  window.__geofamBridge.calc(ENG_ESSAI, buildEssaiInput(idx)).then(function(resp){',
+  '    if(resp&&resp.ok&&resp.output&&!resp.output.erreur){ var r=mapEssaiOutput(resp.output, idx); renderResults(r, d.label); }',
+  '    else { renderCalcErrorRes(_gerrP(resp&&resp.error)); }',
+  '  }).catch(function(e){ renderCalcErrorRes("Pont de calcul indisponible : "+((e&&e.message)||e)); });',
+  '}',
+  '/* RENDU du profil (reproduit renderProfil L.1647-1691 SANS le calcDepth loop — celui-ci',
+  '   est fait en amont via le pont). Alimenté par depths[i]._res (sortie serveur mappée). */',
+  'function __pressioDrawProfil(){',
+  '  function pd(l){var m=l.match(/[\\d.,]+/);return m?parseFloat(m[0].replace(",",".")):0;}',
+  '  var data=depths.filter(function(d){return d._res;}).map(function(d){var o={depth:pd(d.label),label:d.label};for(var k in d._res){o[k]=d._res[k];}return o;}).sort(function(a,b){return a.depth-b.depth;});',
+  '  var plc=document.getElementById("pressioLog");',
+  '  if(plc) plc.innerHTML=drawPressioLog(logLayers, data, _pNappe());',
+  '  var pll=document.getElementById("pressioLogLeg");',
+  '  if(pll) pll.innerHTML=soilLegendHTML(logLayers)+catLegendHTML(data);',
+  '  var pgp=document.getElementById("pg-profil");',
+  '  var tb=(pgp&&pgp.querySelector("#profTbody")) || document.getElementById("profTbody"); if(!tb) return; tb.innerHTML="";',
+  '  if(!data.length){',
+  '    tb.innerHTML=\'<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--t3);font-style:italic">Calculez chaque profondeur.</td></tr>\';',
+  '    ["chartEM","chartPLM","chartSpec"].forEach(function(k){if(CC[k]){try{CC[k].destroy();}catch(e){}CC[k]=null;}});',
+  '    return;',
+  '  }',
+  '  data.forEach(function(d){',
+  '    var tr=document.createElement("tr");',
+  "    tr.innerHTML='<td>'+d.label+'</td><td>'+d.EM.toFixed(2)+'</td><td>'+(d.pL*0.1).toFixed(3)+'</td><td>'+(d.Pf*0.1).toFixed(3)+'</td><td>'+d.ratio.toFixed(1)+'</td><td>'+d.alpha.toFixed(2)+'</td><td><span class=\"pb el\">'+d.cat+'</span></td>';",
+  '    tb.appendChild(tr);',
+  '  });',
+  '  if(typeof Chart==="undefined") return;',
+  '  var deps=data.map(function(d){return d.depth;}), ems=data.map(function(d){return +d.EM.toFixed(3);}), plms=data.map(function(d){return +(d.pL*0.1).toFixed(4);}), pfs=data.map(function(d){return +(d.Pf*0.1).toFixed(4);});',
+  "  var gc='rgba(255,255,255,.05)',tc='#8fa3b8';",
+  "  var bo=function(xl,xm){return{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:tc,font:{size:11},boxWidth:12,padding:14}}},scales:{x:{type:'linear',position:'top',title:{display:true,text:xl,color:tc,font:{size:11}},grid:{color:gc},ticks:{color:tc,font:{size:11}},min:xm},y:{type:'linear',reverse:true,title:{display:true,text:'Profondeur (m)',color:tc,font:{size:11}},grid:{color:gc},ticks:{color:tc,font:{size:11}},min:0}}};};",
+  '  if(CC.chartEM){CC.chartEM.destroy();CC.chartEM=null;}',
+  "  CC.chartEM=new Chart(document.getElementById('chartEM'),{type:'line',data:{datasets:[{label:'EM (MPa)',data:deps.map(function(d,i){return {x:ems[i],y:d};}),borderColor:'#2484ec',backgroundColor:'rgba(36,132,236,.12)',fill:true,tension:.3,pointRadius:6,pointBackgroundColor:'#2484ec',pointBorderColor:'#0d1b2a',pointBorderWidth:2,borderWidth:2.5}]},options:bo('EM (MPa)',0)});",
+  '  if(CC.chartPLM){CC.chartPLM.destroy();CC.chartPLM=null;}',
+  "  CC.chartPLM=new Chart(document.getElementById('chartPLM'),{type:'line',data:{datasets:[",
+  "    {label:'PLM (MPa)',data:deps.map(function(d,i){return {x:plms[i],y:d};}),borderColor:'#15b896',fill:false,tension:.3,pointRadius:6,pointBackgroundColor:'#15b896',pointBorderColor:'#0d1b2a',pointBorderWidth:2,borderWidth:2.5},",
+  "    {label:'Pf (MPa)',data:deps.map(function(d,i){return {x:pfs[i],y:d};}),borderColor:'#e05252',fill:false,tension:.3,borderDash:[5,4],pointRadius:5,pointBackgroundColor:'#e05252',pointBorderColor:'#0d1b2a',pointBorderWidth:2,borderWidth:2}",
+  "  ]},options:bo('Pression (MPa)',0)});",
+  '  if(CC.chartSpec){CC.chartSpec.destroy();CC.chartSpec=null;}',
+  '  var spts=data.map(function(d){return {x:Math.log10(Math.max(0.001,d.pLS*0.1)),y:Math.log10(Math.max(0.5,d.ratio)),label:d.label};});',
+  "  var iso=[{r:4,c:'rgba(224,82,82,.3)',l:'E/P=4'},{r:8,c:'rgba(240,165,0,.3)',l:'E/P=8'},{r:14,c:'rgba(36,132,236,.25)',l:'E/P=14'},{r:22,c:'rgba(21,184,150,.25)',l:'E/P=22'}];",
+  "  CC.chartSpec=new Chart(document.getElementById('chartSpec'),{type:'line',",
+  '    data:{datasets:[',
+  '      ...iso.map(function(l){return {label:l.l,data:[{x:Math.log10(0.01),y:Math.log10(l.r)},{x:Math.log10(10),y:Math.log10(l.r)}],borderColor:l.c,borderWidth:1.5,borderDash:[4,4],pointRadius:0,fill:false,tension:0};}),',
+  "      {label:'Essais',data:spts,type:'scatter',borderColor:'transparent',backgroundColor:'#f0a500',pointRadius:8,pointHoverRadius:10}",
+  '    ]},',
+  '    options:{responsive:true,maintainAspectRatio:false,',
+  "      plugins:{legend:{display:false},tooltip:{callbacks:{title:function(it){var i=it[0];return i.datasetIndex===iso.length?(spts[i.dataIndex]&&spts[i.dataIndex].label||''):(iso[i.datasetIndex]&&iso[i.datasetIndex].l||'');},label:function(it){if(it.datasetIndex===iso.length){var pp=spts[it.dataIndex];return['PLM*='+Math.pow(10,pp.x).toFixed(3)+' MPa','E/P='+Math.pow(10,pp.y).toFixed(1)];}return '';}}}},",
+  "      scales:{x:{type:'linear',title:{display:true,text:'log(PLM*) en MPa',color:tc,font:{size:11}},grid:{color:gc},ticks:{color:tc,font:{size:11},callback:function(v){return Math.pow(10,v).toFixed(2)+' MPa';}}},y:{type:'linear',title:{display:true,text:'log(EM/PLM*)',color:tc,font:{size:11}},grid:{color:gc},ticks:{color:tc,font:{size:11},callback:function(v){return ''+Math.pow(10,v).toFixed(0);}}}}",
+  '    }',
+  '  });',
+  '}',
+  '/* =================== FIN BRIDGE + MAPPING =================== */',
+].join('\n');
+
+/** doCalc() REECRIT : async, pont (essai), mapping serveur -> _res, renderResults. */
+const PRESSIO_DOCALC = [
+  'async function doCalc(){',
+  '  var d=depths[cur];',
+  "  var pfVal=parseInt(document.getElementById('sel_pf').value);",
+  "  var plmVal=parseInt(document.getElementById('sel_plm').value);",
+  '  d.pf_idx=(pfVal>=0)?pfVal:(d.pf_idx||0);',
+  '  d.plm_idx=(plmVal>=0)?plmVal:(d.plm_idx||d.rows.length-1);',
+  "  if(d.pf_idx>=d.plm_idx){ toast('⚠ p₀ doit être avant pf — vérifiez les seuils.','err'); return; }",
+  "  if(d.rows.filter(function(r){return r.p!==''&&r.v60!=='';}).length<4){ toast('Saisissez au moins 4 lignes complètes.','err'); return; }",
+  "  goPage('resultats',4);",
+  '  var rc=document.getElementById("resCont"); if(rc) rc.innerHTML=\'<div class="empty"><div class="eico">⏳</div><p>Calcul en cours…</p></div>\';',
+  '  var resp;',
+  '  try{ resp=await window.__geofamBridge.calc(ENG_ESSAI, buildEssaiInput(cur)); }',
+  '  catch(e){ renderCalcErrorRes("Pont de calcul indisponible : "+((e&&e.message)||e)); return; }',
+  '  if(!resp||!resp.ok){ renderCalcErrorRes(_gerrP(resp&&resp.error)); return; }',
+  '  var out=resp.output||{};',
+  '  if(out.erreur){ renderCalcErrorRes(out.erreur); return; }',
+  '  window.__pressioLastCalcResultId=resp.calcResultId||null;',
+  '  var _res=mapEssaiOutput(out, cur);',
+  '  renderResults(_res, d.label);',
+  "  toast('Dépouillement OK — '+d.label,'ok');",
+  '}',
+].join('\n');
+
+/** updateSeuilPreview() REECRIT : APERCU E_M LIVE via le pont (POST débouncé ~300 ms,
+ * patron FASTLAB). Le seuil sélectionné (dropdown) est passé en pf_idx/plm_idx ; E_M,
+ * ratio, seuils corrigés et suggestion auto β viennent du SERVEUR (aucun calcul client).
+ * no-calc-initial : sélection invalide ou < 4 paliers -> pas d'appel serveur. */
+const PRESSIO_SEUILPREVIEW = [
+  'function updateSeuilPreview(){',
+  '  var d=depths[cur];',
+  "  var pfI=parseInt(document.getElementById('sel_pf').value);",
+  "  var plmI=parseInt(document.getElementById('sel_plm').value);",
+  "  var prev=document.getElementById('seuilPreview'); if(!prev) return;",
+  '  if(__seuilTimer){ clearTimeout(__seuilTimer); __seuilTimer=null; }',
+  "  if(!(pfI>=0)||!(plmI>=0)||pfI>=d.rows.length||plmI>=d.rows.length){ prev.style.display='none'; return; }",
+  "  var r1=d.rows[pfI], r2=d.rows[plmI]; if(!r1||!r2){ prev.style.display='none'; return; }",
+  "  prev.style.display='block';",
+  '  if(!(pfI<plmI)){',
+  "    prev.style.borderLeft='3px solid var(--re)';",
+  "    prev.innerHTML='<span style=\"color:var(--re)\">⚠ P1 doit être avant P2 (ligne '+(pfI+1)+' > ligne '+(plmI+1)+')</span>';",
+  '    return;',
+  '  }',
+  "  prev.style.borderLeft='3px solid var(--te)';",
+  '  if(_essaiRows(d).length<4){ prev.innerHTML=\'<span style="color:var(--t3);font-size:10px">Saisissez au moins 4 paliers complets pour l\\u2019aperçu E_M.</span>\'; return; }',
+  '  prev.innerHTML=\'<span style="color:var(--t3);font-size:10px">Aperçu E_M…</span>\';',
+  '  var inp=buildEssaiInput(cur); inp.pf_idx=pfI; inp.plm_idx=plmI;',
+  '  __seuilTimer=setTimeout(function(){ __seuilTimer=null;',
+  '    window.__geofamBridge.calc(ENG_ESSAI, inp).then(function(resp){',
+  "      var pv=document.getElementById('seuilPreview'); if(!pv) return;",
+  '      if(!resp||!resp.ok||!resp.output||resp.output.erreur){ pv.innerHTML=\'<span style="color:var(--re);font-size:10px">Aperçu indisponible.</span>\'; return; }',
+  '      var o=resp.output, vol=o.volumes||{}, syn=o.synthese||{};',
+  '      var Pf_c=_pnum(o.p0), PLM_c=_pnum(o.pf), V1=_pnum(vol.v0), V2=_pnum(vol.vf);',
+  '      var dP=PLM_c-Pf_c, dV=V2-V1, n=plmI-pfI+1;',
+  "      var autoTxt='<span style=\"color:var(--t3);font-size:10px\">Auto β='+_pnum(syn.beta).toFixed(2)+': suggestion L'+(_pnum(syn.plageAutoDebut,0)+1)+'→L'+(_pnum(syn.plageAutoFin,0)+1)+'</span>';",
+  "      pv.innerHTML='🔴 <span style=\"color:var(--re)\">Pf=P1</span> = <strong style=\"color:var(--tx)\">'+Pf_c.toFixed(3)+' bar</strong> V1='+V1+'cm³  '+",
+  "        '🟢 <span style=\"color:var(--te)\">PLM=P2</span> = <strong style=\"color:var(--tx)\">'+PLM_c.toFixed(3)+' bar</strong> V2='+V2+'cm³<br>'+",
+  "        n+' paliers · ΔP='+dP.toFixed(3)+' bar · ΔV='+dV+'cm³<br>'+",
+  "        '→ <strong style=\"color:var(--bl)\">E<sub>M</sub> ≈ '+_pnum(o.EM).toFixed(2)+' MPa</strong>  ratio='+_pnum(o.ratioEMpL).toFixed(1)+'<br>'+autoTxt;",
+  "    }).catch(function(){ var pv=document.getElementById('seuilPreview'); if(pv) pv.innerHTML='<span style=\"color:var(--re);font-size:10px\">Aperçu indisponible.</span>'; });",
+  '  }, 300);',
+  '}',
+].join('\n');
+
+/** renderProfil() REECRIT : dépouillement AUTO de toute profondeur non calculée VIA LE PONT
+ * (fidélité F7 : l'utilisateur n'a jamais à demander le profil), puis rendu (__pressioDrawProfil).
+ * Séquentiel (Promise chain) -> ordre stable, déterministe. */
+const PRESSIO_RENDERPROFIL = [
+  'function renderProfil(){',
+  '  var todo=[];',
+  '  for(var i=0;i<depths.length;i++){ if(!depths[i]._res && _essaiRows(depths[i]).length>=4) todo.push(i); }',
+  '  if(!todo.length){ __pressioDrawProfil(); return; }',
+  '  var chain=Promise.resolve();',
+  '  todo.forEach(function(i){ chain=chain.then(function(){ return window.__geofamBridge.calc(ENG_ESSAI, buildEssaiInput(i)).then(function(resp){ if(resp&&resp.ok&&resp.output&&!resp.output.erreur){ mapEssaiOutput(resp.output, i); } }); }); });',
+  '  chain.then(function(){ __pressioDrawProfil(); }).catch(function(){ __pressioDrawProfil(); });',
+  '}',
+].join('\n');
+
+/** calcEtalonnage() REECRIT : async, pont (pressio-etalonnage) ; `e` reconstruit depuis la
+ * sortie whitelistée (Vs/Pe/a/R²/RMS/vsReel/vPe/residus) + les points SAISIS (etalRows) ;
+ * renderEtalResult/drawEtalChart CONSERVES. */
+const PRESSIO_CALCETAL = [
+  'function calcEtalonnage(){',
+  "  var pts=etalRows.filter(function(r){return r.p!==''&&r.v60!==''&&r.v60!==undefined;}).map(function(r){return {p:+r.p,v:+r.v60};});",
+  "  if(pts.length<3){ toast('Saisissez au moins 3 points.','err'); return; }",
+  '  var el=document.getElementById("etalResult"); if(el) el.innerHTML=\'<div class="hint">Calcul en cours…</div>\';',
+  "  var rows=etalRows.filter(function(r){return r.p!==''&&r.v60!==''&&r.v60!==undefined;}).map(function(r){return {p:+r.p,v15:+r.v15||0,v30:+r.v30||0,v60:+r.v60};});",
+  '  var inp={rows:rows}; var pj=document.getElementById("p_projet"); if(pj&&pj.value)inp.projet=String(pj.value);',
+  '  window.__geofamBridge.calc(ENG_ETAL, inp).then(function(resp){',
+  "    if(!resp||!resp.ok||!resp.output){ if(el) el.innerHTML='<div class=\"warnbox\">Étalonnage indisponible : '+_escP(_gerrP(resp&&resp.error))+'</div>'; return; }",
+  '    var o=resp.output;',
+  '    var e={ a:_pnum(o.a), Vs:_pnum(o.Vs), Pe:_pnum(o.Pe), R2:_pnum(o.R2), rmsError:_pnum(o.rms),',
+  '      pts:pts, V_pe:_pnum(o.vPe), Vs_reel:_pnum(o.vsReel),',
+  '      residuals:(Array.isArray(o.residus)?o.residus:[]).map(function(r){return {p:_pnum(r.p),v:_pnum(r.vMesure),vhat:_pnum(r.vAjuste),res:_pnum(r.residu)};}) };',
+  '    renderEtalResult(e);',
+  '    setTimeout(function(){ try{ drawEtalChart(e); }catch(e2){} }, 100);',
+  "  }).catch(function(err){ if(el) el.innerHTML='<div class=\"warnbox\">Pont de calcul indisponible : '+_escP((err&&err.message)||err)+'</div>'; });",
+  '}',
+].join('\n');
+
+/** calcCalibrage() REECRIT : async, pont (pressio-calibrage) ; `e` reconstruit depuis la
+ * sortie whitelistée (a/c0/c1/c2/R²/RMS/residus) + les points SAISIS TRIÉS par P (parité
+ * du tri de calcCalibrage) ; renderCalibResult/drawCalibChart CONSERVES. */
+const PRESSIO_CALCCALIB = [
+  'function calcCalibrage(){',
+  "  var pts=calibRows.filter(function(r){return r.p!==''&&r.v60!==''&&r.v60!==undefined;}).map(function(r){return {p:+r.p,v:+r.v60};});",
+  "  if(pts.length<3){ toast('Saisissez au moins 3 points.','err'); return; }",
+  '  pts.sort(function(a,b){return a.p-b.p;});',
+  '  var el=document.getElementById("calibResult"); if(el) el.innerHTML=\'<div class="hint">Calcul en cours…</div>\';',
+  '  var rows=pts.map(function(r){return {p:r.p,v60:r.v};});',
+  '  var inp={rows:rows}; var pj=document.getElementById("p_projet"); if(pj&&pj.value)inp.projet=String(pj.value);',
+  '  window.__geofamBridge.calc(ENG_CALIB, inp).then(function(resp){',
+  "    if(!resp||!resp.ok||!resp.output){ if(el) el.innerHTML='<div class=\"warnbox\">Calibrage indisponible : '+_escP(_gerrP(resp&&resp.error))+'</div>'; return; }",
+  '    var o=resp.output;',
+  '    var e={ pts:pts, c0:_pnum(o.c0), c1:_pnum(o.c1), c2:_pnum(o.c2), R2:_pnum(o.R2), rms:_pnum(o.rms), a_calib:_pnum(o.a),',
+  '      residuals:(Array.isArray(o.residus)?o.residus:[]).map(function(r){return {v:_pnum(r.p),pc:_pnum(r.v60Mesure),phat:_pnum(r.v60Ajuste),res:_pnum(r.residu)};}) };',
+  '    renderCalibResult(e);',
+  '    setTimeout(function(){ try{ drawCalibChart(e); }catch(e2){} }, 100);',
+  "  }).catch(function(err){ if(el) el.innerHTML='<div class=\"warnbox\">Pont de calcul indisponible : '+_escP((err&&err.message)||err)+'</div>'; });",
+  '}',
+].join('\n');
+
+/** saveLocal()/loadLocal() REECRITS : persistance de la SAISIE proxifiée via le bridge
+ * store:set/get (namespace org/projet géré par l'hôte, ADR 0015) — plus de localStorage.
+ * loadLocal renvoie false (boot -> initEmpty) puis HYDRATE en asynchrone si un état existe. */
+const PRESSIO_SAVELOCAL = [
+  "function saveLocal(){ try{ window.__geofamBridge.storeSet(\"state\", gatherAll()); }catch(e){} toast('Sauvegardé ✓','ok'); }",
+].join('\n');
+const PRESSIO_LOADLOCAL = [
+  'function loadLocal(){',
+  '  try{ window.__geofamBridge.storeGet("state").then(function(v){ if(v){ try{ applyData(typeof v==="string"?JSON.parse(v):v); }catch(e){} } }); }catch(e){}',
+  '  return false;',
+  '}',
+].join('\n');
+
 export const TOOLS = {
   terzaghi: {
     engineId: 'fondation-superficielle',
@@ -2423,6 +2740,64 @@ export const TOOLS = {
     insertAfterAnchor: 'const D={};',
     insertBlock: '\n' + FASTLAB_BRIDGE_AND_RENDER + '\n',
     forbiddenSymbols: FASTLAB_ENGINE_SYMBOLS,
+  },
+  pressiopro: {
+    // engineId « par défaut » (essai) ; les pages Étalonnage/Calibrage émettent leur
+    // propre engineId via le bridge (liste fermée validée côté hôte : pressiometre,
+    // pressio-etalonnage, pressio-calibrage).
+    engineId: 'pressiometre-menard',
+    referencePath: 'packages/engines/reference/pressiometre__1_.html',
+    // sha256 = registre (pressiometre-menard / pressio-etalonnage / pressio-calibrage —
+    // MEME fichier mono-source, meme sha256 pour les 3 slugs).
+    expectedSha256: 'b5a06e1c34e1928b06a3e9dcd5628d516ba7d0d2818a67c62bdb43e93c65e4dc',
+    outputPath: 'apps/web/src/tools-cloned/pressiopro.html',
+    sourceFileName: 'pressiometre__1_.html',
+    // Science NF EN ISO 22476-4 SUPPRIMEE : depouillement calcDepth (EM/pL/alpha/
+    // categorie), coefficient rheologique getAlpha, extrapolation courbe-inverse
+    // (fitAll/fitRecip/linReg), detection auto de la plage §D.5.1 (autoDetectPhase),
+    // ajustement 3x3 du calibrage (solve3). Les renderers (renderResults/drawResCharts/
+    // renderEtalResult/drawEtalChart/renderCalibResult/drawCalibChart/drawBoreholeLog/
+    // drawPressioLog), TOUTE la saisie dynamique, les exports/imports (JSON/CSV) et la
+    // nomenclature 22 sols ISO (SOILS/ETATS/QUAL_BY_CAT) restent INTEGRAUX.
+    removeFunctions: PRESSIO_ENGINE_SYMBOLS,
+    // Pas de const de calibration separee : SOILS/ETATS/QUALCOL/CATCOL sont la
+    // NOMENCLATURE de SAISIE (couleurs/motifs des sols) -> conservees.
+    removeConsts: [],
+    // Entrees de calcul REECRITES (nom conserve) -> async/pont ; calcPh CONSERVE (arbitrage
+    // ci-dessus). saveLocal/loadLocal -> proxy store bridge. updateSeuilPreview -> apercu
+    // E_M live DEBOUNCE (patron FASTLAB). renderProfil -> auto-depouillement via pont (F7).
+    replaceDecls: {
+      doCalc: PRESSIO_DOCALC,
+      updateSeuilPreview: PRESSIO_SEUILPREVIEW,
+      renderProfil: PRESSIO_RENDERPROFIL,
+      calcEtalonnage: PRESSIO_CALCETAL,
+      calcCalibrage: PRESSIO_CALCCALIB,
+      saveLocal: PRESSIO_SAVELOCAL,
+      loadLocal: PRESSIO_LOADLOCAL,
+    },
+    // Injecte apres l'etat racine (`let depths = [], cur = 0, CC = {};`, unique) : depths/
+    // cur/CC definis ; l'IIFE du pont poste « ready » AVANT DOMContentLoaded (boot).
+    insertAfterAnchor: 'let depths = [], cur = 0, CC = {};',
+    insertBlock: '\n' + PRESSIO_BRIDGE_AND_SHIM + '\n',
+    // Le calcDepth loop est PARTAGE par applyData ET loadExempleFictif (CONSERVES) : on
+    // le neutralise par patchText (count 2) au lieu de reecrire ces 2 fonctions volumineuses
+    // (loadExempleFictif porte le gros jeu de demonstration inline). Le rendu final de
+    // l'exemple part alors du pont (__pressioCalcAndShow), fidele « calcule + affiche le 1er ».
+    patchText: [
+      {
+        find: 'depths.forEach((_,i)=>calcDepth(i));',
+        replace: 'depths.forEach(function(dd){dd._res=null;});',
+        count: 2,
+      },
+      {
+        find: 'setTimeout(()=>renderResults(depths[0]._res, depths[0].label),100);',
+        replace: 'setTimeout(function(){__pressioCalcAndShow(0);},100);',
+        count: 1,
+      },
+    ],
+    // doCalc/updateSeuilPreview/renderProfil/calcEtalonnage/calcCalibrage sont REECRITS
+    // (noms conserves) -> NON interdits. Interdits = la science RETIREE (PRESSIO_ENGINE_SYMBOLS).
+    forbiddenSymbols: PRESSIO_ENGINE_SYMBOLS,
   },
 };
 

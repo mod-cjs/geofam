@@ -231,6 +231,8 @@ function shapeOutput(R: Record<string, unknown>): unknown {
       pLNette: 0,
       pfNette: 0,
       EM: 0,
+      aUsed: 0,
+      aForced: false,
       ratioEMpL: 0,
       alpha: 0,
       Ey: 0,
@@ -262,6 +264,10 @@ function shapeOutput(R: Record<string, unknown>): unknown {
     pLNette: fin(R.pLS) ? R.pLS : 0,
     pfNette: fin(R.PfS) ? R.PfS : 0,
     EM: fin(R.EM) ? R.EM : 0,
+    // Coefficient d'inertie effectif + drapeau d'ecretage : AFFICHES par le garde-fou
+    // « Resultat non corrige » de renderResults (elargissement nominatif R1, ADR 0014).
+    aUsed: fin(R.aUsed) ? R.aUsed : 0,
+    aForced: R.aForced === true,
     ratioEMpL: fin(R.ratio) ? R.ratio : 0,
     alpha: fin(R.alpha) ? R.alpha : 0,
     // Ey = EM/alpha (module d'Young derive, MPa) — parite HTML `r.EM / r.alpha`.

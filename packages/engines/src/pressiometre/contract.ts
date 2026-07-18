@@ -170,6 +170,20 @@ export const PressiometreOutputSchema = z
     pfNette: z.number().finite(),
     /** Module pressiometrique EM (MPa). */
     EM: z.number().finite(),
+    /**
+     * Coefficient d'inertie `a` EFFECTIVEMENT applique a la correction de volume
+     * (cm³/bar interne). ECRETE a 0 par la garde de securite volume du moteur quand
+     * `a × Pmax > 0,5 × V60moy` (sinon les volumes corriges deviendraient negatifs).
+     * AFFICHE : le garde-fou « Resultat non corrige » du client teste `aUsed === 0`
+     * (ADR 0014/0015 : elargissement nominatif — le client AFFICHE cet avertissement).
+     */
+    aUsed: z.number().finite(),
+    /**
+     * `a` a-t-il ete ECRETE a 0 par la garde de securite (a_raw > 0 mais a_effectif = 0) ?
+     * AFFICHE : distingue « a force a 0 » (calibrage douteux) de « a = 0 » (calibrage non
+     * renseigne) dans l'avertissement client. Elargissement nominatif fail-closed.
+     */
+    aForced: z.boolean(),
     /** Rapport EM/pL* (sans dimension) — base du coefficient rheologique. */
     ratioEMpL: z.number().finite(),
     /** Coefficient rheologique alpha (Menard). */
