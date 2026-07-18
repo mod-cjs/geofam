@@ -1032,6 +1032,18 @@ const D={};
     storeSet:function(key,value){ var id=TOOL_ID+":s:"+(++stseq); return new Promise(function(resolve){ stpend[id]=resolve; post({v:1,type:"store:set",id:id,payload:{key:key,value:value}}); }); },
     context:function(){ return ctx; }
   };
+  /* input:dirty (correctif PV BQ-1) : signale a l hote que l ecran a change apres un calcul
+     -> le bouton d emission du PV scelle se desactive jusqu au prochain calcul (evite un PV perime).
+     Emission IMMEDIATE (front de montee), NON debouncee : le bouton doit se desactiver des la 1re frappe.
+     Throttle ~1/frame par FLAG booleen (aucun delai temporel sur l emission) pour ne pas inonder l hote,
+     lui-meme idempotent. Listener DELEGUE au document (capture) : generique, sans connaitre le DOM de l outil.
+     Cible input/change uniquement (la donnee A change) — PAS click : naviguer entre onglets de
+     resultats ne change pas le calcul affiche (sinon on desactiverait le PV a tort). Un changement de
+     mode de calcul sans recalcul reste couvert cote hote : ce mode n a pas de calcResultId. */
+  var __geofamDirtyFrame=false;
+  function __geofamEmitDirty(){ if(__geofamDirtyFrame) return; __geofamDirtyFrame=true; post({v:1,type:"input:dirty",payload:{toolId:TOOL_ID}}); var __raf=(typeof requestAnimationFrame==="function")?requestAnimationFrame:function(f){setTimeout(f,0);}; __raf(function(){ __geofamDirtyFrame=false; }); }
+  document.addEventListener("input", __geofamEmitDirty, true);
+  document.addEventListener("change", __geofamEmitDirty, true);
   post({v:1,type:"ready",payload:{toolId:TOOL_ID}});
 })();
 
