@@ -1,5 +1,4 @@
 import type { OfficialPv } from '@prisma/client';
-import { PIEUX_DEFAULT_COEFFS } from '@roadsen/engines';
 import { sealContentHash, verifySeal } from '@roadsen/shared';
 import type {
   Content,
@@ -12,6 +11,8 @@ import { getPvPrinter } from './pv-pdf.fonts';
 import { COLORS, FINE_TABLE_LAYOUT, PV_STYLES } from './pv-pdf.theme';
 import { findPresentationModel } from './pv-presentation';
 import { renderRichBody } from './pv-presentation/render';
+import { buildFonProfondeBody } from './bodies/pieux';
+import { buildPressiometreBody } from './bodies/pressiometre';
 
 /**
  * GENERATEUR DE PDF DU PV SCELLE (#63, incr. C) — design maison ROADSEN.
@@ -197,7 +198,7 @@ export function buildPvDocDefinition(pv: OfficialPv): TDocumentDefinitions {
     defaultStyle: { font: 'Roboto', fontSize: 9, color: COLORS.text },
     info: {
       title: `Procès-verbal ${sealed.pvNumber}`,
-      author: 'ROADSEN',
+      author: 'GEOFAM',
       subject: `Calcul ${sealed.engineMeta.engineId} v${sealed.engineMeta.engineVersion}`,
       // creationDate figée sur sealedAt (canonique) -> déterminisme des octets.
       creationDate: sealedAt,
@@ -337,11 +338,6 @@ const FDN_SOL: Record<string, string> = {
   craies: 'Craies',
   marnes: 'Marnes',
   roches: 'Roches',
-};
-const FDN_ESSAI: Record<string, string> = {
-  pressio: 'Pressiomètre Ménard',
-  penetro: 'Pénétromètre statique (CPT)',
-  labo: 'Paramètres de laboratoire (c–φ)',
 };
 const FDN_ETAT: Record<string, string> = {
   ELU_F: 'ELU fondamental',
@@ -489,244 +485,891 @@ function buildFondationVerdictBanner(verdict: string): Content {
   };
 }
 
+// ---------------------------------------------------------------------------
+// FAC-SIMILÉ de la note native `buildNote` (terzaghi_V13.html) — décision
+// titulaire 18/07 : le PV scellé reproduit SECTION PAR SECTION le rapport que
+// l'outil client imprime (PV == écran == rapport client). Le CLONE (apps/web)
+// reconstruit `R` depuis la SORTIE SERVEUR whitelistée puis rejoue `buildNote` ;
+// ce corps pdfmake fait de MÊME : il rejoue la structure de la note à partir de
+// la même sortie whitelistée (`TerzaghiOutputSchema`, détail pas-à-pas ADR 0015)
+// et des efforts SAISIS (input.charges). Aucune science côté serveur PDF : on
+// consomme les grandeurs déjà calculées et déjà whitelistées.
+//
+// Correctifs d'audit intégrés : §2 « Contraintes au niveau de la base » (u/q0/σ′v0,
+// ABSENT auparavant) ; D d'encastrement RÉELLEMENT peuplé (BQ-3) ; vérification
+// EXCENTREMENT présente en synthèse (BQ-5) ; tassement en CENTIMÈTRES comme la
+// note (fmt sf·100), plus en mètres ; référentiel NF P 94-261 (BQ-4).
+// ---------------------------------------------------------------------------
+
+/** Parse tolérant FR — MIROIR du `num()` de l'outil client (number|string → number/NaN). */
+function terzNum(v: unknown): number {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
+  if (typeof v !== 'string') return NaN;
+  const s = v.trim().replace(/\s/g, '').replace(',', '.');
+  if (s === '') return NaN;
+  const x = Number(s);
+  return Number.isFinite(x) ? x : NaN;
+}
+
+/** Formatte à `d` décimales fixes, fr-FR — MIROIR EXACT du `fmt(x,d)` de l'outil
+ * client (mêmes décimales, même clamp anti « -0,00 »). « — » si non fini. */
+function terzFmt(v: unknown, d = 2): string {
+  let x = terzNum(v);
+  if (!Number.isFinite(x)) return '—';
+  if (Math.abs(x) < 0.5 / Math.pow(10, d)) x = 0;
+  return x
+    .toLocaleString('fr-FR', {
+      minimumFractionDigits: d,
+      maximumFractionDigits: d,
+    })
+    .replace(/[\u202f\u00a0]/g, ' ');
+}
+
+/** Ligne label/valeur pour la table d'hypothèses (label en gras, valeur libre). */
+function terzHypRow(label: string, val: string): TableCell[] {
+  return [
+    { text: label, style: 'cell', bold: true },
+    { text: val, style: 'cell' },
+  ];
+}
+
+/** Sous-titre de GROUPE du déroulé (« A · Capacité portante »…), miroir des `.grp`. */
+function terzGroup(label: string): Content {
+  return { text: label, style: 'groupRow', margin: [0, 8, 0, 2] };
+}
+
+/** Une ÉTAPE du déroulé (numéro + titre + corps multi-lignes) — miroir de `step()`. */
+function terzStep(n: number, title: string, bodyLines: string[]): Content {
+  return {
+    stack: [
+      {
+        text: [
+          { text: `${n}. `, bold: true, color: COLORS.navy },
+          { text: title, bold: true, color: COLORS.textSec2 },
+        ],
+        fontSize: 8.5,
+        margin: [0, 5, 0, 1],
+      },
+      {
+        text: bodyLines.filter((l) => l != null && l !== '').join('\n'),
+        fontSize: 8.5,
+        color: COLORS.textSec2,
+        margin: [10, 0, 0, 2],
+      },
+    ],
+  };
+}
+
+/** Équation « lhs = formule [= subst] [= résultat] » — miroir de `eqn()` client. */
+function terzEqn(
+  lhs: string,
+  formula: string,
+  subst?: string,
+  result?: string,
+): string {
+  let s = `${lhs} = ${formula}`;
+  if (subst != null && subst !== '') s += `\n    = ${subst}`;
+  if (result != null && result !== '') s += `\n    = ${result}`;
+  return s;
+}
+
+/**
+ * Reconstruit le contexte d'affichage X depuis l'entrée saisie + les grandeurs
+ * bénignes renvoyées par le serveur (contraintes de base) — MIROIR de
+ * `buildCtxFromState` du clone. Aucun intermédiaire confidentiel (le serveur
+ * whiteliste u/q0/σ′v0 dans `contraintesBase`).
+ */
+interface FdnCtx {
+  forme: string;
+  labo: boolean;
+  filante: boolean;
+  essai: string;
+  B: number;
+  L: number;
+  D: number;
+  gAv: number;
+  gAp: number;
+  zw: number;
+  beton: string;
+  u: number;
+  q0: number;
+  sv0: number;
+  ml: string;
+  mlF: string;
+}
+
+function terzCtx(
+  input: Record<string, unknown>,
+  cb: Record<string, unknown>,
+): FdnCtx {
+  const forme = pdfText(input.forme);
+  const essai = pdfText(input.essai);
+  const filante = forme === 'filante';
+  return {
+    forme,
+    essai,
+    labo: essai === 'labo',
+    filante,
+    B: terzNum(input.B),
+    L: terzNum(input.L),
+    D: terzNum(input.D),
+    gAv: terzNum(input.gAvant),
+    gAp: terzNum(input.gApres),
+    zw: terzNum(input.nappe),
+    beton: pdfText(input.beton),
+    u: terzNum(cb.u),
+    q0: terzNum(cb.q0),
+    sv0: terzNum(cb.sv0),
+    ml: filante ? '/ml' : '',
+    mlF: filante ? ' kN/ml' : ' kN',
+  };
+}
+
+/** Titre + efforts d'un cas — MIROIR de `caseTitle`. Efforts SAISIS (input.charges). */
+function terzCaseHead(
+  c: Record<string, unknown>,
+  X: FdnCtx,
+): { title: string; loads: string } {
+  const idx = typeof c.idx === 'number' ? c.idx : 0;
+  const etat = FDN_ETAT[pdfText(c.etat)] ?? pdfText(c.etat);
+  let loads = `Fz = ${terzFmt(c.Fz, 0)} kN${X.ml}`;
+  if (Math.abs(terzNum(c.Fx)) > 1e-9) loads += ` · Fx = ${terzFmt(c.Fx, 0)}`;
+  if (Math.abs(terzNum(c.Fy)) > 1e-9) loads += ` · Fy = ${terzFmt(c.Fy, 0)}`;
+  if (Math.abs(terzNum(c.Mx)) > 1e-9) loads += ` · Mx = ${terzFmt(c.Mx, 0)}`;
+  if (Math.abs(terzNum(c.My)) > 1e-9)
+    loads += ` · My = ${terzFmt(c.My, 0)} kN·m${X.ml}`;
+  return { title: `Cas ${idx + 1} — ${etat}`, loads };
+}
+
+/**
+ * Déroulé PAS-À-PAS d'un cas de charge — MIROIR de `caseSteps`. Consomme les
+ * grandeurs whitelistées (géométrie effective de Meyerhof, coefficients D/E,
+ * résistances, tassements décomposés) : aucune re-dérivation de méthode ici.
+ */
+function terzCaseSteps(c: Record<string, unknown>, X: FdnCtx): Content[] {
+  const out: Content[] = [];
+  const B = X.B;
+  const mlF = X.mlF;
+  const pm = X.ml;
+  const Fz = c.Fz;
+  let n = 0;
+
+  out.push(terzGroup('A · Capacité portante'));
+
+  // 1) Géométrie et sollicitations
+  n += 1;
+  let loads = `Vd = Fz = ${terzFmt(Fz, 0)} kN${pm}`;
+  if (terzNum(c.Hd) > 1e-9) loads += ` · Hd = ${terzFmt(c.Hd, 0)} kN${pm}`;
+  out.push(
+    terzStep(n, 'Géométrie et sollicitations', [
+      `Forme : ${FDN_FORME[X.forme] ?? X.forme} · B = ${terzFmt(B)} m${X.forme === 'rect' ? ` · L = ${terzFmt(X.L)} m` : ''} · D = ${terzFmt(X.D)} m`,
+      terzEqn('A', "aire d'appui", '', `${terzFmt(c.A)} m²${pm}`),
+      loads,
+    ]),
+  );
+
+  // 2) Excentrement et surface comprimée A'
+  n += 1;
+  const excLines: string[] = [
+    terzEqn(
+      'eB',
+      '|My| / Vd',
+      `${terzFmt(Math.abs(terzNum(c.My)), 0)} / ${terzFmt(Fz, 0)}`,
+      `${terzFmt(c.eB, 3)} m`,
+    ),
+  ];
+  if (!X.filante && X.forme !== 'circ')
+    excLines.push(
+      terzEqn(
+        'eL',
+        '|Mx| / Vd',
+        `${terzFmt(Math.abs(terzNum(c.Mx)), 0)} / ${terzFmt(Fz, 0)}`,
+        `${terzFmt(c.eL, 3)} m`,
+      ),
+    );
+  if (Number.isFinite(terzNum(c.Bp)))
+    excLines.push(terzEqn("B'", 'B − 2·eB', '', `${terzFmt(c.Bp)} m`));
+  excLines.push(
+    terzEqn(
+      "A' (Meyerhof)",
+      'surface comprimée',
+      '',
+      `${terzFmt(c.Ap)} m²${pm}`,
+    ),
+  );
+  out.push(terzStep(n, 'Excentrement et surface comprimée A′', excLines));
+
+  // 3) Inclinaison de la charge
+  n += 1;
+  out.push(
+    terzStep(n, 'Inclinaison de la charge', [
+      terzEqn(
+        'Hd',
+        '√(Fx² + Fy²)',
+        `${terzFmt(c.Fx, 0)}, ${terzFmt(c.Fy, 0)}`,
+        `${terzFmt(c.Hd, 0)} kN${pm}`,
+      ),
+      terzEqn('δd', 'atan(Hd / Vd)', '', `${terzFmt(c.delta, 1)} °`),
+      `iδ = ${terzFmt(c.idel, 3)}`,
+    ]),
+  );
+
+  // 4) Contraintes au niveau de la base
+  n += 1;
+  out.push(
+    terzStep(n, 'Contraintes au niveau de la base', [
+      terzEqn('u', "pression d'eau", '', `${terzFmt(X.u, 1)} kPa`),
+      terzEqn(
+        'q0',
+        'γap · D',
+        `${terzFmt(X.gAp, 1)} × ${terzFmt(X.D)}`,
+        `${terzFmt(X.q0, 1)} kPa`,
+      ),
+      terzEqn(
+        "σ'v0",
+        'γav · D − u',
+        `${terzFmt(X.gAv, 1)} × ${terzFmt(X.D)} − ${terzFmt(X.u, 1)}`,
+        `${terzFmt(X.sv0, 1)} kPa`,
+      ),
+    ]),
+  );
+
+  if (!X.labo) {
+    const rLbl = X.essai === 'penetro' ? 'qce' : 'ple*';
+    const kLbl = X.essai === 'penetro' ? 'kc' : 'kp';
+    // 5) Pression nette équivalente
+    n += 1;
+    out.push(
+      terzStep(n, `Pression nette équivalente ${rLbl}`, [
+        terzEqn(
+          'hr (hauteur de moyenne)',
+          '1,5 · B',
+          `1,5 × ${terzFmt(B)}`,
+          `${terzFmt(c.hr)} m`,
+        ),
+        `${rLbl} = ${terzFmt(c.ple, 3)} MPa`,
+      ]),
+    );
+    // 6) Hauteur d'encastrement équivalente De
+    n += 1;
+    out.push(
+      terzStep(n, "Hauteur d'encastrement équivalente De", [
+        `De = ${terzFmt(c.De)} m  →  De/B = ${terzFmt(c.De)}/${terzFmt(B)} = ${terzFmt(c.DeB)}`,
+      ]),
+    );
+    // 7) Facteur de portance
+    n += 1;
+    const kpLines: string[] = [`x = De/B (plafonné à 2) = ${terzFmt(c.kpx)}`];
+    if (X.filante) kpLines.push(`${kLbl} = ${terzFmt(c.kf, 3)}`);
+    else if (X.forme === 'rect')
+      kpLines.push(
+        `${kLbl} (base filante) = ${terzFmt(c.kf, 3)}`,
+        `${kLbl} (base carrée) = ${terzFmt(c.kc, 3)}`,
+        `${kLbl} = ${terzFmt(c.kp, 3)}`,
+      );
+    else kpLines.push(`${kLbl} (carré/cercle) = ${terzFmt(c.kp, 3)}`);
+    out.push(terzStep(n, `Facteur de portance ${kLbl}`, kpLines));
+    // 8) Coefficients de réduction
+    n += 1;
+    out.push(
+      terzStep(n, 'Coefficients de réduction', [
+        `iδ (inclinaison) = ${terzFmt(c.idel, 3)} · iβ (talus) = ${terzFmt(c.ibet, 3)}`,
+        terzEqn('iδβ (combiné)', 'iδ · iβ', '', `${terzFmt(c.idb, 3)}`),
+      ]),
+    );
+    // 9) Résistance nette du sol
+    n += 1;
+    out.push(
+      terzStep(n, 'Résistance nette du sol qnet', [
+        terzEqn(
+          'qnet',
+          `${kLbl} · ${rLbl} · iδβ`,
+          '',
+          `${terzFmt(terzNum(c.qnet) / 1000, 3)} MPa = ${terzFmt(c.qnet, 0)} kPa`,
+        ),
+      ]),
+    );
+  } else {
+    // Labo (c–φ, annexe F) : la résistance nette est analytique.
+    n += 1;
+    out.push(
+      terzStep(n, 'Résistance nette qnet (annexe F, c–φ)', [
+        terzEqn(
+          'qnet',
+          '(annexe F : Nc·sc·ic, Nq·sq·iq, ½·γ′·B′·Nγ·sγ·iγ)',
+          '',
+          `${terzFmt(c.qnet, 0)} kPa`,
+        ),
+      ]),
+    );
+  }
+
+  // 10) Contrainte de référence appliquée
+  n += 1;
+  out.push(
+    terzStep(n, 'Contrainte de référence appliquée', [
+      terzEqn(
+        'qref',
+        "Vd / A'",
+        `${terzFmt(Fz, 0)} / ${terzFmt(c.Ap)}`,
+        `${terzFmt(c.qref, 0)} kPa`,
+      ),
+    ]),
+  );
+
+  // 11) Résistance de calcul et vérification
+  n += 1;
+  const portOk = c.portanceOk === true;
+  out.push(
+    terzStep(n, 'Résistance de calcul Rv;d et vérification', [
+      terzEqn(
+        'R0',
+        'A · q0',
+        `${terzFmt(c.A)} × ${terzFmt(X.q0, 1)}`,
+        `${terzFmt(c.R0, 0)}${mlF}`,
+      ),
+      terzEqn(
+        'Rv;d',
+        'R0 + A′·qnet/(γRv·γRdv)',
+        '',
+        `${terzFmt(c.Rtot, 0)}${mlF}`,
+      ),
+      terzEqn(
+        'qRv;d',
+        "Rv;d / A'",
+        `${terzFmt(c.Rtot, 0)} / ${terzFmt(c.Ap)}`,
+        `${terzFmt(c.qRvd, 0)} kPa`,
+      ),
+      `Vérification : qref = ${terzFmt(c.qref, 0)} ${portOk ? '≤' : '>'} qRv;d = ${terzFmt(c.qRvd, 0)} kPa → portance ${portOk ? 'VÉRIFIÉE' : 'NON VÉRIFIÉE'} (taux ${terzFmt(terzNum(c.taux) * 100, 0)} %)`,
+    ]),
+  );
+
+  // 12) Vérification complémentaire c–φ (annexe F) — in situ + option cochée
+  const cphi = isPlainObject(c.cphi) ? c.cphi : null;
+  if (!X.labo && cphi && typeof cphi.err !== 'string') {
+    n += 1;
+    const cok = cphi.ok === true;
+    out.push(
+      terzStep(n, 'Vérification complémentaire par la méthode c–φ (annexe F)', [
+        terzEqn(
+          'Rv;d;F',
+          'R0 + A′·qnet;F/(γ·γ)',
+          '',
+          `${terzFmt(cphi.Rtot, 0)}${mlF}`,
+        ),
+        `qref = ${terzFmt(c.qref, 0)} ${cok ? '≤' : '>'} qRv;d;F = ${terzFmt(cphi.qRvd, 0)} kPa → ${cok ? 'vérifié' : 'NON vérifié'} (taux ${terzFmt(terzNum(cphi.taux) * 100, 0)} %)`,
+      ]),
+    );
+  }
+
+  // Glissement (ELU avec effort horizontal)
+  const isELU = c.etat === 'ELU_F' || c.etat === 'ELU_A';
+  if (isELU && terzNum(c.Hd) > 1e-9 && typeof c.glissementOk === 'boolean') {
+    out.push(terzGroup('B · Glissement'));
+    n += 1;
+    const gok = c.glissementOk === true;
+    const gLines: string[] = [];
+    if (Number.isFinite(terzNum(c.da)))
+      gLines.push(
+        terzEqn(
+          'Rh;d',
+          'Vd·tan(δa) / (γRh·γRdh)',
+          '',
+          `${terzFmt(c.Rhd, 0)}${mlF}`,
+        ),
+        `δa = ${terzFmt(c.da, 1)} ° (interface ${X.beton === 'coule' ? 'béton coulé : δa = φ′' : 'préfa : δa = ⅔ φ′'})`,
+      );
+    else
+      gLines.push(
+        terzEqn(
+          'Rh;d',
+          "min( A'·cu/(γRh·γRdh) ; 0,4·Vd )",
+          '',
+          `${terzFmt(c.Rhd, 0)}${mlF}`,
+        ),
+      );
+    gLines.push(
+      `Vérification : Hd = ${terzFmt(c.Hd, 0)} ${gok ? '≤' : '>'} Rh;d = ${terzFmt(c.Rhd, 0)}${mlF} → ${gok ? 'VÉRIFIÉ' : 'NON VÉRIFIÉ'} (taux ${terzFmt(terzNum(c.tauxH) * 100, 0)} %)`,
+    );
+    out.push(terzStep(n, 'Résistance au glissement', gLines));
+  }
+
+  // Tassement (ELS)
+  const tass = isPlainObject(c.tass) ? c.tass : null;
+  const elast = isPlainObject(c.elast) ? c.elast : null;
+  const schm = isPlainObject(c.schm) ? c.schm : null;
+  const oed = isPlainObject(c.oed) ? c.oed : null;
+  if (tass || elast || schm || oed) {
+    out.push(terzGroup('C · Tassement'));
+    const dq = Math.max(terzNum(c.qref) - X.sv0, 0);
+    n += 1;
+    out.push(
+      terzStep(n, 'Accroissement de contrainte sous la base', [
+        terzEqn(
+          'Δq',
+          "qref − σ'v0",
+          `${terzFmt(c.qref, 0)} − ${terzFmt(X.sv0, 1)}`,
+          `${terzFmt(dq, 0)} kPa`,
+        ),
+      ]),
+    );
+    if (tass) {
+      n += 1;
+      out.push(
+        terzStep(n, 'Modules pressiométriques et coefficients', [
+          `Ec = ${terzFmt(tass.Ec, 1)} MPa · Ed = ${terzFmt(tass.Ed, 1)} MPa`,
+          `αc = ${terzFmt(tass.alc, 2)} · αd = ${terzFmt(tass.ald, 2)} · λc = ${terzFmt(tass.lc, 2)} · λd = ${terzFmt(tass.ld, 2)}`,
+        ]),
+      );
+      n += 1;
+      out.push(
+        terzStep(n, 'Tassement de consolidation sc', [
+          terzEqn(
+            'sc',
+            'αc/(9·Ec) · Δq · λc · B',
+            '',
+            `${terzFmt(terzNum(tass.sc) * 100, 2)} cm`,
+          ),
+        ]),
+      );
+      n += 1;
+      out.push(
+        terzStep(n, 'Tassement déviatorique sd', [
+          terzEqn(
+            'sd',
+            '2/(9·Ed) · Δq · B0 · (λd·B/B0)^αd',
+            '',
+            `${terzFmt(terzNum(tass.sd) * 100, 2)} cm`,
+          ),
+        ]),
+      );
+      n += 1;
+      out.push(
+        terzStep(n, 'Tassement total', [
+          terzEqn(
+            'sf',
+            'sc + sd',
+            `${terzFmt(terzNum(tass.sc) * 100, 2)} + ${terzFmt(terzNum(tass.sd) * 100, 2)}`,
+            `${terzFmt(terzNum(tass.sf) * 100, 2)} cm`,
+          ),
+        ]),
+      );
+    }
+    if (elast) {
+      n += 1;
+      out.push(
+        terzStep(n, 'Tassement élastique (annexe J.3.1)', [
+          `cf = ${terzFmt(elast.cf, 2)} · E = ${terzFmt(elast.E, 0)} MPa · ν = ${terzFmt(elast.nu, 2)}`,
+          terzEqn(
+            's',
+            'cf · (1 − ν²) · B · Δq / E',
+            '',
+            `${terzFmt(terzNum(elast.s) * 100, 2)} cm`,
+          ),
+        ]),
+      );
+    }
+    if (schm) {
+      n += 1;
+      out.push(
+        terzStep(n, 'Tassement de Schmertmann (§6.2)', [
+          `C1 = ${terzFmt(schm.C1, 2)} · C2 = ${terzFmt(schm.C2, 2)} · C3 = ${terzFmt(schm.C3, 2)}`,
+          terzEqn(
+            's',
+            'C1·C2·Δq·∫ Iz/(C3·E) dz',
+            '',
+            `${terzFmt(terzNum(schm.s) * 100, 2)} cm`,
+          ),
+        ]),
+      );
+    }
+    if (oed) {
+      n += 1;
+      out.push(
+        terzStep(n, 'Tassement œdométrique (variante J.4.1)', [
+          terzEqn(
+            's',
+            'qref · ∫ Iz(ζ)/M(ζ) dζ',
+            '',
+            `${terzFmt(terzNum(oed.s) * 100, 2)} cm`,
+          ),
+        ]),
+      );
+    }
+  }
+  return out;
+}
+
+/** Déroulé de la CAPACITÉ PORTANTE DE RÉFÉRENCE (charge centrée verticale) —
+ * MIROIR condensé de `refCapSteps`, utilisé quand aucun cas de charge n'est saisi. */
+function terzRefCapSteps(rc: Record<string, unknown>, X: FdnCtx): Content[] {
+  const out: Content[] = [];
+  const mlF = rc.perML === true || X.filante ? ' kN/ml' : ' kN';
+  let n = 0;
+  out.push(terzGroup('A · Capacité portante Rv;d'));
+  n += 1;
+  out.push(
+    terzStep(n, 'Géométrie de la semelle', [
+      `Forme : ${FDN_FORME[X.forme] ?? X.forme} · B = ${terzFmt(X.B)} m${X.forme === 'rect' ? ` · L = ${terzFmt(X.L)} m` : ''} · encastrement D = ${terzFmt(X.D)} m`,
+      terzEqn("A (surface d'appui)", "aire d'appui", '', `${terzFmt(rc.A)} m²`),
+    ]),
+  );
+  n += 1;
+  out.push(
+    terzStep(n, 'Contraintes au niveau de la base', [
+      terzEqn('u', "pression d'eau", '', `${terzFmt(X.u, 1)} kPa`),
+      terzEqn(
+        'q0',
+        'γap · D',
+        `${terzFmt(X.gAp, 1)} × ${terzFmt(X.D)}`,
+        `${terzFmt(rc.q0, 1)} kPa`,
+      ),
+      terzEqn("σ'v0", 'γav · D − u', '', `${terzFmt(X.sv0, 1)} kPa`),
+    ]),
+  );
+  const method = typeof rc.method === 'string' ? rc.method : '';
+  if (method.indexOf('c–φ') < 0) {
+    const rLbl = X.essai === 'penetro' ? 'qce' : 'ple*';
+    const kLbl = X.essai === 'penetro' ? 'kc' : 'kp';
+    n += 1;
+    out.push(
+      terzStep(n, `Pression nette équivalente ${rLbl}`, [
+        `hr = 1,5 · B = ${terzFmt(rc.hr)} m`,
+        `${rLbl} = ${terzFmt(rc.ple, 3)} MPa`,
+      ]),
+    );
+    n += 1;
+    out.push(
+      terzStep(n, "Hauteur d'encastrement équivalente De", [
+        `De = ${terzFmt(rc.De)} m  →  De/B = ${terzFmt(rc.DeB)}`,
+      ]),
+    );
+    n += 1;
+    out.push(
+      terzStep(n, `Facteur de portance ${kLbl}`, [
+        `x = De/B = ${terzFmt(rc.kpx)} · ${kLbl} = ${terzFmt(rc.kp, 3)}`,
+      ]),
+    );
+    n += 1;
+    out.push(
+      terzStep(n, 'Résistance nette du sol qnet', [
+        `qnet = ${terzFmt(rc.qnet, 0)} kPa`,
+      ]),
+    );
+  }
+  // Résistances par état-limite.
+  const states = (Array.isArray(rc.states) ? rc.states : []).filter(
+    isPlainObject,
+  );
+  if (states.length > 0) {
+    n += 1;
+    const lines = states.map(
+      (s) =>
+        `${FDN_ETAT[pdfText(s.etat)] ?? pdfText(s.etat)} : Rv;d = ${terzFmt(s.Rvd, 0)}${mlF} · qRv;d = ${terzFmt(s.qRvd, 0)} kPa`,
+    );
+    out.push(terzStep(n, 'Résistances de calcul par état-limite', lines));
+  }
+  return out;
+}
+
 function buildFondationBody(sealed: SealedContent): Content[] {
   const input = (sealed.input ?? {}) as Record<string, unknown>;
   const output = (sealed.output ?? {}) as Record<string, unknown>;
+  const cb = isPlainObject(output.contraintesBase)
+    ? output.contraintesBase
+    : {};
+  const X = terzCtx(input, cb);
   const body: Content[] = [];
 
   body.push(buildFondationVerdictBanner(sealed.verdict));
 
-  // 1) ENTRÉES — géométrie & sol (table clé/valeur)
-  body.push(sectionTitle('Données d’entrée'));
-  const geo: TableCell[][] = [
-    [fdnHead('Paramètre'), fdnHead('Valeur', 'right')],
-  ];
-  const kv = (p: string, val: string): void => {
-    geo.push([
-      { text: p, style: 'cell' },
-      { text: val, style: 'cell', alignment: 'right' },
-    ]);
-  };
-  kv(
-    'Forme de la fondation',
-    FDN_FORME[pdfText(input.forme)] ?? pdfText(input.forme),
-  );
-  kv('Largeur B', fdnNum(input.B, 2, 'm'));
-  if (input.L != null && input.L !== '')
-    kv('Longueur L', fdnNum(input.L, 2, 'm'));
-  kv('Profondeur d’encastrement D', fdnNum(input.D, 2, 'm'));
-  kv(
-    'Catégorie de sol',
-    FDN_SOL[pdfText(input.solCat)] ?? pdfText(input.solCat),
-  );
-  kv('Type d’essai', FDN_ESSAI[pdfText(input.essai)] ?? pdfText(input.essai));
-  kv('Poids volumique γ (avant travaux)', fdnNum(input.gAvant, 1, 'kN/m³'));
-  kv('Poids volumique γ (après travaux)', fdnNum(input.gApres, 1, 'kN/m³'));
+  const methLib = X.labo
+    ? 'méthode c–φ'
+    : X.essai === 'penetro'
+      ? 'méthode pénétrométrique'
+      : 'méthode pressiométrique';
+
+  // En-tête de la note (miroir de l'en-tête `buildNote`).
   body.push({
-    table: { headerRows: 1, widths: ['*', 'auto'], body: geo },
+    stack: [
+      {
+        text: 'Terzaghi — note de calcul',
+        fontSize: 11,
+        bold: true,
+        color: COLORS.navy,
+      },
+      {
+        text: `Semelle superficielle · ${methLib} · NF P 94-261`,
+        fontSize: 8.5,
+        color: COLORS.muted,
+        margin: [0, 1, 0, 0],
+      },
+    ],
+    margin: [0, 8, 0, 2],
+  });
+
+  // === §1 · Hypothèses ===
+  body.push(sectionTitle('1 · Hypothèses'));
+  const formeLib = FDN_FORME[X.forme] ?? X.forme;
+  let fondTxt = formeLib;
+  if (X.forme === 'circ') fondTxt += `, diamètre B = ${terzFmt(X.B)} m`;
+  else {
+    fondTxt += `, B = ${terzFmt(X.B)} m`;
+    if (X.forme === 'rect') fondTxt += `, L = ${terzFmt(X.L)} m`;
+  }
+  // BQ-3 : D d'encastrement RÉELLEMENT peuplé depuis l'entrée saisie.
+  fondTxt += `, encastrement D = ${terzFmt(X.D)} m`;
+  const solLib = FDN_SOL[pdfText(input.solCat)] ?? pdfText(input.solCat);
+  const interfaceLib =
+    // MIROIR binaire de la note native : `coule` sinon « préfabriquée ».
+    X.beton === 'coule'
+      ? 'béton coulé en place (δa = φ′)'
+      : 'préfabriquée (δa = ⅔ φ′)';
+  const methRow = X.labo
+    ? 'méthode c–φ (paramètres de cisaillement) — portance par l’approche analytique (annexe F) ; tassement par élasticité linéaire (annexe J.3.1)'
+    : X.essai === 'penetro'
+      ? 'pénétromètre statique — portance par la méthode pénétrométrique (annexe E)'
+      : 'pressiomètre Ménard — portance par la méthode pressiométrique (annexe D)';
+  const nappeTxt = Number.isFinite(X.zw)
+    ? `, nappe à ${terzFmt(X.zw)} m/TN (γw = 10 kN/m³)`
+    : ', nappe non rencontrée';
+  const hyp: TableCell[][] = [
+    terzHypRow('Fondation', fondTxt),
+    terzHypRow(
+      'Terrain porteur',
+      `${solLib} — c′ = ${terzFmt(input.c, 0)} kPa, φ′ = ${terzFmt(input.phi, 0)} °, interface ${interfaceLib}`,
+    ),
+    terzHypRow('Méthode', methRow),
+    terzHypRow(
+      'Poids volumiques',
+      `γ avant = ${terzFmt(X.gAv, 1)} kN/m³, γ après = ${terzFmt(X.gAp, 1)} kN/m³${nappeTxt}`,
+    ),
+  ];
+  body.push({
+    table: { widths: ['auto', '*'], body: hyp },
     layout: FINE_TABLE_LAYOUT,
     margin: [0, 2, 0, 4],
   });
 
-  // Profil de sondage
+  // Profil de sondage (mode in situ ; pas de sondage en labo).
   const sondage = (Array.isArray(input.sondage) ? input.sondage : []).filter(
     isPlainObject,
   );
-  if (sondage.length > 0) {
-    const sb: TableCell[][] = [
-      [
-        fdnHead('Profondeur z', 'right'),
-        fdnHead('pl* (MPa)', 'right'),
-        fdnHead('EM (MPa)', 'right'),
-        fdnHead('qc (MPa)', 'right'),
-      ],
-    ];
-    for (const s of sondage) {
-      sb.push([
-        { text: fdnNum(s.z, 2, 'm'), style: 'cell', alignment: 'right' },
-        { text: fdnNum(s.pl, 2), style: 'cell', alignment: 'right' },
-        { text: fdnNum(s.em, 1), style: 'cell', alignment: 'right' },
-        { text: fdnNum(s.qc, 1), style: 'cell', alignment: 'right' },
-      ]);
-    }
-    body.push(fdnSubTitle('Profil de sondage'));
-    body.push({
-      table: { headerRows: 1, widths: ['*', '*', '*', '*'], body: sb },
-      layout: FINE_TABLE_LAYOUT,
-      margin: [0, 2, 0, 4],
-    });
-  }
-
-  // Cas de charge
-  const charges = (Array.isArray(input.charges) ? input.charges : []).filter(
-    isPlainObject,
-  );
-  if (charges.length > 0) {
-    const cb: TableCell[][] = [
-      [
-        fdnHead('État-limite'),
-        fdnHead('Fz (kN)', 'right'),
-        fdnHead('Fx (kN)', 'right'),
-        fdnHead('Fy (kN)', 'right'),
-      ],
-    ];
-    for (const c of charges) {
-      cb.push([
-        {
-          text: FDN_ETAT[pdfText(c.etat)] ?? pdfText(c.etat),
-          style: 'cell',
-        },
-        { text: fdnNum(c.fz, 0), style: 'cell', alignment: 'right' },
-        { text: fdnNum(c.fx, 0), style: 'cell', alignment: 'right' },
-        { text: fdnNum(c.fy, 0), style: 'cell', alignment: 'right' },
-      ]);
-    }
-    body.push(fdnSubTitle('Cas de charge'));
-    body.push({
-      table: { headerRows: 1, widths: ['*', '*', '*', '*'], body: cb },
-      layout: FINE_TABLE_LAYOUT,
-      margin: [0, 2, 0, 4],
-    });
-  }
-
-  // 2) RÉSULTATS — vérifications par cas
-  body.push(sectionTitle('Résultats — vérifications'));
-  const cas = (Array.isArray(output.cas) ? output.cas : []).filter(
-    (c) => isPlainObject(c) && c.invalide !== true,
-  ) as Record<string, unknown>[];
-
-  if (cas.length === 0) {
-    body.push({
-      text: 'Aucun cas de vérification exploitable.',
-      style: 'cellMuted',
-      margin: [0, 2, 0, 6],
-    });
-  } else {
-    // Portance (toujours)
-    const rb: TableCell[][] = [
-      [
-        fdnHead('État-limite'),
-        fdnHead('Résistance Rᵥ;d (kN)', 'right'),
-        fdnHead('Contrainte q_Rv;d (kPa)', 'right'),
-        fdnHead('Taux', 'right'),
-        fdnHead('Portance', 'center'),
-      ],
-    ];
-    for (const c of cas) {
-      const ok = c.portanceOk === true;
-      const taux =
-        typeof c.taux === 'number' && Number.isFinite(c.taux)
-          ? `${Math.round(c.taux * 100)} %`
-          : '—';
-      rb.push([
-        {
-          text: FDN_ETAT[pdfText(c.etat)] ?? pdfText(c.etat),
-          style: 'cell',
-        },
-        { text: fdnNum(c.Rtot, 1), style: 'cell', alignment: 'right' },
-        { text: fdnNum(c.qRvd, 1), style: 'cell', alignment: 'right' },
-        { text: taux, style: 'cell', alignment: 'right' },
-        {
-          text: ok ? '✓ OK' : '✗ NON',
-          style: 'cell',
-          alignment: 'center',
-          bold: true,
-          color: ok ? COLORS.navy : COLORS.alert,
-        },
-      ]);
-    }
-    body.push({
-      table: {
-        headerRows: 1,
-        widths: ['*', 'auto', 'auto', 'auto', 'auto'],
-        body: rb,
-      },
-      layout: FINE_TABLE_LAYOUT,
-      margin: [0, 2, 0, 4],
-    });
-
-    // Glissement (si évalué sur ≥1 cas)
-    const glissCas = cas.filter((c) => c.Rhd != null);
-    if (glissCas.length > 0) {
-      const gb: TableCell[][] = [
+  if (!X.labo && sondage.length > 0) {
+    if (X.essai === 'penetro') {
+      const sb: TableCell[][] = [
+        [fdnHead('z (m/TN)', 'right'), fdnHead('qc (MPa)', 'right')],
+      ];
+      for (const s of sondage)
+        sb.push([
+          { text: terzFmt(s.z), style: 'cell', alignment: 'right' },
+          { text: terzFmt(s.qc), style: 'cell', alignment: 'right' },
+        ]);
+      body.push({
+        table: { headerRows: 1, widths: ['*', '*'], body: sb },
+        layout: FINE_TABLE_LAYOUT,
+        margin: [0, 2, 0, 4],
+      });
+    } else {
+      const sb: TableCell[][] = [
         [
-          fdnHead('État-limite'),
-          fdnHead('Résistance R_h;d (kN)', 'right'),
-          fdnHead('Taux', 'right'),
-          fdnHead('Glissement', 'center'),
+          fdnHead('z (m/TN)', 'right'),
+          fdnHead('pl* (MPa)', 'right'),
+          fdnHead('EM (MPa)', 'right'),
+          fdnHead('α (–)', 'right'),
         ],
       ];
-      for (const c of glissCas) {
-        const gok = c.glissementOk === true;
-        const tH =
-          typeof c.tauxH === 'number' && Number.isFinite(c.tauxH)
-            ? `${Math.round(c.tauxH * 100)} %`
-            : '—';
-        gb.push([
-          {
-            text: FDN_ETAT[pdfText(c.etat)] ?? pdfText(c.etat),
-            style: 'cell',
-          },
-          { text: fdnNum(c.Rhd, 1), style: 'cell', alignment: 'right' },
-          { text: tH, style: 'cell', alignment: 'right' },
-          {
-            text: gok ? '✓ OK' : '✗ NON',
-            style: 'cell',
-            alignment: 'center',
-            bold: true,
-            color: gok ? COLORS.navy : COLORS.alert,
-          },
+      for (const s of sondage)
+        sb.push([
+          { text: terzFmt(s.z), style: 'cell', alignment: 'right' },
+          { text: terzFmt(s.pl), style: 'cell', alignment: 'right' },
+          { text: terzFmt(s.em, 1), style: 'cell', alignment: 'right' },
+          { text: terzFmt(s.al), style: 'cell', alignment: 'right' },
         ]);
-      }
-      body.push(fdnSubTitle('Vérification au glissement'));
       body.push({
-        table: {
-          headerRows: 1,
-          widths: ['*', 'auto', 'auto', 'auto'],
-          body: gb,
-        },
-        layout: FINE_TABLE_LAYOUT,
-        margin: [0, 2, 0, 4],
-      });
-    }
-
-    // Tassements (si calculés sur ≥1 cas)
-    const tassCas = cas.filter(
-      (c) =>
-        c.tassement != null ||
-        c.tassementSchmertmann != null ||
-        c.tassementOed != null ||
-        c.tassementElastique != null,
-    );
-    if (tassCas.length > 0) {
-      const tb: TableCell[][] = [
-        [fdnHead('État-limite'), fdnHead('Tassement estimé (m)', 'right')],
-      ];
-      for (const c of tassCas) {
-        const t = fdnFirstFinite(
-          c.tassement,
-          c.tassementSchmertmann,
-          c.tassementOed,
-          c.tassementElastique,
-        );
-        tb.push([
-          {
-            text: FDN_ETAT[pdfText(c.etat)] ?? pdfText(c.etat),
-            style: 'cell',
-          },
-          { text: fdnNum(t, 3), style: 'cell', alignment: 'right' },
-        ]);
-      }
-      body.push(fdnSubTitle('Estimation des tassements'));
-      body.push({
-        table: { headerRows: 1, widths: ['*', 'auto'], body: tb },
+        table: { headerRows: 1, widths: ['*', '*', '*', '*'], body: sb },
         layout: FINE_TABLE_LAYOUT,
         margin: [0, 2, 0, 4],
       });
     }
   }
 
-  // Avertissements (déjà rédigés/whitelistés côté moteur)
+  // === §2 · Contraintes au niveau de la base === (BQ : section auparavant ABSENTE)
+  if (Number.isFinite(X.u) && Number.isFinite(X.q0) && Number.isFinite(X.sv0)) {
+    body.push(sectionTitle('2 · Contraintes au niveau de la base'));
+    body.push({
+      text: `u = ${terzFmt(X.u, 1)} kPa   ·   q0 (totale, après travaux) = γap·D = ${terzFmt(X.q0, 1)} kPa   ·   σ′v0 (effective, avant travaux) = γav·D − u = ${terzFmt(X.sv0, 1)} kPa`,
+      fontSize: 8.5,
+      color: COLORS.textSec2,
+      margin: [0, 2, 0, 4],
+    });
+  }
+
+  // === §3..N · Développement du calcul pas-à-pas ===
+  // Efforts SAISIS re-attachés à chaque cas (miroir `mapOutputToR`).
+  const charges = (Array.isArray(input.charges) ? input.charges : []) as Record<
+    string,
+    unknown
+  >[];
+  const rawCas = (Array.isArray(output.cas) ? output.cas : []).filter(
+    isPlainObject,
+  );
+  const casWithEfforts: Record<string, unknown>[] = rawCas.map((o) => {
+    const idx = typeof o.idx === 'number' ? o.idx : 0;
+    const ch = charges[idx] ?? {};
+    return {
+      ...o,
+      Fz: terzNum(ch.fz),
+      Fx: terzNum(ch.fx) || 0,
+      Fy: terzNum(ch.fy) || 0,
+      Mx: terzNum(ch.mx) || 0,
+      My: terzNum(ch.my) || 0,
+    };
+  });
+  const validCas = casWithEfforts.filter((c) => c.invalide !== true);
+  const refCap = isPlainObject(output.capaciteReference)
+    ? output.capaciteReference
+    : null;
+
+  let secNo = 3;
+  if (validCas.length === 0 && refCap && refCap.ok === true) {
+    body.push(
+      sectionTitle(
+        `${secNo} · Capacité portante de référence — charge centrée verticale (calcul détaillé)`,
+      ),
+    );
+    body.push({
+      text: 'Les charges n’ont pas été saisies : ce paragraphe déroule la charge maximale que la semelle peut supporter (charge centrée et verticale, cas le plus favorable).',
+      fontSize: 8.5,
+      italics: true,
+      color: COLORS.muted,
+      margin: [0, 2, 0, 2],
+    });
+    body.push(...terzRefCapSteps(refCap, X));
+    secNo += 1;
+  } else {
+    for (const c of casWithEfforts) {
+      const head = terzCaseHead(c, X);
+      body.push(sectionTitle(`${secNo} · ${head.title}`));
+      body.push({
+        text: head.loads,
+        fontSize: 8.5,
+        italics: true,
+        color: COLORS.muted,
+        margin: [0, 2, 0, 2],
+      });
+      if (c.invalide === true) {
+        body.push({
+          text: 'Cas de charge rejeté à la saisie (charge nulle ou géométrie invalide).',
+          style: 'cellMuted',
+          color: COLORS.alert,
+          margin: [0, 2, 0, 2],
+        });
+      } else {
+        body.push(...terzCaseSteps(c, X));
+      }
+      secNo += 1;
+    }
+  }
+
+  // Raideurs équivalentes du sol support (annexe J.3 / Gazetas) — la note native
+  // les rend dans le déroulé (groupe « Raideurs équivalentes ») ; ici, une fois,
+  // depuis le champ whitelisté `output.raideurs` (Kv/Kh/Kθ, déjà affichés à l'écran).
+  const raid = isPlainObject(output.raideurs) ? output.raideurs : null;
+  if (raid && Number.isFinite(terzNum(raid.Kv))) {
+    const mlK = raid.perML === true ? '/ml' : '';
+    body.push(fdnSubTitle('Raideurs équivalentes du sol support'));
+    const rLines = [
+      `Kv = ${terzFmt(raid.Kv, 0)} MN/m${mlK} (verticale)`,
+      `Kh;B / Kh;L = ${terzFmt(raid.KhB, 0)} / ${terzFmt(raid.KhL, 0)} MN/m${mlK} (horizontale)`,
+      `Kθ;B / Kθ;L = ${terzFmt(raid.KtB, 0)} / ${terzFmt(raid.KtL, 0)} MN·m/rd${mlK} (rotation)`,
+    ];
+    body.push({
+      text: rLines.join('\n'),
+      fontSize: 8.5,
+      color: COLORS.textSec2,
+      margin: [10, 0, 0, 4],
+    });
+  }
+
+  // === Synthèse === (BQ-5 : colonne EXCENTREMENT ; tassement en CENTIMÈTRES)
+  body.push(sectionTitle(`${secNo} · Synthèse`));
+  const syn: TableCell[][] = [
+    [
+      fdnHead('Cas'),
+      fdnHead('État-limite'),
+      fdnHead('Portance', 'center'),
+      fdnHead('Excentr.', 'center'),
+      fdnHead('Glissement', 'center'),
+      fdnHead('sf (cm) · qref', 'right'),
+    ],
+  ];
+  const okCell = (v: unknown): TableCell => {
+    if (typeof v !== 'boolean')
+      return { text: '—', style: 'cell', alignment: 'center' };
+    return {
+      text: v ? 'OK' : 'NON',
+      style: 'cell',
+      alignment: 'center',
+      bold: true,
+      color: v ? COLORS.navy : COLORS.alert,
+    };
+  };
+  for (const c of casWithEfforts) {
+    const idx = typeof c.idx === 'number' ? c.idx : 0;
+    const etat = FDN_ETAT[pdfText(c.etat)] ?? pdfText(c.etat);
+    if (c.invalide === true) {
+      syn.push([
+        { text: String(idx + 1), style: 'cell' },
+        { text: etat, style: 'cell' },
+        { text: '—', style: 'cell', alignment: 'center' },
+        { text: '—', style: 'cell', alignment: 'center' },
+        { text: '—', style: 'cell', alignment: 'center' },
+        { text: '—', style: 'cell', alignment: 'right' },
+      ]);
+      continue;
+    }
+    const taux = Number.isFinite(terzNum(c.taux))
+      ? ` (${terzFmt(terzNum(c.taux) * 100, 0)} %)`
+      : '';
+    const portCell: TableCell = {
+      text: `${c.portanceOk === true ? 'OK' : c.portanceOk === false ? 'NON' : '—'}${taux}`,
+      style: 'cell',
+      alignment: 'center',
+      bold: true,
+      color: c.portanceOk === false ? COLORS.alert : COLORS.navy,
+    };
+    // Tassement : première méthode disponible, en CENTIMÈTRES (fmt sf·100).
+    const sfM = fdnFirstFinite(
+      c.tassement,
+      c.tassementElastique,
+      c.tassementSchmertmann,
+      c.tassementOed,
+    );
+    const sfCell =
+      sfM === null
+        ? '—'
+        : `${terzFmt(sfM * 100, 2)} cm${Number.isFinite(terzNum(c.qref)) ? ` (${terzFmt(c.qref, 0)} kPa)` : ''}`;
+    syn.push([
+      { text: String(idx + 1), style: 'cell' },
+      { text: etat, style: 'cell' },
+      portCell,
+      okCell(c.excOk),
+      okCell(c.glissementOk),
+      { text: sfCell, style: 'cell', alignment: 'right' },
+    ]);
+  }
+  body.push({
+    table: {
+      headerRows: 1,
+      widths: ['auto', '*', 'auto', 'auto', 'auto', 'auto'],
+      body: syn,
+    },
+    layout: FINE_TABLE_LAYOUT,
+    margin: [0, 2, 0, 4],
+  });
+
+  // Avertissements (déjà rédigés/whitelistés côté moteur).
   const warnings = output.warnings;
   if (Array.isArray(warnings) && warnings.length > 0) {
     body.push(fdnSubTitle('Avertissements'));
@@ -740,376 +1383,6 @@ function buildFondationBody(sealed: SealedContent): Content[] {
 
   return body;
 }
-
-// ---------------------------------------------------------------------------
-// Présentation « fondation profonde » (pieux / NF P 94-262, EC7)
-// ---------------------------------------------------------------------------
-const PIEUX_METH: Record<string, string> = {
-  pmt: 'Pressiomètre Ménard (PMT)',
-  cpt: 'Pénétromètre statique (CPT)',
-  cphi: 'Paramètres de laboratoire (c–φ)',
-};
-const PIEUX_SENS: Record<string, string> = {
-  comp: 'Compression',
-  trac: 'Traction',
-};
-
-// TRANSPARENCE réglementaire (feature d'intégrité, avis expert-genie-civil) : les
-// facteurs partiels EC7 sont des choix RÉGLEMENTAIRES PUBLICS (EN 1990 /
-// NF P 94-262) ajustables par le BE. On ne les fige pas, on les TRACE sur le PV
-// scellé. Ce sont des paramètres PUBLICS, affichables (DoD §8) — AUCUN calage
-// confidentiel (kp/kc/α) n'apparaît ici : ces coefficients-là restent verrouillés
-// hors entrée et ne transitent pas par le PV.
-const PIEUX_DA_LABEL: Record<string, string> = {
-  da1: 'DA1',
-  da2: 'DA2 (NA France)',
-  da3: 'DA3',
-};
-
-/**
- * Coefficients partiels tracés SEULEMENT s'ils s'écartent du défaut (choix
- * explicite du BE) — ordre normatif, libellés EN 1990 / NF P 94-262. ψ₂ (k_psi2)
- * est TOUJOURS affiché (non universel : dépend de la catégorie d'action) donc
- * traité à part, hors de cette liste.
- * `cr_car` (défaut 0,90) : libellé PRUDENT — l'expert n'a pas certifié ce défaut,
- * on n'invente aucune clause ; il est simplement affiché s'il diffère du défaut.
- */
-const PIEUX_COEFF_LABELS: ReadonlyArray<
-  [keyof typeof PIEUX_DEFAULT_COEFFS, string]
-> = [
-  ['k_gG', 'γG (permanente défavorable)'],
-  ['k_gQ', 'γQ (variable défavorable)'],
-  ['k_gb', 'γb (pointe, R2)'],
-  ['k_gs', 'γs (frottement, R2)'],
-  ['k_gst', 'γs;t (traction, R2)'],
-  ['cr_b_b', 'Rc;cr;k coef. Rb;k, pieu refoulant'],
-  ['cr_b_s', 'Rc;cr;k coef. Rs;k, pieu refoulant'],
-  ['cr_f_b', 'Rc;cr;k coef. Rb;k, pieu foré'],
-  ['cr_f_s', 'Rc;cr;k coef. Rs;k, pieu foré'],
-  ['cr_car', 'coef. fluage ELS caractéristique (compression)'],
-  ['cr_qp', 'γ fluage ELS q.perm. (compression)'],
-  ['cr_car_t', 'γs;cr ELS caract. (traction)'],
-  ['cr_qp_t', 'γs;cr ELS q.perm. (traction)'],
-];
-
-/**
- * Section « Paramètres réglementaires (EC7 / NF P 94-262) » du PV pieux —
- * TRACABILITÉ des choix réglementaires PUBLICS depuis l'ENTRÉE scellée
- * (`sealed.input.coeffs` + `sealed.input.da`) :
- *  - TOUJOURS : l'approche de calcul (da) + ψ₂ (k_psi2, non universel) ;
- *  - les AUTRES coeffs UNIQUEMENT s'ils diffèrent de PIEUX_DEFAULT_COEFFS.
- * FAIL-CLOSED : coeffs/da absents de l'entrée -> aucune section (jamais de crash,
- * jamais de section vide). Aucun calage confidentiel ici (paramètres PUBLICS).
- */
-function buildPieuxReglementaires(sealed: SealedContent): Content[] {
-  const input =
-    sealed.input !== null && typeof sealed.input === 'object'
-      ? (sealed.input as Record<string, unknown>)
-      : {};
-  const coeffs =
-    input.coeffs !== null && typeof input.coeffs === 'object'
-      ? (input.coeffs as Record<string, unknown>)
-      : null;
-  const da = typeof input.da === 'string' ? input.da : null;
-
-  // Rien de traçable dans l'entrée scellée -> rien du tout (fail-closed).
-  if (coeffs === null && da === null) return [];
-
-  const rows: TableCell[][] = [
-    [fdnHead('Paramètre'), fdnHead('Valeur', 'right')],
-  ];
-  const row = (p: string, val: string): void => {
-    rows.push([
-      { text: p, style: 'cell' },
-      { text: val, style: 'cell', alignment: 'right' },
-    ]);
-  };
-
-  // TOUJOURS : approche de calcul EC7 (si présente dans l'entrée).
-  if (da !== null) row('Approche de calcul EC7', PIEUX_DA_LABEL[da] ?? da);
-
-  if (coeffs !== null) {
-    // TOUJOURS : ψ₂ (non universel — dépend de la catégorie d'action).
-    const psi2 = fdnNum(coeffs.k_psi2, 2);
-    if (psi2 !== '—') row('ψ₂ (quasi-permanent)', psi2);
-
-    // AUTRES coeffs : SEULEMENT si ≠ défaut (choix explicite du BE, comparé
-    // valeur à valeur au défaut du contrat moteur).
-    for (const [key, label] of PIEUX_COEFF_LABELS) {
-      const v = coeffs[key];
-      if (typeof v !== 'number' || !Number.isFinite(v)) continue;
-      if (v === PIEUX_DEFAULT_COEFFS[key]) continue;
-      row(label, fdnNum(v, 2));
-    }
-  }
-
-  // Aucune ligne de donnée (que l'en-tête) -> pas de section.
-  if (rows.length <= 1) return [];
-
-  return [
-    sectionTitle('Paramètres réglementaires (EC7 / NF P 94-262)'),
-    {
-      table: { headerRows: 1, widths: ['*', 'auto'], body: rows },
-      layout: FINE_TABLE_LAYOUT,
-      margin: [0, 2, 0, 4],
-    },
-  ];
-}
-
-/**
- * Allowlist fail-closed du libellé de vérification pieux au PV (miroir serveur de
- * safePieuxVerifLabel côté front, apps/web adapters.ts). Le PV est la surface la PLUS
- * sensible (scellée, remise au client) : le `nom` de vérification (texte libre du moteur,
- * borné en longueur mais PAS en contenu par CheckSchema) ne doit s'imprimer que s'il est
- * reconnu (état-limite + combinaison EC7 whitelistés), sinon libellé générique indexé —
- * aucun texte moteur non whitelisté sur un livrable client (DoD §8).
- */
-const PV_PIEUX_ELS_LABELS: ReadonlySet<string> = new Set([
-  'ELS caractéristique',
-  'ELS quasi-permanent',
-]);
-const PV_PIEUX_ELU_PREFIXES: ReadonlySet<string> = new Set([
-  'ELU portance',
-  'ELU traction',
-]);
-const PV_PIEUX_ELU_COMBOS: ReadonlySet<string> = new Set([
-  'DA1·C1',
-  'DA1·C2',
-  'DA2',
-  'DA3',
-]);
-function safePieuxVerifLabelPv(rawNom: unknown, index: number): string {
-  const fallback = `Vérification ${index}`;
-  if (typeof rawNom !== 'string') return fallback;
-  if (PV_PIEUX_ELS_LABELS.has(rawNom)) return rawNom;
-  const sep = rawNom.indexOf(' — ');
-  if (sep > 0) {
-    const prefix = rawNom.slice(0, sep);
-    const combo = rawNom.slice(sep + 3);
-    if (PV_PIEUX_ELU_PREFIXES.has(prefix) && PV_PIEUX_ELU_COMBOS.has(combo))
-      return rawNom;
-  }
-  return fallback;
-}
-
-function buildFonProfondeBody(sealed: SealedContent): Content[] {
-  const output = (sealed.output ?? {}) as Record<string, unknown>;
-  const body: Content[] = [];
-
-  body.push(buildFondationVerdictBanner(sealed.verdict));
-
-  // 1) Caractéristiques du pieu (échos d'entrée whitelistés)
-  body.push(sectionTitle('Caractéristiques du pieu'));
-  const geo: TableCell[][] = [
-    [fdnHead('Paramètre'), fdnHead('Valeur', 'right')],
-  ];
-  const kv = (p: string, val: string): void => {
-    geo.push([
-      { text: p, style: 'cell' },
-      { text: val, style: 'cell', alignment: 'right' },
-    ]);
-  };
-  kv('Diamètre / largeur B', fdnNum(output.B, 2, 'm'));
-  kv('Profondeur de base D', fdnNum(output.D, 2, 'm'));
-  kv('Catégorie de pieu', fdnNum(output.categorie, 0));
-  kv(
-    'Méthode de portance',
-    PIEUX_METH[pdfText(output.methode)] ?? pdfText(output.methode),
-  );
-  kv(
-    'Sens de sollicitation',
-    PIEUX_SENS[pdfText(output.sens)] ?? pdfText(output.sens),
-  );
-  body.push({
-    table: { headerRows: 1, widths: ['*', 'auto'], body: geo },
-    layout: FINE_TABLE_LAYOUT,
-    margin: [0, 2, 0, 4],
-  });
-
-  // 1bis) Paramètres réglementaires EC7/NF P 94-262 — TRANSPARENCE (feature
-  // d'intégrité) : trace les choix réglementaires PUBLICS depuis l'entrée scellée.
-  body.push(...buildPieuxReglementaires(sealed));
-
-  // 2) Résistances de calcul
-  body.push(sectionTitle('Résistances de calcul'));
-  const rb: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
-  const rr = (p: string, v: unknown): void => {
-    const n = fdnNum(v, 1, 'kN');
-    if (n !== '—')
-      rb.push([
-        { text: p, style: 'cell' },
-        { text: n, style: 'cell', alignment: 'right' },
-      ]);
-  };
-  rr('Résistance de pointe Rb;k', output.RbK);
-  rr('Résistance de frottement Rs;k', output.RsK);
-  rr('Résistance caractéristique Rc;k', output.RcK);
-  rr('Résistance de calcul Rc;d', output.RcD);
-  rr('Résistance de fluage Rc;cr;k', output.RcrK);
-  body.push({
-    table: { headerRows: 1, widths: ['*', 'auto'], body: rb },
-    layout: FINE_TABLE_LAYOUT,
-    margin: [0, 2, 0, 4],
-  });
-
-  // 3) Sollicitations & vérification
-  body.push(sectionTitle('Sollicitations & vérification'));
-  const okElu = output.allOk === true;
-  const sb: TableCell[][] = [
-    [
-      fdnHead('Combinaison'),
-      fdnHead('Sollicitation Fd (kN)', 'right'),
-      fdnHead('Résistance (kN)', 'right'),
-      fdnHead('Vérif.', 'center'),
-    ],
-  ];
-  const checkRow = (nom: string, fd: unknown, rd: unknown): void => {
-    const f = typeof fd === 'number' && Number.isFinite(fd) ? fd : null;
-    const r = typeof rd === 'number' && Number.isFinite(rd) ? rd : null;
-    if (f === null && r === null) return;
-    const ok = f !== null && r !== null ? f <= r : okElu;
-    sb.push([
-      { text: nom, style: 'cell' },
-      { text: fdnNum(fd, 0), style: 'cell', alignment: 'right' },
-      { text: fdnNum(rd, 0), style: 'cell', alignment: 'right' },
-      {
-        text: ok ? '✓ OK' : '✗ NON',
-        style: 'cell',
-        alignment: 'center',
-        bold: true,
-        color: ok ? COLORS.navy : COLORS.alert,
-      },
-    ]);
-  };
-  const verifs = Array.isArray(output.verifications)
-    ? output.verifications
-    : [];
-  if (verifs.length > 0) {
-    let vi = 0;
-    for (const v of verifs) {
-      if (v === null || typeof v !== 'object') continue;
-      const c = v as Record<string, unknown>;
-      vi += 1;
-      checkRow(safePieuxVerifLabelPv(c.nom, vi), c.Fd, c.Rd);
-    }
-  } else {
-    // Combinaisons standard depuis les échos scellés.
-    checkRow('ELU — portance (DA2)', output.FduELU, output.RcD);
-    checkRow('ELS caractéristique — fluage', output.FdCar, output.RcrCar);
-    checkRow('ELS quasi-permanent — fluage', output.FdQp, output.RcrQp);
-  }
-  if (sb.length > 1) {
-    body.push({
-      table: { headerRows: 1, widths: ['*', 'auto', 'auto', 'auto'], body: sb },
-      layout: FINE_TABLE_LAYOUT,
-      margin: [0, 2, 0, 4],
-    });
-  }
-
-  // 4) Tassement ELS (si estimé)
-  const tass = fdnNum(output.tassementELS, 1, 'mm');
-  if (tass !== '—') {
-    body.push(fdnSubTitle('Tassement (ELS)'));
-    body.push({ text: tass, style: 'cell', margin: [0, 2, 0, 4] });
-  }
-
-  // 5) Frottement négatif (downdrag, #94) — si calculé (sinon rien : fail-closed)
-  const gsn = fdnNum(output.Gsn, 1, 'kN');
-  const nmax = fdnNum(output.Nmax, 1, 'kN');
-  const zN = fdnNum(output.pointNeutre, 2, 'm');
-  if (gsn !== '—' || nmax !== '—' || zN !== '—') {
-    body.push(sectionTitle('Frottement négatif'));
-    const fn: TableCell[][] = [
-      [fdnHead('Grandeur'), fdnHead('Valeur', 'right')],
-    ];
-    const fnRow = (p: string, v: string): void => {
-      if (v !== '—')
-        fn.push([
-          { text: p, style: 'cell' },
-          { text: v, style: 'cell', alignment: 'right' },
-        ]);
-    };
-    fnRow('Charge de frottement négatif G_sn', gsn);
-    fnRow('Effort axial maximal N_max', nmax);
-    fnRow('Profondeur du point neutre z_N', zN);
-    body.push({
-      table: { headerRows: 1, widths: ['*', 'auto'], body: fn },
-      layout: FINE_TABLE_LAYOUT,
-      margin: [0, 2, 0, 4],
-    });
-  }
-
-  // 6) Vérification structurale du béton (#95) — selon betonApplicable
-  if (output.betonApplicable === true) {
-    body.push(sectionTitle('Vérification structurale du béton'));
-    const bt: TableCell[][] = [
-      [
-        fdnHead('Grandeur'),
-        fdnHead('Taux', 'right'),
-        fdnHead('Vérif.', 'center'),
-      ],
-    ];
-    const betonRow = (p: string, taux: unknown, ok: unknown): void => {
-      const n = typeof taux === 'number' && Number.isFinite(taux) ? taux : null;
-      if (n === null) return;
-      const isOk = ok === true;
-      bt.push([
-        { text: p, style: 'cell' },
-        { text: fdnNum(n * 100, 0, '%'), style: 'cell', alignment: 'right' },
-        {
-          text: isOk ? '✓ OK' : '✗ NON',
-          style: 'cell',
-          alignment: 'center',
-          bold: true,
-          color: isOk ? COLORS.navy : COLORS.alert,
-        },
-      ]);
-    };
-    betonRow('Taux béton ELU σ/f_cd', output.betonTauxELU, output.betonOkELU);
-    betonRow('Taux béton ELS', output.betonTauxELS, output.betonOkELS);
-    if (bt.length > 1) {
-      body.push({
-        table: { headerRows: 1, widths: ['*', 'auto', 'auto'], body: bt },
-        layout: FINE_TABLE_LAYOUT,
-        margin: [0, 2, 0, 4],
-      });
-    }
-    const fcd = fdnNum(output.betonFcd, 1, 'MPa');
-    if (fcd !== '—') {
-      body.push({
-        text: `Résistance de calcul du béton f_cd = ${fcd}`,
-        style: 'cellMuted',
-        margin: [0, 0, 0, 4],
-      });
-    }
-  } else if (output.betonApplicable === false) {
-    body.push(sectionTitle('Vérification structurale du béton'));
-    body.push({
-      text: 'Non applicable pour ce pieu.',
-      style: 'cellMuted',
-      margin: [0, 2, 0, 4],
-    });
-  }
-
-  // Avertissements
-  const w = output.warnings;
-  if (Array.isArray(w) && w.length > 0) {
-    body.push(fdnSubTitle('Avertissements'));
-    body.push({
-      text: w.map((x) => String(x)).join(' · '),
-      style: 'cellMuted',
-      color: COLORS.accent,
-      margin: [0, 2, 0, 4],
-    });
-  }
-
-  return body;
-}
-
-// ---------------------------------------------------------------------------
-// Présentations « analyse » (radier / labo GTR / pressiomètre) — extraction &
-// classification, SANS verdict de conformité. Clés nommées (fail-closed, DoD §8).
-// ---------------------------------------------------------------------------
 
 /** Bandeau neutre pour les moteurs d'analyse (pas de CONFORME/NON CONFORME). */
 function buildAnalyseBanner(): Content {
@@ -1179,6 +1452,7 @@ function buildRadierAlertBox(message: string): Content {
     layout: { hLineWidth: () => 0, vLineWidth: () => 0 },
   };
 }
+
 
 function buildRadierBody(sealed: SealedContent): Content[] {
   const o = (sealed.output ?? {}) as Record<string, unknown>;
@@ -1287,6 +1561,7 @@ function buildRadierBody(sealed: SealedContent): Content[] {
 
   return body;
 }
+
 
 // Allowlist FAIL-CLOSED du chemin de décision GTR (classe.path) — DoD §8, avis
 // ingenieur-securite. Miroir de `safeLaboPath` du front : seuls les libellés matchant un
@@ -1547,60 +1822,6 @@ function buildLaboBody(sealed: SealedContent): Content[] {
   return body;
 }
 
-function buildPressiometreBody(sealed: SealedContent): Content[] {
-  const o = (sealed.output ?? {}) as Record<string, unknown>;
-  const body: Content[] = [];
-  body.push(buildAnalyseBanner());
-
-  body.push(sectionTitle('Résultats de dépouillement'));
-  const t: TableCell[][] = [[fdnHead('Grandeur'), fdnHead('Valeur', 'right')]];
-  // Unités alignées sur l'app ET l'outil client (revue adverse 15/07, MAJEUR-1) :
-  // pL/pLNette/pfNette sont stockés en bar (contrat interne) mais AFFICHÉS en MPa
-  // (÷10) partout — un PV en bar contredisait l'écran d'un facteur 10. Conversion
-  // d'affichage seule : le sceau porte sur l'output canonique (bar), inchangé.
-  const bar2mpa = (v: unknown): number | null =>
-    typeof v === 'number' && Number.isFinite(v) ? v / 10 : null;
-  fdnKvRow(t, 'Pression limite p_L', fdnNum(bar2mpa(o.pL), 2, 'MPa'));
-  fdnKvRow(
-    t,
-    'Pression limite nette p_L*',
-    fdnNum(bar2mpa(o.pLNette), 2, 'MPa'),
-  );
-  fdnKvRow(
-    t,
-    'Pression de fluage nette p_f*',
-    fdnNum(bar2mpa(o.pfNette), 2, 'MPa'),
-  );
-  fdnKvRow(t, 'Module pressiométrique E_M', fdnNum(o.EM, 1, 'MPa'));
-  fdnKvRow(t, 'Rapport E_M / p_L*', fdnNum(o.ratioEMpL, 1));
-  if (t.length > 1) {
-    body.push({
-      table: { headerRows: 1, widths: ['*', 'auto'], body: t },
-      layout: FINE_TABLE_LAYOUT,
-      margin: [0, 2, 0, 4],
-    });
-  }
-
-  // Classification du sol (résultats textuels)
-  const cat = typeof o.categorieLibelle === 'string' ? o.categorieLibelle : '';
-  const cons = typeof o.consolidation === 'string' ? o.consolidation : '';
-  if (cat || cons) {
-    const ct: TableCell[][] = [
-      [fdnHead('Paramètre'), fdnHead('Valeur', 'right')],
-    ];
-    if (cat) fdnKvRow(ct, 'Catégorie de sol', cat);
-    if (cons) fdnKvRow(ct, 'État de consolidation', cons);
-    if (ct.length > 1) {
-      body.push(sectionTitle('Classification du sol'));
-      body.push({
-        table: { headerRows: 1, widths: ['*', 'auto'], body: ct },
-        layout: FINE_TABLE_LAYOUT,
-        margin: [0, 2, 0, 4],
-      });
-    }
-  }
-  return body;
-}
 
 // ---------------------------------------------------------------------------
 // Présentations « déformée 2D » GEOPLAQUE (déformations planes / axisymétrique /
@@ -1942,7 +2163,7 @@ function buildHeader(sealed: SealedContent, sealedAt: Date): Content {
       {
         columns: [
           [
-            { text: 'ROADSEN', style: 'brand' },
+            { text: 'GEOFAM', style: 'brand' },
             {
               text: 'Plateforme de calcul géotechnique & routier',
               style: 'sub',
@@ -2248,6 +2469,29 @@ function buildKeyValueTable(value: unknown, emptyLabel: string): Content {
 // Bloc de scellement (élément distinctif, jamais coupé)
 // ---------------------------------------------------------------------------
 
+/**
+ * RÉFÉRENTIEL normatif par moteur pour la note du bloc de scellement (BQ-4). Le
+ * texte « méthode rationnelle (AGEROUTE 2015) » n'appartient QU'À la chaussée ;
+ * chaque moteur cite sa propre norme. Un moteur inconnu tombe sur une formulation
+ * neutre (jamais de citation normative fausse sur un livrable scellé).
+ */
+const SEAL_REFERENTIEL_BY_ENGINE: Record<string, string> = {
+  'chaussee-burmister': 'la méthode rationnelle (AGEROUTE 2015)',
+  'fondation-superficielle': 'la norme NF P 94-261 (fondations superficielles)',
+  'fondation-profonde-pieux':
+    'la norme NF P 94-262 (fondations profondes, EC7)',
+  'radier-plaque': 'la théorie des plaques sur sol élastique',
+  'pressiometre-menard': 'l’essai pressiométrique Ménard (NF P 94-110)',
+  'labo-classification-gtr': 'le guide GTR / NF P 11-300',
+};
+
+function sealReferentielNote(engineId: string): string {
+  const ref =
+    SEAL_REFERENTIEL_BY_ENGINE[engineId] ??
+    'le référentiel normatif applicable au calcul';
+  return `Libellés et unités métier établis selon ${ref} — en cours de co-validation avec l’expert.`;
+}
+
 function buildSealBlock(
   sealed: SealedContent,
   recomputedHash: string,
@@ -2307,10 +2551,12 @@ function buildSealBlock(
                 bold: true,
                 color: COLORS.text,
               },
-              // NOTE SCIENCE (#71-titulaire 3) : honnête, pas « brouillon ». Les
-              // libellés/unités métier sont en co-validation expert.
+              // NOTE SCIENCE (#71-titulaire 3) : RÉFÉRENTIEL conditionnel au moteur
+              // (BQ-4). Le boilerplate « AGEROUTE 2015 » (chaussée) ne doit PAS
+              // s'imprimer sur un PV de fondation/pieux/etc. : chaque moteur porte
+              // sa propre norme (NF P 94-261 superficielle, NF P 94-262 pieux…).
               {
-                text: 'Libellés et unités métier établis selon la méthode rationnelle (AGEROUTE 2015) — en cours de co-validation avec l’expert.',
+                text: sealReferentielNote(sealed.engineMeta.engineId),
                 fontSize: 7,
                 italics: true,
                 color: COLORS.muted,
