@@ -108,6 +108,15 @@ export function ToolFrame({
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
   const [state, setState] = useState<LoadState>('idle');
   const [error, setError] = useState<string | null>(null);
+  // Garde anti-course (audit adverse #9, BQ-2) : compteur monotone incrémenté
+  // à CHAQUE calc:request reçu (y compris les rejets synchrones — no-project,
+  // engineId hors allowlist — pour qu'une réponse async qui résoudrait après
+  // eux soit, elle aussi, considérée périmée). Le `.then`/`.catch` de
+  // `runCalc` ne remonte le résultat (onCalcResultId + calc:response au
+  // clone) QUE si son seq est toujours le plus récent au moment où il résout
+  // — une résolution hors-ordre (rafale/clics rapprochés) est silencieusement
+  // ignorée plutôt que d'écraser le shell avec un résultat plus ancien.
+  const requestSeqRef = useRef(0);
 
   // ---------------------------------------------------------------------
   // Chargement du clone (fetch authentifié côté client, cf. route handler)
@@ -180,6 +189,7 @@ export function ToolFrame({
         }
 
         case 'calc:request': {
+          const seq = ++requestSeqRef.current;
           const payload = msg.payload;
           // projectId absent (aucun projet sélectionné) : l'outil reste
           // affiché (fidélité UI) mais le calcul est bloqué — message
@@ -234,6 +244,10 @@ export function ToolFrame({
             params: payload.params,
           })
             .then((result) => {
+              // Réponse PÉRIMÉE (une requête plus récente a déjà été émise
+              // pendant que celle-ci était en vol) : ignorée SILENCIEUSEMENT —
+              // ni remontée au shell (onCalcResultId), ni renvoyée au clone.
+              if (seq !== requestSeqRef.current) return;
               onCalcResultId?.(result.id);
               // ADR 0015 §4 : le clone (`mapOutputToR`) consomme la sortie serveur
               // WHITELISTÉE BRUTE (`output.cas`/`capaciteReference`/`contraintesBase`),
@@ -257,6 +271,10 @@ export function ToolFrame({
               });
             })
             .catch((err: unknown) => {
+              // Même garde côté erreur : une erreur périmée ne doit pas non
+              // plus atterrir sur le shell/le clone après une requête plus
+              // récente.
+              if (seq !== requestSeqRef.current) return;
               post({
                 v: TOOL_BRIDGE_PROTOCOL_VERSION,
                 type: 'calc:response',
@@ -264,6 +282,18 @@ export function ToolFrame({
                 payload: { ok: false, error: apiErrorFrom(err) },
               });
             });
+          break;
+        }
+
+        case 'input:dirty': {
+          // BQ-1 (audit adverse #9) : la saisie a changé APRÈS un calcul (ou
+          // l'utilisateur a changé d'onglet/mode) — le dernier calcResultId
+          // ne correspond plus à ce qui est affiché à l'écran. On l'invalide
+          // en remontant `null` au shell (même callback que le calcul lui-
+          // même : idempotent si aucun calcul n'était en cours). Rétrocompat :
+          // un clone qui n'émet JAMAIS ce message ne déclenche jamais cette
+          // branche — comportement inchangé.
+          onCalcResultId?.(null);
           break;
         }
 

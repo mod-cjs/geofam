@@ -78,6 +78,29 @@ export interface PvRequestPayload {
   calcResultId: string;
 }
 
+/**
+ * iframe→hôte — signale qu'une saisie ou un changement d'onglet/mode vient
+ * de se produire dans le clone (audit adverse #9, BQ-1 : un calcul scellé
+ * doit toujours correspondre à ce que l'ingénieur voit à l'écran).
+ *
+ * CONTRAT que le clone (généré par `scripts/clone-tool.mjs`, hors périmètre
+ * de ce fichier) doit respecter :
+ *  - Émettre `input:dirty` dès qu'un handler oninput/onchange existant du
+ *    clone se déclenche sur un champ de saisie, OU dès qu'un changement
+ *    d'onglet/mode interne survient (ex. les onglets GEOPLAQUE) — sur
+ *    TOUT changement, sans essayer de savoir si un calcul a déjà eu lieu
+ *    (l'hôte est idempotent : recevoir `input:dirty` sans calcul en cours
+ *    est un no-op sans effet).
+ *  - Émission immédiate, NON débouncée (à la différence de `calc:request`
+ *    qui peut être débouncé ~300 ms côté clone, cf. FASTLAB) : le bouton
+ *    « Émettre le PV » doit se désactiver dès le premier caractère tapé,
+ *    pas seulement après le débounce du recalcul.
+ *  - `payload.toolId` = même valeur que celle envoyée dans `ready`.
+ */
+export interface InputDirtyPayload {
+  toolId: string;
+}
+
 /** Les deux sens — erreur de PROTOCOLE (pas une erreur métier de calcul). */
 export interface ErrorPayload {
   message: string;
@@ -103,6 +126,7 @@ export type StoreGetMessage = Envelope<'store:get', StoreGetPayload>;
 export type StoreSetMessage = Envelope<'store:set', StoreSetPayload>;
 export type StoreValueMessage = Envelope<'store:value', StoreValuePayload>;
 export type PvRequestMessage = Envelope<'pv:request', PvRequestPayload>;
+export type InputDirtyMessage = Envelope<'input:dirty', InputDirtyPayload>;
 export type ProtocolErrorMessage = Envelope<'error', ErrorPayload>;
 
 export type ToolBridgeMessage =
@@ -114,6 +138,7 @@ export type ToolBridgeMessage =
   | StoreSetMessage
   | StoreValueMessage
   | PvRequestMessage
+  | InputDirtyMessage
   | ProtocolErrorMessage;
 
 const KNOWN_TYPES: ReadonlySet<ToolBridgeMessage['type']> = new Set([
@@ -125,6 +150,7 @@ const KNOWN_TYPES: ReadonlySet<ToolBridgeMessage['type']> = new Set([
   'store:set',
   'store:value',
   'pv:request',
+  'input:dirty',
   'error',
 ]);
 
