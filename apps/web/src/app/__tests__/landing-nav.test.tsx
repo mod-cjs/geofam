@@ -1,7 +1,7 @@
 /**
  * Tests — LandingNav (repli mobile de la landing GEOFAM).
  *
- * DoD §9 : given/when/then, interaction réelle (clic), pas de mock du DOM.
+ * DoD §9 : given/when/then, interaction réelle (clic/clavier), pas de mock du DOM.
  */
 
 import { act } from 'react';
@@ -16,6 +16,7 @@ let root: Root;
 beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
+  document.body.style.overflow = '';
   act(() => {
     root = createRoot(container);
     root.render(<LandingNav />);
@@ -27,10 +28,17 @@ afterEach(() => {
     root.unmount();
   });
   container.remove();
+  document.body.style.overflow = '';
 });
 
 function toggleButton(): HTMLButtonElement {
   return container.querySelector('.landing-nav-toggle') as HTMLButtonElement;
+}
+
+function openMenu() {
+  act(() => {
+    toggleButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
 }
 
 describe('LandingNav — repli mobile', () => {
@@ -40,10 +48,8 @@ describe('LandingNav — repli mobile', () => {
     expect(toggleButton().getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('GIVEN le bouton hamburger WHEN on clique dessus THEN le panneau mobile apparaît avec les 5 ancres + Se connecter + Essai gratuit', () => {
-    act(() => {
-      toggleButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    });
+  it('GIVEN le bouton hamburger WHEN on clique dessus THEN le panneau mobile apparaît avec les 4 ancres (sans #tutoriels) + Se connecter + Demander un essai (WhatsApp)', () => {
+    openMenu();
 
     const panel = container.querySelector('#landing-mobile-menu');
     expect(panel).not.toBeNull();
@@ -55,17 +61,18 @@ describe('LandingNav — repli mobile', () => {
       '#logiciels',
       '#pourquoi',
       '#tarifs',
-      '#tutoriels',
       '#contact',
       '/login',
-      expect.stringContaining('mailto:direction@geofam.tech?subject='),
+      expect.stringContaining('https://wa.me/221768745508'),
     ]);
+
+    const essaiLink = panel!.querySelector('a[target="_blank"]');
+    expect(essaiLink?.textContent?.trim()).toBe('Demander un essai');
+    expect(essaiLink?.getAttribute('rel')).toContain('noopener');
   });
 
   it('GIVEN le panneau mobile ouvert WHEN on clique un lien d’ancre THEN le panneau se referme', () => {
-    act(() => {
-      toggleButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    });
+    openMenu();
     expect(container.querySelector('#landing-mobile-menu')).not.toBeNull();
 
     const firstLink = container.querySelector('#landing-mobile-menu a') as HTMLAnchorElement;
@@ -75,5 +82,29 @@ describe('LandingNav — repli mobile', () => {
 
     expect(container.querySelector('#landing-mobile-menu')).toBeNull();
     expect(toggleButton().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('GIVEN le panneau mobile ouvert WHEN on presse Échap THEN le panneau se referme et le focus revient au bouton hamburger', () => {
+    openMenu();
+    expect(container.querySelector('#landing-mobile-menu')).not.toBeNull();
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+
+    expect(container.querySelector('#landing-mobile-menu')).toBeNull();
+    expect(toggleButton().getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(toggleButton());
+  });
+
+  it('GIVEN le panneau mobile ouvert THEN le scroll de fond est bloqué, et restauré à la fermeture', () => {
+    expect(document.body.style.overflow).toBe('');
+    openMenu();
+    expect(document.body.style.overflow).toBe('hidden');
+
+    act(() => {
+      toggleButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(document.body.style.overflow).toBe('');
   });
 });

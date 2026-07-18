@@ -10,30 +10,37 @@
  * Repli mobile : bascule simple (bouton hamburger -> panneau empilé), piloté
  * par un state local — pas de media query pour l'ouverture/fermeture elle-même
  * (seule la visibilité du bouton hamburger vs. la nav desktop dépend du CSS).
+ * Accessibilité du panneau mobile : Échap referme et rend le focus au bouton
+ * hamburger ; le scroll de fond est bloqué (overflow:hidden sur body) tant que
+ * le panneau est ouvert.
  *
- * CTA « Essai gratuit » et « Se connecter » : liens réels (mailto / /login),
- * pas de Button (composant bouton HTML — inadapté à une navigation).
+ * CTA « Demander un essai » et « Se connecter » : liens réels (WhatsApp /
+ * /login), pas de Button (composant bouton HTML — inadapté à une navigation).
+ * Le CTA d'essai pointe vers WhatsApp — canal PRIMAIRE (réponse humaine
+ * rapide), pas un formulaire self-service inexistant (cf. landing-constants.ts).
  */
 
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Logotype } from '@/components/ui/Logotype';
 
-import { ESSAI_GRATUIT_HREF } from './landing-constants';
+import { WHATSAPP_HREF } from './landing-constants';
 
 const NAV_LINKS: { href: string; label: string }[] = [
   { href: '#logiciels', label: 'Logiciels' },
   { href: '#pourquoi', label: 'Pourquoi' },
   { href: '#tarifs', label: 'Tarifs' },
-  { href: '#tutoriels', label: 'Tutoriels' },
   { href: '#contact', label: 'Contact' },
 ];
+
+const ESSAI_ARIA_LABEL = "Demander un accès d'essai par WhatsApp (ouvre WhatsApp dans un nouvel onglet)";
 
 export function LandingNav() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const toggleButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     function onScroll() {
@@ -43,6 +50,29 @@ export function LandingNav() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  // Échap referme le panneau mobile et rend le focus au bouton hamburger.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setMobileOpen(false);
+        toggleButtonRef.current?.focus();
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mobileOpen]);
+
+  // Pas de scroll de fond pendant que le panneau mobile est ouvert.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileOpen]);
 
   return (
     <header
@@ -97,12 +127,19 @@ export function LandingNav() {
           <Link href="/login" className="landing-cta landing-cta--ghost-on-dark">
             Se connecter
           </Link>
-          <a href={ESSAI_GRATUIT_HREF} className="landing-cta landing-cta--action-on-dark">
-            Essai gratuit
+          <a
+            href={WHATSAPP_HREF}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={ESSAI_ARIA_LABEL}
+            className="landing-cta landing-cta--action"
+          >
+            Demander un essai
           </a>
         </div>
 
         <button
+          ref={toggleButtonRef}
           type="button"
           className="landing-nav-toggle"
           aria-expanded={mobileOpen}
@@ -167,12 +204,15 @@ export function LandingNav() {
               Se connecter
             </Link>
             <a
-              href={ESSAI_GRATUIT_HREF}
+              href={WHATSAPP_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={ESSAI_ARIA_LABEL}
               onClick={() => setMobileOpen(false)}
-              className="landing-cta landing-cta--action-on-dark"
+              className="landing-cta landing-cta--action"
               style={{ justifyContent: 'center' }}
             >
-              Essai gratuit
+              Demander un essai
             </a>
           </div>
         </div>
