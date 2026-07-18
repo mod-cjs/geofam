@@ -217,6 +217,19 @@ if (isMain()) {
       if (!caught) allCaught = false;
     }
 
+    // Temoins pressiopro explicites — un clone essai qui laisserait fuiter le DEPOUILLEMENT
+    // (calcDepth), l ELIMINATION DE GAUSS du calibrage (solve3) ou la DETECTION DE PLADE
+    // §D.5.1 (autoDetectPhase) doit ECHOUER.
+    const pressForb = TOOLS.pressiopro?.forbiddenSymbols ?? [];
+    for (const sym of ['calcDepth', 'solve3', 'autoDetectPhase']) {
+      const witness = `<html><script>"use strict"; function doCalc(){ const R=${sym}(state); return R; }</script></html>`;
+      const caught = auditHtml(witness, pressForb).some((v) => v.symbol === sym);
+      console.log(
+        `[audit] self-test temoin pressiopro (${sym}) capturé : ${caught ? 'OUI' : 'NON'}`,
+      );
+      if (!caught) allCaught = false;
+    }
+
     // Temoin PROSE (roadsens) — un COMMENTAIRE trahissant le nom du propagateur excise
     // (« burIntegrateML », abreviation de burIntegrateMLWithPSC) doit ECHOUER meme sans
     // appel de code : le filet prose §8 le capture.

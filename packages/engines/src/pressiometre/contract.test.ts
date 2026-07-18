@@ -58,10 +58,11 @@ const FUITES_INTERDITES = [
   'auto_pfI',
   'pfI',
   'plmI',
-  // Indices/parametres internes + pression nette PAR PALIER (non affichee).
-  'aUsed',
-  'aForced',
+  // Pression nette PAR PALIER (non affichee ; la sortie n'expose que la courbe corrigee).
   'pS',
+  // NB : `aUsed`/`aForced` NE sont PLUS interdits — ELARGISSEMENT NOMINATIF (R1, ADR 0014) :
+  // le client AFFICHE l'avertissement « Resultat non corrige » (« a force a 0 ») qui teste
+  // ces deux champs ; ils sont donc desormais whitelistes (cf. test positif ci-dessous).
 ];
 
 /** Collecte toutes les cles d'objet presentes dans une structure (recursif). */
@@ -121,6 +122,8 @@ describe('pressiometre — contrat de sortie (whitelist stricte, anti-fuite)', (
       pLNette: 11,
       pfNette: 8,
       EM: 9.5,
+      aUsed: 0.5,
+      aForced: false,
       ratioEMpL: 7.9,
       alpha: 0.5,
       Ey: 19,
@@ -174,5 +177,42 @@ describe('pressiometre — contrat de sortie (whitelist stricte, anti-fuite)', (
     expect(Number.isFinite(env.output.Ey)).toBe(true);
     // Ey == EM / alpha (parite HTML : r.EM / r.alpha).
     expect(env.output.Ey).toBeCloseTo(env.output.EM / env.output.alpha, 9);
+  });
+
+  it('ELARGISSEMENT R1 : expose aUsed/aForced (garde-fou « Resultat non corrige » du client)', () => {
+    // POSITIF #1 — cas d'ecretage : `a` volontairement trop grand -> le moteur force a=0.
+    // Le client AFFICHE « a force a 0 » (renderResults teste r.aForced) : ces champs
+    // DOIVENT donc sortir (ADR 0014, R1). Ils survivent au re-parse strict.
+    const fxForced = PRESSIOMETRE_FIXTURES.find((f) => f.id === 'borne-a-trop-grand');
+    expect(fxForced, 'fixture d ecretage a introuvable').toBeDefined();
+    if (!fxForced) return;
+    const envF = runPressiometre(fxForced.input);
+    expect(envF.ok).toBe(true);
+    if (!envF.ok) return;
+    // a_raw > 0 dans l'entree mais ecrete -> aUsed === 0 ET aForced === true.
+    expect(fxForced.input.params.a, 'la fixture doit fournir a > 0').toBeGreaterThan(0);
+    expect(envF.output.aUsed).toBe(0);
+    expect(envF.output.aForced).toBe(true);
+    // Survit au re-parse .strict() (champ legitimement whiteliste, pas un residu strippe).
+    expect(PressiometreOutputSchema.parse(envF.output).aForced).toBe(true);
+
+    // POSITIF #2 — calibrage non renseigne (a=0 saisi) : aUsed===0 mais aForced===false
+    // (le client affiche « a = 0 : calibrage non renseigne », PAS « force a 0 »).
+    const fxNul = PRESSIOMETRE_FIXTURES.find((f) => f.id === 'demo-4m-a-nul');
+    expect(fxNul).toBeDefined();
+    if (!fxNul) return;
+    const envN = runPressiometre(fxNul.input);
+    expect(envN.ok).toBe(true);
+    if (!envN.ok) return;
+    expect(envN.output.aUsed).toBe(0);
+    expect(envN.output.aForced).toBe(false);
+
+    // POSITIF #3 — cas nominal a > 0 non ecrete : aUsed === a saisi, aForced === false.
+    const fxOk = PRESSIOMETRE_FIXTURES.find((f) => f.id === 'demo-4m-seuils-manuels');
+    if (!fxOk) return;
+    const envOk = runPressiometre(fxOk.input);
+    if (!envOk.ok) return;
+    expect(envOk.output.aForced).toBe(false);
+    expect(envOk.output.aUsed).toBeCloseTo(fxOk.input.params.a, 9);
   });
 });

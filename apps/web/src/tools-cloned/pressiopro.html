@@ -1,0 +1,2217 @@
+<!--
+  CLONE EXCISÉ — NE PAS ÉDITER À LA MAIN. Artefact généré par scripts/clone-tool.mjs.
+  Outil            : pressiopro (pressiometre-menard)
+  Source (gelée)   : pressiometre__1_.html
+  sha256 source    : b5a06e1c34e1928b06a3e9dcd5628d516ba7d0d2818a67c62bdb43e93c65e4dc
+  Calcul           : EXCISÉ — exécuté côté serveur via bridge postMessage (ADR 0015, DoD §8).
+  Régénérer        : pnpm clone:tools   ·   Auditer : pnpm audit:excision
+-->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0d1b2a">
+<title>PressioPro — Ménard NF EN ISO 22476-4</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --n1:#0d1b2a;--n2:#131f2e;--n3:#192638;--n4:#1f2f3e;
+  --bl:#2484ec;--bl2:rgba(36,132,236,.14);
+  --te:#15b896;--te2:rgba(21,184,150,.12);
+  --am:#f0a500;--am2:rgba(240,165,0,.10);
+  --re:#e05252;--re2:rgba(224,82,82,.12);
+  --gr:#29b85a;--gr2:rgba(41,184,90,.10);
+  --pu:#8b5cf6;--pu2:rgba(139,92,246,.12);
+  --or:#f97316;
+  --tx:#dce8f5;--t2:#8fa3b8;--t3:#4e6476;
+  --bd:rgba(255,255,255,.07);--b2:rgba(255,255,255,.14);
+  --ca:rgba(255,255,255,.03);--ip:rgba(255,255,255,.05);
+  --rr:12px;--rs:8px;
+  --fn:'Sora',sans-serif;--mo:'DM Mono',monospace;
+  --sb:env(safe-area-inset-bottom,0px);--nh:62px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:var(--n1);color:var(--tx);font-family:var(--fn);font-size:15px}
+input,select,button,textarea{font-family:var(--fn)}
+#app{display:flex;flex-direction:column;height:100dvh}
+.hdr{background:var(--n2);border-bottom:1px solid var(--bd);padding:10px 14px 8px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.hw{display:flex;align-items:center;gap:10px}
+.hico{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#1a6fc4,#15b896);display:flex;align-items:center;justify-content:center;font-family:var(--mo);font-size:11px;color:#fff}
+.ht{font-size:14px;font-weight:600}.hs{font-size:11px;color:var(--t2);margin-top:1px}
+.hbs{display:flex;gap:7px}
+.ib{width:34px;height:34px;border-radius:8px;border:1px solid var(--b2);background:var(--ip);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;transition:all .15s}
+.ib:active{background:var(--bl2);color:var(--bl);transform:scale(.93)}
+.ibx{height:34px;padding:0 11px;border-radius:8px;border:1px solid rgba(21,184,150,.45);background:var(--te2);color:var(--te);cursor:pointer;display:flex;align-items:center;gap:5px;font-family:var(--fn);font-size:12px;font-weight:600;white-space:nowrap;transition:all .15s}
+.ibx:active{transform:scale(.95)}
+.dbar{background:var(--n3);border-bottom:1px solid var(--bd);padding:7px 12px;display:flex;align-items:center;gap:7px;overflow-x:auto;scrollbar-width:none;flex-shrink:0}
+.dbar::-webkit-scrollbar{display:none}
+.dc{flex-shrink:0;display:inline-flex;align-items:center;gap:5px;padding:5px 7px 5px 13px;border-radius:20px;border:1px solid var(--b2);background:transparent;color:var(--t2);font-size:12px;font-weight:500;transition:all .15s;white-space:nowrap}
+.dc.active{background:var(--bl);border-color:var(--bl);color:#fff}
+.dclbl{cursor:pointer}
+.dcx{border:none;background:transparent;color:inherit;opacity:.5;cursor:pointer;font-size:15px;line-height:1;padding:1px 3px;border-radius:50%;transition:opacity .15s,background .15s,color .15s}
+.dcx:hover{opacity:1;background:rgba(224,82,82,.25);color:var(--re)}
+.dc.active .dcx:hover{background:rgba(255,255,255,.3);color:#fff}
+#logTbl td{padding:3px 4px;vertical-align:middle}
+#logTbl th{font-size:10px;color:var(--t3);font-weight:600;text-align:left;padding:2px 4px}
+#logTbl input,#logTbl select{width:100%;background:var(--n2);border:1px solid var(--bd);border-radius:6px;color:var(--tx);font-size:12px;padding:5px;font-family:var(--fn)}
+#logTbl select{cursor:pointer}
+.loglegend{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:10px;font-size:10.5px;color:var(--t2)}
+.loglegend .lg{display:inline-flex;align-items:center;gap:5px}
+.loglegend .sw{width:13px;height:13px;border-radius:3px;border:1px solid #0d1b2a;flex-shrink:0}
+.da{flex-shrink:0;width:28px;height:28px;border-radius:50%;border:1px dashed var(--b2);background:transparent;color:var(--t3);cursor:pointer;font-size:17px;display:flex;align-items:center;justify-content:center;transition:all .15s;line-height:1}
+.da:active{background:var(--bl2);color:var(--bl)}
+.pgs{flex:1;overflow:hidden;position:relative}
+.pg{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding-bottom:calc(var(--nh) + var(--sb) + 16px);display:none}
+.pg.active{display:block;animation:fi .18s ease}
+@keyframes fi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.bnav{position:fixed;bottom:0;left:0;right:0;height:calc(var(--nh) + var(--sb));padding-bottom:var(--sb);background:var(--n2);border-top:1px solid var(--bd);display:flex;z-index:100}
+.nb{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;background:none;border:none;color:var(--t3);font-family:var(--fn);font-size:8px;font-weight:500;letter-spacing:.02em;transition:color .15s;padding:5px 0;position:relative;text-transform:uppercase}
+.nb svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nb.active{color:var(--bl)}
+.nb.active::after{content:'';position:absolute;top:0;left:20%;right:20%;height:2px;background:var(--bl);border-radius:0 0 3px 3px}
+.pad{padding:14px 14px 0}
+.card{background:var(--ca);border:1px solid var(--bd);border-radius:var(--rr);padding:14px;margin-bottom:12px}
+.ch{font-size:11px;font-weight:600;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--bl);flex-shrink:0}
+.dot.t{background:var(--te)}.dot.a{background:var(--am)}.dot.r{background:var(--re)}.dot.p{background:var(--pu)}.dot.g{background:var(--gr)}
+.fi{margin-bottom:12px}.fi:last-child{margin-bottom:0}
+.fi label{display:block;font-size:11px;font-weight:500;color:var(--t2);margin-bottom:5px}
+.fi input,.fi select{width:100%;padding:11px 12px;border:1px solid var(--b2);border-radius:var(--rs);background:var(--ip);color:var(--tx);font-size:14px;appearance:none;-webkit-appearance:none;transition:border-color .15s}
+.fi input:focus,.fi select:focus{outline:none;border-color:var(--bl);background:rgba(36,132,236,.08);box-shadow:0 0 0 3px rgba(36,132,236,.1)}
+.fi select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238fa3b8' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+.r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.r3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.r4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:7px}
+.hint{font-size:11px;color:var(--t3);margin-top:5px;line-height:1.5}
+/* Mesures table */
+.mh,.msh,.mr{display:grid;grid-template-columns:22px 1fr 1fr 1fr 1fr 44px 50px 24px;gap:3px;padding:4px 7px;align-items:center}
+.mh{background:rgba(255,255,255,.04);border:1px solid var(--bd);border-bottom:none;border-radius:var(--rs) var(--rs) 0 0;padding:7px 8px}
+.msh{background:rgba(255,255,255,.02);border:1px solid var(--bd);border-top:none;border-bottom:none;padding:3px 8px}
+.mh span,.msh span{font-size:10px;font-weight:600;color:var(--t3);text-align:center;letter-spacing:.04em}
+.mr{border:1px solid var(--bd);border-top:none}
+.mr:nth-child(even){background:rgba(255,255,255,.015)}
+.mr:last-of-type{border-radius:0 0 var(--rs) var(--rs)}
+.mr.pf{background:rgba(224,82,82,.06);border-left:2px solid var(--re)}
+.mr.plm{background:rgba(21,184,150,.07);border-left:2px solid var(--te)}
+.rn{font-size:10px;color:var(--t3);font-family:var(--mo)}
+.ci{width:100%;padding:7px 3px;border:1px solid transparent;border-radius:5px;background:var(--ip);color:var(--tx);font-family:var(--mo);font-size:12px;text-align:center;transition:all .12s}
+.ci:focus{outline:none;border-color:var(--bl);background:rgba(36,132,236,.1)}
+.cdv{font-family:var(--mo);font-size:11px;text-align:center;color:var(--t3);padding:5px 2px;background:rgba(255,255,255,.02);border-radius:5px;border:1px solid var(--bd)}
+.cdv.ok{color:var(--te)}.cdv.big{color:var(--am)}.cdv.bad{color:var(--re)}
+.db{width:24px;height:24px;border-radius:5px;border:none;background:transparent;color:var(--t3);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;margin:auto;transition:all .12s}
+.db:active{background:var(--re2);color:var(--re)}
+.ab{width:100%;margin-top:8px;padding:12px;border:1px dashed var(--b2);border-radius:var(--rs);background:transparent;color:var(--t2);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:all .15s}
+.ab:active{background:var(--bl2);color:var(--bl);border-color:var(--bl)}
+.sr{display:flex;gap:8px;margin-bottom:12px}
+.ss{flex:1;display:flex;flex-direction:column;gap:4px}
+.ss label{font-size:11px;color:var(--t2);font-weight:500}
+.ss select{padding:9px 10px;border:1px solid var(--b2);border-radius:var(--rs);background:var(--ip);color:var(--tx);font-family:var(--mo);font-size:12px;appearance:none;-webkit-appearance:none}
+/* KPI */
+.kg{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px}
+.kg3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.kg4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:7px;margin-bottom:12px}
+.kp{background:var(--n3);border:1px solid var(--bd);border-radius:var(--rr);padding:11px 12px;position:relative;overflow:hidden}
+.kp::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.kp.bl::before{background:var(--bl)}.kp.te::before{background:var(--te)}.kp.am::before{background:var(--am)}.kp.re::before{background:var(--re)}.kp.pu::before{background:var(--pu)}.kp.gr::before{background:var(--gr)}.kp.or::before{background:var(--or)}
+.kl{font-size:10px;color:var(--t3);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
+.kv{font-family:var(--mo);font-size:20px;font-weight:500;line-height:1}
+.kv.sm{font-size:16px}
+.ku{font-size:10px;color:var(--t3);margin-top:3px;font-family:var(--mo)}
+.kb{position:absolute;top:9px;right:9px;font-size:9px;padding:2px 7px;border-radius:20px;font-weight:600}
+.kb.ok{background:var(--te2);color:var(--te)}.kb.warn{background:var(--am2);color:var(--am)}.kb.bad{background:var(--re2);color:var(--re)}
+/* Param table */
+.ptbl{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px}
+.ptbl th{padding:6px 10px;text-align:left;font-size:10px;font-weight:600;color:var(--t3);letter-spacing:.05em;text-transform:uppercase;background:rgba(255,255,255,.03);border-bottom:1px solid var(--bd)}
+.ptbl td{padding:7px 10px;border-bottom:1px solid var(--bd);font-family:var(--mo);font-size:12px}
+.ptbl td:first-child{color:var(--t2);font-family:var(--fn);font-size:11px}
+.ptbl tr:last-child td{border-bottom:none}
+.ptbl td.val{color:var(--tx);font-weight:500}
+.ptbl td.unit{color:var(--t3);font-size:11px}
+/* Extrapolation params box */
+.ep-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.ep-box{background:var(--n3);border:1px solid var(--bd);border-radius:var(--rs);padding:10px 12px}
+.ep-title{font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;gap:5px}
+.ep-title span{width:12px;height:3px;border-radius:2px;display:inline-block}
+.ep-row{display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px}
+.ep-row span:first-child{color:var(--t2)}
+.ep-row span:last-child{font-family:var(--mo);color:var(--tx)}
+.ep-err{font-size:10px;color:var(--t3);margin-top:5px;padding-top:5px;border-top:1px solid var(--bd)}
+/* cat block */
+.catb{border-radius:var(--rr);padding:10px 13px;margin-bottom:12px;display:flex;align-items:center;gap:11px}
+.catb.B{background:var(--am2);border:1px solid rgba(240,165,0,.2)}
+.catb.A{background:var(--re2);border:1px solid rgba(224,82,82,.22)}
+.catb.E{background:var(--pu2);border:1px solid rgba(139,92,246,.22)}
+.catb.C{background:var(--bl2);border:1px solid rgba(36,132,236,.2)}
+.catb.D{background:var(--te2);border:1px solid rgba(21,184,150,.2)}
+.catic{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-family:var(--mo);font-size:19px;font-weight:600;flex-shrink:0}
+.catb.B .catic{background:rgba(240,165,0,.15);color:var(--am)}
+.catb.A .catic{background:var(--re2);color:var(--re)}
+.catb.E .catic{background:var(--pu2);color:var(--pu)}
+.catb.C .catic{background:var(--bl2);color:var(--bl)}
+.catb.D .catic{background:var(--te2);color:var(--te)}
+.catnm{font-size:13px;font-weight:600}.catds{font-size:11px;color:var(--t2);margin-top:2px}
+.itp{background:rgba(36,132,236,.07);border:1px solid rgba(36,132,236,.2);border-radius:var(--rr);padding:12px;margin-bottom:12px}
+.itp-t{font-size:10px;font-weight:600;color:var(--bl);margin-bottom:6px;letter-spacing:.06em;text-transform:uppercase}
+.itp p{font-size:12px;color:var(--t2);line-height:1.7}
+.itp strong{color:var(--tx)}
+/* charts */
+.clbl{font-size:11px;color:var(--t3);font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.leg{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px}
+.leg span{font-size:11px;color:var(--t2);display:flex;align-items:center;gap:5px}
+.lsq{width:24px;height:3px;border-radius:2px;display:inline-block}
+.ldo{width:10px;height:10px;border-radius:50%;display:inline-block}
+/* recap table */
+.rtw{overflow-x:auto;border-radius:var(--rs);border:1px solid var(--bd);margin-bottom:12px}
+.rt{width:100%;border-collapse:collapse;font-size:11px}
+.rt th{padding:6px 8px;text-align:center;font-size:9px;font-weight:600;color:var(--t3);letter-spacing:.05em;text-transform:uppercase;background:rgba(255,255,255,.03);border-bottom:1px solid var(--bd)}
+.rt td{padding:6px 8px;text-align:center;border-bottom:1px solid var(--bd);font-family:var(--mo);font-size:11px}
+.rt tr:last-child td{border-bottom:none}
+.pb{display:inline-block;padding:2px 7px;border-radius:20px;font-size:9px;font-weight:600;font-family:var(--fn)}
+.pb.re{background:var(--re2);color:var(--re)}.pb.el{background:var(--bl2);color:var(--bl)}.pb.pl{background:var(--te2);color:var(--te)}
+/* profil table */
+.ptw{overflow-x:auto;border-radius:var(--rs);border:1px solid var(--bd);margin-bottom:12px}
+.pt{width:100%;border-collapse:collapse;font-size:12px}
+.pt th{padding:7px 9px;text-align:center;font-size:10px;font-weight:600;color:var(--t3);letter-spacing:.05em;text-transform:uppercase;background:rgba(255,255,255,.03);border-bottom:1px solid var(--bd)}
+.pt td{padding:8px 9px;text-align:center;border-bottom:1px solid var(--bd);font-family:var(--mo);font-size:11px}
+.pt tr:last-child td{border-bottom:none}
+/* buttons */
+.bp{width:100%;padding:13px;border:none;border-radius:var(--rr);background:linear-gradient(135deg,#1a6fc4,#0d5aa7);color:#fff;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 18px rgba(26,111,196,.35);margin-bottom:10px;transition:all .15s}
+.bp:active{transform:scale(.98);box-shadow:none}
+.bp.te{background:linear-gradient(135deg,#0f7a62,#0a5a47);box-shadow:0 4px 18px rgba(21,184,150,.2)}
+.bp.pu{background:linear-gradient(135deg,#6a3fc4,#4a2a9a);box-shadow:0 4px 18px rgba(106,63,196,.22)}
+.bs{width:100%;padding:11px;border:1px solid var(--b2);border-radius:var(--rr);background:var(--ca);color:var(--t2);font-size:13px;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s}
+.bs:active{background:var(--bl2);color:var(--bl);border-color:var(--bl)}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;color:var(--t3);gap:10px;text-align:center}
+.eico{font-size:44px;opacity:.2;margin-bottom:4px}
+.empty p{font-size:13px;line-height:1.6;max-width:250px}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:var(--b2);border-radius:2px}
+.toast{position:fixed;top:68px;left:50%;transform:translateX(-50%) translateY(-14px);background:var(--n4);border:1px solid var(--b2);color:var(--tx);font-size:12px;padding:9px 16px;border-radius:24px;opacity:0;transition:all .22s;pointer-events:none;z-index:999;white-space:nowrap;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.ok{border-color:rgba(21,184,150,.4);color:var(--te)}.toast.err{border-color:rgba(224,82,82,.4);color:var(--re)}
+.mov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .2s}
+.mov.open{opacity:1;pointer-events:all}
+.msh{background:var(--n2);border-radius:20px 20px 0 0;width:100%;padding:20px 20px calc(22px + var(--sb));border-top:1px solid var(--b2);transform:translateY(100%);transition:transform .28s cubic-bezier(.4,0,.2,1)}
+.mov.open .msh{transform:translateY(0)}
+.msh h3{font-size:16px;font-weight:600;margin-bottom:7px}
+.msh p{font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:18px}
+.mac{display:flex;gap:10px}
+.mac button{flex:1;padding:13px;border-radius:var(--rs);border:none;font-family:var(--fn);font-size:13px;font-weight:500;cursor:pointer}
+.bcnl{background:var(--n4);color:var(--t2)}.bred{background:var(--re);color:#fff}
+.calib-row{display:grid;grid-template-columns:28px 1fr 1fr 52px 40px;gap:4px;padding:5px 10px;border:1px solid var(--bd);border-top:none;align-items:center}
+.calib-row:nth-child(even){background:rgba(255,255,255,.015)}
+.calib-row:last-of-type{border-radius:0 0 var(--rs) var(--rs)}
+.tbl-wrap{border-radius:var(--rs);overflow:hidden;border:1px solid var(--bd);margin-bottom:8px}
+.tbl-head{display:grid;gap:3px;padding:7px 10px;background:rgba(255,255,255,.04);border-bottom:1px solid var(--bd)}
+.tbl-head span{font-size:10px;font-weight:600;color:var(--t3);text-align:center;letter-spacing:.05em;text-transform:uppercase}
+.tbl-head span:first-child{text-align:left}
+.tbl-row{display:grid;gap:3px;padding:5px 10px;border-bottom:1px solid var(--bd);align-items:center}
+.tbl-row:last-child{border-bottom:none}
+.tbl-row:nth-child(even){background:rgba(255,255,255,.015)}
+.etal-cols{grid-template-columns:26px 1fr 1fr 1fr 1fr 48px 28px}
+.calib-cols{grid-template-columns:26px 1fr 1fr 1fr 70px 28px}
+.etal-head{display:grid;grid-template-columns:28px 1fr 1fr 40px;gap:4px;padding:7px 10px;background:rgba(255,255,255,.04);border:1px solid var(--bd);border-bottom:none;border-radius:var(--rs) var(--rs) 0 0}
+.etal-head span{font-size:10px;font-weight:600;color:var(--t3);text-align:center;letter-spacing:.04em}
+.etal-row{display:grid;grid-template-columns:28px 1fr 1fr 40px;gap:4px;padding:5px 10px;border:1px solid var(--bd);border-top:none;align-items:center}
+.etal-row:nth-child(even){background:rgba(255,255,255,.015)}
+.etal-row:last-of-type{border-radius:0 0 var(--rs) var(--rs)}
+@media print{.bnav,.hdr,.dbar,.bp,.bs,.ab,.db,.hbs{display:none!important}.pg{display:block!important;position:static!important;overflow:visible!important;padding-bottom:0!important}body,html{overflow:visible!important;height:auto!important}#app{height:auto!important;overflow:visible!important}.pgs{overflow:visible!important;height:auto!important}}
+</style>
+</head>
+<body>
+<div id="app">
+<header class="hdr">
+  <div class="hw">
+    <div class="hico">PM</div>
+    <div><div class="ht">PressioPro</div><div class="hs" id="hdrSub">Nouveau sondage</div></div>
+  </div>
+  <div class="hbs">
+    <button class="ibx" onclick="loadExempleFictif()" title="Charger un jeu de données fictif complet (4 profondeurs, démonstration)">🧪 Exemple</button>
+    <button class="ib" onclick="saveLocal()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></button>
+    <button class="ib" onclick="openMod('reset')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg></button>
+  </div>
+</header>
+<div class="dbar" id="depthBar"></div>
+<div class="pgs">
+
+<!-- PROJET -->
+<div class="pg" id="pg-projet">
+  <div class="pad">
+    <div class="card">
+      <div class="ch"><span class="dot"></span>Identification</div>
+      <div class="fi"><label>Projet</label><input type="text" id="p_projet" oninput="updateHdr()"></div>
+      <div class="r2"><div class="fi"><label>Chantier</label><input type="text" id="p_chantier" oninput="updateHdr()"></div><div class="fi"><label>Sondage N°</label><input type="text" id="p_sondage" placeholder="BH-01" oninput="updateHdr()"></div></div>
+      <div class="r2"><div class="fi"><label>Équipe</label><input type="text" id="p_equipe"></div><div class="fi"><label>Opérateur</label><input type="text" id="p_operateur"></div></div>
+      <div class="r2"><div class="fi"><label>Date</label><input type="date" id="p_date"></div><div class="fi"><label>N° calibrage</label><input type="text" id="p_calib"></div></div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="dot t"></span>Appareillage</div>
+      <div class="r2">
+        <div class="fi">
+          <label>Type sonde <span style="color:var(--t3);font-weight:400">→ remplit Vs auto</span></label>
+          <select id="p_sonde" onchange="autoFillSonde()">
+            <optgroup label="Sonde Ø 44 mm">
+              <option data-vs="280">Ø 44 — Tube fendu avec passe</option>
+              <option data-vs="280">Ø 44 — Tube fendu sans passe</option>
+              <option data-vs="280">Ø 44 — Carottier battu (SPT)</option>
+            </optgroup>
+            <optgroup label="Sonde Ø 52 mm">
+              <option data-vs="400">Ø 52 — Standard NF EN ISO 22476-4</option>
+              <option data-vs="400">Ø 52 — Tube fendu avec passe</option>
+            </optgroup>
+            <optgroup label="Sonde Ø 60 mm">
+              <option data-vs="535" selected>Ø 60 — Standard</option>
+              <option data-vs="535">Ø 60 — Tube fendu avec passe</option>
+              <option data-vs="535">Ø 60 — Tube fendu sans passe</option>
+            </optgroup>
+            <optgroup label="Sonde Ø 75 mm">
+              <option data-vs="810">Ø 75 — Standard NF EN ISO 22476-4</option>
+              <option data-vs="810">Ø 75 — Tube fendu avec passe</option>
+              <option data-vs="810">Ø 75 — Tube fendu sans passe</option>
+              <option data-vs="810">Ø 75 — Forage refoulé / battu</option>
+            </optgroup>
+            <optgroup label="Sonde Ø 90 mm">
+              <option data-vs="1200">Ø 90 — Standard</option>
+              <option data-vs="1200">Ø 90 — Grande cavité (roche)</option>
+            </optgroup>
+            <optgroup label="Autres sondes">
+              <option data-vs="100">Pencel (Ø 32 mm)</option>
+              <option data-vs="80">Micro-pressiomètre Ø 22 mm</option>
+              <option data-vs="535">Sonde autoforeuse (PAF)</option>
+              <option data-vs="535">Sonde haute pression (HP)</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="fi">
+          <label>Type gaine <span style="color:var(--t3);font-weight:400">— info documentaire</span></label>
+          <select id="p_gaine">
+            <option data-a="0.35">Gaine 1,5 mm (souple)</option>
+            <option data-a="0.65" selected>Gaine 3 mm (standard)</option>
+            <option data-a="0.15">Gaine métallique à lamelles</option>
+            <option data-a="0.45">Gaine toilée renforcée</option>
+            <option data-a="0.25">Gaine toilée métallique</option>
+          </select>
+        </div>
+      </div>
+      <div class="r3">
+        <div class="fi">
+          <label>Longueur de passe (m)</label>
+          <input type="number" id="p_passe" value="1.0" step="0.5" inputmode="decimal">
+          <div class="hint">Pas de calcul direct — sert à documenter la méthode de forage.</div>
+        </div>
+        <div class="fi">
+          <label>Zc — Haut. mano/sonde (m)</label>
+          <input type="number" id="p_zc" value="0.8" step="0.1" inputmode="decimal" oninput="syncZc()">
+          <div class="hint">Utilisé dans Ph = γw×(Zs+Zc)</div>
+        </div>
+        <div class="fi">
+          <label>Nappe Zw (m/TN)</label>
+          <input type="number" id="p_nappe" step="0.5" inputmode="decimal" placeholder="— si absente" oninput="calcU0()">
+          <div id="nappe_hint" class="hint"></div>
+        </div>
+      </div>
+      <div id="nappe_alert" style="display:none;margin-top:8px;background:rgba(36,132,236,.07);border:1px solid rgba(36,132,236,.2);border-radius:var(--rs);padding:9px 12px;font-size:12px;color:var(--t2)"></div>    </div>
+    <div class="card">
+      <div class="ch"><span class="dot a"></span>Corrections NF EN ISO 22476-4 — Annexe D</div>
+
+
+      <div class="r2">
+        <div class="fi">
+          <label>a — Coeff. d'expansion propre (cm³/MPa) <span style="color:var(--t3);font-weight:400">— étalonnage tube indéformable · &lt; 6</span></label>
+          <input type="number" id="p_a" value="0" step="0.01" inputmode="decimal" oninput="checkParamsLogic()">
+          <div class="hint" style="color:var(--am)">⚠ a vient du <strong>calibrage</strong> (forage libre). Laissez <strong>0</strong> si pas de calibrage effectué.</div>
+          <button class="bs" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="document.getElementById('p_a').value=0;toast('a remis à 0 ✓','ok')">
+            Remettre a = 0
+          </button>
+        </div>
+        <div class="fi">
+          <label>Vs — Volume initial sonde (cm³) <span style="color:var(--t3);font-weight:400">— courbe d'étalonnage</span></label>
+          <input type="number" id="p_v0" value="535" step="5" inputmode="numeric" oninput="checkParamsLogic()">
+        </div>
+      </div>
+      <div class="r3">
+        <div class="fi">
+          <label>Ph — Colonne eau (bar) <span style="color:var(--t3);font-weight:400">= 0,1×(Zs+Zc)</span></label>
+          <input type="number" id="p_ph" value="0.177" step="0.001" inputmode="decimal" oninput="checkParamsLogic()">
+          <div id="ph_hint" style="font-size:10px;color:var(--te);margin-top:4px"></div>
+        </div>
+        <div class="fi">
+          <label>Pe — Résist. propre sonde (bar) <span style="color:var(--t3);font-weight:400">— étalonnage</span></label>
+          <input type="number" id="p_pe" value="1.25" step="0.05" inputmode="decimal" oninput="checkParamsLogic()">
+        </div>
+        <div class="fi">
+          <label>K₀ — Coeff. terre au repos</label>
+          <input type="number" id="p_k0" value="0.5" step="0.05" inputmode="decimal">
+        </div>
+        <div class="fi">
+          <label>γ — Poids volumique sol (kN/m³) <span style="color:var(--t3);font-weight:400">— pour σ<sub>h0</sub></span></label>
+          <input type="number" id="p_gamma" value="19" step="0.5" inputmode="decimal">
+        </div>
+      </div>
+
+      <!-- Calculateur Ph automatique -->
+      <div style="background:var(--n3);border:1px solid var(--bd);border-radius:var(--rs);padding:10px 12px;margin-top:8px">
+        <div style="font-size:10px;font-weight:600;color:var(--t3);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">🧮 Calculateur Ph = γw × (Zs + Zc)</div>
+        <div class="r3">
+          <div class="fi" style="margin-bottom:0">
+            <label>Zs — Profondeur essai (m)</label>
+            <input type="number" id="calc_zs" step="0.5" inputmode="decimal" placeholder="ex: 8.0" oninput="calcPh();calcU0()">
+          </div>
+          <div class="fi" style="margin-bottom:0">
+            <label>Zc — Haut. mano/sonde (m)</label>
+            <input type="number" id="calc_zc" value="0.8" step="0.1" inputmode="decimal" oninput="calcPh();document.getElementById('p_zc').value=this.value">
+          </div>
+          <div class="fi" style="margin-bottom:0">
+            <label>→ Ph calculé (bar)</label>
+            <input type="number" id="calc_ph_result" readonly style="background:rgba(21,184,150,.08);border-color:rgba(21,184,150,.3);color:var(--te);font-weight:500">
+          </div>
+        </div>
+        <button class="ab" style="margin-top:8px;padding:8px;font-size:12px" onclick="applyPh()">
+          ↑ Appliquer cette valeur dans Ph
+        </button>
+      </div>
+
+      <div class="hint" style="margin-top:8px">
+        Formules NF EN ISO 22476-4 : <strong>Vc = Vr − a×Pr</strong> · <strong>Pc = Pr + Ph − Pe</strong><br>
+        <em>a</em> = calibrage forage libre · <em>Vs</em> et <em>Pe</em> = étalonnage sonde dans l'air
+      </div>
+      <div style="margin-top:10px">
+        <button class="bs" style="padding:8px 14px;font-size:12px;width:auto;margin-bottom:8px"
+          onclick="checkParamsLogic()">
+          🔍 Vérifier la cohérence des paramètres
+        </button>
+        <div id="params_alerts"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ÉTALONNAGE -->
+<div class="pg active" id="pg-log">
+  <div class="pad">
+    <div class="card">
+      <div class="ch"><span class="dot p"></span>Coupe de sondage — sondage carotté</div>
+      <p class="hint" style="margin-bottom:10px">Coupe du sondage carotté qui précède l'essai (profondeurs en m / terrain naturel). Dénomination sol &amp; roche selon <b>ISO 14688-1 / 14689-1</b>, état de consistance/densité selon <b>ISO 14688-2</b>. <b>Prél.</b> = catégorie de prélèvement A/B/C · <b>Qual.</b> = classe de qualité 1–5 (NF EN ISO 22475-1 §6.2 : A→1-5, B→3-5, C→5) · <b>RQD</b> = récupération de carotte (Art. 7). La nappe provient de l'onglet Projet.</p>
+      <div class="rtw"><table class="rt" id="logTbl">
+        <thead><tr><th style="width:54px">De (m)</th><th style="width:54px">À (m)</th><th style="min-width:120px">Nature <span style="font-weight:400;text-transform:none">(14688/14689)</span></th><th style="min-width:110px">État <span style="font-weight:400;text-transform:none">(14688-2)</span></th><th style="width:48px" title="Catégorie de prélèvement (§6.2)">Prél.</th><th style="width:48px" title="Classe de qualité (EN 1997-2)">Qual.</th><th style="width:52px" title="Rock Quality Designation (Art. 7)">RQD %</th><th style="min-width:130px">Description</th><th style="width:32px"></th></tr></thead>
+        <tbody id="logTbody"></tbody>
+      </table></div>
+      <button class="ab" onclick="addLayer()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Ajouter une couche</button>
+    </div>
+    <div class="card">
+      <div class="clbl">Log de sondage — NF EN ISO 22475-1</div>
+      <div id="logVisual" style="overflow-x:auto"></div>
+      <div id="logLegend" class="loglegend"></div>
+    </div>
+  </div>
+</div>
+
+<div class="pg" id="pg-etalon">
+  <div class="pad">
+
+    <!-- Barre info contextuelle -->
+    <div id="etal_infobar" style="background:var(--n3);border:1px solid var(--bd);border-radius:var(--rs);padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--t2);line-height:1.8">
+      <div style="display:flex;flex-wrap:wrap;gap:12px 20px">
+        <span>📋 <strong style="color:var(--tx)" id="etal_ib_projet">—</strong></span>
+        <span>🔩 <strong style="color:var(--tx)" id="etal_ib_sonde">—</strong></span>
+        <span>📅 <strong style="color:var(--tx)" id="etal_ib_date">—</strong></span>
+        <span>🔧 <strong style="color:var(--tx)" id="etal_ib_gaine">—</strong></span>
+        <span>👤 <strong style="color:var(--tx)" id="etal_ib_op">—</strong></span>
+      </div>
+    </div>
+    <!-- INTRODUCTION -->
+    <div class="card" style="background:rgba(139,92,246,.05);border-color:rgba(139,92,246,.2)">
+      <div class="ch" style="color:var(--pu)"><span class="dot p"></span>Étalonnage de la sonde — NF EN ISO 22476-4 Annexe B &amp; D</div>
+      <p style="font-size:12px;color:var(--t2);line-height:1.8">
+        Le PDF distingue <strong style="color:var(--tx)">deux essais distincts</strong> (NF EN ISO 22476-4) :<br>
+        <strong style="color:var(--pu)">① Calibrage de volume</strong> — sonde dans un tube acier indéformable → courbe Vr=f(Pr) → <strong>a</strong> = pente de la partie linéaire · <strong>Vc = Vr − a×Pr</strong><br>
+        <strong style="color:var(--am)">② Étalonnage de résistance</strong> — sonde gonflée 3× dans l'air → courbe Pe=f(Vr) → <strong>Pe(Vr)</strong> à soustraire pour chaque volume mesuré · <strong>Pc = Pr + Ph − Pe(Vr)</strong>
+      </p>
+    </div>
+
+    <!-- SAISIE POINTS D'ÉTALONNAGE -->
+    <div class="card">
+      <div class="ch"><span class="dot p"></span>ÉTALONNAGE — Pression (bar) · Volume (cm³) — Sonde dans l'air</div>
+      <p class="hint" style="margin-bottom:12px">Gonfler la sonde par paliers dans l'air et noter P (bar) et les volumes V15s, V30s, V60s (cm³). Le Δ60/30 doit être ≈ 0 (pas de fluage sur sonde libre).</p>
+      <div class="tbl-wrap">
+        <div class="tbl-head" style="grid-template-columns:26px 1fr 1fr 1fr 1fr 48px 28px">
+          <span>#</span>
+          <span>P (bar)</span>
+          <span>V 15s</span>
+          <span>V 30s</span>
+          <span>V 60s</span>
+          <span>Δ60/30</span>
+          <span></span>
+        </div>
+        <div id="etalCont"></div>
+      </div>
+      <button class="ab" onclick="addEtalRow()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Ajouter un point
+      </button>
+    </div>
+
+    <!-- BOUTON CALCULER -->
+    <button class="bp" style="background:linear-gradient(135deg,var(--pu),#5b21b6);box-shadow:0 4px 18px rgba(139,92,246,.3)" onclick="calcEtalonnage()">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Calculer et appliquer les paramètres
+    </button>
+
+    <!-- RÉSULTATS ÉTALONNAGE -->
+    <div id="etalResult"></div>
+
+  </div>
+</div>
+
+<!-- CALIBRAGE -->
+<div class="pg" id="pg-calibrage">
+  <div class="pad">
+
+    <!-- Barre info contextuelle -->
+    <div id="calib_infobar" style="background:var(--n3);border:1px solid var(--bd);border-radius:var(--rs);padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--t2);line-height:1.8">
+      <div style="display:flex;flex-wrap:wrap;gap:12px 20px">
+        <span>📋 <strong style="color:var(--tx)" id="calib_ib_projet">—</strong></span>
+        <span>🔩 <strong style="color:var(--tx)" id="calib_ib_sonde">—</strong></span>
+        <span>📅 <strong style="color:var(--tx)" id="calib_ib_date">—</strong></span>
+        <span>🔧 <strong style="color:var(--tx)" id="calib_ib_gaine">—</strong></span>
+        <span>👤 <strong style="color:var(--tx)" id="calib_ib_op">—</strong></span>
+      </div>
+    </div>
+    <div class="card" style="background:rgba(21,184,150,.05);border-color:rgba(21,184,150,.2)">
+      <div class="ch" style="color:var(--te)"><span class="dot t"></span>Calibrage de la sonde — NF EN ISO 22476-4 Annexe D §4</div>
+      <p style="font-size:12px;color:var(--t2);line-height:1.8">
+        Le calibrage consiste à mesurer les <strong style="color:var(--tx)">corrections de pression de gaine</strong> Pc(V) :<br>
+        on gonfle la sonde <strong>en forage libre</strong> (dans le tube sans sol autour) et on lit la pression nécessaire à chaque volume.<br>
+        La courbe Pc = f(V) est soustraite de la courbe brute de l'essai pour obtenir la <strong style="color:var(--tx)">courbe corrigée P–V</strong>.<br>
+        <span style="color:var(--am)">⚠ À ne pas confondre avec l'étalonnage (sonde dans l'air).</span>
+      </p>
+    </div>
+
+    <!-- SAISIE COURBE DE CALIBRAGE -->
+    <div class="card">
+      <div class="ch"><span class="dot t"></span>CALIBRAGE — Volume (cm³) · Pression de gaine Pc (bar) — Sonde en forage libre</div>
+      <p class="hint" style="margin-bottom:12px">
+        Gonfler la sonde par paliers <strong>en forage libre</strong> (sans sol). Noter P (bar) et les volumes V15s, V30s, V60s (cm³). Le Δ60/30 doit être ≈ 0.
+      </p>
+      <div class="tbl-wrap">
+        <div class="tbl-head" style="grid-template-columns:26px 1fr 1fr 1fr 1fr 48px 28px">
+          <span>#</span>
+          <span>P (bar)</span>
+          <span>V 15s</span>
+          <span>V 30s</span>
+          <span>V 60s</span>
+          <span>Δ60/30</span>
+          <span></span>
+        </div>
+        <div id="calibCont"></div>
+      </div>
+      <button class="ab" onclick="addCalibRow()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Ajouter un point
+      </button>
+    </div>
+
+    <button class="bp" style="background:linear-gradient(135deg,var(--te),#0a5a47);box-shadow:0 4px 18px rgba(21,184,150,.3)" onclick="calcCalibrage()">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Calculer et visualiser la courbe de calibrage
+    </button>
+
+    <div id="calibResult"></div>
+
+  </div>
+</div>
+
+
+<!-- MESURES -->
+<div class="pg" id="pg-mesures">
+  <div class="pad">
+    <div class="card">
+      <div class="ch"><span class="dot"></span>Phase pseudo-élastique</div>
+      <p class="hint" style="margin-bottom:10px">
+        La <strong style="color:var(--tx)">courbe de fluage Δ60/30 est plate</strong> sur la zone pseudo-élastique.<br>
+        <strong style="color:var(--bl)">p₀</strong> = début de la zone plate ·
+        <strong style="color:var(--re)">p<sub>f</sub></strong> = fin de la zone plate (remontée du fluage).<br>
+        EM est calculé entre p₀ et p<sub>f</sub>. PLM est extrapolé.
+      </p>
+      <div class="sr">
+        <div class="ss"><label>🔵 p₀ — Début zone plate (début pseudo-élastique)</label><select id="sel_pf" onchange="saveSeuils()"></select></div>
+        <div class="ss"><label>🔴 p<sub>f</sub> — Fin zone plate (pression de fluage)</label><select id="sel_plm" onchange="saveSeuils()"></select></div>
+      </div>
+      <p class="hint" style="margin-top:8px;color:var(--bl);font-size:11px">
+        EM calculé entre p₀ et p<sub>f</sub> · PLM déterminé par extrapolation (Vs+2V₁)
+      </p>
+      <div id="seuilPreview" style="margin-top:10px;background:var(--n3);border-radius:var(--rs);padding:10px 12px;font-size:12px;color:var(--t2);font-family:var(--mo);line-height:1.8;display:none"></div>
+    </div>
+    <div class="ch" style="padding:0 2px 8px;margin-top:2px"><span class="dot a"></span>Mesures brutes — Pression (bar) · Volume (cm³)</div>
+    <div id="measCont"></div>
+    <button class="ab" onclick="addRow()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Ajouter une ligne</button>
+    <div style="height:8px"></div>
+    <button class="bp" onclick="doCalc()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Calculer — Dépouillement complet</button>
+  </div>
+</div>
+
+<!-- RÉSULTATS -->
+<div class="pg" id="pg-resultats">
+  <div class="pad" id="resCont">
+    <div class="empty"><div class="eico">📈</div><p>Saisissez les mesures et cliquez sur "Calculer"</p></div>
+  </div>
+</div>
+
+<!-- PROFIL -->
+<div class="pg" id="pg-profil">
+  <div class="pad">
+    <div class="card">
+      <div class="ch"><span class="dot p"></span>Log pressiométrique — coupe + résultats</div>
+      <p class="hint" style="margin-bottom:8px">Superposition de la coupe de sondage (onglet Log) et des dépouillements pressiométriques (E<sub>M</sub>, p<sub>L</sub>, p<sub>f</sub>, catégorie) à leur profondeur d'essai.</p>
+      <div id="pressioLog" style="overflow-x:auto;padding-bottom:4px"></div>
+      <div id="pressioLogLeg" class="loglegend"></div>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="dot t"></span>Profil en profondeur — <span id="profSond">?</span></div>
+      <div class="ptw"><table class="pt" id="profTbl">
+        <thead><tr><th>Prof. (m)</th><th>E<sub>M</sub> (MPa)</th><th>p<sub>L</sub> (MPa)</th><th>p<sub>f</sub> (MPa)</th><th>E/P</th><th>α</th><th>Cat.</th></tr></thead>
+        <tbody id="profTbody"></tbody>
+      </table></div>
+    </div>
+    <div class="card"><div class="clbl">E<sub>M</sub> vs profondeur</div><div style="position:relative;width:100%;height:300px"><canvas id="chartEM" role="img" aria-label="EM vs profondeur"></canvas></div></div>
+    <div class="card"><div class="clbl">P<sub>LM</sub> et P<sub>f</sub> vs profondeur</div><div style="position:relative;width:100%;height:300px"><canvas id="chartPLM" role="img" aria-label="PLM et Pf vs profondeur"></canvas></div></div>
+    <div class="card">
+      <div class="clbl">Diagramme spectral [log P*<sub>LM</sub> , log E<sub>M</sub>/P*<sub>LM</sub>] — Baud (2005)</div>
+      <div style="position:relative;width:100%;height:300px"><canvas id="chartSpec" role="img" aria-label="Diagramme spectral Baud"></canvas></div>
+      <div class="hint" style="margin-top:8px">Les droites parallèles sont les isovaleurs de EM/PLM* = 4 (remaniement), 8, 14, 22 (α de Ménard-Rousseau). Points en orange = essais calculés.</div>
+    </div>
+  </div>
+</div>
+
+<!-- EXPORT -->
+<div class="pg" id="pg-export">
+  <div class="pad">
+    <div class="card">
+      <div class="ch"><span class="dot"></span>Exporter</div>
+      <button class="bp" onclick="exportCSV()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>CSV — essai courant</button>
+      <button class="bp te" onclick="exportAllCSV()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>CSV global — toutes profondeurs</button>
+      <button class="bp" onclick="exportJSON()" style="background:linear-gradient(135deg,#1a8060,#0f5a45);box-shadow:0 4px 18px rgba(21,184,150,.2)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>JSON complet</button>
+      <button class="bp pu" onclick="window.print()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>Imprimer / PDF</button>
+    </div>
+    <div class="card">
+      <div class="ch"><span class="dot t"></span>Importer</div>
+      <button class="bs" onclick="document.getElementById('fimp').click()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Charger fichier JSON</button>
+      <input type="file" id="fimp" accept=".json" style="display:none" onchange="importJSON(event)">
+    </div>
+    <div class="card" style="background:rgba(21,184,150,.04);border-color:rgba(21,184,150,.18)">
+      <div class="ch" style="color:var(--te)"><span class="dot t"></span>À propos</div>
+      <p style="font-size:12px;color:var(--t2);line-height:1.8"><strong style="color:var(--tx)">PressioPro v3.2</strong> — NF EN ISO 22476-4<br>
+      P (bar) · V15/V30/V60 (cm³) · Δ60/30<br>
+      Courbe P–V · Extrapolation hyperbolique (3 méthodes)<br>
+      Paramètres : pE, p1, p2, Pf, PLM, VE→VL, EM, α, Ey<br>
+      Profil multi-profondeurs · Diagramme spectral Baud 2005<br>
+      <span style="color:var(--t3)">Hors-ligne · Auto-sauvegarde.</span></p>
+    </div>
+  </div>
+</div>
+
+</div><!-- pgs -->
+<nav class="bnav">
+  <button class="nb active" data-page="log" onclick="goPage('log',0)"><svg viewBox="0 0 24 24"><path d="M4 3h12l4 4v14H4z"/><line x1="8" y1="8" x2="14" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="16" y2="16"/></svg>Log</button>
+  <button class="nb" data-page="etalon" onclick="goPage('etalon',0)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/></svg>Étalon.</button>
+  <button class="nb" data-page="calibrage" onclick="goPage('calibrage',1)"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/><path d="M12 6v6l4 2"/></svg>Calibrage</button>
+  <button class="nb" data-page="projet" onclick="goPage('projet',2)"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Projet</button>
+  <button class="nb" data-page="mesures" onclick="goPage('mesures',3)"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>Mesures</button>
+  <button class="nb" data-page="resultats" onclick="goPage('resultats',4)"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Résultats</button>
+  <button class="nb" data-page="profil" onclick="goPage('profil',5)"><svg viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Profil</button>
+  <button class="nb" data-page="export" onclick="goPage('export',6)"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export</button>
+</nav>
+</div>
+
+<div class="mov" id="modOv" onclick="closeMod(event)">
+  <div class="msh"><h3 id="modTitle">?</h3><p id="modMsg">?</p>
+    <div class="mac"><button class="bcnl" onclick="closeMod()">Annuler</button><button class="bred" id="modOk">OK</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+
+<script>
+/* =========================================================
+   STATE
+   ========================================================= */
+let depths = [], cur = 0, CC = {};
+/* ===================== BRIDGE (multi-engine) + MAPPING (injecté — clone excisé, ADR 0015) ===================== */
+(function(){
+  var TOOL_ID="pressiopro";
+  var pending=Object.create(null), stpend=Object.create(null), seq=0, stseq=0;
+  var ctx={ engineId:"pressiometre", orgSlug:null, projectLabel:null, readOnly:false };
+  function post(msg){ try{ window.parent.postMessage(msg,"*"); }catch(e){} }
+  window.addEventListener("message", function(ev){
+    if(ev.source !== window.parent) return;
+    var d=ev.data; if(!d || d.v!==1 || typeof d.type!=="string") return;
+    if(d.type==="init"){ ctx=Object.assign(ctx, d.payload||{}); return; }
+    if(d.type==="calc:response"){ var p=pending[d.id]; if(!p) return; delete pending[d.id]; p(d.payload||{ok:false,error:{message:"réponse vide"}}); return; }
+    if(d.type==="store:value"){ var pr=d.id?stpend[d.id]:null; if(pr){ delete stpend[d.id]; pr(d.payload&&d.payload.value); } return; }
+  });
+  /* calc(engineId, params) : engineId choisi par la PAGE/ACTION (liste fermée validée
+     côté hôte : pressiometre / pressio-etalonnage / pressio-calibrage). */
+  window.__geofamBridge={
+    calc:function(engineId, params){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:engineId,label:(params&&params.projet)||(params&&params.label)||null,params:params}}); }); },
+    emitPv:function(calcResultId){ post({v:1,type:"pv:request",payload:{calcResultId:calcResultId}}); },
+    storeGet:function(key){ var id=TOOL_ID+":s:"+(++stseq); return new Promise(function(resolve){ stpend[id]=resolve; post({v:1,type:"store:get",id:id,payload:{key:key}}); }); },
+    storeSet:function(key,value){ var id=TOOL_ID+":s:"+(++stseq); return new Promise(function(resolve){ stpend[id]=resolve; post({v:1,type:"store:set",id:id,payload:{key:key,value:value}}); }); },
+    context:function(){ return ctx; }
+  };
+  post({v:1,type:"ready",payload:{toolId:TOOL_ID}});
+})();
+
+/* engine ids — LISTE FERMEE (l'hôte rejette tout id hors liste sans appeler l'API). */
+var ENG_ESSAI="pressiometre", ENG_ETAL="pressio-etalonnage", ENG_CALIB="pressio-calibrage";
+var __seuilTimer=null;
+window.__pressioLastCalcResultId=null;
+
+/* --- helpers de mapping (rejeu des SAISIES + lecture whitelistée ; aucune science) --- */
+function _pnum(v,def){ return (typeof v==="number"&&isFinite(v))?v:(def===undefined?0:def); }
+function _escP(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function _gerrP(e){ if(!e) return "Réponse de calcul vide."; if(typeof e==="string") return e; var m=e.message||"Calcul indisponible."; var r=e.reason?(" ("+e.reason+")"):""; return m+r; }
+ 
+function _pGamma(){ var e=document.getElementById('p_gamma'); var g=e?parseFloat(e.value):NaN; return (isFinite(g)&&g>0)?g:19; }
+/* Profondeur nappe (m) — parité nappeVal() (conservé) ; robuste si nappeVal absent. */
+function _pNappe(){ try{ return _pnum(nappeVal(),0); }catch(e){ var n=document.getElementById('p_nappe'); return n?(parseFloat(n.value)||0):0; } }
+/* Paliers VALIDES d'une profondeur -> forme contrat (p/v15/v30/v60 finis). */
+function _essaiRows(d){ return (d&&d.rows?d.rows:[]).filter(function(r){ return r.p!==''&&r.p!=null&&r.v60!==''&&r.v60!=null; }).map(function(r){ return { p:+r.p, v15:+r.v15||0, v30:+r.v30||0, v60:+r.v60 }; }); }
+/* STATE d'une profondeur -> PressiometreInputSchema. getParams() (conservé) divise déjà
+   `a` par 10 (cm³/MPa saisie -> cm³/bar interne), comme le HTML. Rejeu pur des entrées. */
+function buildEssaiInput(idx){
+  var d=depths[idx]; var p=getParams();
+  var inp={ label:String((d&&d.label)||"Profondeur"),
+    params:{ a:_pnum(p.a), Ph:_pnum(p.Ph), Pe:_pnum(p.Pe), V0:_pnum(p.V0,535), k0:_pnum(p.k0) },
+    gamma:_pGamma(), nappe:_pNappe(), rows:_essaiRows(d) };
+  if(d && d.pf_idx!=null && d.pf_idx>=0) inp.pf_idx=d.pf_idx;
+  if(d && d.plm_idx!=null && d.plm_idx>=0) inp.plm_idx=d.plm_idx;
+  var pj=document.getElementById('p_projet'); if(pj&&pj.value) inp.projet=String(pj.value);
+  return inp;
+}
+/* Fermeture de tracé de la courbe inverse (§D.4.3.2) reconstruite depuis les
+   COEFFICIENTS A/B renvoyés par le serveur (ADR 0015 : « le serveur renvoie les
+   coefficients de courbe à tracer ») ; aucune régression cliente. */
+function _recipGen(A,B,V0){ return function(p){ var inv=A+B*p; return inv>0 ? V0+(1/inv) : null; }; }
+/* SORTIE serveur (PressiometreOutputSchema) -> `_res` attendu par renderResults/
+   drawResCharts/renderProfil (conservés). pfI/plmI reconstruits depuis les PHASES
+   contiguës de la courbe serveur (parité HTML L.1255-1258). a/Ph/Pe/V0 rejoués du form. */
+function mapEssaiOutput(out, idx){
+  var p=getParams(); var V0=_pnum(p.V0,535);
+  var courbe=Array.isArray(out.courbe)?out.courbe:[];
+  var C=courbe.map(function(cp){ return { pRaw:_pnum(cp.p), p:_pnum(cp.pCorr), v60:_pnum(cp.v60), dv:_pnum(cp.d6030) }; });
+  var pfI=0; while(pfI<courbe.length && courbe[pfI].phase==="Recompression") pfI++;
+  var plmI=pfI-1; for(var i=pfI;i<courbe.length;i++){ if(courbe[i].phase==="Pseudo-élast.") plmI=i; else break; }
+  var ex=out.extrapolation||{}; var A=_pnum(ex.a), B=_pnum(ex.b);
+  var recip={ A:A, B:B, PLM:_pnum(ex.plmVLim), PLMasym:_pnum(ex.plmAsymptote),
+    errV:(typeof ex.errV==="number"&&isFinite(ex.errV))?ex.errV:Infinity, gen:_recipGen(A,B,V0) };
+  var vol=out.volumes||{}, syn=out.synthese||{};
+  var pLdir=out.pLDirect?_pnum(out.pL):null;
+  var extChoice=(!out.pLDirect && isFinite(recip.PLM) && recip.PLM>_pnum(out.pf))?"recip":null;
+  var _res={ C:C, pfI:pfI, plmI:plmI,
+    pE:_pnum(out.pE), p0:_pnum(out.p0), Pf:_pnum(out.pf), pL:_pnum(out.pL), pL_direct:pLdir,
+    PfS:_pnum(out.pfNette), pLS:_pnum(out.pLNette),
+    VE:_pnum(vol.vE), V0c:_pnum(vol.v0), Vf:_pnum(vol.vf), VsP2V1:_pnum(vol.vLim),
+    EM:_pnum(out.EM), ratio:_pnum(out.ratioEMpL), alpha:_pnum(out.alpha),
+    cat:(typeof out.categorie==="string"?out.categorie:""),
+    catName:(typeof out.categorieLibelle==="string"?out.categorieLibelle:""),
+    catDesc:(typeof out.categorieDescription==="string"?out.categorieDescription:""),
+    consol:(typeof out.consolidation==="string"?out.consolidation:""),
+    fluage:C.map(function(c){ return { p:c.p, dv:c.dv }; }),
+    ext:{recip:recip}, extChoice:extChoice,
+    a:_pnum(p.a), aUsed:_pnum(out.aUsed), aForced:(out.aForced===true),
+    Ph:_pnum(p.Ph), Pe:_pnum(p.Pe), V0:V0,
+    sigH0:_pnum(out.sigmaH0), z:_pnum(out.z),
+    beta:_pnum(syn.beta), mE:_pnum(syn.mE),
+    auto_p0I:_pnum(syn.plageAutoDebut,0), auto_pfI:_pnum(syn.plageAutoFin,0) };
+  if(idx!=null && depths[idx]) depths[idx]._res=_res;
+  return _res;
+}
+function renderCalcErrorRes(msg){ var el=document.getElementById("resCont"); if(el) el.innerHTML='<div class="empty" style="color:var(--re)"><div class="eico">⚠️</div><p><strong>Calcul indisponible.</strong><br>'+_escP(msg)+'</p></div>'; }
+/* Calcule UNE profondeur via le pont, mappe -> _res, rend les résultats (exemple/boot). */
+function __pressioCalcAndShow(idx){
+  var d=depths[idx]; if(!d) return;
+  window.__geofamBridge.calc(ENG_ESSAI, buildEssaiInput(idx)).then(function(resp){
+    if(resp&&resp.ok&&resp.output&&!resp.output.erreur){ var r=mapEssaiOutput(resp.output, idx); renderResults(r, d.label); }
+    else { renderCalcErrorRes(_gerrP(resp&&resp.error)); }
+  }).catch(function(e){ renderCalcErrorRes("Pont de calcul indisponible : "+((e&&e.message)||e)); });
+}
+ 
+function __pressioDrawProfil(){
+  function pd(l){var m=l.match(/[\d.,]+/);return m?parseFloat(m[0].replace(",",".")):0;}
+  var data=depths.filter(function(d){return d._res;}).map(function(d){var o={depth:pd(d.label),label:d.label};for(var k in d._res){o[k]=d._res[k];}return o;}).sort(function(a,b){return a.depth-b.depth;});
+  var plc=document.getElementById("pressioLog");
+  if(plc) plc.innerHTML=drawPressioLog(logLayers, data, _pNappe());
+  var pll=document.getElementById("pressioLogLeg");
+  if(pll) pll.innerHTML=soilLegendHTML(logLayers)+catLegendHTML(data);
+  var pgp=document.getElementById("pg-profil");
+  var tb=(pgp&&pgp.querySelector("#profTbody")) || document.getElementById("profTbody"); if(!tb) return; tb.innerHTML="";
+  if(!data.length){
+    tb.innerHTML='<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--t3);font-style:italic">Calculez chaque profondeur.</td></tr>';
+    ["chartEM","chartPLM","chartSpec"].forEach(function(k){if(CC[k]){try{CC[k].destroy();}catch(e){}CC[k]=null;}});
+    return;
+  }
+  data.forEach(function(d){
+    var tr=document.createElement("tr");
+    tr.innerHTML='<td>'+d.label+'</td><td>'+d.EM.toFixed(2)+'</td><td>'+(d.pL*0.1).toFixed(3)+'</td><td>'+(d.Pf*0.1).toFixed(3)+'</td><td>'+d.ratio.toFixed(1)+'</td><td>'+d.alpha.toFixed(2)+'</td><td><span class="pb el">'+d.cat+'</span></td>';
+    tb.appendChild(tr);
+  });
+  if(typeof Chart==="undefined") return;
+  var deps=data.map(function(d){return d.depth;}), ems=data.map(function(d){return +d.EM.toFixed(3);}), plms=data.map(function(d){return +(d.pL*0.1).toFixed(4);}), pfs=data.map(function(d){return +(d.Pf*0.1).toFixed(4);});
+  var gc='rgba(255,255,255,.05)',tc='#8fa3b8';
+  var bo=function(xl,xm){return{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:tc,font:{size:11},boxWidth:12,padding:14}}},scales:{x:{type:'linear',position:'top',title:{display:true,text:xl,color:tc,font:{size:11}},grid:{color:gc},ticks:{color:tc,font:{size:11}},min:xm},y:{type:'linear',reverse:true,title:{display:true,text:'Profondeur (m)',color:tc,font:{size:11}},grid:{color:gc},ticks:{color:tc,font:{size:11}},min:0}}};};
+  if(CC.chartEM){CC.chartEM.destroy();CC.chartEM=null;}
+  CC.chartEM=new Chart(document.getElementById('chartEM'),{type:'line',data:{datasets:[{label:'EM (MPa)',data:deps.map(function(d,i){return {x:ems[i],y:d};}),borderColor:'#2484ec',backgroundColor:'rgba(36,132,236,.12)',fill:true,tension:.3,pointRadius:6,pointBackgroundColor:'#2484ec',pointBorderColor:'#0d1b2a',pointBorderWidth:2,borderWidth:2.5}]},options:bo('EM (MPa)',0)});
+  if(CC.chartPLM){CC.chartPLM.destroy();CC.chartPLM=null;}
+  CC.chartPLM=new Chart(document.getElementById('chartPLM'),{type:'line',data:{datasets:[
+    {label:'PLM (MPa)',data:deps.map(function(d,i){return {x:plms[i],y:d};}),borderColor:'#15b896',fill:false,tension:.3,pointRadius:6,pointBackgroundColor:'#15b896',pointBorderColor:'#0d1b2a',pointBorderWidth:2,borderWidth:2.5},
+    {label:'Pf (MPa)',data:deps.map(function(d,i){return {x:pfs[i],y:d};}),borderColor:'#e05252',fill:false,tension:.3,borderDash:[5,4],pointRadius:5,pointBackgroundColor:'#e05252',pointBorderColor:'#0d1b2a',pointBorderWidth:2,borderWidth:2}
+  ]},options:bo('Pression (MPa)',0)});
+  if(CC.chartSpec){CC.chartSpec.destroy();CC.chartSpec=null;}
+  var spts=data.map(function(d){return {x:Math.log10(Math.max(0.001,d.pLS*0.1)),y:Math.log10(Math.max(0.5,d.ratio)),label:d.label};});
+  var iso=[{r:4,c:'rgba(224,82,82,.3)',l:'E/P=4'},{r:8,c:'rgba(240,165,0,.3)',l:'E/P=8'},{r:14,c:'rgba(36,132,236,.25)',l:'E/P=14'},{r:22,c:'rgba(21,184,150,.25)',l:'E/P=22'}];
+  CC.chartSpec=new Chart(document.getElementById('chartSpec'),{type:'line',
+    data:{datasets:[
+      ...iso.map(function(l){return {label:l.l,data:[{x:Math.log10(0.01),y:Math.log10(l.r)},{x:Math.log10(10),y:Math.log10(l.r)}],borderColor:l.c,borderWidth:1.5,borderDash:[4,4],pointRadius:0,fill:false,tension:0};}),
+      {label:'Essais',data:spts,type:'scatter',borderColor:'transparent',backgroundColor:'#f0a500',pointRadius:8,pointHoverRadius:10}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{title:function(it){var i=it[0];return i.datasetIndex===iso.length?(spts[i.dataIndex]&&spts[i.dataIndex].label||''):(iso[i.datasetIndex]&&iso[i.datasetIndex].l||'');},label:function(it){if(it.datasetIndex===iso.length){var pp=spts[it.dataIndex];return['PLM*='+Math.pow(10,pp.x).toFixed(3)+' MPa','E/P='+Math.pow(10,pp.y).toFixed(1)];}return '';}}}},
+      scales:{x:{type:'linear',title:{display:true,text:'log(PLM*) en MPa',color:tc,font:{size:11}},grid:{color:gc},ticks:{color:tc,font:{size:11},callback:function(v){return Math.pow(10,v).toFixed(2)+' MPa';}}},y:{type:'linear',title:{display:true,text:'log(EM/PLM*)',color:tc,font:{size:11}},grid:{color:gc},ticks:{color:tc,font:{size:11},callback:function(v){return ''+Math.pow(10,v).toFixed(0);}}}}
+    }
+  });
+}
+/* =================== FIN BRIDGE + MAPPING =================== */
+  // CC = chart cache
+
+/* =========================================================
+   ÉTAT VIDE — l'application démarre vierge.
+   Les données n'apparaissent qu'avec le bouton « 🧪 Exemple »
+   (loadExempleFictif) ou par saisie manuelle.
+   ========================================================= */
+function initEmpty(){
+  depths = [{label:'Profondeur 1', pf_idx:2, plm_idx:5, rows:[]}];
+  cur = 0;
+  etalRows = [];
+  calibRows = [];
+  logLayers = [];
+  ['p_projet','p_chantier','p_sondage','p_equipe','p_operateur','p_calib','p_nappe'].forEach(id=>{
+    const e=document.getElementById(id); if(e) e.value='';
+  });
+  const rc=document.getElementById('resCont');
+  if(rc) rc.innerHTML='<div class="empty"><div class="eico">📭</div><p>Aucune donnée chargée.<br>Cliquez <strong>🧪 Exemple</strong> (en haut) pour un jeu de démonstration,<br>ou saisissez vos mesures puis <strong>Calculer</strong>.</p></div>';
+}
+
+/* =========================================================
+   INIT
+   ========================================================= */
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('p_date').value = new Date().toISOString().split('T')[0];
+  if (!loadLocal()) initEmpty();
+  renderDepthBar(); renderMrows(); updateHdr();
+  setTimeout(renderEtalon, 80);
+  setTimeout(()=>{ if(typeof renderCalibrage==='function') renderCalibrage(); }, 80);
+  setTimeout(()=>{ if(typeof renderLog==='function') renderLog(); }, 80);
+});
+
+/* =========================================================
+   CALCUL CORE — NF EN ISO 22476-4
+   ========================================================= */
+function getParams() {
+  // Lecture robuste : on ne retombe sur le défaut QUE si le champ est vide,
+  // jamais sur une saisie de 0 (sinon a=0 serait silencieusement remplacé).
+  const num = (id, def) => {
+    const v = document.getElementById(id)?.value;
+    if (v === '' || v === undefined || v === null) return def;
+    const n = parseFloat(v);
+    return isNaN(n) ? def : n;
+  };
+  return {
+    a:  num('p_a',  0) / 10, // cm³/MPa (saisie, NF EN ISO 22476-4) → cm³/bar interne (moteur en bar)
+    Ph: num('p_ph', 0.177), // pression colonne eau bar
+    Pe: num('p_pe', 1.25),  // résistance propre sonde bar
+    V0: num('p_v0', 535),   // volume initial sonde cm³
+    k0: num('p_k0', 0.5),   // coeff terre au repos
+    // Compatibilité ancienne API
+    Vc: 0, Pc: 0, u0: 0
+  };
+}
+
+
+
+
+
+
+
+
+
+
+
+/* =========================================================
+   NAVIGATION
+   ========================================================= */
+function goPage(name, idx) {
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
+  const pg=document.getElementById('pg-'+name); if(pg) pg.classList.add('active');
+  const btn=document.querySelector('.nb[data-page="'+name+'"]');
+  if(btn) btn.classList.add('active');
+  else { const nbs=document.querySelectorAll('.nb'); if(nbs[idx]) nbs[idx].classList.add('active'); }
+  if(name==='profil') setTimeout(renderProfil,80);
+  if(name==='log')    setTimeout(renderLog,80);
+}
+
+const _obs = new MutationObserver(ms=>{
+  ms.forEach(m=>{
+    if(m.type==='attributes'&&m.attributeName==='class'&&m.target.classList.contains('active')){
+      setTimeout(()=>{ Object.values(Chart.instances||{}).forEach(c=>{try{c.resize();}catch(e){}});},100);
+    }
+  });
+});
+document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('.pg').forEach(p=>_obs.observe(p,{attributes:true})));
+
+/* =========================================================
+   DEPTH BAR
+   ========================================================= */
+function renderDepthBar() {
+  const bar=document.getElementById('depthBar'); bar.innerHTML='';
+  depths.forEach((d,i)=>{
+    const chip=document.createElement('div'); chip.className='dc'+(i===cur?' active':'');
+    const lbl=document.createElement('span'); lbl.className='dclbl'; lbl.textContent=d.label;
+    lbl.onclick=()=>{cur=i;renderDepthBar();renderMrows();};
+    chip.appendChild(lbl);
+    const x=document.createElement('button'); x.className='dcx'; x.textContent='×';
+    x.title='Supprimer cette profondeur';
+    x.onclick=(e)=>{e.stopPropagation();delDepth(i);};
+    chip.appendChild(x);
+    bar.appendChild(chip);
+  });
+  const add=document.createElement('button'); add.className='da'; add.textContent='+'; add.title='Nouvelle profondeur';
+  add.onclick=addDepth; bar.appendChild(add);
+  document.getElementById('profSond').textContent=document.getElementById('p_sondage').value||'?';
+}
+
+function addDepth(){
+  const l=prompt('Profondeur (ex : 16 m) :'); if(!l) return;
+  depths.push({label:l.trim(),pf_idx:2,plm_idx:8,rows:[]}); cur=depths.length-1;
+  renderDepthBar(); renderMrows(); toast('Profondeur '+l+' ajoutée','ok');
+}
+
+function delDepth(i){
+  const d=depths[i]; if(!d) return;
+  const hasData = d.rows && d.rows.some(r=>r.v60!==''&&r.v60!==undefined&&r.v60!==null);
+  if(hasData && !confirm('Supprimer la profondeur « '+d.label+' » et ses mesures ?')) return;
+  depths.splice(i,1);
+  if(i<cur) cur--;
+  if(depths.length===0) depths=[{label:'Profondeur 1',pf_idx:2,plm_idx:5,rows:[]}];
+  if(cur>=depths.length) cur=depths.length-1;
+  if(cur<0) cur=0;
+  renderDepthBar(); renderMrows();
+  const rc=document.getElementById('resCont');
+  if(rc) rc.innerHTML='<div class="empty"><div class="eico">📭</div><p>Profondeur supprimée. Sélectionnez une profondeur puis cliquez « Calculer ».</p></div>';
+  toast('Profondeur « '+d.label+' » supprimée','');
+}
+
+/* =========================================================
+   MESURES TABLE
+   ========================================================= */
+function renderMrows(){
+  if(!depths.length) return;
+  const d=depths[cur]; const pf=d.pf_idx||0, plm=d.plm_idx||0;
+  let h=`<div class="mh"><span>#</span><span>P (bar)</span><span>V 15s</span><span>V 30s</span><span>V 60s</span><span>Δ60/30</span><span></span></div>
+  <div class="msh"><span></span><span></span><span>cm³</span><span>cm³</span><span>cm³</span><span>cm³</span><span></span></div>`;
+  d.rows.forEach((r,i)=>{
+    const dv=(r.v60!==''&&r.v30!=='')?(+r.v60-+r.v30):null;
+    const dt=dv!==null?dv.toFixed(0):'—', dc=dv===null?'':dv>20?'big':dv>=0?'ok':'bad';
+    const rc=i===pf?'pf':i===plm?'plm':'';
+    // ΔV/ΔP pour aider l'opérateur à identifier la phase pseudo-élastique
+    let dvdp = '—', dvdpCls = '';
+    if(i>0){
+      const rPrev = d.rows[i-1];
+      const dp = (parseFloat(r.p)||0)-(parseFloat(rPrev.p)||0);
+      const dv = (parseFloat(r.v60)||0)-(parseFloat(rPrev.v60)||0);
+      if(dp>0&&dv>=0){ const s=(dv/dp).toFixed(0); dvdp=s; dvdpCls=dv<5?'ok':dv/dp<200?'':'big'; }
+    }
+    h+=`<div class="mr ${rc}"><span class="rn">${i+1}</span>
+    <input class="ci" type="number" inputmode="decimal" step=".025" value="${r.p!==undefined?r.p:''}" onchange="upR(${i},'p',this.value)" onblur="refreshDv()">
+    <input class="ci" type="number" inputmode="numeric" step="1" value="${r.v15!==undefined?r.v15:''}" onchange="upR(${i},'v15',this.value)" onblur="refreshDv()">
+    <input class="ci" type="number" inputmode="numeric" step="1" value="${r.v30!==undefined?r.v30:''}" onchange="upR(${i},'v30',this.value)" onblur="refreshDv()">
+    <input class="ci" type="number" inputmode="numeric" step="1" value="${r.v60!==undefined?r.v60:''}" onchange="upR(${i},'v60',this.value)" onblur="refreshDv()">
+    <div class="cdv ${dc}">${dt}</div>
+    <div class="cdv ${dvdpCls}" style="font-size:10px">${dvdp}</div>
+    <button class="db" onclick="delR(${i})">✕</button></div>`;
+  });
+  document.getElementById('measCont').innerHTML=h;
+  updateSels();
+}
+
+function upR(i,f,v){depths[cur].rows[i][f]=v===''?'':parseFloat(v);}
+function refreshDv(){renderMrows();}
+function addRow(){
+  const rows=depths[cur].rows, last=rows[rows.length-1];
+  rows.push({p:last?+(parseFloat(last.p||0)+0.05).toFixed(3):0.025,v15:'',v30:'',v60:''});
+  renderMrows();
+  setTimeout(()=>document.getElementById('measCont').scrollIntoView({behavior:'smooth',block:'end'}),60);
+}
+function delR(i){depths[cur].rows.splice(i,1);renderMrows();}
+function updateSels(){
+  const d=depths[cur];
+  ['sel_pf','sel_plm'].forEach(id=>{
+    const s=document.getElementById(id), prev=s.value;
+    let o='<option value="-1">— Non défini —</option>';
+    d.rows.forEach((r,i)=>{ o+=`<option value="${i}">L${i+1}  P=${parseFloat(r.p||0).toFixed(3)} bar  V60=${r.v60||'—'}</option>`; });
+    s.innerHTML=o; s.value=(prev&&prev!=='-1')?prev:(id==='sel_pf'?d.pf_idx:d.plm_idx);
+  });
+  updateSeuilPreview();
+}
+
+
+
+function updateSeuilPreview(){
+  var d=depths[cur];
+  var pfI=parseInt(document.getElementById('sel_pf').value);
+  var plmI=parseInt(document.getElementById('sel_plm').value);
+  var prev=document.getElementById('seuilPreview'); if(!prev) return;
+  if(__seuilTimer){ clearTimeout(__seuilTimer); __seuilTimer=null; }
+  if(!(pfI>=0)||!(plmI>=0)||pfI>=d.rows.length||plmI>=d.rows.length){ prev.style.display='none'; return; }
+  var r1=d.rows[pfI], r2=d.rows[plmI]; if(!r1||!r2){ prev.style.display='none'; return; }
+  prev.style.display='block';
+  if(!(pfI<plmI)){
+    prev.style.borderLeft='3px solid var(--re)';
+    prev.innerHTML='<span style="color:var(--re)">⚠ P1 doit être avant P2 (ligne '+(pfI+1)+' > ligne '+(plmI+1)+')</span>';
+    return;
+  }
+  prev.style.borderLeft='3px solid var(--te)';
+  if(_essaiRows(d).length<4){ prev.innerHTML='<span style="color:var(--t3);font-size:10px">Saisissez au moins 4 paliers complets pour l\u2019aperçu E_M.</span>'; return; }
+  prev.innerHTML='<span style="color:var(--t3);font-size:10px">Aperçu E_M…</span>';
+  var inp=buildEssaiInput(cur); inp.pf_idx=pfI; inp.plm_idx=plmI;
+  __seuilTimer=setTimeout(function(){ __seuilTimer=null;
+    window.__geofamBridge.calc(ENG_ESSAI, inp).then(function(resp){
+      var pv=document.getElementById('seuilPreview'); if(!pv) return;
+      if(!resp||!resp.ok||!resp.output||resp.output.erreur){ pv.innerHTML='<span style="color:var(--re);font-size:10px">Aperçu indisponible.</span>'; return; }
+      var o=resp.output, vol=o.volumes||{}, syn=o.synthese||{};
+      var Pf_c=_pnum(o.p0), PLM_c=_pnum(o.pf), V1=_pnum(vol.v0), V2=_pnum(vol.vf);
+      var dP=PLM_c-Pf_c, dV=V2-V1, n=plmI-pfI+1;
+      var autoTxt='<span style="color:var(--t3);font-size:10px">Auto β='+_pnum(syn.beta).toFixed(2)+': suggestion L'+(_pnum(syn.plageAutoDebut,0)+1)+'→L'+(_pnum(syn.plageAutoFin,0)+1)+'</span>';
+      pv.innerHTML='🔴 <span style="color:var(--re)">Pf=P1</span> = <strong style="color:var(--tx)">'+Pf_c.toFixed(3)+' bar</strong> V1='+V1+'cm³  '+
+        '🟢 <span style="color:var(--te)">PLM=P2</span> = <strong style="color:var(--tx)">'+PLM_c.toFixed(3)+' bar</strong> V2='+V2+'cm³<br>'+
+        n+' paliers · ΔP='+dP.toFixed(3)+' bar · ΔV='+dV+'cm³<br>'+
+        '→ <strong style="color:var(--bl)">E<sub>M</sub> ≈ '+_pnum(o.EM).toFixed(2)+' MPa</strong>  ratio='+_pnum(o.ratioEMpL).toFixed(1)+'<br>'+autoTxt;
+    }).catch(function(){ var pv=document.getElementById('seuilPreview'); if(pv) pv.innerHTML='<span style="color:var(--re);font-size:10px">Aperçu indisponible.</span>'; });
+  }, 300);
+}
+function saveSeuils(){
+  depths[cur].pf_idx=parseInt(document.getElementById('sel_pf').value)||0;
+  depths[cur].plm_idx=parseInt(document.getElementById('sel_plm').value)||depths[cur].rows.length-1;
+  renderMrows();
+  updateSeuilPreview();
+}
+
+async function doCalc(){
+  var d=depths[cur];
+  var pfVal=parseInt(document.getElementById('sel_pf').value);
+  var plmVal=parseInt(document.getElementById('sel_plm').value);
+  d.pf_idx=(pfVal>=0)?pfVal:(d.pf_idx||0);
+  d.plm_idx=(plmVal>=0)?plmVal:(d.plm_idx||d.rows.length-1);
+  if(d.pf_idx>=d.plm_idx){ toast('⚠ p₀ doit être avant pf — vérifiez les seuils.','err'); return; }
+  if(d.rows.filter(function(r){return r.p!==''&&r.v60!=='';}).length<4){ toast('Saisissez au moins 4 lignes complètes.','err'); return; }
+  goPage('resultats',4);
+  var rc=document.getElementById("resCont"); if(rc) rc.innerHTML='<div class="empty"><div class="eico">⏳</div><p>Calcul en cours…</p></div>';
+  var resp;
+  try{ resp=await window.__geofamBridge.calc(ENG_ESSAI, buildEssaiInput(cur)); }
+  catch(e){ renderCalcErrorRes("Pont de calcul indisponible : "+((e&&e.message)||e)); return; }
+  if(!resp||!resp.ok){ renderCalcErrorRes(_gerrP(resp&&resp.error)); return; }
+  var out=resp.output||{};
+  if(out.erreur){ renderCalcErrorRes(out.erreur); return; }
+  window.__pressioLastCalcResultId=resp.calcResultId||null;
+  var _res=mapEssaiOutput(out, cur);
+  renderResults(_res, d.label);
+  toast('Dépouillement OK — '+d.label,'ok');
+}
+
+/* =========================================================
+   RÉSULTATS — rendu complet avec courbe cible
+   ========================================================= */
+function renderResults(r, label){
+  if(!r){document.getElementById('resCont').innerHTML='<div class="empty"><div class="eico">⚠️</div><p>Erreur de calcul</p></div>';return;}
+  const el=document.getElementById('resCont');
+  const PLM_MPa=(r.pL*0.1).toFixed(3),  Pf_MPa=(r.Pf*0.1).toFixed(3);
+  const PLMS_MPa=(r.pLS*0.1).toFixed(3), PfS_MPa=(r.PfS*0.1).toFixed(3);
+  const PLM_direct_str = r.pL_direct!==null ? (r.pL_direct*0.1).toFixed(3)+' MPa (direct)' : 'extrapolé';
+  const rc=r.ratio<5?'bad':r.ratio<8?'warn':'ok';
+  const rl=r.ratio<5?'Remanié':r.ratio<12?'N.C.':'Précons.';
+
+  // §A.2 — adéquation de la résistance propre de la sonde au sol mesuré
+  const _pLM = r.pL*0.1, _pel = r.Pe*0.1;   // MPa
+  const _pelMax = _pLM <= 0.9 ? _pLM/4 + 0.025 : Math.min(_pLM/18 + 0.2, 0.35);
+  const pelWarn = _pel > _pelMax
+    ? `<div style="background:var(--am2);border:1px solid rgba(240,165,0,.3);border-left:3px solid var(--am);border-radius:var(--rs);padding:9px 12px;margin-bottom:12px;font-size:12px;color:var(--tx);line-height:1.5">⚠ <strong>Appareillage</strong> : résistance propre élevée — p<sub>el</sub> ≈ ${_pel.toFixed(3)} MPa &gt; limite §A.2 (${_pelMax.toFixed(3)} MPa pour p<sub>LM</sub>=${_pLM.toFixed(2)} MPa). Membrane/gaine trop raide pour ce sol.</div>`
+    : '';
+
+  // Garde-fou — corrections manquantes (étalonnage / calibrage non renseignés)
+  const _peField = document.getElementById('p_pe')?.value;
+  const _peEmpty = (_peField==='' || _peField===undefined || _peField===null);
+  const _iss = [];
+  if(r.aUsed === 0){
+    if(r.aForced) _iss.push('coefficient <strong>a</strong> trop grand → forcé à 0 : <strong>correction de volume désactivée</strong> (vérifiez le calibrage)');
+    else _iss.push('<strong>a = 0</strong> : aucune correction de volume — <strong>calibrage non renseigné</strong>');
+  }
+  if(_peEmpty) _iss.push('P<sub>e</sub> à sa valeur par défaut : <strong>étalonnage non appliqué</strong>');
+  const calibWarn = _iss.length
+    ? `<div style="background:rgba(224,82,82,.12);border:1px solid rgba(224,82,82,.35);border-left:3px solid var(--re);border-radius:var(--rs);padding:9px 12px;margin-bottom:12px;font-size:12px;color:var(--tx);line-height:1.5">⚠ <strong>Résultat non corrigé</strong> — ${_iss.join(' · ')}.<br><span style="color:var(--t2);font-size:11px">Renseignez l'Étalonnage (sonde dans l'air → V<sub>s</sub>, P<sub>e</sub>) et le Calibrage (forage indéformable → a), ou saisissez ces paramètres dans l'onglet Projet.</span></div>`
+    : '';
+  // Garde-fou — plage pseudo-élastique invalide (EM = 0)
+  const emWarn = (r.EM === 0)
+    ? `<div style="background:rgba(224,82,82,.14);border:1px solid rgba(224,82,82,.4);border-left:3px solid var(--re);border-radius:var(--rs);padding:9px 12px;margin-bottom:12px;font-size:12px;color:var(--tx);line-height:1.5">⚠ <strong>E<sub>M</sub> = 0</strong> — plage pseudo-élastique invalide : p₀ ≥ pf ou ΔV ≤ 0 après calcul. Ajustez les seuils p₀/pf (onglet Mesures) sur la partie linéaire de la courbe.</div>`
+    : '';
+
+  el.innerHTML=`
+  <div style="font-size:11px;color:var(--t3);font-weight:600;letter-spacing:.07em;text-transform:uppercase;margin-bottom:10px;padding:0 2px">Dépouillement — ${label} · NF EN ISO 22476-4</div>
+  ${emWarn}
+  ${calibWarn}
+  <div class="kg4">
+    <div class="kp bl"><div class="kl">E<sub>M</sub></div><div class="kv sm">${r.EM.toFixed(2)}</div><div class="ku">MPa</div></div>
+    <div class="kp te"><div class="kl">p<sub>L</sub> (limite)</div><div class="kv sm">${PLM_MPa}</div><div class="ku">MPa</div></div>
+    <div class="kp re"><div class="kl">P<sub>f</sub></div><div class="kv sm">${Pf_MPa}</div><div class="ku">MPa</div></div>
+    <div class="kp am"><div class="kl">E/P<sub>LM</sub></div><div class="kv sm">${r.ratio.toFixed(1)}</div><div class="kb ${rc}">${rl}</div><div class="ku">—</div></div>
+  </div>
+  <div class="kg4">
+    <div class="kp pu"><div class="kl">P*<sub>LM</sub></div><div class="kv sm">${PLMS_MPa}</div><div class="ku">MPa net</div></div>
+    <div class="kp pu"><div class="kl">P*<sub>f</sub></div><div class="kv sm">${PfS_MPa}</div><div class="ku">MPa net</div></div>
+    <div class="kp gr"><div class="kl">α Ménard</div><div class="kv sm">${r.alpha.toFixed(2)}</div><div class="ku">—</div></div>
+    <div class="kp gr"><div class="kl">E<sub>y</sub>=E/α</div><div class="kv sm">${(r.EM/r.alpha).toFixed(1)}</div><div class="ku">MPa</div></div>
+  </div>
+  <div class="catb ${r.cat}"><div class="catic">${r.cat}</div><div><div class="catnm">${r.catName}</div><div class="catds">${r.catDesc}</div></div></div>
+  ${pelWarn}
+
+  <div class="card">
+    <div class="clbl">Courbe pressiométrique P–V &amp; Courbe de fluage Δ60/30</div>
+    <div class="leg">
+      <span><span class="ldo" style="background:#f0a500"></span>Mesures V60</span>
+      <span><span class="lsq" style="background:#f97316"></span>Courbe inverse</span>
+      <span><span class="lsq" style="background:#15b896;border-top:2px dashed #15b896;background:transparent"></span><span style="color:#15b896">Δ60/30 (ax.dr.)</span></span>
+    </div>
+    <div style="position:relative;width:100%;height:360px"><canvas id="chartPV" role="img" aria-label="Courbe P-V pressiométrique avec extrapolations et fluage"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="ch"><span class="dot a"></span>Extrapolation p<sub>LM</sub> — NF EN ISO 22476-4 §D.4.3</div>
+    <div class="ep-grid">
+      <div class="ep-box">
+        <div class="ep-title"><span class="lsq" style="background:var(--or)"></span>Courbe inverse&nbsp;: 1/(V−Vs) = A + B·p${r.extChoice==='recip'?' ✓':''}</div>
+        <div class="ep-row"><span>A</span><span>${r.ext.recip.A.toExponential(2)}</span></div>
+        <div class="ep-row"><span>B</span><span>${r.ext.recip.B.toExponential(2)}</span></div>
+        <div class="ep-row"><span>p<sub>LM</sub> à V=Vs+2·V(p₀)</span><span>${(r.ext.recip.PLM*0.1).toFixed(3)} MPa</span></div>
+        <div class="ep-row"><span>p<sub>LM</sub> asymptote (réf.)</span><span>${(r.ext.recip.PLMasym*0.1).toFixed(3)} MPa</span></div>
+        <div class="ep-err">Ajustement moyen : ${isFinite(r.ext.recip.errV)?r.ext.recip.errV.toFixed(2)+' cm³':'—'}</div>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:2px">${r.pL_direct!==null?'p<sub>L</sub> obtenue par interpolation directe (§D.4.2) — extrapolation indicative.':'p<sub>L</sub> retenue = extrapolation par courbe inverse au volume conventionnel V<sub>s</sub>+2·V(p₀) (§D.4.3.2).'}</div>
+  </div>
+
+  <div class="card">
+    <div class="ch"><span class="dot a"></span>Paramètres normalisés NF EN ISO 22476-4</div>
+    <div class="r2">
+      <table class="ptbl">
+        <thead><tr><th>Pression</th><th>Valeur</th><th>Unité</th></tr></thead>
+        <tbody>
+          <tr><td>p<sub>E</sub></td><td class="val">${(r.pE*0.1).toFixed(4)}</td><td class="unit">MPa</td></tr>
+          <tr><td>p₀ — début pseudo-élast.</td><td class="val">${(r.p0*0.1).toFixed(4)}</td><td class="unit">MPa</td></tr>
+          <tr><td>p<sub>f</sub> — fin zone plate</td><td class="val">${Pf_MPa}</td><td class="unit">MPa</td></tr>
+          <tr><td>σ<sub>h0</sub> = K₀·σ′<sub>v0</sub>+u₀ <span style="color:var(--t3);font-size:10px">(z=${(+r.z).toFixed(1)} m)</span></td><td class="val">${(r.sigH0*0.1).toFixed(4)}</td><td class="unit">MPa</td></tr>
+          <tr><td>p<sub>f</sub>* nette = p<sub>f</sub>−σ<sub>h0</sub></td><td class="val">${PfS_MPa}</td><td class="unit">MPa</td></tr>
+          <tr><td>p<sub>L</sub> — pression limite</td><td class="val">${PLM_MPa}</td><td class="unit">MPa</td></tr>
+          <tr><td>p<sub>L</sub>* nette = p<sub>L</sub>−σ<sub>h0</sub></td><td class="val">${PLMS_MPa}</td><td class="unit">MPa</td></tr>
+          <tr><td>p<sub>L</sub> méthode</td><td class="val" style="font-family:var(--fn);font-size:11px">${PLM_direct_str}</td><td class="unit"></td></tr>
+          <tr><td>P*<sub>LM</sub></td><td class="val">${PLMS_MPa}</td><td class="unit">MPa net</td></tr>
+        </tbody>
+      </table>
+      <table class="ptbl">
+        <thead><tr><th>Volume</th><th>Valeur</th><th>Unité</th></tr></thead>
+        <tbody>
+          <tr><td>V<sub>E</sub> — restitution</td><td class="val">${r.VE.toFixed(0)}</td><td class="unit">cm³</td></tr>
+          <tr><td>V(p₀) — début pseudo-élast.</td><td class="val">${r.V0c.toFixed(0)}</td><td class="unit">cm³</td></tr>
+          <tr><td>V(p<sub>f</sub>) — fluage</td><td class="val">${r.Vf.toFixed(0)}</td><td class="unit">cm³</td></tr>
+          <tr><td>Vs+2×V(p₀) = V<sub>Lim</sub></td><td class="val">${r.VsP2V1.toFixed(0)}</td><td class="unit">cm³</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="itp"><div class="itp-t">Synthèse</div>
+  <p>E<sub>M</sub> = <strong>${r.EM.toFixed(2)} MPa</strong> · p<sub>f</sub> = <strong>${Pf_MPa} MPa</strong> · p<sub>L</sub> = <strong>${PLM_MPa} MPa</strong> (${PLM_direct_str})<br>
+  <span style="font-size:11px;color:var(--t3)">β = ${r.beta?r.beta.toFixed(3):'—'} · mE = ${r.mE?(r.mE*10).toFixed(0):'—'} cm³/MPa · Plage auto L${(r.auto_p0I||0)+1}→L${(r.auto_pfI||0)+1}</span><br>
+  E<sub>M</sub>/P<sub>LM</sub> = ${r.ratio.toFixed(1)} → <strong>${r.consol}</strong><br>
+  α = <strong>${r.alpha.toFixed(2)}</strong> · E<sub>y</sub> = E/α = <strong>${(r.EM/r.alpha).toFixed(1)} MPa</strong><br>
+  <span style="font-size:11px;color:var(--t3)">Corrections NF EN ISO 22476-4 : a=${(r.a*10).toFixed(3)} cm³/MPa · Ph=${r.Ph} bar · Pe=${r.Pe} bar · Vs=${r.V0} cm³</span></p></div>
+
+  <div class="card">
+    <div class="ch"><span class="dot a"></span>Tableau des mesures corrigées</div>
+    <div class="rtw"><table class="rt">
+      <thead><tr><th>#</th><th>P brut</th><th>P corr.</th><th>V60 corr.</th><th>Δ60/30</th><th>Phase</th></tr></thead>
+      <tbody id="recTb"></tbody>
+    </table></div>
+  </div>`;
+
+  const tb=el.querySelector('#recTb');
+  r.C.forEach((c,i)=>{
+    let ph,cl;
+    if(i<r.pfI){ph='Recompression';cl='re';}
+    else if(i<=r.plmI){ph='Pseudo-élast.';cl='el';}
+    else{ph='Plastique';cl='pl';}
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${i+1}</td><td>${c.pRaw.toFixed(3)}</td><td>${c.p.toFixed(4)}</td><td>${c.v60.toFixed(0)}</td><td>${c.dv.toFixed(0)}</td><td><span class="pb ${cl}">${ph}</span></td>`;
+    tb.appendChild(tr);
+  });
+
+  setTimeout(()=>drawResCharts(r),120);
+}
+
+/* =========================================================
+   GRAPHIQUES RÉSULTATS — courbe P-V + fluage sur même graphique
+   ========================================================= */
+function drawResCharts(r){
+  if(CC.pv){CC.pv.destroy();CC.pv=null;}
+  if(CC.fl){CC.fl.destroy();CC.fl=null;}
+  const gc='rgba(255,255,255,.05)', tc='#8fa3b8';
+  const V0=r.V0;
+
+  // Axe X commun = Pression P corrigée (MPa)
+  // Axe Y gauche (y) = Volume V (cm³) — courbe P-V + extrapolations
+  // Axe Y droit (y2) = Δ60/30 (cm³) — courbe de fluage
+
+  const pvPts  = r.C.map(c=>({x:+(c.p*0.1).toFixed(5), y:+(c.v60+V0).toFixed(1)}));
+  const flPts  = r.fluage.map(f=>({x:+(f.p*0.1).toFixed(5), y:+f.dv.toFixed(1)}));
+
+  // Extrapolations
+  const pMax   = r.pL*0.1*1.40;
+  const nSteps = 60;
+  const step   = pMax / nSteps;
+  const pSteps = Array.from({length:nSteps+1},(_,i)=>+(i*step).toFixed(5)).filter(p=>p>=r.C[0].p*0.1);
+
+  const recipPts = pSteps.map(p=>{const v=r.ext.recip.gen(p/0.1);return v&&v>V0&&v<V0+r.VsP2V1*3.5?{x:p,y:+v.toFixed(1)}:null;}).filter(Boolean);
+
+  const VsLine  = V0+r.VsP2V1;
+  const yVolMax = Math.max(VsLine, ...pvPts.map(p=>p.y)) * 1.15;
+  const yFlMax  = Math.max(...flPts.map(p=>p.y), 5) * 1.4;
+  const yFlMin  = Math.min(0, ...flPts.map(p=>p.y));
+
+  CC.pv = new Chart(document.getElementById('chartPV'),{
+    type:'line',
+    data:{datasets:[
+      // Y-gauche : courbe P-V mesures
+      {label:'Mesures V60', data:pvPts, yAxisID:'y',
+       borderColor:'#f0a500', backgroundColor:'rgba(240,165,0,.12)',
+       fill:false, tension:0.35, pointRadius:6, pointBackgroundColor:'#f0a500',
+       pointBorderColor:'#0d1b2a', pointBorderWidth:2, borderWidth:2.5, showLine:true, order:1},
+      // Y-gauche : extrapolations
+      {label:'Courbe inverse', data:recipPts, yAxisID:'y',
+       borderColor:'#f97316', backgroundColor:'transparent',
+       fill:false, tension:0.4, pointRadius:0, borderWidth:2.5, showLine:true, order:2},
+      // Y-gauche : ligne Vs+2V1
+      {label:'Vs+2V1', data:[{x:0,y:VsLine},{x:pMax,y:VsLine}], yAxisID:'y',
+       borderColor:'rgba(41,184,90,.55)', backgroundColor:'transparent',
+       fill:false, tension:0, pointRadius:4, pointBackgroundColor:'#29b85a',
+       borderWidth:1.5, borderDash:[6,4], showLine:true, order:5},
+      // Y-droit : courbe de fluage Δ60/30
+      {label:'Δ60/30', data:flPts, yAxisID:'y2',
+       borderColor:'#15b896', backgroundColor:'rgba(21,184,150,.0)',
+       fill:false, tension:0.35, pointRadius:4, pointBackgroundColor:'#15b896',
+       pointBorderColor:'#0d1b2a', pointBorderWidth:2, borderWidth:2, borderDash:[3,2], showLine:true, order:0}
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          callbacks:{
+            label:c=>{
+              if(c.dataset.yAxisID==='y2') return `Δ60/30 = ${c.parsed.y.toFixed(0)} cm³`;
+              if(c.datasetIndex===0) return `V60 = ${c.parsed.y.toFixed(0)} cm³`;
+              return `${c.dataset.label} = ${c.parsed.y.toFixed(0)} cm³`;
+            },
+            title:items=>`P = ${(+items[0].parsed.x).toFixed(4)} MPa`
+          }
+        }
+      },
+      scales:{
+        x:{
+          type:'linear',
+          title:{display:true, text:'Pression P corrigée (MPa)', color:tc, font:{size:11}},
+          grid:{color:gc}, ticks:{color:tc, font:{size:11}, callback:v=>v.toFixed(3)},
+          min:0
+        },
+        y:{
+          type:'linear',
+          position:'left',
+          title:{display:true, text:'Volume V (cm³)', color:'#f0a500', font:{size:11, weight:'500'}},
+          grid:{color:gc}, ticks:{color:'#f0a500', font:{size:11}},
+          min:0, max:yVolMax
+        },
+        y2:{
+          type:'linear',
+          position:'right',
+          title:{display:true, text:'Δ60/30 (cm³)', color:'#15b896', font:{size:11, weight:'500'}},
+          grid:{drawOnChartArea:false},
+          ticks:{color:'#15b896', font:{size:11}},
+          min:yFlMin, max:yFlMax
+        }
+      }
+    }
+  });
+
+  // Annotations post-render : lignes verticales Pf, PLM, p1 + flèche EM + ligne Vs+2V1
+  setTimeout(()=>{
+    const cv=CC.pv; if(!cv) return;
+    const ctx=document.getElementById('chartPV').getContext('2d');
+    const xS=cv.scales.x, yS=cv.scales.y;
+
+    function vline(pMPa, col, lbl, dash=[5,4]){
+      const xp=xS.getPixelForValue(pMPa);
+      const yt=yS.top, yb=yS.bottom;
+      ctx.save(); ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.setLineDash(dash);
+      ctx.beginPath(); ctx.moveTo(xp,yt); ctx.lineTo(xp,yb); ctx.stroke();
+      ctx.fillStyle=col; ctx.font='bold 10px DM Mono,monospace';
+      ctx.save(); ctx.translate(xp+3, yb-8); ctx.rotate(-Math.PI/2);
+      ctx.fillText(lbl, 0, 0); ctx.restore(); ctx.restore();
+    }
+
+    function emArrow(){
+      const x1=xS.getPixelForValue(r.p0*0.1);
+      const x2=xS.getPixelForValue(r.Pf*0.1);
+      if(!isFinite(x1)||!isFinite(x2)) return;
+      const yMid=yS.getPixelForValue((r.V0c+V0+r.Vf+V0)/2);
+      ctx.save(); ctx.strokeStyle='rgba(36,132,236,.8)'; ctx.lineWidth=1.5; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(x1,yMid); ctx.lineTo(x2,yMid); ctx.stroke();
+      [[x1,1],[x2,-1]].forEach(([x,d])=>{
+        ctx.beginPath(); ctx.moveTo(x,yMid);
+        ctx.lineTo(x+d*7,yMid-4); ctx.lineTo(x+d*7,yMid+4); ctx.closePath();
+        ctx.fillStyle='rgba(36,132,236,.8)'; ctx.fill();
+      });
+      ctx.fillStyle='rgba(36,132,236,.95)'; ctx.font='bold 10px DM Mono,monospace';
+      const lbl='EM='+r.EM.toFixed(2)+'MPa';
+      const tw=ctx.measureText(lbl).width;
+      ctx.fillText(lbl,(x1+x2)/2-tw/2, yMid-8);
+      ctx.restore();
+    }
+
+    // Lignes verticales encadrées (style image cible)
+    function vlineBox(pMPa, col, lbl){
+      const xp=xS.getPixelForValue(pMPa);
+      if(!isFinite(xp)) return;
+      const yt=yS.top, yb=yS.bottom;
+      ctx.save();
+      ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
+      ctx.beginPath(); ctx.moveTo(xp,yt); ctx.lineTo(xp,yb); ctx.stroke();
+      // Box label at bottom
+      ctx.setLineDash([]);
+      const pad=4, th=14;
+      const tw=ctx.measureText(lbl).width+pad*2;
+      const bx=xp-tw/2, by=yb-th-4;
+      ctx.fillStyle=col; ctx.globalAlpha=0.15;
+      ctx.fillRect(bx,by,tw,th);
+      ctx.globalAlpha=1;
+      ctx.strokeStyle=col; ctx.lineWidth=1;
+      ctx.strokeRect(bx,by,tw,th);
+      ctx.fillStyle=col; ctx.font='bold 10px DM Mono,monospace';
+      ctx.fillText(lbl, xp-ctx.measureText(lbl).width/2, by+th-3);
+      ctx.restore();
+    }
+
+    vlineBox(r.p0*0.1, 'rgba(41,184,90,.9)', 'p₁');
+    vlineBox(r.Pf*0.1, '#e05252',            'pf (p₂)');
+    vlineBox(r.pL*0.1, 'rgba(41,184,90,.9)', 'pLM');
+    emArrow();
+  }, 350);
+}
+
+/* =========================================================
+   PROFIL + DIAGRAMME SPECTRAL BAUD
+   ========================================================= */
+/* =========================================================
+   MODULE LOG DE SONDAGE (coupe du sondage carotté)
+   ========================================================= */
+let logLayers = [];
+
+const SOILS = {
+  'Blocs':             {c:'#b0763e', p:'circ',  g:'Sol très grossier'},
+  'Cailloux / Galets': {c:'#c98a4a', p:'circ',  g:'Sol très grossier'},
+  'Grave':             {c:'#d98b48', p:'circ',  g:'Sol grossier'},
+  'Grave sableuse':    {c:'#e0a258', p:'circ',  g:'Sol grossier'},
+  'Sable':             {c:'#e8c75f', p:'dots',  g:'Sol grossier'},
+  'Sable limoneux':    {c:'#dcc06e', p:'dots',  g:'Sol grossier'},
+  'Sable argileux':    {c:'#d9bf73', p:'dots',  g:'Sol grossier'},
+  'Limon':             {c:'#cbb86a', p:'dash',  g:'Sol fin'},
+  'Limon argileux':    {c:'#bdb06a', p:'dash',  g:'Sol fin'},
+  'Argile':            {c:'#7f9b63', p:'dash',  g:'Sol fin'},
+  'Argile limoneuse':  {c:'#9aac6f', p:'dash',  g:'Sol fin'},
+  'Argile sableuse':   {c:'#a7a85f', p:'dash',  g:'Sol fin'},
+  'Tourbe':            {c:'#4f3b29', p:'veg',   g:'Sol organique'},
+  'Sol organique':     {c:'#5f5030', p:'veg',   g:'Sol organique'},
+  'Marne':             {c:'#7b8fa6', p:'dash',  g:'Roche (14689)'},
+  'Calcaire':          {c:'#6fa6c6', p:'brick', g:'Roche (14689)'},
+  'Grès':              {c:'#c39a6e', p:'dots',  g:'Roche (14689)'},
+  'Schiste':           {c:'#8b7c9c', p:'hatch', g:'Roche (14689)'},
+  'Roche altérée':     {c:'#9aa0a6', p:'hatch', g:'Roche (14689)'},
+  'Roche saine':       {c:'#7d8389', p:'brick', g:'Roche (14689)'},
+  'Remblai':           {c:'#a8927d', p:'mix',   g:'Anthropique'},
+  'Terre végétale':    {c:'#6e5536', p:'veg',   g:'Couverture'}
+};
+// État de consistance (sols fins) / densité (sols grossiers) — ISO 14688-2
+const ETATS = {
+  'Cohérent — consistance':  ['Très molle','Molle','Ferme','Raide','Très raide','Dure'],
+  'Pulvérulent — densité':   ['Très lâche','Lâche','Moyennement dense','Dense','Très dense']
+};
+// Classes de qualité possibles selon la catégorie de prélèvement — NF EN ISO 22475-1 §6.2
+const QUAL_BY_CAT = {A:[1,2,3,4,5], B:[3,4,5], C:[5], '':[1,2,3,4,5]};
+const QUALCOL = {1:'#15b896', 2:'#5cb85c', 3:'#f0a500', 4:'#e0823a', 5:'#e05252'};
+
+function esc(s){return String(s==null?'':s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
+
+function svgPatterns(pfx){
+  return `<defs>
+  <pattern id="${pfx}-dots" width="7" height="7" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#0d1b2a" opacity="0.5"/></pattern>
+  <pattern id="${pfx}-circ" width="9" height="9" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1.7" fill="none" stroke="#0d1b2a" stroke-width="0.7" opacity="0.5"/></pattern>
+  <pattern id="${pfx}-dash" width="11" height="6" patternUnits="userSpaceOnUse"><line x1="0" y1="3" x2="6" y2="3" stroke="#0d1b2a" stroke-width="0.7" opacity="0.4"/></pattern>
+  <pattern id="${pfx}-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" stroke="#0d1b2a" stroke-width="0.8" opacity="0.4"/></pattern>
+  <pattern id="${pfx}-brick" width="14" height="8" patternUnits="userSpaceOnUse"><path d="M0 0H14M0 4H14M7 0V4M0 4V8M14 4V8" stroke="#0d1b2a" stroke-width="0.6" fill="none" opacity="0.45"/></pattern>
+  <pattern id="${pfx}-veg" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M2 7V3M2 3L0.5 1.3M2 3L3.5 1.3" stroke="#0d1b2a" stroke-width="0.7" fill="none" opacity="0.4"/></pattern>
+  <pattern id="${pfx}-mix" width="9" height="9" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="0.9" fill="#0d1b2a" opacity="0.4"/><line x1="4" y1="6" x2="8" y2="6" stroke="#0d1b2a" stroke-width="0.6" opacity="0.4"/></pattern>
+  </defs>`;
+}
+
+const CATCOL={A:'#e05252',B:'#f0a500',C:'#2484ec',D:'#15b896',E:'#8b5cf6'};
+const CATNM ={A:'très mou',B:'mou',C:'ferme',D:'dense',E:'roche'};
+
+function soilLegendHTML(layers){
+  const used=[...new Set((layers||[]).map(l=>l.nature).filter(Boolean))];
+  if(!used.length) return '';
+  return used.map(n=>{const s=SOILS[n]||{c:'#888'};return `<span class="lg"><span class="sw" style="background:${s.c}"></span>${esc(n)}</span>`;}).join('');
+}
+function catLegendHTML(data){
+  if(!data||!data.length) return '';
+  const cats=[...new Set(data.map(d=>d.cat))].sort();
+  return cats.map(c=>`<span class="lg"><span class="sw" style="background:${CATCOL[c]||'#888'}"></span>${c} — ${CATNM[c]||''}</span>`).join('');
+}
+function qualLegendHTML(layers){
+  const used=[...new Set((layers||[]).map(l=>l.qual).filter(q=>q!==''&&q!=null))].sort();
+  if(!used.length) return '';
+  return '<span class="lg" style="opacity:.6;margin-right:1px">Classe qualité&nbsp;:</span>'+used.map(q=>`<span class="lg"><span class="sw" style="background:${QUALCOL[+q]||'#888'}"></span>${q}</span>`).join('');
+}
+
+/* ---------- Tableau de saisie de la coupe ---------- */
+function nappeVal(){ return parseFloat((document.getElementById('p_nappe')||{}).value)||0; }
+
+function renderLog(){
+  renderLogTable();
+  const v=document.getElementById('logVisual');
+  if(v) v.innerHTML=drawBoreholeLog(logLayers, nappeVal());
+  const lg=document.getElementById('logLegend');
+  if(lg) lg.innerHTML=soilLegendHTML(logLayers)+qualLegendHTML(logLayers);
+}
+function renderLogTable(){
+  const tb=document.getElementById('logTbody'); if(!tb) return;
+  if(!logLayers.length){ tb.innerHTML='<tr><td colspan="9" style="padding:14px;text-align:center;color:var(--t3);font-style:italic">Aucune couche. Cliquez « Ajouter une couche ».</td></tr>'; return; }
+  const grp={}; Object.keys(SOILS).forEach(n=>{const g=SOILS[n].g||'Autre';(grp[g]=grp[g]||[]).push(n);});
+  const natOpts=sel=>Object.keys(grp).map(g=>`<optgroup label="${g}">`+grp[g].map(n=>`<option${n===sel?' selected':''}>${n}</option>`).join('')+`</optgroup>`).join('');
+  const etatOpts=sel=>`<option value=""${!sel?' selected':''}>—</option>`+Object.keys(ETATS).map(g=>`<optgroup label="${g}">`+ETATS[g].map(e=>`<option${e===sel?' selected':''}>${e}</option>`).join('')+`</optgroup>`).join('');
+  const catOpts=sel=>['','A','B','C'].map(c=>`<option value="${c}"${c===sel?' selected':''}>${c||'—'}</option>`).join('');
+  const qualOpts=(cat,sel)=>`<option value=""${(sel===''||sel==null)?' selected':''}>—</option>`+(QUAL_BY_CAT[cat||'']||[1,2,3,4,5]).map(q=>`<option value="${q}"${String(q)===String(sel)?' selected':''}>${q}</option>`).join('');
+  tb.innerHTML=logLayers.map((l,i)=>`<tr>
+    <td><input type="number" step="0.1" inputmode="decimal" value="${l.de??''}" onchange="upLayer(${i},'de',this.value)"></td>
+    <td><input type="number" step="0.1" inputmode="decimal" value="${l.a??''}" onchange="upLayer(${i},'a',this.value)"></td>
+    <td><select onchange="upLayer(${i},'nature',this.value)">${natOpts(l.nature)}</select></td>
+    <td><select onchange="upLayer(${i},'etat',this.value)">${etatOpts(l.etat||'')}</select></td>
+    <td><select onchange="upLayer(${i},'cat',this.value)">${catOpts(l.cat||'')}</select></td>
+    <td><select onchange="upLayer(${i},'qual',this.value)">${qualOpts(l.cat||'', l.qual)}</select></td>
+    <td><input type="number" min="0" max="100" step="1" inputmode="numeric" value="${l.rqd??''}" onchange="upLayer(${i},'rqd',this.value)"></td>
+    <td><input type="text" value="${esc(l.desc||'')}" placeholder="couleur, particularités…" onchange="upLayer(${i},'desc',this.value)"></td>
+    <td><button class="db" onclick="delLayer(${i})">✕</button></td>
+  </tr>`).join('');
+}
+function addLayer(){
+  const last=logLayers[logLayers.length-1];
+  const de=last?(+last.a||0):0;
+  logLayers.push({de:de, a:+(de+1).toFixed(2), nature:'Argile', etat:'', cat:'', qual:'', rqd:'', desc:''});
+  renderLog();
+}
+function delLayer(i){ logLayers.splice(i,1); renderLog(); }
+function upLayer(i,f,v){
+  const numF=['de','a','rqd'];
+  logLayers[i][f]=numF.includes(f)?(v===''?'':parseFloat(v)):v;
+  if(f==='cat'){ // §6.2 : contraindre la classe de qualité (A→1-5, B→3-5, C→5)
+    const allow=QUAL_BY_CAT[v||'']||[1,2,3,4,5];
+    if(logLayers[i].qual!=='' && logLayers[i].qual!=null && !allow.includes(+logLayers[i].qual)) logLayers[i].qual='';
+    renderLogTable();
+  }
+  const vis=document.getElementById('logVisual'); if(vis) vis.innerHTML=drawBoreholeLog(logLayers, nappeVal());
+  const lg=document.getElementById('logLegend'); if(lg) lg.innerHTML=soilLegendHTML(logLayers)+qualLegendHTML(logLayers);
+}
+
+/* ---------- Log de sondage moderne (autonome) ---------- */
+function drawBoreholeLog(layers, nappe){
+  if(!layers||!layers.length) return '<div class="empty" style="padding:26px"><div class="eico">🪨</div><p>Aucune couche saisie.<br>Ajoutez la coupe du sondage carotté ci-dessus.</p></div>';
+  const P='bl', W=336, mL=34, colX=mL, colW=58, txtX=colX+colW+9;
+  const dMax=Math.max(1, ...layers.map(l=>+l.a||0), nappe||0);
+  const pxM=Math.max(20, Math.min(50, 300/dMax));
+  const top=18, H=top+dMax*pxM+16, yOf=d=>top+d*pxM;
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="DM Sans,system-ui,sans-serif">`+svgPatterns(P);
+  layers.forEach(l=>{
+    const de=+l.de||0, a=+l.a||0; if(a<=de) return;
+    const y0=yOf(de), h=yOf(a)-y0, soil=SOILS[l.nature]||{c:'#888',p:''};
+    s+=`<rect x="${colX}" y="${y0}" width="${colW}" height="${h}" fill="${soil.c}" stroke="#0d1b2a" stroke-width="0.8"/>`;
+    if(soil.p) s+=`<rect x="${colX}" y="${y0}" width="${colW}" height="${h}" fill="url(#${P}-${soil.p})"/>`;
+    if(l.qual) s+=`<rect x="${colX}" y="${y0}" width="5" height="${h}" fill="${QUALCOL[+l.qual]||'#888'}"/>`;
+    const ym=(y0+yOf(a))/2;
+    const titre=esc(l.nature||'')+(l.etat?' — '+esc(String(l.etat).toLowerCase()):'');
+    s+=`<text x="${txtX}" y="${ym-1}" font-size="11" font-weight="600" fill="#e8eef5">${titre}</text>`;
+    let l2=esc(l.desc||'');
+    if(l.qual) l2+=(l2?' · ':'')+'cl.'+l.qual+(l.cat?' ('+l.cat+')':'');
+    if(l.rqd!=='' && l.rqd!=null) l2+=(l2?' · ':'')+'RQD '+l.rqd+'%';
+    if(l2) s+=`<text x="${txtX}" y="${ym+11}" font-size="9.5" fill="#9fb0c0">${l2.slice(0,44)}</text>`;
+  });
+  s+=`<line x1="${mL}" y1="${top}" x2="${mL}" y2="${yOf(dMax)}" stroke="#3a4a5c" stroke-width="1"/>`;
+  const bounds=new Set([0]); layers.forEach(l=>{bounds.add(+l.de||0);bounds.add(+l.a||0);});
+  [...bounds].sort((a,b)=>a-b).forEach(d=>{const y=yOf(d);
+    s+=`<line x1="${mL-4}" y1="${y}" x2="${mL}" y2="${y}" stroke="#3a4a5c" stroke-width="1"/>`;
+    s+=`<text x="${mL-6}" y="${y+3}" font-size="9" text-anchor="end" fill="#8fa3b8">${(+d).toFixed(1)}</text>`;
+  });
+  if(nappe>0 && nappe<=dMax){const y=yOf(nappe);
+    s+=`<line x1="${colX}" y1="${y}" x2="${W-6}" y2="${y}" stroke="#2484ec" stroke-width="1.3" stroke-dasharray="5 3"/>`;
+    s+=`<path d="M${colX+colW/2-5},${y-9} L${colX+colW/2+5},${y-9} L${colX+colW/2},${y-1} Z" fill="#2484ec"/>`;
+    s+=`<text x="${W-6}" y="${y-3}" font-size="9" text-anchor="end" fill="#2484ec">nappe ${nappe} m</text>`;
+  }
+  return s+'</svg>';
+}
+
+/* ---------- Figure combinée : LOG PRESSIOMÉTRIQUE ---------- */
+function drawPressioLog(layers, results, nappe){
+  const hasLog=layers&&layers.length, hasRes=results&&results.length;
+  if(!hasLog && !hasRes) return '<div class="empty" style="padding:24px"><div class="eico">📊</div><p>Saisissez une coupe (onglet Log) et calculez des profondeurs<br>pour générer le log pressiométrique.</p></div>';
+  const P='pl', mL=30, lithoX=mL, lithoW=54, gap=10;
+  const emX=lithoX+lithoW+18, emW=130, plX=emX+emW+14, plW=130, W=plX+plW+14;
+  const dMax=Math.max(1, ...(layers||[]).map(l=>+l.a||0), ...(results||[]).map(r=>r.depth));
+  const pxM=Math.max(22, Math.min(42, 300/dMax));
+  const top=34, H=top+dMax*pxM+16, yOf=d=>top+d*pxM;
+  const EMmax=hasRes?Math.max(...results.map(r=>r.EM))*1.05:1;
+  const pLmax=hasRes?Math.max(...results.map(r=>r.pL*0.1))*1.05:1;
+  const emBarW=emW-32, plBarW=plW-32;
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="${W}" xmlns="http://www.w3.org/2000/svg" font-family="DM Sans,system-ui,sans-serif">`+svgPatterns(P);
+  // titres de pistes
+  s+=`<text x="${lithoX+lithoW/2}" y="13" font-size="10" font-weight="700" text-anchor="middle" fill="#8fa3b8">Litho.</text>`;
+  s+=`<text x="${emX}" y="13" font-size="10" font-weight="700" fill="#2484ec">EM (MPa)</text>`;
+  if(hasRes) s+=`<text x="${emX+emBarW}" y="13" font-size="8" text-anchor="end" fill="#5a6b7c">${(EMmax/1.05).toFixed(0)}</text>`;
+  s+=`<text x="${plX}" y="13" font-size="10" font-weight="700" fill="#15b896">pL (MPa)</text>`;
+  if(hasRes) s+=`<text x="${plX+plBarW}" y="13" font-size="8" text-anchor="end" fill="#5a6b7c">${(pLmax/1.05).toFixed(1)}</text>`;
+  // lithologie
+  (layers||[]).forEach(l=>{
+    const de=+l.de||0, a=+l.a||0; if(a<=de) return;
+    const y0=yOf(de), h=yOf(a)-y0, soil=SOILS[l.nature]||{c:'#888',p:''};
+    s+=`<rect x="${lithoX}" y="${y0}" width="${lithoW}" height="${h}" fill="${soil.c}" stroke="#0d1b2a" stroke-width="0.7"/>`;
+    if(soil.p) s+=`<rect x="${lithoX}" y="${y0}" width="${lithoW}" height="${h}" fill="url(#${P}-${soil.p})"/>`;
+    if(h>13){const ym=y0+h/2; s+=`<text x="${lithoX+lithoW/2}" y="${ym+3}" font-size="8" text-anchor="middle" fill="#0d1b2a" font-weight="700">${esc((l.nature||'').slice(0,9))}</text>`;}
+  });
+  // axe profondeur
+  s+=`<line x1="${mL}" y1="${top}" x2="${mL}" y2="${yOf(dMax)}" stroke="#3a4a5c"/>`;
+  const marks=new Set([0,+dMax.toFixed(2)]); (layers||[]).forEach(l=>{marks.add(+l.de||0);marks.add(+l.a||0);}); (results||[]).forEach(r=>marks.add(r.depth));
+  [...marks].sort((a,b)=>a-b).forEach(d=>{const y=yOf(d);
+    s+=`<line x1="${mL-3}" y1="${y}" x2="${mL}" y2="${y}" stroke="#3a4a5c"/><text x="${mL-5}" y="${y+3}" font-size="8" text-anchor="end" fill="#8fa3b8">${(+d).toFixed(1)}</text>`;});
+  // lignes de base EM & pL
+  s+=`<line x1="${emX}" y1="${top}" x2="${emX}" y2="${yOf(dMax)}" stroke="#2a3a4c"/>`;
+  s+=`<line x1="${plX}" y1="${top}" x2="${plX}" y2="${yOf(dMax)}" stroke="#2a3a4c"/>`;
+  // résultats
+  const bh=Math.min(15, pxM*0.5);
+  (results||[]).forEach(r=>{
+    const y=yOf(r.depth), col=CATCOL[r.cat]||'#888';
+    s+=`<line x1="${mL}" y1="${y}" x2="${W-8}" y2="${y}" stroke="rgba(255,255,255,.07)" stroke-dasharray="3 3"/>`;
+    // pastille catégorie dans l'inter-piste
+    s+=`<circle cx="${lithoX+lithoW+9}" cy="${y}" r="6.5" fill="${col}"/><text x="${lithoX+lithoW+9}" y="${y+3}" font-size="8" text-anchor="middle" fill="#fff" font-weight="700">${r.cat}</text>`;
+    // barre EM
+    const emL=Math.max(2,(r.EM/EMmax)*emBarW);
+    s+=`<rect x="${emX}" y="${y-bh/2}" width="${emL}" height="${bh}" rx="2" fill="${col}" opacity="0.88"/>`;
+    s+=`<text x="${emX+emL+3}" y="${y+3}" font-size="8" fill="#cdd9e5">${r.EM.toFixed(1)}</text>`;
+    // barre pL + repère pf
+    const plL=Math.max(2,((r.pL*0.1)/pLmax)*plBarW), pfL=((r.Pf*0.1)/pLmax)*plBarW;
+    s+=`<rect x="${plX}" y="${y-bh/2}" width="${plL}" height="${bh}" rx="2" fill="${col}" opacity="0.88"/>`;
+    s+=`<line x1="${plX+pfL}" y1="${y-bh/2-1.5}" x2="${plX+pfL}" y2="${y+bh/2+1.5}" stroke="#0d1b2a" stroke-width="1.6"/>`;
+    s+=`<text x="${plX+plL+3}" y="${y+3}" font-size="8" fill="#cdd9e5">${(r.pL*0.1).toFixed(2)}</text>`;
+  });
+  // nappe
+  if(nappe>0 && nappe<=dMax){const y=yOf(nappe);
+    s+=`<line x1="${lithoX}" y1="${y}" x2="${lithoX+lithoW}" y2="${y}" stroke="#2484ec" stroke-width="1.2" stroke-dasharray="4 2"/>`;
+    s+=`<path d="M${lithoX+lithoW/2-4},${y-7} L${lithoX+lithoW/2+4},${y-7} L${lithoX+lithoW/2},${y} Z" fill="#2484ec"/>`;
+  }
+  return s+'</svg>';
+}
+
+function renderProfil(){
+  var todo=[];
+  for(var i=0;i<depths.length;i++){ if(!depths[i]._res && _essaiRows(depths[i]).length>=4) todo.push(i); }
+  if(!todo.length){ __pressioDrawProfil(); return; }
+  var chain=Promise.resolve();
+  todo.forEach(function(i){ chain=chain.then(function(){ return window.__geofamBridge.calc(ENG_ESSAI, buildEssaiInput(i)).then(function(resp){ if(resp&&resp.ok&&resp.output&&!resp.output.erreur){ mapEssaiOutput(resp.output, i); } }); }); });
+  chain.then(function(){ __pressioDrawProfil(); }).catch(function(){ __pressioDrawProfil(); });
+}
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
+function updateInfoBars() {
+  const projet  = document.getElementById('p_projet')?.value   || '—';
+  const sondage = document.getElementById('p_sondage')?.value  || '—';
+  const date    = document.getElementById('p_date')?.value     || '—';
+  const sonde   = document.getElementById('p_sonde')?.value    || '—';
+  const gaine   = document.getElementById('p_gaine')?.value    || '—';
+  const op      = document.getElementById('p_operateur')?.value|| '—';
+  const Vs      = document.getElementById('p_v0')?.value       || '—';
+  const a       = document.getElementById('p_a')?.value        || '—';
+
+  const label = `${sondage} · ${projet}`;
+  const sondeShort = sonde.split('—')[0].trim();
+  const dateF = date ? new Date(date).toLocaleDateString('fr-FR') : '—';
+
+  ['etal','calib'].forEach(id => {
+    const set = (sid, val) => { const el=document.getElementById(id+'_ib_'+sid); if(el) el.textContent=val; };
+    set('projet', label);
+    set('sonde',  sondeShort + ' · Vs=' + Vs + ' cm³');
+    set('date',   dateF);
+    set('gaine',  gaine + ' · a=' + a + ' cm³/MPa');
+    set('op',     op || '—');
+  });
+}
+
+function updateHdr(){
+  const s=document.getElementById('p_sondage').value||'—';
+  const p=document.getElementById('p_projet').value||'Nouveau sondage';
+  document.getElementById('hdrSub').textContent=s+' · '+p;
+  document.getElementById('profSond').textContent=s;
+  updateInfoBars();
+}
+
+/* =========================================================
+   EXPORT / IMPORT / SAUVEGARDE
+   ========================================================= */
+function gatherAll(){
+  const ids=['projet','chantier','sondage','equipe','operateur','date','sonde','gaine','passe','zc','nappe','pdiff','calib','a','ph','pe','v0','k0','gamma'];
+  const pr={};ids.forEach(k=>{const e=document.getElementById('p_'+k);if(e)pr[k]=e.value;});
+  return{projet:pr,depths:depths.map(d=>({label:d.label,pf_idx:d.pf_idx,plm_idx:d.plm_idx,rows:d.rows})),logLayers:logLayers,etalRows:etalRows,calibRows:calibRows};
+}
+function exportJSON(){const d=gatherAll();dl(JSON.stringify(d,null,2),`pressio_${d.projet.sondage||'BH'}.json`,'application/json');toast('JSON exporté ✓','ok');}
+function exportCSV(){
+  const d=depths[cur];const s=document.getElementById('p_sondage').value||'BH';
+  let c=`Sondage;${s}\nProfondeur;${d.label}\n\nN;P_bar;V15_cm3;V30_cm3;V60_cm3;Delta60_30\n`;
+  d.rows.forEach((r,i)=>{const dv=(+r.v60||0)-(+r.v30||0);c+=`${i+1};${r.p};${r.v15??''};${r.v30??''};${r.v60??''};${dv}\n`;});
+  if(d._res)c+=`\nEM_MPa;${d._res.EM.toFixed(3)};PLM_MPa;${(d._res.pL*0.1).toFixed(4)};Pf_MPa;${(d._res.Pf*0.1).toFixed(4)};alpha;${d._res.alpha.toFixed(2)}\n`;
+  dl(c,`pressio_${s}_${d.label.replace(' ','')}.csv`,'text/csv;charset=utf-8;');toast('CSV ✓','ok');
+}
+function exportAllCSV(){
+  const s=document.getElementById('p_sondage').value||'BH';
+  let c=`Sondage;${s}\nProjet;${document.getElementById('p_projet').value}\n\nProfondeur;EM_MPa;PLM_MPa;Pf_MPa;EM_sur_PLM;alpha;Cat\n`;
+  depths.forEach(d=>{if(d._res)c+=`${d.label};${d._res.EM.toFixed(3)};${(d._res.pL*0.1).toFixed(4)};${(d._res.Pf*0.1).toFixed(4)};${d._res.ratio.toFixed(2)};${d._res.alpha.toFixed(2)};${d._res.cat}\n`;});
+  depths.forEach(d=>{
+    c+=`\nProfondeur;${d.label}\nN;P_bar;V15;V30;V60;Dv\n`;
+    d.rows.forEach((r,i)=>{const dv=(+r.v60||0)-(+r.v30||0);c+=`${i+1};${r.p};${r.v15??''};${r.v30??''};${r.v60??''};${dv}\n`;});
+  });
+  dl(c,`pressio_${s}_global.csv`,'text/csv;charset=utf-8;');toast('CSV global ✓','ok');
+}
+function importJSON(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{applyData(JSON.parse(ev.target.result));toast('Chargé ✓','ok');}catch{toast('JSON invalide','err');}};r.readAsText(f);}
+function applyData(d){
+  if(d.projet){const ids=['projet','chantier','sondage','equipe','operateur','date','sonde','gaine','passe','zc','nappe','pdiff','calib','a','ph','pe','v0','k0','gamma'];ids.forEach(k=>{const e=document.getElementById('p_'+k);if(e&&d.projet[k]!==undefined)e.value=d.projet[k];});}
+  if(d.depths){depths=d.depths;depths.forEach(function(dd){dd._res=null;});cur=0;}
+  if(d.logLayers) logLayers=d.logLayers;
+  if(d.etalRows) etalRows=d.etalRows;
+  if(d.calibRows) calibRows=d.calibRows;
+  renderDepthBar();renderMrows();updateHdr();
+  if(typeof renderLog==='function') renderLog();
+  if(typeof renderEtalon==='function') renderEtalon();
+  if(typeof renderCalibrage==='function') renderCalibrage();
+}
+function dl(c,n,m){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{type:m}));a.download=n;a.click();}
+function saveLocal(){ try{ window.__geofamBridge.storeSet("state", gatherAll()); }catch(e){} toast('Sauvegardé ✓','ok'); }
+function loadLocal(){
+  try{ window.__geofamBridge.storeGet("state").then(function(v){ if(v){ try{ applyData(typeof v==="string"?JSON.parse(v):v); }catch(e){} } }); }catch(e){}
+  return false;
+}
+
+/* =========================================================
+   MODAL & TOAST
+   ========================================================= */
+let _mcb=null;
+function openMod(t){
+  if(t==='reset'){document.getElementById('modTitle').textContent='Tout effacer ?';document.getElementById('modMsg').textContent='Le log, les mesures, l\'étalonnage et le calibrage seront effacés. L\'application repart à vide.';document.getElementById('modOk').textContent='Tout effacer';_mcb=()=>{initEmpty();renderDepthBar();renderMrows();if(typeof renderEtalon==='function')renderEtalon();if(typeof renderCalibrage==='function')renderCalibrage();if(typeof renderLog==='function')renderLog();updateHdr();toast('Réinitialisé à vide ✓','ok');};}
+  document.getElementById('modOv').classList.add('open');
+}
+function closeMod(e){if(!e||e.target===document.getElementById('modOv')){document.getElementById('modOv').classList.remove('open');_mcb=null;}}
+document.getElementById('modOk').onclick=()=>{document.getElementById('modOv').classList.remove('open');if(_mcb)_mcb();};
+
+// Auto-remplissage Vs quand on change le type de sonde
+function autoFillSonde() {
+  const sel = document.getElementById('p_sonde');
+  const opt = sel.options[sel.selectedIndex];
+  const vs  = opt.getAttribute('data-vs');
+  if (vs) {
+    document.getElementById('p_v0').value = vs;
+    toast('Vs = ' + vs + ' cm³ (sonde ' + opt.text.split('—')[0].trim() + ')', 'ok');
+  }
+}
+
+// Type de gaine — informatif seulement
+// a doit venir du PV d'étalonnage, pas du type de gaine
+function autoFillGaine() {
+  // Ne modifie pas a — la valeur vient de l'étalonnage sonde
+}
+
+// Synchroniser Zc du champ appareillage avec le calculateur Ph
+function syncZc() {
+  const zc = document.getElementById('p_zc').value;
+  document.getElementById('calc_zc').value = zc;
+  calcPh();
+}
+
+// Calculer u0 et afficher l'effet de la nappe
+function calcU0() {
+  const zw     = parseFloat(document.getElementById('p_nappe').value);
+  const zs     = parseFloat(document.getElementById('calc_zs').value) || 0;
+  const hint   = document.getElementById('nappe_hint');
+  const alert  = document.getElementById('nappe_alert');
+  if (isNaN(zw) || zw <= 0) {
+    hint.textContent  = 'Pas de nappe — u₀ = 0';
+    hint.style.color  = 'var(--t3)';
+    alert.style.display = 'none';
+    return;
+  }
+  if (zs > 0 && zs > zw) {
+    const u0 = (0.1 * (zs - zw)).toFixed(3);
+    hint.innerHTML  = '→ u₀ = γw×(Zs−Zw) = <strong style="color:var(--bl)">' + u0 + ' bar</strong>';
+    hint.style.color = 'var(--bl)';
+    alert.style.display = 'block';
+    alert.innerHTML = '💧 <strong>Essai sous nappe</strong> (Zs=' + zs + ' m > Zw=' + zw + ' m) · '
+      + 'u₀ = ' + u0 + ' bar · Les pressions nettes p<sub>f</sub>* et p<sub>L</sub>* '
+      + 'seront corrigées de la pression interstitielle.';
+  } else if (zs > 0) {
+    hint.textContent = '→ Nappe à ' + zw + ' m, essai au-dessus — u₀ = 0';
+    hint.style.color = 'var(--t3)';
+    alert.style.display = 'none';
+  } else {
+    hint.textContent = 'Renseignez Zs dans le calculateur Ph pour voir u₀';
+    hint.style.color = 'var(--t3)';
+    alert.style.display = 'none';
+  }
+}
+
+
+
+/* =========================================================
+   CALIBRAGE — Courbe Pc=f(V), correction de gaine
+   ========================================================= */
+
+let calibRows = [];
+let chartCalib = null;
+
+function renderCalibrage() {
+  updateInfoBars();
+  renderCalibRows();
+}
+
+function renderCalibRows() {
+  const cont = document.getElementById('calibCont');
+  if(!cont) return;
+  let h = '';
+  calibRows.forEach((r,i) => {
+    const dv = (r.v60 !== '' && r.v30 !== '') ? (+r.v60 - +r.v30) : null;
+    const dvTxt = dv !== null ? dv.toFixed(0) : '—';
+    const dvCls = dv === null ? '' : dv > 5 ? 'big' : dv === 0 ? 'ok' : '';
+    h += `<div class="tbl-row" style="grid-template-columns:26px 1fr 1fr 1fr 1fr 48px 28px">
+      <span class="rn">${i+1}</span>
+      <input class="ci" type="number" inputmode="decimal" step="0.5" value="${r.p!==undefined?r.p:''}"
+        onchange="upCalib(${i},'p',this.value)" onblur="renderCalibRows()">
+      <input class="ci" type="number" inputmode="numeric" step="1" value="${r.v15!==undefined?r.v15:''}"
+        onchange="upCalib(${i},'v15',this.value)" onblur="renderCalibRows()">
+      <input class="ci" type="number" inputmode="numeric" step="1" value="${r.v30!==undefined?r.v30:''}"
+        onchange="upCalib(${i},'v30',this.value)" onblur="renderCalibRows()">
+      <input class="ci" type="number" inputmode="numeric" step="1" value="${r.v60!==undefined?r.v60:''}"
+        onchange="upCalib(${i},'v60',this.value)" onblur="renderCalibRows()">
+      <div class="cdv ${dvCls}">${dvTxt}</div>
+      <button class="db" onclick="delCalib(${i})">✕</button>
+    </div>`;
+  });
+  cont.innerHTML = h;
+}
+
+function upCalib(i,f,v){ calibRows[i][f]=v===''?'':parseFloat(v); }
+function delCalib(i){ calibRows.splice(i,1); renderCalibRows(); }
+function addCalibRow(){
+  const last = calibRows[calibRows.length-1]||{p:0,v15:0,v30:0,v60:0};
+  calibRows.push({p:+(parseFloat(last.p||0)+1).toFixed(0), v15:'', v30:'', v60:''});
+  renderCalibRows();
+  setTimeout(()=>document.getElementById('calibCont').scrollIntoView({behavior:'smooth',block:'end'}),60);
+}
+
+function calcCalibrage(){
+  var pts=calibRows.filter(function(r){return r.p!==''&&r.v60!==''&&r.v60!==undefined;}).map(function(r){return {p:+r.p,v:+r.v60};});
+  if(pts.length<3){ toast('Saisissez au moins 3 points.','err'); return; }
+  pts.sort(function(a,b){return a.p-b.p;});
+  var el=document.getElementById("calibResult"); if(el) el.innerHTML='<div class="hint">Calcul en cours…</div>';
+  var rows=pts.map(function(r){return {p:r.p,v60:r.v};});
+  var inp={rows:rows}; var pj=document.getElementById("p_projet"); if(pj&&pj.value)inp.projet=String(pj.value);
+  window.__geofamBridge.calc(ENG_CALIB, inp).then(function(resp){
+    if(!resp||!resp.ok||!resp.output){ if(el) el.innerHTML='<div class="warnbox">Calibrage indisponible : '+_escP(_gerrP(resp&&resp.error))+'</div>'; return; }
+    var o=resp.output;
+    var e={ pts:pts, c0:_pnum(o.c0), c1:_pnum(o.c1), c2:_pnum(o.c2), R2:_pnum(o.R2), rms:_pnum(o.rms), a_calib:_pnum(o.a),
+      residuals:(Array.isArray(o.residus)?o.residus:[]).map(function(r){return {v:_pnum(r.p),pc:_pnum(r.v60Mesure),phat:_pnum(r.v60Ajuste),res:_pnum(r.residu)};}) };
+    renderCalibResult(e);
+    setTimeout(function(){ try{ drawCalibChart(e); }catch(e2){} }, 100);
+  }).catch(function(err){ if(el) el.innerHTML='<div class="warnbox">Pont de calcul indisponible : '+_escP((err&&err.message)||err)+'</div>'; });
+}
+
+
+
+function renderCalibResult(e) {
+  const el = document.getElementById('calibResult');
+  const qual = e.R2>0.999?{cls:'ok',txt:'Excellent'}: e.R2>0.99?{cls:'warn',txt:'Bon'}: {cls:'bad',txt:'Vérifier'};
+  const eq = `Pc = ${e.c0.toExponential(3)} + ${e.c1.toExponential(3)}×V + ${e.c2.toExponential(3)}×V²`;
+
+  el.innerHTML = `
+  <div class="kg3" style="margin-top:12px">
+    <div class="kp te"><div class="kl">c₀ (constante)</div><div class="kv sm" style="font-size:13px">${e.c0.toExponential(3)}</div></div>
+    <div class="kp te"><div class="kl">c₁ (×V)</div><div class="kv sm" style="font-size:13px">${e.c1.toExponential(3)}</div></div>
+    <div class="kp te"><div class="kl">c₂ (×V²)</div><div class="kv sm" style="font-size:13px">${e.c2.toExponential(3)}</div></div>
+  </div>
+  <div class="kp ${qual.cls}" style="margin-bottom:12px;padding:10px 14px">
+    <div class="kl">R² = ${e.R2.toFixed(6)} — ${qual.txt} · RMS = ${e.rms.toFixed(4)} bar</div>
+    <div style="font-size:11px;color:var(--t2);margin-top:4px;font-family:var(--mo)">${eq}</div>
+  </div>
+
+  <div class="card" style="background:rgba(21,184,150,.05);border-color:rgba(21,184,150,.2)">
+    <div class="ch" style="color:var(--te)"><span class="dot t"></span>Courbe de calibrage Pc = f(V)</div>
+    <div class="leg">
+      <span><span class="ldo" style="background:#f0a500"></span>Points mesurés</span>
+      <span><span class="lsq" style="background:var(--te)"></span>Courbe ajustée</span>
+    </div>
+    <div style="position:relative;width:100%;height:280px"><canvas id="chartCalib" role="img" aria-label="Courbe de calibrage Pc=f(V)"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="ch"><span class="dot a"></span>Tableau des résidus</div>
+    <div class="rtw"><table class="rt">
+      <thead><tr><th>P (bar)</th><th>V60 mesuré (cm³)</th><th>V60 ajusté</th><th>Résidu</th></tr></thead>
+      <tbody>${e.residuals.map(r=>`<tr>
+        <td>${r.v}</td><td>${r.pc}</td><td>${r.phat}</td>
+        <td style="color:${Math.abs(r.res)>0.02?'var(--re)':Math.abs(r.res)>0.005?'var(--am)':'var(--te)'}">${r.res>0?'+':''}${r.res}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </div>
+
+  <div class="card" style="background:var(--gr2);border-color:rgba(41,184,90,.25)">
+    <div class="ch" style="color:var(--gr)"><span class="dot g"></span>Application — coefficient a</div>
+    <p style="font-size:12px;color:var(--t2);line-height:1.8">
+      Le calibrage en tube indéformable fournit le coefficient de correction de volume :<br>
+      <strong style="color:var(--tx)">a = pente dV/dP = ${(e.a_calib*10).toFixed(3)} cm³/MPa</strong> → correction <strong style="color:var(--tx)">Vc = Vr − a×Pr</strong><br>
+      <span style="color:var(--t3)">Courbe Pc=f(V) ci-dessus (R² = ${e.R2.toFixed(4)}) à titre indicatif.</span>
+    </p>
+    <button class="bp" style="background:linear-gradient(135deg,var(--gr),#1a7a3a);box-shadow:0 4px 18px rgba(41,184,90,.3);margin-top:8px"
+      onclick="applyCalibrage(${e.a_calib})">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+      Appliquer a dans les corrections
+    </button>
+  </div>`;
+}
+
+function drawCalibChart(e) {
+  if(chartCalib){chartCalib.destroy();chartCalib=null;}
+  const gc='rgba(255,255,255,.05)', tc='#8fa3b8';
+  const vMin=Math.min(...e.pts.map(r=>r.v))-20;
+  const vMax=Math.max(...e.pts.map(r=>r.v))+50;
+  const steps=60;
+  const curveData=[];
+  for(let i=0;i<=steps;i++){
+    const v=vMin+(vMax-vMin)*i/steps;
+    const pc=e.c0+e.c1*v+e.c2*v*v;
+    if(pc>=0) curveData.push({x:+v.toFixed(1),y:+pc.toFixed(4)});
+  }
+  chartCalib = new Chart(document.getElementById('chartCalib'),{
+    type:'scatter',
+    data:{datasets:[
+      {label:'Points mesurés', data:e.pts.map(r=>({x:r.v,y:r.pc})),
+       backgroundColor:'#f0a500',pointRadius:6,pointBorderColor:'#0d1b2a',pointBorderWidth:2},
+      {label:'Courbe ajustée Pc=f(V)', data:curveData, type:'line',
+       borderColor:'#15b896',backgroundColor:'rgba(21,184,150,.1)',
+       fill:true,pointRadius:0,borderWidth:2.5,showLine:true,tension:0}
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:true,labels:{color:tc,font:{size:11},boxWidth:14,padding:12}},
+        tooltip:{callbacks:{label:c=>`P=${c.parsed.x} bar  V60=${c.parsed.y} cm³`}}},
+      scales:{
+        x:{title:{display:true,text:'Pression P (bar)',color:tc,font:{size:11}},
+           grid:{color:gc},ticks:{color:tc,font:{size:11}},min:vMin},
+        y:{title:{display:true,text:'Volume V60 (cm³)',color:tc,font:{size:11}},
+           grid:{color:gc},ticks:{color:tc,font:{size:11}},min:0}
+      }
+    }
+  });
+}
+
+/* =========================================================
+   ÉTALONNAGE — Courbe V=f(P), calcul a, Vs, Pe
+   ========================================================= */
+
+let etalRows = [];
+let chartEtal = null;
+
+function renderEtalon() {
+  updateInfoBars();
+  renderEtalRows();
+  setTimeout(checkParamsLogic, 200);
+}
+
+function renderEtalRows() {
+  const cont = document.getElementById('etalCont');
+  if(!cont) return;
+  let h = '';
+  etalRows.forEach((r,i) => {
+    const dv = (r.v60 !== '' && r.v30 !== '') ? (+r.v60 - +r.v30) : null;
+    const dvTxt = dv !== null ? dv.toFixed(0) : '—';
+    const dvCls = dv === null ? '' : dv > 5 ? 'big' : dv === 0 ? 'ok' : '';
+    h += `<div class="tbl-row" style="grid-template-columns:26px 1fr 1fr 1fr 1fr 48px 28px">
+      <span class="rn">${i+1}</span>
+      <input class="ci" type="number" inputmode="decimal" step="0.5" value="${r.p!==undefined?r.p:''}"
+        onchange="upEtal(${i},'p',this.value)" onblur="renderEtalRows()">
+      <input class="ci" type="number" inputmode="numeric" step="1" value="${r.v15!==undefined?r.v15:''}"
+        onchange="upEtal(${i},'v15',this.value)" onblur="renderEtalRows()">
+      <input class="ci" type="number" inputmode="numeric" step="1" value="${r.v30!==undefined?r.v30:''}"
+        onchange="upEtal(${i},'v30',this.value)" onblur="renderEtalRows()">
+      <input class="ci" type="number" inputmode="numeric" step="1" value="${r.v60!==undefined?r.v60:''}"
+        onchange="upEtal(${i},'v60',this.value)" onblur="renderEtalRows()">
+      <div class="cdv ${dvCls}">${dvTxt}</div>
+      <button class="db" onclick="delEtal(${i})">✕</button>
+    </div>`;
+  });
+  cont.innerHTML = h;
+}
+
+function upEtal(i,f,v){ etalRows[i][f] = v===''?'':parseFloat(v); }
+function delEtal(i){ etalRows.splice(i,1); renderEtalRows(); }
+function addEtalRow(){
+  const last = etalRows[etalRows.length-1] || {p:0,v15:0,v30:0,v60:0};
+  etalRows.push({p:+(parseFloat(last.p||0)+1).toFixed(0), v15:'', v30:'', v60:''});
+  renderEtalRows();
+  setTimeout(()=>document.getElementById('etalCont').scrollIntoView({behavior:'smooth',block:'end'}),60);
+}
+
+function calcEtalonnage(){
+  var pts=etalRows.filter(function(r){return r.p!==''&&r.v60!==''&&r.v60!==undefined;}).map(function(r){return {p:+r.p,v:+r.v60};});
+  if(pts.length<3){ toast('Saisissez au moins 3 points.','err'); return; }
+  var el=document.getElementById("etalResult"); if(el) el.innerHTML='<div class="hint">Calcul en cours…</div>';
+  var rows=etalRows.filter(function(r){return r.p!==''&&r.v60!==''&&r.v60!==undefined;}).map(function(r){return {p:+r.p,v15:+r.v15||0,v30:+r.v30||0,v60:+r.v60};});
+  var inp={rows:rows}; var pj=document.getElementById("p_projet"); if(pj&&pj.value)inp.projet=String(pj.value);
+  window.__geofamBridge.calc(ENG_ETAL, inp).then(function(resp){
+    if(!resp||!resp.ok||!resp.output){ if(el) el.innerHTML='<div class="warnbox">Étalonnage indisponible : '+_escP(_gerrP(resp&&resp.error))+'</div>'; return; }
+    var o=resp.output;
+    var e={ a:_pnum(o.a), Vs:_pnum(o.Vs), Pe:_pnum(o.Pe), R2:_pnum(o.R2), rmsError:_pnum(o.rms),
+      pts:pts, V_pe:_pnum(o.vPe), Vs_reel:_pnum(o.vsReel),
+      residuals:(Array.isArray(o.residus)?o.residus:[]).map(function(r){return {p:_pnum(r.p),v:_pnum(r.vMesure),vhat:_pnum(r.vAjuste),res:_pnum(r.residu)};}) };
+    renderEtalResult(e);
+    setTimeout(function(){ try{ drawEtalChart(e); }catch(e2){} }, 100);
+  }).catch(function(err){ if(el) el.innerHTML='<div class="warnbox">Pont de calcul indisponible : '+_escP((err&&err.message)||err)+'</div>'; });
+}
+
+function renderEtalResult(e) {
+  const el = document.getElementById('etalResult');
+  const qual = e.R2 > 0.9999 ? {cls:'ok',txt:'Excellent'} :
+               e.R2 > 0.999  ? {cls:'ok',txt:'Très bon'}  :
+               e.R2 > 0.99   ? {cls:'warn',txt:'Acceptable'} :
+               {cls:'bad',txt:'Mauvais — vérifier les données'};
+
+  el.innerHTML = `
+  <div class="kg4" style="margin-top:12px">
+    <div class="kp pu"><div class="kl">pente air (≠ a)</div><div class="kv sm">${(e.a*10).toFixed(1)}</div><div class="ku">cm³/MPa</div></div>
+    <div class="kp bl"><div class="kl">Vs (droite ajustée)</div><div class="kv sm">${e.Vs.toFixed(1)}</div><div class="ku">cm³ (Vs réel=${e.Vs_reel||e.pts[0].v})</div></div>
+    <div class="kp am">
+    <div class="kl">Pe (à V=1,2×Vs)</div>
+    <div class="kv sm">${e.Pe.toFixed(3)}</div>
+    <div class="ku">bar · interpolé sur courbe</div>
+  </div>
+    <div class="kp ${qual.cls}"><div class="kl">R²</div><div class="kv sm">${e.R2.toFixed(6)}</div><div class="ku">${qual.txt}</div></div>
+  </div>
+
+  <div class="card" style="background:rgba(139,92,246,.06);border-color:rgba(139,92,246,.25)">
+    <div style="background:rgba(240,165,0,.08);border:1px solid rgba(240,165,0,.2);border-radius:var(--rs);padding:10px 13px;margin-bottom:10px;font-size:12px;color:var(--t2);line-height:1.7">
+      <strong style="color:var(--am)">📌 Pe = ${e.Pe.toFixed(3)} bar</strong> = pression lue sur la courbe d'étalonnage quand <strong style="color:var(--tx)">V = 1,2 × Vs = ${(1.2*e.pts[0].v).toFixed(0)} cm³</strong><br>
+      Cette valeur est <strong style="color:var(--tx)">interpolée directement sur vos mesures</strong> — pas calculée depuis la droite ajustée.<br>
+      <span style="color:var(--t3)">→ Utilisez "Appliquer" pour transférer Pe dans l'onglet Projet.</span>
+    </div>
+    <div class="ch" style="color:var(--pu)"><span class="dot p"></span>Droite ajustée V60 = ${e.Vs.toFixed(2)} + ${e.a.toFixed(4)} × P</div>
+    <div style="position:relative;width:100%;height:280px"><canvas id="chartEtal" role="img" aria-label="Courbe d étalonnage V=f(P)"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="ch"><span class="dot a"></span>Tableau des résidus</div>
+    <div class="rtw"><table class="rt">
+      <thead><tr><th>#</th><th>P (bar)</th><th>V mesuré (cm³)</th><th>V ajusté (cm³)</th><th>Résidu (cm³)</th></tr></thead>
+      <tbody>
+        ${e.residuals.map((r,i)=>`<tr>
+          <td>${i+1}</td><td>${r.p}</td><td>${r.v}</td><td>${r.vhat}</td>
+          <td style="color:${Math.abs(r.res)>2?'var(--re)':Math.abs(r.res)>0.5?'var(--am)':'var(--te)'}">${r.res>0?'+':''}${r.res}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+    <div class="hint">Erreur quadratique moyenne : ${e.rmsError.toFixed(3)} cm³</div>
+  </div>
+
+  <div class="card" style="background:var(--gr2);border-color:rgba(41,184,90,.25)">
+    <div class="ch" style="color:var(--gr)"><span class="dot g"></span>Appliquer dans les corrections</div>
+    <div style="background:rgba(41,184,90,.07);border:1px solid rgba(41,184,90,.2);border-radius:var(--rs);padding:10px 14px;margin-bottom:10px;font-size:12px;line-height:1.8">
+      L'étalonnage (sonde dans l'air) fournit :<br>
+      <strong style="color:var(--tx)">Vs = ${e.Vs.toFixed(1)} cm³</strong> · <strong style="color:var(--tx)">Pe = ${e.Pe.toFixed(3)} bar</strong><br>
+      <span style="color:var(--am)">⚠ La pente dans l'air (${(e.a*10).toFixed(0)} cm³/MPa) n'est PAS le coefficient a.</span><br>
+      <span style="color:var(--t3)">Le a de correction des volumes d'essai vient du <strong>calibrage</strong> (forage libre).</span>
+    </div>
+    <button class="bp" style="background:linear-gradient(135deg,var(--gr),#1a7a3a);box-shadow:0 4px 18px rgba(41,184,90,.3)"
+      onclick="applyEtalonnage(${e.a.toFixed(4)}, ${e.Vs.toFixed(1)}, ${e.Pe.toFixed(3)})">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+      Appliquer Vs et Pe dans les corrections
+    </button>
+  </div>`;
+}
+
+function drawEtalChart(e) {
+  if(chartEtal) { chartEtal.destroy(); chartEtal=null; }
+  const gc='rgba(255,255,255,.05)', tc='#8fa3b8';
+
+  /* Droite ajustée sur plage étendue */
+  const pMax  = Math.max(...e.pts.map(r=>r.p)) * 1.15;
+  const lineData = [
+    {x:0, y:+e.Vs.toFixed(2)},
+    {x:+pMax.toFixed(2), y:+(e.Vs + e.a*pMax).toFixed(2)}
+  ];
+  /* Ligne Pe verticale */
+  const peLine = [{x:+e.Pe.toFixed(3), y:0},{x:+e.Pe.toFixed(3), y:+e.V_pe.toFixed(2)}];
+  /* Ligne V=1.2Vs horizontale */
+  const vLine  = [{x:0, y:+e.V_pe.toFixed(2)},{x:+e.Pe.toFixed(3), y:+e.V_pe.toFixed(2)}];
+
+  chartEtal = new Chart(document.getElementById('chartEtal'), {
+    type:'scatter',
+    data:{ datasets:[
+      /* Points mesurés */
+      { label:'Points mesurés', data:e.pts.map(r=>({x:r.p,y:r.v})),
+        backgroundColor:'#f0a500', pointRadius:6, pointBorderColor:'#0d1b2a', pointBorderWidth:2 },
+      /* Droite ajustée V=Vs+aP */
+      { label:'V = Vs + a×P', data:lineData, type:'line',
+        borderColor:'#8b5cf6', backgroundColor:'transparent',
+        pointRadius:0, borderWidth:2.5, showLine:true, tension:0 },
+      /* Ligne Pe */
+      { label:'Pe', data:peLine, type:'line',
+        borderColor:'#e05252', backgroundColor:'transparent',
+        pointRadius:[0,4], pointBackgroundColor:'#e05252',
+        borderWidth:1.5, borderDash:[5,4], showLine:true },
+      /* Ligne 1.2Vs */
+      { label:'1,2×Vs', data:vLine, type:'line',
+        borderColor:'rgba(21,184,150,.6)', backgroundColor:'transparent',
+        pointRadius:0, borderWidth:1.5, borderDash:[5,4], showLine:true }
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ display:true, labels:{color:tc, font:{size:11}, boxWidth:14, padding:12} },
+        tooltip:{ callbacks:{ label:c=>`P=${c.parsed.x} bar  V=${c.parsed.y} cm³` }}
+      },
+      scales:{
+        x:{ title:{display:true,text:'Pression P (bar)',color:tc,font:{size:11}},
+            grid:{color:gc}, ticks:{color:tc,font:{size:11}}, min:0 },
+        y:{ title:{display:true,text:'Pression P (bar)',color:tc,font:{size:11}},
+            grid:{color:gc}, ticks:{color:tc,font:{size:11}} }
+      }
+    }
+  });
+
+  /* Annotations : Pe et 1,2×Vs labels */
+  setTimeout(()=>{
+    const cv=chartEtal; if(!cv) return;
+    const ctx=document.getElementById('chartEtal').getContext('2d');
+    const xS=cv.scales.x, yS=cv.scales.y;
+    ctx.save();
+    ctx.fillStyle='#e05252'; ctx.font='bold 10px DM Mono,monospace';
+    const peTxt = 'Pe='+e.Pe.toFixed(3)+' bar  (V=1,2×Vs='+e.V_pe.toFixed(0)+' cm³)';
+    ctx.fillText(peTxt, xS.getPixelForValue(e.Pe)+4, yS.getPixelForValue(e.V_pe)-6);
+    ctx.fillStyle='rgba(21,184,150,.9)';
+    ctx.fillText('1,2×Vs='+e.V_pe.toFixed(0)+' cm³', xS.left+4, yS.getPixelForValue(e.V_pe)-5);
+    ctx.restore();
+  }, 200);
+}
+
+function applyEtalonnage(a_etal, Vs, Pe) {
+  // L'étalonnage fournit Vs et Pe uniquement
+  // a (correction volumes) vient du calibrage (forage libre)
+  document.getElementById('p_v0').value = (+Vs).toFixed(1);
+  document.getElementById('p_pe').value = (+Pe).toFixed(4);
+  toast('Étalonnage → Vs=' + (+Vs).toFixed(1) + ' cm³  Pe=' + (+Pe).toFixed(4) + ' bar appliqués. a inchangé (calibrage).', 'ok');
+  goPage('projet', 2);
+}
+
+// Calibrage → donne a (pente Pc=f(P) en forage libre)
+// C'est CE a qui est utilisé pour corriger les volumes de l'essai
+function applyCalibrage(a_calib) {
+  const a_MPa = (+a_calib) * 10;   // pente cm³/bar → cm³/MPa (unité normative)
+  document.getElementById('p_a').value = a_MPa.toFixed(4);
+  toast('Calibrage appliqué → a = ' + a_MPa.toFixed(3) + ' cm³/MPa (correction volumes)', 'ok');
+  goPage('projet', 2);
+}
+
+
+/* =========================================================
+   VALIDATION DES PARAMÈTRES — Alertes logique/douteux/irrationnel
+   ========================================================= */
+function checkParamsLogic() {
+  const a   = parseFloat(document.getElementById('p_a').value)   || 0;
+  const Vs  = parseFloat(document.getElementById('p_v0').value)  || 535;
+  const Pe  = parseFloat(document.getElementById('p_pe').value)  || 0;
+  const Ph  = parseFloat(document.getElementById('p_ph').value)  || 0;
+  const sonde = document.getElementById('p_sonde')?.value || '';
+
+  // Plages Vs selon type de sonde
+  const Vs_ranges = {
+    '44': [240,340], '52': [350,450], '60': [480,600],
+    '75': [720,920], '90': [1050,1350]
+  };
+  const diam = sonde.match(/Ø\s*(\d+)/)?.[1] || '60';
+  const [Vs_min, Vs_max] = Vs_ranges[diam] || [480,600];
+
+  const alerts = [];
+
+  // Vérif a — NF EN ISO 22476-4 §B.4.2.1 : a < 6 cm³/MPa
+  if(a < 0) {
+    alerts.push({level:'err', msg:'a = '+a+' cm³/MPa est NÉGATIF — impossible physiquement. Vérifiez l\'étalonnage.'});
+  } else if(a === 0) {
+    alerts.push({level:'info', msg:'a = 0 → aucune correction de volume. Renseignez a (étalonnage tube indéformable) ou laissez 0 en sol mou (§D.1.4 NOTE 1).'});
+  } else if(a <= 4.0) {
+    alerts.push({level:'ok', msg:'a = '+a.toFixed(3)+' cm³/MPa ✓ — valeur normale (§B.4.2.1 : a < 6).'});
+  } else if(a <= 6.0) {
+    alerts.push({level:'warn', msg:'a = '+a.toFixed(3)+' cm³/MPa — proche du plafond normatif (6 cm³/MPa). Vérifiez le remplissage en eau et l\'absence de fuite.'});
+  } else {
+    alerts.push({level:'err', msg:'a = '+a.toFixed(3)+' cm³/MPa — DÉPASSE le plafond de 6 cm³/MPa (§B.4.2.1). Indique un remplissage inadéquat, une fuite ou un autre défaut du circuit.'});
+  }
+
+  // Vérif Vs
+  if(Vs < Vs_min || Vs > Vs_max) {
+    alerts.push({level:'warn', msg:'Vs = '+Vs+' cm³ — hors plage attendue pour sonde Ø'+diam+' mm ('+Vs_min+'–'+Vs_max+' cm³). Vérifiez le type de sonde.'});
+  } else {
+    alerts.push({level:'ok', msg:'Vs = '+Vs+' cm³ ✓ — cohérent avec sonde Ø'+diam+' mm.'});
+  }
+
+  // Vérif Pe — NF EN ISO 22476-4 §B.4.3 NOTE : pel varie typiquement 0,05–0,2 MPa
+  if(Pe <= 0) {
+    alerts.push({level:'err', msg:'Pe = '+Pe+' bar est nul ou négatif — valeur non physique. Relire pel sur la courbe d\'étalonnage à V = 700 cm³.'});
+  } else if(Pe <= 2.0) {
+    alerts.push({level:'ok', msg:'Pe = '+Pe.toFixed(3)+' bar ✓ — résistance propre normale (§B.4.3 : 0,05–0,2 MPa).'});
+  } else if(Pe <= 3.5) {
+    alerts.push({level:'warn', msg:'Pe = '+Pe.toFixed(3)+' bar — au-dessus de la plage typique (0,05–0,2 MPa). Membrane/gaine peut-être ancienne.'});
+  } else {
+    alerts.push({level:'err', msg:'Pe = '+Pe.toFixed(3)+' bar — IRRATIONNEL. Vérifiez la lecture sur la courbe d\'étalonnage de résistance propre.'});
+  }
+
+  // Vérif Ph
+  if(Ph < 0) {
+    alerts.push({level:'err', msg:'Ph = '+Ph+' bar est négatif — impossible. Ph = γw×(Zs+Zc) ≥ 0.'});
+  } else if(Ph === 0) {
+    alerts.push({level:'warn', msg:'Ph = 0 — normal si essai en surface. Sinon calculez Ph = 0,1×(Zs+Zc).'});
+  } else if(Ph > 5) {
+    alerts.push({level:'warn', msg:'Ph = '+Ph+' bar — essai à grande profondeur (Zs+Zc > 50 m). Vérifiez.'});
+  }
+
+  // Affichage
+  const cont = document.getElementById('params_alerts');
+  if(!cont) return;
+  if(alerts.length === 0){cont.innerHTML='';return;}
+
+  const icons = {ok:'✓', warn:'⚠', err:'✗', info:'ℹ'};
+  const colors = {ok:'var(--gr)', warn:'var(--am)', err:'var(--re)', info:'var(--bl)'};
+  const bgs    = {ok:'var(--gr2)', warn:'var(--am2)', err:'var(--re2)', info:'var(--bl2)'};
+
+  cont.innerHTML = alerts.map(a => `
+    <div style="display:flex;gap:8px;align-items:flex-start;padding:8px 12px;
+      background:${bgs[a.level]};border-left:3px solid ${colors[a.level]};
+      border-radius:var(--rs);margin-bottom:6px;font-size:12px;line-height:1.5">
+      <span style="color:${colors[a.level]};font-weight:700;font-size:14px;flex-shrink:0">${icons[a.level]}</span>
+      <span style="color:var(--tx)">${a.msg}</span>
+    </div>`).join('');
+}
+function calcPh() {
+  const zs = parseFloat(document.getElementById('calc_zs').value) || 0;
+  const zc = parseFloat(document.getElementById('calc_zc').value) || 0.8;
+  const ph = (0.1 * (zs + zc)).toFixed(3);
+  document.getElementById('calc_ph_result').value = ph;
+}
+function applyPh() {
+  const ph = document.getElementById('calc_ph_result').value;
+  if (ph) {
+    document.getElementById('p_ph').value = ph;
+    toast('Ph = ' + ph + ' bar appliqué ✓', 'ok');
+  }
+}
+
+/* =========================================================
+   EXEMPLE FICTIF — jeu de données complet de démonstration
+   (sondage SP-DEMO : argile molle → marne raide, cat. B→D)
+   ========================================================= */
+function loadExempleFictif(){
+  // ---- Paramètres projet ----
+  const P = {
+    projet:'Exemple fictif — sondage de démonstration', chantier:'Site pédagogique PressioPro',
+    sondage:'SP-DEMO', equipe:'Démo', operateur:'PressioPro',
+    date:new Date().toISOString().split('T')[0], calib:'CAL-2024-07',
+    passe:'1.5', zc:'0.8', nappe:'3.0',
+    sonde:'Ø 60 — Standard', gaine:'Gaine 3 mm (standard)',
+    a:'5', ph:'0.5', pe:'1.0', v0:'535', k0:'0.5'
+  };
+  Object.keys(P).forEach(k=>{ const e=document.getElementById('p_'+k); if(e) e.value=P[k]; });
+  const cz=document.getElementById('calc_zs'); if(cz) cz.value='4.2';
+  const cc=document.getElementById('calc_zc'); if(cc) cc.value='0.8';
+
+  // ---- Étalonnage (sonde dans l'air) → Vs, Pe ----
+  etalRows = [{p:0.2,v15:524,v30:525,v60:525},{p:0.4,v15:547,v30:548,v60:548},{p:0.6,v15:573,v30:574,v60:574},{p:0.8,v15:605,v30:606,v60:606},{p:1.0,v15:644,v30:645,v60:645},{p:1.2,v15:693,v30:694,v60:694},{p:1.4,v15:754,v30:755,v60:755}];
+  if(typeof renderEtalon==='function') renderEtalon();
+
+  // ---- Calibrage (tube indéformable) → a ----
+  calibRows = [{p:1,v15:1,v30:1,v60:1},{p:3,v15:2,v30:2,v60:2},{p:5,v15:3,v30:3,v60:3},{p:8,v15:4,v30:4,v60:4},{p:11,v15:5,v30:6,v60:6},{p:14,v15:7,v30:7,v60:7},{p:17,v15:8,v30:9,v60:9},{p:20,v15:10,v30:10,v60:10},{p:23,v15:11,v30:12,v60:12},{p:26,v15:13,v30:13,v60:13}];
+  if(typeof renderCalibrage==='function') renderCalibrage();
+
+  // ---- Mesures multi-profondeurs (B / C / D / D) ----
+  depths = [{"label":"2.0 m","pf_idx":2,"plm_idx":5,"rows":[{"p":0.8,"v15":21,"v30":22,"v60":24},{"p":1.2,"v15":44,"v30":45,"v60":47},{"p":1.6,"v15":68,"v30":69,"v60":70},{"p":2,"v15":88,"v30":89,"v60":90},{"p":2.4,"v15":108,"v30":109,"v60":110},{"p":2.8,"v15":127,"v30":128,"v60":130},{"p":3.2,"v15":144,"v30":148,"v60":154},{"p":3.6,"v15":171,"v30":177,"v60":188},{"p":4,"v15":219,"v30":227,"v60":242},{"p":4.4,"v15":310,"v30":321,"v60":340}]},{"label":"4.0 m","pf_idx":2,"plm_idx":5,"rows":[{"p":1,"v15":82,"v30":83,"v60":86},{"p":2,"v15":100,"v30":101,"v60":103},{"p":3,"v15":118,"v30":119,"v60":120},{"p":4,"v15":133,"v30":134,"v60":135},{"p":5,"v15":148,"v30":149,"v60":150},{"p":6,"v15":163,"v30":164,"v60":165},{"p":7,"v15":174,"v30":177,"v60":182},{"p":8,"v15":190,"v30":194,"v60":202},{"p":9,"v15":213,"v30":219,"v60":229},{"p":10,"v15":245,"v30":252,"v60":265},{"p":11,"v15":290,"v30":299,"v60":315},{"p":12,"v15":361,"v30":371,"v60":390}]},{"label":"6.0 m","pf_idx":2,"plm_idx":5,"rows":[{"p":1,"v15":88,"v30":89,"v60":92},{"p":2,"v15":98,"v30":99,"v60":101},{"p":3,"v15":108,"v30":109,"v60":110},{"p":5,"v15":124,"v30":125,"v60":126},{"p":7,"v15":140,"v30":141,"v60":142},{"p":9,"v15":155,"v30":156,"v60":158},{"p":11,"v15":166,"v30":170,"v60":178},{"p":12,"v15":177,"v30":183,"v60":194},{"p":13,"v15":193,"v30":201,"v60":215},{"p":14,"v15":219,"v30":229,"v60":246},{"p":15,"v15":266,"v30":277,"v60":297}]},{"label":"8.0 m","pf_idx":2,"plm_idx":5,"rows":[{"p":2,"v15":78,"v30":79,"v60":82},{"p":4,"v15":88,"v30":89,"v60":91},{"p":6,"v15":98,"v30":99,"v60":100},{"p":9,"v15":110,"v30":111,"v60":112},{"p":12,"v15":122,"v30":123,"v60":124},{"p":15,"v15":133,"v30":134,"v60":136},{"p":18,"v15":142,"v30":145,"v60":150},{"p":21,"v15":154,"v30":159,"v60":168},{"p":24,"v15":174,"v30":181,"v60":193},{"p":27,"v15":204,"v30":213,"v60":229},{"p":30,"v15":259,"v30":270,"v60":289},{"p":33,"v15":358,"v30":370,"v60":393}]}];
+  depths.forEach(function(dd){dd._res=null;});
+  cur = 0;
+  // ---- Coupe de sondage cohérente avec les essais (B/C/D/E) — NF EN ISO 22475-1 ----
+  logLayers = [
+    {de:0,   a:1.0, nature:'Remblai', etat:'',           cat:'C', qual:5, rqd:'', desc:'graveleux, brun'},
+    {de:1.0, a:3.5, nature:'Argile',  etat:'Molle',      cat:'A', qual:2, rqd:'', desc:'grise (essai 2 m)'},
+    {de:3.5, a:5.0, nature:'Argile',  etat:'Ferme',      cat:'A', qual:1, rqd:'', desc:'beige (essai 4 m)'},
+    {de:5.0, a:7.0, nature:'Sable',   etat:'Dense',      cat:'B', qual:3, rqd:'', desc:'ocre (essai 6 m)'},
+    {de:7.0, a:9.0, nature:'Marne',   etat:'Très raide', cat:'B', qual:4, rqd:55, desc:'altérée (essai 8 m)'}
+  ];
+  renderDepthBar(); renderMrows();
+  if(typeof renderLog==='function') renderLog();
+  const s1=document.getElementById('sel_pf'), s2=document.getElementById('sel_plm');
+  if(s1) s1.value = depths[0].pf_idx;
+  if(s2) s2.value = depths[0].plm_idx;
+  if(typeof updateSeuilPreview==='function') updateSeuilPreview();
+
+  // ---- Rafraîchir entêtes / contrôles ----
+  updateHdr();
+  if(typeof calcPh==='function') calcPh();
+  if(typeof calcU0==='function') calcU0();
+  if(typeof checkParamsLogic==='function') checkParamsLogic();
+
+  // ---- Afficher directement le 1er dépouillement ----
+  goPage('resultats',4);
+  setTimeout(function(){__pressioCalcAndShow(0);},100);
+  toast('Exemple fictif chargé — 4 profondeurs ✓','ok');
+}
+
+function toast(m,t=''){const e=document.getElementById('toast');e.textContent=m;e.className='toast show '+t;setTimeout(()=>e.className='toast',2400);}
+</script>
+</body>
+</html>
