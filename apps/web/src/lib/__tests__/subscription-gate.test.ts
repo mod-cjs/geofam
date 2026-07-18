@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { evaluateGate, isQuotaLow } from '../subscription-gate';
+import { evaluateGate, isQuotaLow, quotaPercent, quotaSeverity } from '../subscription-gate';
 import type { EntitlementsResponse } from '../api/types';
 
 function ent(over: Partial<EntitlementsResponse> = {}): EntitlementsResponse {
@@ -81,5 +81,40 @@ describe('isQuotaLow', () => {
   it('GIVEN seuil personnalisé — WHEN évalué — THEN respecte le seuil fourni', () => {
     expect(isQuotaLow({ quota: { limit: 100, used: 70, remaining: 30 } }, 50)).toBe(true);
     expect(isQuotaLow({ quota: { limit: 100, used: 70, remaining: 30 } }, 20)).toBe(false);
+  });
+});
+
+describe('quotaPercent', () => {
+  it('GIVEN used=25, limit=100 — WHEN calculé — THEN 25', () => {
+    expect(quotaPercent({ used: 25, limit: 100 })).toBe(25);
+  });
+
+  it('GIVEN used > limit (dépassement, ne devrait pas arriver mais défensif) — WHEN calculé — THEN plafonné à 100', () => {
+    expect(quotaPercent({ used: 150, limit: 100 })).toBe(100);
+  });
+
+  it('GIVEN limit=0 — WHEN calculé — THEN 0 (pas de division par zéro)', () => {
+    expect(quotaPercent({ used: 0, limit: 0 })).toBe(0);
+  });
+
+  it('GIVEN un ratio non entier — WHEN calculé — THEN arrondi', () => {
+    expect(quotaPercent({ used: 1, limit: 3 })).toBe(33);
+  });
+});
+
+describe('quotaSeverity', () => {
+  it('GIVEN pct <= 50 — WHEN évalué — THEN "ok"', () => {
+    expect(quotaSeverity(0)).toBe('ok');
+    expect(quotaSeverity(50)).toBe('ok');
+  });
+
+  it('GIVEN 50 < pct <= 90 — WHEN évalué — THEN "warning"', () => {
+    expect(quotaSeverity(51)).toBe('warning');
+    expect(quotaSeverity(90)).toBe('warning');
+  });
+
+  it('GIVEN pct > 90 — WHEN évalué — THEN "critical"', () => {
+    expect(quotaSeverity(91)).toBe('critical');
+    expect(quotaSeverity(100)).toBe('critical');
   });
 });
