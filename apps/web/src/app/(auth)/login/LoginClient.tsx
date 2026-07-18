@@ -8,12 +8,12 @@
  */
 
 import { AlertCircle } from 'lucide-react';
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Field';
-import { Logotype } from '@/components/ui/Logotype';
 import { login, getStoredOrgs } from '@/lib/api/client';
 
 interface FieldErrors {
@@ -141,9 +141,16 @@ export default function LoginClient() {
           padding: '40px 32px',
         }}
       >
-        {/* Logotype */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 32 }}>
-          <Logotype size={48} />
+        {/* Logo GEOFAM (public/geofam.jpeg) */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
+          <Image
+            src="/geofam.jpeg"
+            alt="GEOFAM — Géotechnique · Logiciels · Formation · Innovation"
+            width={150}
+            height={150}
+            priority
+            style={{ width: 150, height: 'auto' }}
+          />
         </div>
 
         <h1
