@@ -643,9 +643,13 @@ describe('PV labo — correctifs de présentation FASTLAB (ADR 0014, 14/07)', ()
   });
 
   it('given mf sans mfq when PV rendu then valeur seule, sans parenthèse', () => {
+    // Fac-similé FASTLAB (bodies/labo.ts) : le module de finesse est rendu à
+    // 2 décimales fixes (miroir de `mf.toFixed(2)` de l'outil client) -> « 3,10 »
+    // (l'ancien corps inline stripait le zéro final -> « 3,1 », non fidèle).
+    // Invariant conservé : valeur SEULE, sans parenthèse quand mfq est absent.
     expect(
       findRowValue(laboContent({ mf: 3.1 }), 'Module de finesse')?.value,
-    ).toBe('3,1');
+    ).toBe('3,10');
   });
 
   it('given mfq hors référentiel when PV rendu then qualificatif écarté (fail-closed)', () => {
@@ -698,13 +702,18 @@ describe('PV labo — correctifs de présentation FASTLAB (ADR 0014, 14/07)', ()
   });
 
   // — Anticipation TOLÉRANTE : futur champ caveats: string[] (chantier moteur parallèle).
+  // Fac-similé FASTLAB (bodies/labo.ts) : les caveats sont portés SOUS `classe`
+  // (`classe.caveats`), pas à la racine de l'output comme l'ancien corps inline.
+  // Invariant §8/fail-closed conservé : chaînes non vides rendues, non-chaînes écartées.
   it('given caveats présents when PV rendu then encart « Points à vérifier » listant chaque point', () => {
     const text = collectPvPdfText(
       makeLaboPv({
-        caveats: [
-          'Essai CBR à confirmer sur le 0/50',
-          'Gonflement à revérifier',
-        ],
+        classe: {
+          caveats: [
+            'Essai CBR à confirmer sur le 0/50',
+            'Gonflement à revérifier',
+          ],
+        },
       }),
     );
     expect(text).toContain('Points à vérifier');
@@ -720,7 +729,7 @@ describe('PV labo — correctifs de présentation FASTLAB (ADR 0014, 14/07)', ()
 
   it('given caveats mal typés when PV rendu then entrées non-chaîne écartées (tolérant)', () => {
     const text = collectPvPdfText(
-      makeLaboPv({ caveats: ['Point valide', 42, null, '', '  '] }),
+      makeLaboPv({ classe: { caveats: ['Point valide', 42, null, '', '  '] } }),
     );
     expect(text).toContain('Point valide');
     expect(text).toContain('Points à vérifier');
