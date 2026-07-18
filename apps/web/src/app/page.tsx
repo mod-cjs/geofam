@@ -22,7 +22,6 @@ import {
   Mail,
   MessageCircle,
   PlaySquare,
-  Server,
   ShieldCheck,
   Smartphone,
 } from 'lucide-react';
@@ -47,38 +46,32 @@ export const metadata: Metadata = {
     "GEOFAM réunit les 6 logiciels de calcul géotechnique et routier que vous utilisez déjà (chaussées, fondations superficielles et profondes, radier, pressiomètre, laboratoire), recalculés côté serveur et scellés à chaque procès-verbal.",
 };
 
-const REASSURANCE_ITEMS: { icon: typeof Server; label: string }[] = [
-  { icon: Server, label: 'Calcul exécuté côté serveur' },
-  { icon: ShieldCheck, label: 'PV scellés — identité, horodatage, intégrité' },
-  { icon: Building2, label: 'Données séparées par bureau' },
-  { icon: Smartphone, label: 'Installable sur poste et mobile' },
+const REASSURANCE_ITEMS: { icon: typeof ShieldCheck; label: string }[] = [
+  { icon: ShieldCheck, label: 'Un PV impossible à modifier après coup' },
+  { icon: Building2, label: 'Vos données restent les vôtres' },
+  { icon: Smartphone, label: "S'installe comme une application, sur PC ou téléphone" },
 ];
 
 const DIFFERENTIATEURS: { titre: string; texte: string }[] = [
   {
-    titre: 'Fidélité aux outils',
+    titre: 'Le même outil, sur le web',
     texte:
       "Chaque logiciel reprend l'interface et la logique de l'outil de calcul que vous utilisez déjà — pas de réapprentissage.",
   },
   {
-    titre: 'Calcul côté serveur',
+    titre: "Un PV qu'on ne peut pas trafiquer",
     texte:
-      "Le calcul s'exécute côté serveur, jamais dans le navigateur : le résultat affiché est celui recalculé, pas une estimation locale.",
+      "Le calcul ne se fait jamais dans votre navigateur : impossible de modifier un résultat avant de l'imprimer. Chaque PV est numéroté, horodaté et régénérable à tout moment si vous le perdez.",
   },
   {
-    titre: 'PV scellés',
+    titre: 'Vos données restent les vôtres',
     texte:
-      "Chaque procès-verbal est recalculé et scellé côté serveur — identité, horodatage, intégrité — puis numéroté et régénérable à tout moment.",
+      "Un autre bureau d'études sur la plateforme ne voit jamais vos projets, vos clients ni vos calculs.",
   },
   {
-    titre: 'Multi-bureaux',
+    titre: 'Installable comme un vrai logiciel',
     texte:
-      "Les données de chaque bureau d'études restent séparées, y compris au sein d'une même plateforme.",
-  },
-  {
-    titre: 'Installable',
-    texte:
-      "L'application s'installe sur poste et sur mobile, en plein écran, comme une application native.",
+      "S'installe sur votre ordinateur ou votre téléphone en une icône — plus besoin de retrouver l'adresse à chaque fois.",
   },
 ];
 
@@ -96,7 +89,7 @@ const ETAPES: { numero: string; titre: string; texte: string }[] = [
   {
     numero: '3',
     titre: 'Recevez un PV scellé',
-    texte: 'Calcul recalculé côté serveur, procès-verbal scellé et numéroté.',
+    texte: 'Un PV scellé et numéroté, prêt à joindre à votre rapport.',
   },
 ];
 
@@ -105,25 +98,33 @@ const FORMULES: {
   prix: string;
   description: string;
   miseEnAvant?: boolean;
-  cta: { label: string; href: string };
+  cta: { label: string; href: string; external?: boolean };
 }[] = [
   {
-    nom: 'Un logiciel — poste unique',
-    prix: '[à définir] FCFA / mois',
-    description: 'Un seul logiciel parmi les 6, sur un poste.',
-    cta: { label: 'Essai gratuit', href: ESSAI_GRATUIT_HREF },
+    nom: 'Mensuel',
+    prix: '32 800 FCFA / mois',
+    description: 'Accès aux 6 logiciels sur un poste. Renouvelé chaque mois ; vous arrêtez quand vous voulez.',
+    cta: { label: 'Demander un essai', href: WHATSAPP_HREF, external: true },
   },
   {
-    nom: 'Suite complète — poste unique',
-    prix: '[à définir] FCFA / mois',
-    description: 'Les 6 logiciels, sur un poste.',
+    nom: 'Annuel',
+    prix: '196 800 FCFA / an',
+    description:
+      'Accès aux 6 logiciels sur un poste, pour un an — 16 400 FCFA/mois en moyenne, deux fois moins cher que la formule mensuelle.',
     miseEnAvant: true,
-    cta: { label: 'Essai gratuit', href: ESSAI_GRATUIT_HREF },
+    cta: { label: 'Demander un essai', href: WHATSAPP_HREF, external: true },
   },
   {
-    nom: 'Multi-postes / Bureau',
+    nom: 'À vie',
+    prix: '1 968 000 FCFA',
+    description: 'Licence permanente, jusqu’à 5 postes — idéale pour un bureau d’études.',
+    cta: { label: 'Nous contacter', href: '#contact' },
+  },
+  {
+    nom: 'Bureau — multi-postes',
     prix: 'Sur devis',
-    description: 'Plusieurs postes ou tout un bureau d’études.',
+    description:
+      "Au-delà de 5 postes pour un même bureau d'études : tarif adapté à votre effectif, sur devis.",
     cta: { label: 'Nous contacter', href: '#contact' },
   },
 ];
@@ -169,7 +170,7 @@ export default function Home() {
                   marginBottom: 16,
                 }}
               >
-                Géotechnique · Logiciels · Formation · Innovation
+                Pour les bureaux d&apos;études — Sénégal &amp; Afrique de l&apos;Ouest
               </p>
               <h1
                 style={{
@@ -181,8 +182,8 @@ export default function Home() {
                   maxWidth: 720,
                 }}
               >
-                Les logiciels de calcul que vous utilisez déjà — recalculés côté serveur,
-                scellés à chaque procès-verbal.
+                Les mêmes logiciels de calcul géotechnique et routier que vous utilisez déjà
+                — désormais sur le web, avec un PV inaltérable à chaque résultat.
               </h1>
               <p
                 style={{
@@ -193,18 +194,29 @@ export default function Home() {
                   maxWidth: 620,
                 }}
               >
-                ROADSENS, Terzaghi, CASAGRANDE, GEOPLAQUE, PressioPro et FASTLAB : les mêmes
-                logiciels métier, exécutés côté serveur. Chaque calcul abouti peut être
-                scellé en procès-verbal — identité, horodatage, intégrité.
+                ROADSENS (chaussées, AGEROUTE 2015), Terzaghi (fondations superficielles, NF
+                P 94-261), CASAGRANDE (pieux, NF P 94-262), GEOPLAQUE (radier), PressioPro
+                (pressiomètre Ménard), FASTLAB (labo GTR) : les mêmes logiciels, avec un
+                procès-verbal scellé et numéroté pour chaque calcul abouti.
               </p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                <a href={ESSAI_GRATUIT_HREF} className="landing-cta landing-cta--action landing-cta--lg">
-                  Essai gratuit — 24 h
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+                <a
+                  href={WHATSAPP_HREF}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Demander un accès d'essai par WhatsApp (ouvre WhatsApp dans un nouvel onglet)"
+                  className="landing-cta landing-cta--action landing-cta--lg"
+                >
+                  <MessageCircle size={18} strokeWidth={1.5} aria-hidden="true" />
+                  Demander un essai (WhatsApp)
                 </a>
                 <a href="#logiciels" className="landing-cta landing-cta--ghost-on-dark landing-cta--lg">
                   Découvrir les 6 logiciels
                 </a>
               </div>
+              <a href={ESSAI_GRATUIT_HREF} className="landing-hero-secondary-link">
+                ou par e-mail
+              </a>
             </div>
 
             {/* Logo GEOFAM — plaque claire obligatoire (JPEG à fond blanc) */}
@@ -231,36 +243,8 @@ export default function Home() {
         </section>
 
         {/* ------------------------------------------------------------ */}
-        {/* Bandeau réassurance */}
-        {/* ------------------------------------------------------------ */}
-        <section style={{ background: 'var(--color-alt)', padding: '32px 20px' }}>
-          <div
-            style={{
-              maxWidth: 1180,
-              margin: '0 auto',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: 20,
-            }}
-          >
-            {REASSURANCE_ITEMS.map(({ icon: Icon, label }) => (
-              <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <Icon
-                  size={20}
-                  strokeWidth={1.5}
-                  aria-hidden="true"
-                  style={{ color: 'var(--struct-petrole)', flexShrink: 0 }}
-                />
-                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                  {label}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ------------------------------------------------------------ */}
-        {/* Les 6 logiciels */}
+        {/* Les 6 logiciels — juste après le hero : répond en 5 s à            */}
+        {/* « est-ce que ça couvre mon métier » */}
         {/* ------------------------------------------------------------ */}
         <section id="logiciels" style={{ padding: '72px 20px', scrollMarginTop: 64 }}>
           <div style={{ maxWidth: 1180, margin: '0 auto' }}>
@@ -275,16 +259,10 @@ export default function Home() {
               Les 6 logiciels
             </h2>
             <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)', margin: '0 0 32px', maxWidth: 640 }}>
-              Chaque logiciel reprend fidèlement l&apos;outil de calcul correspondant, avec
-              exécution côté serveur.
+              Chaque logiciel reprend fidèlement l&apos;outil que vous utilisez déjà — mêmes
+              paramètres, mêmes formulaires, mêmes résultats.
             </p>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                gap: 20,
-              }}
-            >
+            <div className="landing-software-grid">
               {SOFTWARE_CATALOG.map((entry) => {
                 const domain = domainForSoftware(entry);
                 return (
@@ -304,6 +282,97 @@ export default function Home() {
                   </Card>
                 );
               })}
+            </div>
+          </div>
+        </section>
+
+        {/* ------------------------------------------------------------ */}
+        {/* Bandeau réassurance */}
+        {/* ------------------------------------------------------------ */}
+        <section style={{ background: 'var(--color-alt)', padding: '32px 20px' }}>
+          <div
+            style={{
+              maxWidth: 1180,
+              margin: '0 auto',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 20,
+            }}
+          >
+            {REASSURANCE_ITEMS.map(({ icon: Icon, label }) => (
+              <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Icon
+                  size={20}
+                  strokeWidth={1.5}
+                  aria-hidden="true"
+                  style={{ color: 'var(--marketing-navy)', flexShrink: 0 }}
+                />
+                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                  {label}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p
+            style={{
+              maxWidth: 1180,
+              margin: '20px auto 0',
+              paddingTop: 20,
+              borderTop: '1px solid rgba(0,0,0,0.08)',
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-secondary)',
+              textAlign: 'center',
+            }}
+          >
+            Édité par STARFIRE Technology — moteurs de calcul conçus et validés par un
+            ingénieur expert en géotechnique.
+          </p>
+        </section>
+
+        {/* ------------------------------------------------------------ */}
+        {/* Comment ça marche */}
+        {/* ------------------------------------------------------------ */}
+        <section style={{ padding: '72px 20px' }}>
+          <div style={{ maxWidth: 1180, margin: '0 auto' }}>
+            <h2 style={{ fontSize: 'var(--text-2xl)', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 32px' }}>
+              Comment ça marche
+            </h2>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                gap: 24,
+              }}
+            >
+              {ETAPES.map((e) => (
+                <div key={e.numero} style={{ display: 'flex', gap: 14 }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      flexShrink: 0,
+                      width: 32,
+                      height: 32,
+                      borderRadius: '50%',
+                      background: 'var(--marketing-navy)',
+                      color: '#ffffff',
+                      display: 'grid',
+                      placeItems: 'center',
+                      fontSize: 'var(--text-sm)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {e.numero}
+                  </span>
+                  <div>
+                    <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px' }}>
+                      {e.titre}
+                    </h3>
+                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: 0 }}>
+                      {e.texte}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </section>
@@ -338,79 +407,6 @@ export default function Home() {
         </section>
 
         {/* ------------------------------------------------------------ */}
-        {/* Comment ça marche */}
-        {/* ------------------------------------------------------------ */}
-        <section style={{ padding: '72px 20px' }}>
-          <div style={{ maxWidth: 1180, margin: '0 auto' }}>
-            <h2 style={{ fontSize: 'var(--text-2xl)', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 32px' }}>
-              Comment ça marche
-            </h2>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                gap: 24,
-              }}
-            >
-              {ETAPES.map((e) => (
-                <div key={e.numero} style={{ display: 'flex', gap: 14 }}>
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      flexShrink: 0,
-                      width: 32,
-                      height: 32,
-                      borderRadius: '50%',
-                      background: 'var(--struct-petrole)',
-                      color: 'var(--struct-petrole-fg)',
-                      display: 'grid',
-                      placeItems: 'center',
-                      fontSize: 'var(--text-sm)',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {e.numero}
-                  </span>
-                  <div>
-                    <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px' }}>
-                      {e.titre}
-                    </h3>
-                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: 0 }}>
-                      {e.texte}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ------------------------------------------------------------ */}
-        {/* Tutoriels */}
-        {/* ------------------------------------------------------------ */}
-        <section id="tutoriels" style={{ background: 'var(--color-alt)', padding: '72px 20px', scrollMarginTop: 64 }}>
-          <div style={{ maxWidth: 1180, margin: '0 auto', textAlign: 'center' }}>
-            <h2 style={{ fontSize: 'var(--text-2xl)', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 12px' }}>
-              Formez-vous en vidéo
-            </h2>
-            <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)', margin: '0 0 28px', maxWidth: 560, marginLeft: 'auto', marginRight: 'auto' }}>
-              Des tutoriels vidéo pour prendre en main chaque logiciel, publiés sur notre
-              chaîne YouTube.
-            </p>
-            <a
-              href={YOUTUBE_HREF}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Voir la chaîne YouTube (ouvre YouTube dans un nouvel onglet)"
-              className="landing-cta landing-cta--secondary landing-cta--lg"
-            >
-              <PlaySquare size={18} strokeWidth={1.5} aria-hidden="true" />
-              Voir la chaîne YouTube
-            </a>
-          </div>
-        </section>
-
-        {/* ------------------------------------------------------------ */}
         {/* Tarifs */}
         {/* ------------------------------------------------------------ */}
         <section id="tarifs" style={{ padding: '72px 20px', scrollMarginTop: 64 }}>
@@ -419,29 +415,23 @@ export default function Home() {
               Tarifs
             </h2>
             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)', margin: '0 0 32px' }}>
-              Montants à définir — grille indicative en cours de finalisation.
+              Accès à la suite complète — les 6 logiciels. Essai sur demande, sans engagement.
             </p>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                gap: 20,
-              }}
-            >
+            <div className="landing-pricing-grid">
               {FORMULES.map((f) => (
                 <Card
                   key={f.nom}
                   padding="lg"
                   style={
                     f.miseEnAvant
-                      ? { boxShadow: '0 0 0 2px var(--struct-petrole), var(--elevation-float)' }
+                      ? { boxShadow: '0 0 0 2px var(--marketing-navy), var(--elevation-float)' }
                       : undefined
                   }
                 >
                   <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 8px' }}>
                     {f.nom}
                   </h3>
-                  <p style={{ fontSize: 'var(--text-xl)', fontWeight: 600, color: 'var(--struct-petrole)', margin: '0 0 12px' }}>
+                  <p style={{ fontSize: 'var(--text-xl)', fontWeight: 600, color: 'var(--marketing-navy)', margin: '0 0 12px' }}>
                     {f.prix}
                   </p>
                   <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: '0 0 20px' }}>
@@ -449,6 +439,8 @@ export default function Home() {
                   </p>
                   <a
                     href={f.cta.href}
+                    {...(f.cta.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                    aria-label={f.cta.external ? `${f.cta.label} par WhatsApp (ouvre WhatsApp dans un nouvel onglet)` : undefined}
                     className={`landing-cta landing-cta--${f.miseEnAvant ? 'action' : 'secondary'}`}
                     style={{ width: '100%' }}
                   >
@@ -492,19 +484,44 @@ export default function Home() {
                 {SUPPORT_EMAIL}
               </a>
             </div>
+            <a
+              href={YOUTUBE_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Voir nos tutoriels vidéo sur YouTube (ouvre YouTube dans un nouvel onglet)"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                marginTop: 20,
+                fontSize: 'var(--text-sm)',
+                color: 'var(--text-secondary)',
+                textDecoration: 'underline',
+              }}
+            >
+              <PlaySquare size={16} strokeWidth={1.5} aria-hidden="true" />
+              Tutoriels vidéo sur YouTube
+            </a>
           </div>
         </section>
 
         {/* ------------------------------------------------------------ */}
         {/* Bandeau de clôture */}
         {/* ------------------------------------------------------------ */}
-        <section style={{ background: 'var(--struct-petrole)', padding: '56px 20px', textAlign: 'center' }}>
+        <section style={{ background: 'var(--marketing-navy)', padding: '56px 20px', textAlign: 'center' }}>
           <div style={{ maxWidth: 640, margin: '0 auto' }}>
-            <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 600, color: 'var(--struct-petrole-fg)', margin: '0 0 20px' }}>
+            <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 600, color: '#ffffff', margin: '0 0 20px' }}>
               Prêt à essayer GEOFAM sur vos propres calculs ?
             </h2>
-            <a href={ESSAI_GRATUIT_HREF} className="landing-cta landing-cta--action landing-cta--lg">
-              Essai gratuit — 24 h
+            <a
+              href={WHATSAPP_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Demander un accès d'essai par WhatsApp (ouvre WhatsApp dans un nouvel onglet)"
+              className="landing-cta landing-cta--action landing-cta--lg"
+            >
+              <MessageCircle size={18} strokeWidth={1.5} aria-hidden="true" />
+              Demander un essai (WhatsApp)
             </a>
           </div>
         </section>
@@ -546,7 +563,11 @@ export default function Home() {
               Support
             </p>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <li><a href="#tutoriels" className="landing-footer-link">Tutoriels</a></li>
+              <li>
+                <a href={YOUTUBE_HREF} target="_blank" rel="noopener noreferrer" className="landing-footer-link">
+                  Tutoriels
+                </a>
+              </li>
               <li><a href="#contact" className="landing-footer-link">Contact</a></li>
               <li>
                 <a href={WHATSAPP_HREF} target="_blank" rel="noopener noreferrer" className="landing-footer-link">
@@ -556,16 +577,13 @@ export default function Home() {
             </ul>
           </div>
 
-          <div>
-            <p className="label-caps" style={{ color: 'var(--muted-on-nav)', marginBottom: 12 }}>
-              Légal
-            </p>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* href="#" volontaire — à câbler fiscal-juridique/CDP avant mise en prod (pages non écrites) */}
-              <li><a href="#" className="landing-footer-link">Mentions légales</a></li>
-              <li><a href="#" className="landing-footer-link">Confidentialité</a></li>
-            </ul>
-          </div>
+          {/*
+            Colonne « Légal » masquée volontairement : les pages Mentions
+            légales / Confidentialité ne sont pas encore rédigées (à câbler
+            après rédaction fiscal-juridique/CDP — cf. mission déclarations
+            CDP / loi 2008-12). Un lien href="#" en prod serait un lien mort ;
+            on préfère l'absence à la promesse non tenue.
+          */}
         </div>
 
         <div
@@ -619,8 +637,8 @@ export default function Home() {
         .landing-cta--action { background: var(--accent-action); color: var(--accent-fg); }
         .landing-cta--action:hover { background: var(--accent-action-hover); }
 
-        .landing-cta--secondary { background: transparent; color: var(--struct-petrole); box-shadow: inset 0 0 0 1px var(--struct-petrole); }
-        .landing-cta--secondary:hover { background: rgba(31,78,74,0.06); }
+        .landing-cta--secondary { background: transparent; color: var(--accent-action); box-shadow: inset 0 0 0 1px var(--accent-action); }
+        .landing-cta--secondary:hover { background: rgba(160,82,38,0.06); }
 
         .landing-cta--action-on-dark { background: transparent; color: var(--accent-action-on-nav); box-shadow: inset 0 0 0 1px rgba(217,149,78,0.45); }
         .landing-cta--action-on-dark:hover { background: rgba(217,149,78,0.12); }
@@ -628,8 +646,30 @@ export default function Home() {
         .landing-cta--ghost-on-dark { background: transparent; color: var(--text-on-nav); box-shadow: inset 0 0 0 1px var(--border-nav); }
         .landing-cta--ghost-on-dark:hover { background: var(--nav-hover); }
 
+        .landing-hero-secondary-link {
+          display: inline-block;
+          margin-top: 12px;
+          font-size: var(--text-sm);
+          color: rgba(255,255,255,0.72);
+          text-decoration: underline;
+        }
+        .landing-hero-secondary-link:hover { color: #ffffff; }
+
         .landing-software-card { transition: box-shadow var(--dur-fast) var(--ease-state); }
         .landing-software-card:hover { box-shadow: var(--elevation-float); }
+
+        .landing-software-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        @media (min-width: 900px) {
+          .landing-software-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+
+        .landing-pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+        @media (min-width: 620px) {
+          .landing-pricing-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (min-width: 1100px) {
+          .landing-pricing-grid { grid-template-columns: repeat(4, 1fr); }
+        }
 
         .landing-footer-link { color: var(--muted-on-nav); font-size: var(--text-sm); text-decoration: none; }
         .landing-footer-link:hover { color: var(--text-on-nav); }

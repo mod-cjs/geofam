@@ -22,15 +22,18 @@ export const SUPPORT_EMAIL = 'direction@geofam.tech';
 export const YOUTUBE_HREF = 'https://www.youtube.com/@GEOTECHNIQUE-c7h';
 
 /**
- * CTA « Essai gratuit — 24 h ».
+ * CTA « Demander un essai ».
  *
  * Il n'existe PAS de flux d'inscription self-service (pas de formulaire, pas
- * de compte créé automatiquement) — cf. mission landing GEOFAM. Le CTA pointe
- * donc vers un e-mail pré-rempli (sujet fixé) plutôt que vers une page
- * inexistante. Le contact WhatsApp reste l'alternative immédiate (bandeau
- * contact, §9).
+ * de compte créé automatiquement) — cf. mission landing GEOFAM. Le canal
+ * PRIMAIRE est WhatsApp (WHATSAPP_HREF, réponse humaine rapide) ; l'e-mail
+ * pré-rempli ci-dessous reste un canal SECONDAIRE (« ou par e-mail ») pour qui
+ * préfère écrire. Revue adverse 17/07 : l'e-mail seul était trompeur affiché
+ * comme « Essai gratuit — 24 h » (aucun accès n'est délivré automatiquement en
+ * 24 h par mailto) — d'où la requalification du libellé et le passage au
+ * WhatsApp en canal principal.
  */
-export const ESSAI_GRATUIT_SUBJECT = 'Essai gratuit GEOFAM (24h)';
+export const ESSAI_GRATUIT_SUBJECT = 'Demande d’essai GEOFAM';
 export const ESSAI_GRATUIT_HREF = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(ESSAI_GRATUIT_SUBJECT)}`;
 
 // ---------------------------------------------------------------------------
