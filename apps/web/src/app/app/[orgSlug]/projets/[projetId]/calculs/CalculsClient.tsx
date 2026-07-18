@@ -5,9 +5,14 @@
  *
  * Décision titulaire (alignement workflow) : les calculs se lancent UNIQUEMENT
  * depuis les logiciels (galerie GEOFAM), pas ici. Cet écran affiche l'historique
- * des calculs du projet, permet d'en relire un (verdict + résultats normalisés),
- * et renvoie vers le logiciel pour (re)lancer ou vers la liste des PV scellés.
- * Aucun sélecteur de moteur, aucun formulaire, aucune émission de PV ici.
+ * des calculs du projet, permet d'en relire les MÉTADONNÉES (verdict de
+ * conformité, statut, date, PV), et renvoie vers le logiciel cloné (source de
+ * vérité du résultat) ou vers le PV scellé (livrable officiel).
+ *
+ * Nouveau paradigme (ADR 0015) : le résultat détaillé d'un calcul n'est PLUS
+ * reconstruit en React ici (ancien tableau Grandeur/Valeur/Unité/Statut) — il se
+ * consulte dans le clone d'UI du logiciel (iframe, calcul serveur) ou dans le PV
+ * scellé. Aucun sélecteur de moteur, aucun formulaire, aucune émission de PV ici.
  */
 
 import Link from 'next/link';
@@ -16,7 +21,6 @@ import { useState, useEffect, useCallback } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { VerdictBanner } from '@/components/ui/VerdictBanner';
 import { listCalcResults } from '@/lib/api/client';
 import type { CalcResult, NormalizedCalcOutput } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
@@ -46,6 +50,14 @@ function slugOf(engineId: string): string {
 function metaOf(engineId: string): { nom: string; route?: string } {
   return ENGINE_META[slugOf(engineId)] ?? { nom: engineId };
 }
+
+// Statut du calcul (métadonnée, jamais le détail des résultats).
+const STATUS_LABEL: Record<CalcResult['status'], string> = {
+  DRAFT: 'Brouillon',
+  PENDING: 'En attente',
+  DONE: 'Terminé',
+  ERROR: 'En erreur',
+};
 
 interface CalculsClientProps {
   orgSlug: string;
@@ -154,60 +166,64 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
         )}
       </aside>
 
-      {/* Colonne droite — lecture d'un calcul */}
+      {/* Colonne droite — métadonnées + actions (le résultat vit dans le logiciel cloné, le
+          livrable officiel est le PV scellé ; aucun tableau de résultat n'est reconstruit ici). */}
       <section className="calculs-panel">
         {!selected ? (
-          <EmptyState variant="pre-calc" title="Sélectionnez un calcul" description="Choisissez un calcul dans l'historique pour en relire les résultats." />
+          <EmptyState variant="pre-calc" title="Sélectionnez un calcul" description="Choisissez un calcul dans l'historique pour en consulter les métadonnées." />
         ) : (
           <div style={{ background: 'var(--surface-panel, #fff)', border: '1px solid var(--border-tertiary, #e6eaef)', borderRadius: 14, padding: '18px 20px' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 14 }}>
-              <div>
-                <h2 style={{ fontSize: 16, margin: 0, color: 'var(--text-primary, #16212e)' }}>{selected.label}</h2>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary, #6b7178)' }}>{metaOf(selected.engineId).nom}</div>
-              </div>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                {selected.pvId ? (
-                  <Link href={`/app/${orgSlug}/projets/${projetId}/pv`} style={{ textDecoration: 'none' }}><Button size="sm" variant="secondary">Voir le PV scellé</Button></Link>
-                ) : metaOf(selected.engineId).route ? (
-                  <Link href={`/app/${orgSlug}/logiciels/${metaOf(selected.engineId).route}`} style={{ textDecoration: 'none' }}><Button size="sm" variant="secondary">Ouvrir le logiciel</Button></Link>
-                ) : null}
-              </div>
+            <div style={{ marginBottom: 16 }}>
+              <h2 style={{ fontSize: 16, margin: 0, color: 'var(--text-primary, #16212e)' }}>{selected.label}</h2>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary, #6b7178)' }}>{metaOf(selected.engineId).nom}</div>
             </div>
 
-            {output && output.verdict !== 'NA' && (
-              <div style={{ marginBottom: 14 }}>
-                <VerdictBanner verdict={output.verdict === 'PASS' ? 'pass' : 'fail'} />
-              </div>
-            )}
+            <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', rowGap: 8, columnGap: 14, fontSize: 13, margin: '0 0 20px' }}>
+              <dt style={{ color: 'var(--text-secondary, #6b7178)' }}>Date</dt>
+              <dd suppressHydrationWarning style={{ margin: 0 }}>
+                {new Date(selected.createdAt).toLocaleString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </dd>
 
-            {output ? (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr>{['Grandeur', 'Valeur', 'Unité', 'Statut'].map((h) => (
-                    <th key={h} style={{ textAlign: 'left', fontSize: 10, textTransform: 'uppercase', color: 'var(--text-secondary, #6b7178)', padding: '6px 8px', fontWeight: 700, borderBottom: '1px solid var(--border-tertiary, #e6eaef)' }}>{h}</th>
-                  ))}</tr>
-                </thead>
-                <tbody>
-                  {output.rows.map((row, i) => (
-                    <tr key={i}>
-                      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-tertiary, #e6eaef)' }}>{row.label}</td>
-                      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-tertiary, #e6eaef)', fontWeight: 600, textAlign: 'right' }}>{typeof row.value === 'number' ? row.value.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) : row.value}</td>
-                      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-tertiary, #e6eaef)', color: 'var(--text-secondary, #6b7178)' }}>{row.unit}</td>
-                      <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-tertiary, #e6eaef)' }}>
-                        {row.status && <span style={{ fontSize: 10.5, fontWeight: 800, padding: '3px 8px', borderRadius: 6, background: row.status === 'ok' ? '#e4efe6' : '#f6e5e1', color: row.status === 'ok' ? '#2e7d4f' : '#b23a2e' }}>{row.status === 'ok' ? 'OK' : 'NON'}</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div style={{ fontSize: 13, color: 'var(--text-secondary, #6b7178)' }}>
-                {selected.status === 'ERROR' ? 'Ce calcul est en erreur.' : 'Résultats indisponibles pour ce calcul.'}
-              </div>
-            )}
+              <dt style={{ color: 'var(--text-secondary, #6b7178)' }}>Statut</dt>
+              <dd style={{ margin: 0 }}>{STATUS_LABEL[selected.status]}</dd>
 
-            <div style={{ marginTop: 14, fontSize: 10.5, color: 'var(--text-tertiary, #96a0ab)', fontStyle: 'italic' }}>
-              Lecture seule. Formules et coefficients appliqués côté serveur ; pour (re)lancer un calcul, ouvrez le logiciel.
+              {output && output.verdict !== 'NA' && (
+                <>
+                  <dt style={{ color: 'var(--text-secondary, #6b7178)' }}>Verdict</dt>
+                  <dd style={{ margin: 0 }}>
+                    <span
+                      aria-label={`Verdict : ${output.verdict === 'PASS' ? 'CONFORME' : 'NON CONFORME'}`}
+                      style={{ fontWeight: 700, color: output.verdict === 'PASS' ? '#2e7d4f' : '#b23a2e' }}
+                    >
+                      {output.verdict === 'PASS' ? 'CONFORME' : 'NON CONFORME'}
+                    </span>
+                  </dd>
+                </>
+              )}
+
+              <dt style={{ color: 'var(--text-secondary, #6b7178)' }}>PV</dt>
+              <dd style={{ margin: 0 }}>{selected.pvId ? 'Émis' : 'Aucun PV émis'}</dd>
+            </dl>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+              {metaOf(selected.engineId).route && (
+                <Link href={`/app/${orgSlug}/logiciels/${metaOf(selected.engineId).route}`} style={{ textDecoration: 'none' }}>
+                  <Button size="sm">Ouvrir dans le logiciel</Button>
+                </Link>
+              )}
+              {selected.pvId ? (
+                <Link href={`/app/${orgSlug}/projets/${projetId}/pv`} style={{ textDecoration: 'none' }}>
+                  <Button size="sm" variant="secondary">Télécharger le PV scellé</Button>
+                </Link>
+              ) : (
+                <span style={{ fontSize: 12, color: 'var(--text-tertiary, #96a0ab)' }}>
+                  Aucun PV émis — ouvrez le logiciel pour en générer un.
+                </span>
+              )}
+            </div>
+
+            <div style={{ marginTop: 16, fontSize: 10.5, color: 'var(--text-tertiary, #96a0ab)', fontStyle: 'italic' }}>
+              Lecture seule. Le résultat se consulte dans le logiciel ; formules et calcul sont appliqués côté serveur.
             </div>
           </div>
         )}
