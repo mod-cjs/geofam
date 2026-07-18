@@ -14,6 +14,7 @@ import { Kbd } from '@/components/ui/Kbd';
 import { useCommandPalette } from '@/components/ui/CommandPalette';
 import { getStoredUser } from '@/lib/api/client';
 import { useState, useEffect, type ReactNode } from 'react';
+import { QuotaIndicator } from './QuotaIndicator';
 
 interface TopbarProps {
   orgSlug: string;
@@ -91,6 +92,9 @@ export function Topbar({ orgSlug, ctaSlot, breadcrumbItems }: TopbarProps) {
         <span>Rechercher…</span>
         <Kbd>⌘K</Kbd>
       </button>
+
+      {/* Quota — indicateur compact et permanent (item PRODUIT #2) */}
+      <QuotaIndicator orgSlug={orgSlug} />
 
       {/* CTA contextuel */}
       {ctaSlot && (

@@ -54,9 +54,9 @@ function useNavItems(orgSlug: string): NavItem[] {
   return [
     {
       id: 'accueil',
-      label: 'Accueil — Logiciels',
+      label: 'Accueil — Tableau de bord',
       icon: <LayoutGrid size={20} strokeWidth={1.5} aria-hidden="true" />,
-      href: `/app/${orgSlug}/logiciels`,
+      href: `/app/${orgSlug}`,
     },
     {
       id: 'projets',
@@ -304,9 +304,9 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
 
         <ul role="list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {navItems.slice(0, 1).map((item) => {
-            // "Accueil — Logiciels" est une page racine exacte (/logiciels) : en
-            // startsWith, elle resterait active sur toute sous-page /logiciels/<x>,
-            // ce qui double l'état actif avec l'item logiciel correspondant.
+            // "Accueil — Tableau de bord" est la racine d'org exacte (/app/:org) : en
+            // startsWith, elle resterait active sur toute sous-page (/projets, /logiciels…),
+            // ce qui doublerait l'état actif avec l'item de section correspondant.
             const active = isActive(item.href, true);
             return (
               <li key={item.id} style={{ position: 'relative' }}>

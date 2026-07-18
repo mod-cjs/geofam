@@ -63,3 +63,22 @@ export function isQuotaLow(
   if (ent.quota.limit <= 0) return false;
   return (ent.quota.remaining / ent.quota.limit) * 100 < thresholdPct;
 }
+
+/**
+ * Pourcentage de consommation (0-100, arrondi, plafonné). Source unique pour
+ * tout affichage compact de quota (Topbar) — cf. QuotaBar pour l'affichage
+ * détaillé galerie/pages logiciel (calcul équivalent, dupliqué historiquement).
+ */
+export function quotaPercent(quota: { used: number; limit: number }): number {
+  if (quota.limit <= 0) return 0;
+  return Math.min(100, Math.round((quota.used / quota.limit) * 100));
+}
+
+export type QuotaSeverity = 'ok' | 'warning' | 'critical';
+
+/** Seuils alignés sur QuotaBar : vert <=50 %, orange 50-90 %, rouge >90 %. */
+export function quotaSeverity(pct: number): QuotaSeverity {
+  if (pct > 90) return 'critical';
+  if (pct > 50) return 'warning';
+  return 'ok';
+}
