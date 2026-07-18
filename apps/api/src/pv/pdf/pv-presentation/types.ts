@@ -148,6 +148,48 @@ export interface LayerTableSpec {
 }
 
 /**
+ * RAPPORT DÉTAILLÉ DE CALCUL — équivalent du « Rapport détaillé » (renderDetails)
+ * de l'outil client. Rend les GRANDEURS de sortie whitelistées (contraintes σ,
+ * déformations ε, coefficients de la loi de fatigue LCPC…) que l'outil affiche déjà
+ * à l'écran (détails-transparents, ADR 0014). On ne rend QUE des VALEURS scellées
+ * (jamais une formule de méthode ni le code du propagateur) : ce sont des sorties de
+ * la méthode publiée, pas la méthode.
+ *
+ * FAIL-CLOSED (DoD §8) : rendu SEULEMENT si l'objet `rootPath` (« details ») est
+ * présent dans la sortie scellée ; un champ non fini est OMIS (pas de « — » de
+ * bruit) ; une section sans aucune valeur finie est OMISE. Les chemins sont lus
+ * NOMMÉMENT (jamais de copie d'objet brut).
+ */
+export interface DetailReportField {
+  /** Chemin pointé vers la grandeur (ex. "details.sigmaZ_r0"). */
+  path: FieldPath;
+  label: string;
+  format?: NumberFormat;
+  /**
+   * Format alternatif quand `rigideFlagPath` résout `true` : les admissibles
+   * basculent de ε_t (µdef) vers σ_t (MPa) pour les familles rigides — miroir de
+   * l'unité `d.sig?'MPa':'µdef'` de renderDetails (l.1559-1560). Le flag lui-même
+   * n'est jamais rendu (§8).
+   */
+  rigideFormat?: NumberFormat;
+}
+export interface DetailReportSection {
+  title: string;
+  fields: DetailReportField[];
+}
+export interface DetailReportSpec {
+  /** Titre de la section « annexe » (ex. « RAPPORT DÉTAILLÉ DE CALCUL »). */
+  title: string;
+  /** Sous-titre de provenance (méthode / référentiel) — sobre, sans code moteur. */
+  subtitle?: string;
+  /** Racine de l'objet détails scellé (ex. "details"). Absent -> rapport OMIS. */
+  rootPath: FieldPath;
+  /** Flag rigide (ex. "fatigue.rigide") pour basculer `rigideFormat`. */
+  rigideFlagPath?: FieldPath;
+  sections: DetailReportSection[];
+}
+
+/**
  * MODÈLE DE PRÉSENTATION complet d'un moteur.
  */
 export interface PresentationModel {
@@ -171,6 +213,12 @@ export interface PresentationModel {
   layerTables?: LayerTableSpec[];
   /** Table structure (couches + sol support). Optionnelle. */
   structure?: StructureTableSpec;
+  /**
+   * RAPPORT DÉTAILLÉ DE CALCUL (annexe) — grandeurs de sortie détaillées affichées
+   * par l'outil client (renderDetails), rendues fail-closed depuis `details.*`.
+   * Optionnel (absent -> pas d'annexe détaillée).
+   */
+  detailReport?: DetailReportSpec;
   /** Groupes d'entrées NON-structure (trafic, charge…). */
   inputGroups: PresentedGroup[];
   /** Groupes de résultats hors verdict/critères (famille, épaisseurs, NE…). */

@@ -542,6 +542,219 @@ describe('ToolFrame — engineAllowlist (multi-engine, GEOPLAQUE)', () => {
   });
 });
 
+describe('ToolFrame — calc:request résolues DANS LE DÉSORDRE (BQ-2, audit adverse #9)', () => {
+  it('given deux calc:request rapprochées dont la PLUS ANCIENNE résout APRÈS la plus récente, when les deux résolvent, then seule la réponse la PLUS RÉCENTE est remontée au shell et renvoyée au clone (la périmée est ignorée)', async () => {
+    let resolveOld!: (v: unknown) => void;
+    let resolveNew!: (v: unknown) => void;
+    const oldPromise = new Promise((res) => {
+      resolveOld = res;
+    });
+    const newPromise = new Promise((res) => {
+      resolveNew = res;
+    });
+    mockRunCalc.mockImplementationOnce(() => oldPromise);
+    mockRunCalc.mockImplementationOnce(() => newPromise);
+
+    const onCalcResultId = vi.fn();
+    await renderFrame({ onCalcResultId });
+    const iframe = getIframe();
+    const postSpy = vi.spyOn(iframe.contentWindow as Window, 'postMessage');
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_old',
+      payload: { engineId: 'terzaghi', label: 'Ancien', params: {} },
+    });
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_new',
+      payload: { engineId: 'terzaghi', label: 'Nouveau', params: {} },
+    });
+
+    // Résolution HORS ORDRE : la requête la plus RÉCENTE (req_new) finit
+    // D'ABORD, l'ANCIENNE (req_old) finit ensuite — exactement le scénario
+    // d'une rafale débouncée (fastlab/pressio) ou de clics rapides.
+    await act(async () => {
+      resolveNew({
+        id: 'calc_new',
+        engineId: 'terzaghi',
+        domain: 'FD',
+        status: 'DONE',
+        output: {},
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      resolveOld({
+        id: 'calc_old',
+        engineId: 'terzaghi',
+        domain: 'FD',
+        status: 'DONE',
+        output: {},
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Le shell ne doit JAMAIS se retrouver sur le calcResultId de la requête
+    // périmée, même si sa promesse résout en dernier.
+    expect(onCalcResultId).toHaveBeenCalledTimes(1);
+    expect(onCalcResultId).toHaveBeenCalledWith('calc_new');
+    expect(onCalcResultId).not.toHaveBeenCalledWith('calc_old');
+
+    const staleResponse = postSpy.mock.calls.find(
+      (c) => (c[0] as { id?: string }).id === 'req_old',
+    );
+    expect(
+      staleResponse,
+      'la réponse PÉRIMÉE ne doit jamais être renvoyée au clone (il ne doit pas non plus ré-afficher un résultat obsolète)',
+    ).toBeUndefined();
+
+    const freshResponse = postSpy.mock.calls.find(
+      (c) => (c[0] as { id?: string }).id === 'req_new',
+    );
+    expect(freshResponse).toBeTruthy();
+    expect((freshResponse?.[0] as { payload: { ok: boolean; calcResultId?: string } }).payload).toMatchObject(
+      { ok: true, calcResultId: 'calc_new' },
+    );
+  });
+
+  it("given une requête PLUS RÉCENTE rejetée (erreur serveur) APRÈS qu'une requête plus ancienne a réussi, when l'ancienne résout ensuite, then l'erreur périmée n'écrase rien et la réussite périmée n'est pas non plus remontée", async () => {
+    let resolveOld!: (v: unknown) => void;
+    let rejectNew!: (e: unknown) => void;
+    const oldPromise = new Promise((res) => {
+      resolveOld = res;
+    });
+    const newPromise = new Promise((_res, rej) => {
+      rejectNew = rej;
+    });
+    mockRunCalc.mockImplementationOnce(() => oldPromise);
+    mockRunCalc.mockImplementationOnce(() => newPromise);
+
+    const onCalcResultId = vi.fn();
+    await renderFrame({ onCalcResultId });
+    const iframe = getIframe();
+    const postSpy = vi.spyOn(iframe.contentWindow as Window, 'postMessage');
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_old',
+      payload: { engineId: 'terzaghi', label: 'Ancien', params: {} },
+    });
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_new',
+      payload: { engineId: 'terzaghi', label: 'Nouveau', params: {} },
+    });
+
+    await act(async () => {
+      rejectNew({ statusCode: 500, reason: 'SERVER_ERROR', message: 'Erreur' });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      resolveOld({
+        id: 'calc_old',
+        engineId: 'terzaghi',
+        domain: 'FD',
+        status: 'DONE',
+        output: {},
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // La réussite PÉRIMÉE (req_old) ne doit jamais réactiver le bouton PV.
+    expect(onCalcResultId).not.toHaveBeenCalled();
+    const staleSuccess = postSpy.mock.calls.find(
+      (c) => (c[0] as { id?: string }).id === 'req_old',
+    );
+    expect(staleSuccess, 'le succès périmé ne doit pas être renvoyé au clone').toBeUndefined();
+    const freshError = postSpy.mock.calls.find(
+      (c) => (c[0] as { id?: string }).id === 'req_new',
+    );
+    expect(freshError).toBeTruthy();
+    expect(
+      (freshError?.[0] as { payload: { ok: boolean } }).payload.ok,
+    ).toBe(false);
+  });
+});
+
+describe('ToolFrame — input:dirty invalide le calcul périmé (BQ-1, audit adverse #9)', () => {
+  it('given un calc:response ok déjà remonté au shell, when input:dirty arrive ensuite depuis le clone, then onCalcResultId est rappelé avec null (le bouton « Émettre le PV » doit se désactiver)', async () => {
+    mockRunCalc.mockResolvedValue({
+      id: 'calc_42',
+      engineId: 'terzaghi',
+      domain: 'FD',
+      status: 'DONE',
+      output: {},
+    });
+    const onCalcResultId = vi.fn();
+    await renderFrame({ onCalcResultId });
+    const iframe = getIframe();
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_1',
+      payload: { engineId: 'terzaghi', label: 'Calcul', params: {} },
+    });
+    expect(onCalcResultId).toHaveBeenCalledWith('calc_42');
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'input:dirty',
+      payload: { toolId: 'terzaghi' },
+    });
+
+    expect(onCalcResultId).toHaveBeenLastCalledWith(null);
+  });
+
+  it("given aucun calcul en cours (calcResultId déjà null), when input:dirty arrive, then onCalcResultId(null) est quand même appelé, sans exception (idempotent)", async () => {
+    const onCalcResultId = vi.fn();
+    await renderFrame({ onCalcResultId });
+    const iframe = getIframe();
+
+    await expect(
+      sendFromIframe(iframe, {
+        v: 1,
+        type: 'input:dirty',
+        payload: { toolId: 'terzaghi' },
+      }),
+    ).resolves.not.toThrow();
+    expect(onCalcResultId).toHaveBeenCalledWith(null);
+  });
+
+  it("given un clone qui n'émet JAMAIS input:dirty (comportement actuel avant portage du contrat par clone-tool.mjs), when un calcul réussit, then le shell reste sur son calcResultId (aucune régression rétrocompatible)", async () => {
+    mockRunCalc.mockResolvedValue({
+      id: 'calc_99',
+      engineId: 'terzaghi',
+      domain: 'FD',
+      status: 'DONE',
+      output: {},
+    });
+    const onCalcResultId = vi.fn();
+    await renderFrame({ onCalcResultId });
+    const iframe = getIframe();
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_1',
+      payload: { engineId: 'terzaghi', label: 'Calcul', params: {} },
+    });
+
+    expect(onCalcResultId).toHaveBeenCalledTimes(1);
+    expect(onCalcResultId).toHaveBeenCalledWith('calc_99');
+    expect(onCalcResultId).not.toHaveBeenCalledWith(null);
+  });
+});
+
 describe('ToolFrame — store:get / store:set namespacés', () => {
   it('given store:set reçu, when traité, then localStorage namespacé écrit + store:value renvoyé en écho', async () => {
     await renderFrame();

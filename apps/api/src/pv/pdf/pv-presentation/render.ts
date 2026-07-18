@@ -6,6 +6,7 @@ import { COLORS } from '../pv-pdf.theme';
 import { formatValue, resolvePath, workRate } from './format';
 import type {
   CriterionSpec,
+  DetailReportSpec,
   LayerTableSpec,
   NumberFormat,
   PresentationModel,
@@ -65,6 +66,14 @@ export function renderRichBody(
   const warnings = output.warnings;
   if (Array.isArray(warnings) && warnings.length > 0) {
     body.push(buildWarningsBox(warnings));
+  }
+
+  // 3ter) RAPPORT DÉTAILLÉ DE CALCUL (annexe) — équivalent du « Rapport détaillé »
+  //    (renderDetails) de l'outil client : grandeurs de sortie whitelistées
+  //    (`details.*`) affichées à l'écran (détails-transparents, ADR 0014). Rendu
+  //    fail-closed : omis si `details` absent (chemin d'erreur) ou sans valeur finie.
+  if (model.detailReport) {
+    body.push(...buildDetailReport(output, model.detailReport));
   }
 
   // 4) FAIL-CLOSED (B-1, DoD §8) : la voie riche est une WHITELIST. AUCUN champ
@@ -359,6 +368,88 @@ function buildLayerTable(
 }
 
 // ---------------------------------------------------------------------------
+// Rapport détaillé de calcul (annexe — équivalent renderDetails)
+// ---------------------------------------------------------------------------
+
+/**
+ * RAPPORT DÉTAILLÉ (annexe) — miroir du « Rapport détaillé » (renderDetails) de
+ * l'outil client : rend les GRANDEURS de sortie whitelistées (`details.*`) que
+ * l'outil affiche déjà (contraintes σ, déformations ε, coefficients LCPC) — pas la
+ * méthode. FAIL-CLOSED (DoD §8) :
+ *  - omis en bloc si l'objet racine (`details`) est absent (chemin d'erreur) ;
+ *  - chaque champ est lu NOMMÉMENT (jamais de copie d'objet brut) ;
+ *  - un champ non fini est OMIS (pas de « — » de bruit) ;
+ *  - une section sans aucune valeur finie est OMISE ;
+ * -> une famille sans couche liée (granulaire) n'imprime pas de fatigue fantôme.
+ * Les admissibles basculent µdef->MPa pour les familles rigides (rigideFormat).
+ */
+function buildDetailReport(
+  output: Record<string, unknown>,
+  spec: DetailReportSpec,
+): Content[] {
+  const root = resolvePath(output, spec.rootPath);
+  if (root == null || typeof root !== 'object') return []; // fail-closed
+
+  const rigide = spec.rigideFlagPath
+    ? resolvePath(output, spec.rigideFlagPath) === true
+    : false;
+
+  const blocks: Content[] = [];
+  for (const section of spec.sections) {
+    const rows: TableCell[][] = [];
+    // Sous-titre de section (cellule fusionnée 3 colonnes).
+    rows.push([
+      {
+        text: section.title,
+        colSpan: 3,
+        fillColor: COLORS.groupFill71,
+        bold: true,
+        color: COLORS.navy,
+        fontSize: 8.5,
+      },
+      {},
+      {},
+    ]);
+    let hasValue = false;
+    for (const f of section.fields) {
+      const raw = resolvePath(output, f.path);
+      // Fail-closed : n'imprimer QUE des grandeurs finies (pas de « — » de bruit).
+      if (typeof raw !== 'number' || !Number.isFinite(raw)) continue;
+      hasValue = true;
+      const fmt = rigide && f.rigideFormat ? f.rigideFormat : f.format;
+      const { value, unit } = formatValue(raw, fmt);
+      rows.push([
+        { text: f.label, style: 'cell' },
+        { text: value, style: 'cell', alignment: 'right' },
+        { text: unit, style: 'cellMuted' },
+      ]);
+    }
+    // Section VIDE (aucune valeur finie) -> omise (pas de sous-titre orphelin).
+    if (!hasValue) continue;
+    blocks.push({
+      unbreakable: rows.length <= 12,
+      margin: [0, 2, 0, 4],
+      table: { widths: ['*', 'auto', 'auto'], body: rows },
+      layout: richTableLayout(),
+    });
+  }
+
+  // Aucune section rendue -> aucune annexe (fail-closed complet).
+  if (blocks.length === 0) return [];
+
+  const head: Content[] = [sectionTitleRich(spec.title)];
+  if (spec.subtitle) {
+    head.push({
+      text: spec.subtitle,
+      style: 'cellMuted',
+      fontSize: 8,
+      margin: [0, 0, 0, 4],
+    });
+  }
+  return [...head, ...blocks];
+}
+
+// ---------------------------------------------------------------------------
 // Table structure (couches haut->bas + sol support)
 // ---------------------------------------------------------------------------
 
@@ -575,6 +666,16 @@ export function enumerateMappedPaths(model: PresentationModel): Set<string> {
   // Les tables PAR COUCHE couvrent leur racine (ex. "couchesTraitees") : chaque
   // sous-clé d'élément est rendue via le spec, la racine suffit à la complétude.
   (model.layerTables ?? []).forEach((lt) => mapped.add(lt.arrayPath));
+  // Rapport détaillé (annexe) : chaque grandeur `details.*` rendue est mappée ; le
+  // flag rigide consommé pour l'unité (rigideFlagPath) compte aussi comme décidé.
+  if (model.detailReport) {
+    model.detailReport.sections.forEach((s) =>
+      s.fields.forEach((f) => mapped.add(f.path)),
+    );
+    if (model.detailReport.rigideFlagPath) {
+      mapped.add(model.detailReport.rigideFlagPath);
+    }
+  }
   mapped.add(model.verdict.key);
   if (model.structure) {
     mapped.add(model.structure.layersPath);

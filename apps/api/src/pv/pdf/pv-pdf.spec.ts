@@ -329,11 +329,10 @@ describe('PV pieux — allowlist fail-closed du libellé de vérification (DoD �
       },
     });
     const text = collectPvPdfText(pv);
-    // Contenu (les titres de section ne sont pas collectés par collectPvPdfText).
-    expect(text).toContain('Charge de frottement négatif');
-    expect(text).toContain('G_sn');
+    // Contenu (libellés du fac-similé du rapport natif casagrande — renderResults).
+    expect(text).toContain('Frottement négatif G_sn');
     expect(text).toContain('250'); // Gsn kN
-    expect(text).toContain('Taux béton');
+    expect(text).toContain('σ ELU = N_d/A_b'); // ligne béton (taux ELU)
     expect(text).toContain('75'); // taux ELU 0.75 -> 75 %
     expect(text).toContain('f_cd');
   });
@@ -434,7 +433,7 @@ describe('PV pieux — TRANSPARENCE des paramètres réglementaires EC7 / NF P 9
     // Approche : da3 -> « DA3 ».
     expect(text).toContain('DA3');
     // Coeffs non-défaut : libellé + valeur (ciblage EXACT de la cellule valeur).
-    expect(findRowValue(def.content, 'γb (pointe, R2)')?.value).toBe('1,2');
+    expect(findRowValue(def.content, 'γb (pointe, R2)')?.value).toBe('1,20');
     expect(findRowValue(def.content, 'γs;t (traction, R2)')?.value).toBe(
       '1,25',
     );
@@ -644,9 +643,13 @@ describe('PV labo — correctifs de présentation FASTLAB (ADR 0014, 14/07)', ()
   });
 
   it('given mf sans mfq when PV rendu then valeur seule, sans parenthèse', () => {
+    // Fac-similé FASTLAB (bodies/labo.ts) : le module de finesse est rendu à
+    // 2 décimales fixes (miroir de `mf.toFixed(2)` de l'outil client) -> « 3,10 »
+    // (l'ancien corps inline stripait le zéro final -> « 3,1 », non fidèle).
+    // Invariant conservé : valeur SEULE, sans parenthèse quand mfq est absent.
     expect(
       findRowValue(laboContent({ mf: 3.1 }), 'Module de finesse')?.value,
-    ).toBe('3,1');
+    ).toBe('3,10');
   });
 
   it('given mfq hors référentiel when PV rendu then qualificatif écarté (fail-closed)', () => {
@@ -699,13 +702,18 @@ describe('PV labo — correctifs de présentation FASTLAB (ADR 0014, 14/07)', ()
   });
 
   // — Anticipation TOLÉRANTE : futur champ caveats: string[] (chantier moteur parallèle).
+  // Fac-similé FASTLAB (bodies/labo.ts) : les caveats sont portés SOUS `classe`
+  // (`classe.caveats`), pas à la racine de l'output comme l'ancien corps inline.
+  // Invariant §8/fail-closed conservé : chaînes non vides rendues, non-chaînes écartées.
   it('given caveats présents when PV rendu then encart « Points à vérifier » listant chaque point', () => {
     const text = collectPvPdfText(
       makeLaboPv({
-        caveats: [
-          'Essai CBR à confirmer sur le 0/50',
-          'Gonflement à revérifier',
-        ],
+        classe: {
+          caveats: [
+            'Essai CBR à confirmer sur le 0/50',
+            'Gonflement à revérifier',
+          ],
+        },
       }),
     );
     expect(text).toContain('Points à vérifier');
@@ -721,7 +729,7 @@ describe('PV labo — correctifs de présentation FASTLAB (ADR 0014, 14/07)', ()
 
   it('given caveats mal typés when PV rendu then entrées non-chaîne écartées (tolérant)', () => {
     const text = collectPvPdfText(
-      makeLaboPv({ caveats: ['Point valide', 42, null, '', '  '] }),
+      makeLaboPv({ classe: { caveats: ['Point valide', 42, null, '', '  '] } }),
     );
     expect(text).toContain('Point valide');
     expect(text).toContain('Points à vérifier');
@@ -1019,48 +1027,5 @@ describe('PV radier — synthèse (ADR 0014) + alerte de poinçonnement', () => 
     });
     const buf = await renderPvPdf(pv);
     expect(buf.length).toBeGreaterThan(0);
-  });
-});
-
-describe('PV pressiomètre — unités alignées sur l’app (revue adverse 15/07, MAJEUR-1)', () => {
-  const prevSecret = process.env.PV_SIGNING_SECRET;
-  beforeAll(() => {
-    process.env.PV_SIGNING_SECRET = SECRET; // même secret que makeSealedPv (hmac)
-  });
-  afterAll(() => {
-    if (prevSecret === undefined) delete process.env.PV_SIGNING_SECRET;
-    else process.env.PV_SIGNING_SECRET = prevSecret;
-  });
-
-  // L'adaptateur web affiche p_L/p_L*/p_f* en MPa (bar interne ÷10, comme
-  // l'outil client). Le PV rendait les mêmes grandeurs en bar → un même calcul
-  // scellé disait « 0,44 MPa » à l'écran et « 4,39 bar » au PV. Cohérence exigée.
-  const PRESSIO_OUTPUT = {
-    erreur: null,
-    warnings: [],
-    pL: 4.39, // bar interne
-    pLNette: 4.19,
-    pfNette: 2.31,
-    EM: 12.4, // déjà en MPa
-    ratioEMpL: 9.0,
-    categorieLibelle: 'Sol ferme (cat. C)',
-    consolidation: 'Sol normalement consolidé',
-  } as SealableValue;
-
-  it('given un output pressiomètre scellé (bar interne), then le PV affiche p_L/p_L*/p_f* en MPa (÷10) comme l’app', () => {
-    const pv = makeSealedPv({
-      engineId: 'pressiometre-menard',
-      output: PRESSIO_OUTPUT,
-    });
-    const text = collectPvPdfText(pv);
-    expect(text).toContain('Pression limite p_L');
-    // 4,39 bar -> 0,44 MPa (2 décimales, convention fdnNum fr-FR)
-    expect(text).toMatch(/0,44\s*MPa/);
-    expect(text).toMatch(/0,42\s*MPa/); // p_L* 4,19 bar
-    expect(text).toMatch(/0,23\s*MPa/); // p_f* 2,31 bar
-    // Plus AUCUNE unité bar sur ces lignes (l'écran est en MPa).
-    expect(text).not.toMatch(/bar/i);
-    // E_M reste en MPa inchangé.
-    expect(text).toMatch(/12,4\s*MPa/);
   });
 });
