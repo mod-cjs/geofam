@@ -146,6 +146,76 @@ d('fastlab — fidelite du clone excise (POST unique -> render, sortie serveur)'
     dom.window.close();
   });
 
+  /** Calcule l env d une fixture, charge le clone avec sa sortie, pilote, renvoie { dom, det }. */
+  async function runClone(fxId: string) {
+    const fx = LABO_FIXTURES.find((f) => f.id === fxId);
+    expect(fx, `fixture ${fxId} absente`).toBeDefined();
+    const env = runLabo(fx!.input);
+    expect(env.ok).toBe(true);
+    const det = env.ok ? env.output.detail : null;
+    expect(det, `detail serveur absent (${fxId})`).not.toBeNull();
+    const { dom } = loadClone(env.ok ? env.output : {});
+    await drive(dom, fx!.input);
+    return { dom, det: det! };
+  }
+
+  it('CBR : ρd/compacite/gonflement/CBR par moule (clone) == sortie serveur', async () => {
+    const { dom, det } = await runClone('kernel-cbr-complet');
+    expect(cellById(dom, 'cb_maxi_0'), 'clone cb_maxi_0 vide').not.toBe('—');
+    for (let m = 0; m < 3; m++) {
+      const r = det.cbr?.rows[m];
+      expect(fmt(r?.ds, 3), `cb_ds${m}`).toBe(cellById(dom, `cb_ds${m}`));
+      expect(fmt(r?.comp, 1), `cb_compf_${m}`).toBe(cellById(dom, `cb_compf_${m}`));
+      expect(fmt(r?.c25, 1), `cb_c25_${m}`).toBe(cellById(dom, `cb_c25_${m}`));
+      expect(fmt(r?.maxi, 1), `cb_maxi_${m}`).toBe(cellById(dom, `cb_maxi_${m}`));
+    }
+    dom.window.close();
+  });
+
+  it('Cisaillement + œdometre + ρs (clone, DEMO) == sortie serveur', async () => {
+    const { dom, det } = await runClone('demo-A2-limon');
+    // Cisaillement — σ′v/τpic + identification par eprouvette.
+    expect(cellById(dom, 'ci_sv1'), 'clone ci_sv1 vide').not.toBe('—');
+    for (let i = 1; i <= 4; i++) {
+      const r = det.cisail?.rows[i - 1];
+      expect(fmt(r?.sv, 1), `ci_sv${i}`).toBe(cellById(dom, `ci_sv${i}`));
+      expect(fmt(r?.rd, 2), `ci_rdd${i}`).toBe(cellById(dom, `ci_rdd${i}`));
+    }
+    // Œdometre — e par palier.
+    expect(cellById(dom, 'oe_e1'), 'clone oe_e1 vide').not.toBe('—');
+    for (let i = 1; i <= 12; i++) {
+      expect(fmt(det.oedo?.paliers[i - 1]?.e, 3), `oe_e${i}`).toBe(
+        cellById(dom, `oe_e${i}`),
+      );
+    }
+    dom.window.close();
+  });
+
+  it('SZ + Micro-Deval (norme) + triaxial (clone) == sortie serveur', async () => {
+    const { dom, det } = await runClone('granulaire-R-LA-MDE');
+    for (const r of det.sz?.rows ?? []) {
+      const s = String(r.s);
+      expect(fmt(r.pas, 1), `sz_pas ${s}`).toBe(cellBySel(dom, `.sz_pas[data-s="${s}"]`));
+    }
+    expect(cellById(dom, 'md_r1'), 'clone md_r1 vide').not.toBe('—');
+    for (let i = 1; i <= 2; i++) {
+      expect(fmt(det.mde?.rows?.[i - 1]?.cc, 1), `md_r${i}`).toBe(
+        cellById(dom, `md_r${i}`),
+      );
+    }
+    dom.window.close();
+  });
+
+  it('Micro-Deval CAMPAGNE : pertes + CMDE (clone) == sortie serveur', async () => {
+    const { dom, det } = await runClone('kernel-mde-campagne');
+    expect(cellById(dom, 'mc_p2'), 'clone mc_p2 vide').not.toBe('—');
+    for (let i = 0; i < 4; i++) {
+      expect(fmt(det.mde?.pertes?.[i], 1), `mc_p${i}`).toBe(cellById(dom, `mc_p${i}`));
+    }
+    expect(fmt(det.mde?.cmde, 1), 'mc_cmde').toBe(cellById(dom, 'mc_cmde'));
+    dom.window.close();
+  });
+
   it('DEBOUNCE : une rafale de recalc() ne declenche qu UN SEUL POST', async () => {
     const fx = LABO_FIXTURES.find((f) => f.id === 'demo-A2-limon');
     if (!fx) return;

@@ -1121,25 +1121,150 @@ function renderProctor(p){
   var fit=(p&&p.fit)?{a:p.fit.a,b:p.fit.b,c:p.fit.c,wopn:p.wopn,rdmax:p.rdmax}:null;
   try{ drawProctor(pts,fit); }catch(e){}
 }
-/* Essais NON encore cables au detail par ligne : leur RESULTAT (agregat serveur) est
-   rendu dans le chip de tete de feuille (le detail par ligne suit le meme patron —
-   RESIDU documente). La fiche de synthese (renderRecap) restitue deja tous les agregats. */
-function renderAgg(o){
-  setHTML("out_rhos", chip("\u03c1s moyenne",f(o.rhos,2),"Mg/m\u00b3",true));
-  setHTML("out_cbr", chip((o.cbrType==="ipi"?"IPI":"I.CBR"),f(o.cbr,1),"",true)+chip("Gonflement",f(o.gonfl,2),"%"));
-  setHTML("out_cisail", chip("c\u2032",f(o.c_cis,1),"kPa",true)+chip("\u03c6\u2032",f(o.phi_cis,1),"\u00b0",true)+chip("\u03c6\u2032R",f(o.phiR_cis,1),"\u00b0"));
-  setHTML("out_dens", chip("\u03c1 apparente",f(o.rho_app,2),"Mg/m\u00b3",true)+chip("\u03c1d s\u00e8che",f(o.rhod_app,2),"Mg/m\u00b3"));
-  setHTML("out_oedo", chip("e\u2080",f(o.e0_oedo,3),"",true)+chip("Cc",f(o.Cc_oedo,3),"",true)+chip("Cs",f(o.Cs_oedo,3)));
-  setHTML("out_ucs", chip("qu",f(o.qu,3),"MPa",true));
-  setHTML("out_triuu", chip("cu moyen",f(o.cu_uu,0),"kPa",true)+chip("\u03c6u","\u2248 0","\u00b0"));
-  setHTML("out_tricu", chip("c\u2032",f(o.c,1),"kPa",true)+chip("\u03c6\u2032",f(o.phi,1),"\u00b0",true));
-  setHTML("out_perm", chip("k",o.k==null?null:o.k.toExponential(2),"cm/s",true)+chip("k",o.k==null?null:(o.k/100).toExponential(2),"m/s"));
-  setHTML("out_es", chip("SE moyen",f(o.es,1),"%",true));
-  setHTML("out_la", chip("LA",o.la==null?null:o.la,"",true));
-  setHTML("out_sz", chip("SZ",f(o.sz,2),"%",true));
-  setHTML("out_mde", chip("MDE",o.mde==null?null:o.mde,"",true));
-  setHTML("out_rho", chip("WA24",f(o.wa,2),"%",true));
-  setHTML("out_sulf", chip("SO\u2083",f(o.so3,3),"%",true));
+/* ===== RENDERERS PAR ESSAI (detail par ligne + chips fideles + canvas serveur) =====
+   Chaque render* ECRIT les cellules par ligne + les chips out_* A L IDENTIQUE du HTML
+   d origine, depuis le sous-objet detail.<essai> du SERVEUR (miroir DOM des kernels).
+   Les canvas conserves (drawCbrPen/drawCbrVar/drawCis/drawOedo) sont alimentes par les
+   SERIES serveur (varPts/reg/ptsP/curvePts). AUCUN calcul cote navigateur. */
+function celId(id,v,dg){ var e=$(id); if(e) e.textContent=(v==null||!isFinite(v))?"\u2014":v.toFixed(dg); }
+function celSel(sel,v,dg){ var e=document.querySelector(sel); if(e) e.textContent=(v==null||!isFinite(v))?"\u2014":v.toFixed(dg); }
+/* ρs — masse volumique des particules solides (md/ρs par determination + concordance). */
+function renderRhos(r){
+  r=r||{}; var rows=r.rows||[];
+  for(var i=0;i<3;i++){ var x=rows[i]||{}; celId("rs_md"+(i+1),x.md,2); celId("rs_rs"+(i+1),x.rs,3); }
+  setv("rs_rwT", r.rwT!=null?r.rwT.toFixed(5):"");
+  var out=chip("\u03c1L utilis\u00e9e",f(r.rLeff,4),"Mg/m\u00b3")+chip("D\u00e9terminations",r.essais||0)+chip("\u03c1s moyenne",f(r.mean,2),"Mg/m\u00b3",true);
+  if(r.spread!=null) out+=chip("\u00c9cart",f(r.spread,3),"Mg/m\u00b3")+chip("Concordance",r.ok?"\u2713 \u22640,03":"\u2717 >0,03 \u2192 r\u00e9p\u00e9ter",r.ok?"":"!",true);
+  else if((r.essais||0)===1) out+=chip("Concordance","2\u1d49 d\u00e9termination requise","!");
+  setHTML("out_rhos", out);
+}
+/* CBR multi-energies — par moule (net/ρh/ρd/compacite/gonflement/CBR 2,5-5-maxi) + 2 canvas. */
+function renderCbr(c){
+  c=c||{}; var rows=c.rows||[];
+  var ydmax=(num("cb_ydmax")!=null)?num("cb_ydmax"):D.rdmax; var ydAuto=(num("cb_ydmax")==null);
+  var wopt=(num("cb_wopt")!=null)?num("cb_wopt"):D.wopn;
+  var ep=$("cb_ydmax"); if(ep) ep.placeholder=(D.rdmax!=null?D.rdmax.toFixed(3)+" (Proctor)":"");
+  var ew=$("cb_wopt"); if(ew) ew.placeholder=(D.wopn!=null?D.wopn.toFixed(1)+" (Proctor)":"");
+  setHTML("cb_opmsrc", ydmax!=null?("\u03c1<sub>d max</sub> = <b>"+ydmax.toFixed(3)+"</b> Mg/m\u00b3, w<sub>OPM</sub> = <b>"+(wopt!=null?wopt.toFixed(1):"\u2014")+"</b> % "+((ydAuto&&D.rdmax!=null)?"(repris automatiquement de la feuille Proctor)":"")):"<span style=\"color:var(--warn)\">Renseignez \u03c1<sub>d max</sub> OPM (ici ou via la feuille Proctor) pour calculer les compacit\u00e9s.</span>");
+  setv("cb_ydcbr", c.ydCBR!=null?c.ydCBR.toFixed(3):"");
+  for(var m=0;m<3;m++){ var r=rows[m]||{};
+    setv("cb_net"+m, r.net!=null?r.net.toFixed(1):"");
+    celId("cb_dh"+m,r.dh,3); celId("cb_ds"+m,r.ds,3); celId("cb_comp"+m,r.comp,1); celId("cb_compf_"+m,r.comp,1);
+    celId("cb_gpct"+m,r.gp,2); celId("cb_c25_"+m,r.c25,1); celId("cb_c5_"+m,r.c5,1); celId("cb_maxi_"+m,r.maxi,1); }
+  var lab=(c.cbType==="cbr"?"I.CBR \u00e0 ":"IPI \u00e0 ")+(c.cible||95)+"%";
+  var out=chip(lab,f(c.icbr,1),"",true)+chip("\u03c1d du CBR",f(c.ydCBR,3),"Mg/m\u00b3")+chip("Moules valides",c.moules||0);
+  for(var m2=0;m2<rows.length;m2++){ var o2=rows[m2]; if(o2&&o2.maxi!=null) out+=chip(o2.coups+" coups",o2.maxi.toFixed(1),o2.comp!=null?("@ "+o2.comp.toFixed(1)+"%"):""); }
+  if(c.cbType==="cbr"&&c.gonfl!=null) out+=chip("Gonflement maxi",f(c.gonfl,2),"%",true);
+  if((c.moules||0)>0&&(c.moules||0)<2) out+=chip("Note","\u2265 2 moules requis pour interpoler","!");
+  setHTML("out_cbr", out);
+  var K=num("cb_K")||1;
+  try{ drawCbrPen(K); }catch(e){}
+  try{ var pts=(c.varPts||[]).map(function(p){return [p[0],p[1]];}); var reg=c.reg?{a:c.reg.a,b:c.reg.b}:null; drawCbrVar(pts,reg,(c.cible||95),c.icbr,ydmax); }catch(e){}
+}
+/* Cisaillement direct — σ′v/τpic/τres + identification (ρd/e/SR) par eprouvette + canvas. */
+function renderCisail(c){
+  c=c||{}; var rows=c.rows||[];
+  for(var i=0;i<4;i++){ var r=rows[i]||{};
+    celId("ci_sv"+(i+1),r.sv,1); celId("ci_tp"+(i+1),r.tp,1); celId("ci_tr"+(i+1),r.tr,1);
+    celId("ci_rdd"+(i+1),r.rd,2); celId("ci_e"+(i+1),r.e,2); celId("ci_sr"+(i+1),r.sr,2); }
+  celId("ci_res_c",c.c,2); celId("ci_res_phi",c.phi,2);
+  if(c.A_cm2!=null) setv(ciMethod==="box"?"ci_A":"ci_Aring", c.A_cm2.toFixed(2));
+  var out=chip("c\u2032",f(c.c,1),"kPa",true)+chip("\u03c6\u2032",f(c.phi,1),"\u00b0",true)+chip("\u00c9prouvettes",c.eprouvettes||0);
+  if(c.r2!=null) out+=chip("R\u00b2",f(c.r2,4));
+  if(c.phiR!=null) out+=chip("\u03c6\u2032R",f(c.phiR,1),"\u00b0")+chip("c\u2032R",f(c.cR,1),"kPa");
+  if((c.eprouvettes||0)>0&&(c.eprouvettes||0)<3) out+=chip("Note","min. 3 \u00e9prouvettes (Annexe B)","!");
+  setHTML("out_cisail", out);
+  try{ var pP=(c.ptsP||[]).map(function(p){return [p[0],p[1]];}); var pR=(c.ptsR||[]).map(function(p){return [p[0],p[1]];}); drawCis(pP,c.regP,pR,c.regR,c.r2); }catch(e){}
+}
+/* Masse volumique apparente — volume/ρ/ρd + note V<50 cm³. */
+function renderDens(d){
+  d=d||{};
+  var out=chip("Volume V",f(d.Vcm3,1),"cm\u00b3")+chip("\u03c1 apparente",f(d.rho,2),"Mg/m\u00b3",true);
+  if(d.rhod!=null) out+=chip("\u03c1d s\u00e8che",f(d.rhod,2),"Mg/m\u00b3",true)+chip("w utilis\u00e9e",f(d.w,1),"%");
+  if(d.petitV) out+=chip("Note","V < 50 cm\u00b3 \u2014 moins repr\u00e9sentatif","!");
+  setHTML("out_dens", out);
+}
+/* Œdometre — Hf/ε_v/e par palier (12) + e₀/ρd/Hs + Cc/Cs + courbe e-log(σ′). */
+function renderOedo(o2){
+  o2=o2||{}; var pal=o2.paliers||[];
+  for(var i=0;i<12;i++){ var p=pal[i]||{}; celId("oe_hf"+(i+1),p.Hf,3); celId("oe_ev"+(i+1),p.ev,2); celId("oe_e"+(i+1),p.e,3); }
+  setv("oe_A", o2.A!=null?o2.A.toFixed(1):""); setv("oe_rd", o2.rd!=null?o2.rd.toFixed(3):""); setv("oe_Hs", o2.Hs!=null?o2.Hs.toFixed(3):"");
+  var out=chip("e\u2080",f(o2.e0,3),"",true)+chip("\u03c1d",f(o2.rd,3),"Mg/m\u00b3")+chip("Hs",f(o2.Hs,3),"mm")+chip("Cc",f(o2.Cc,3),"",true)+chip("Cs",f(o2.Cs,3))+chip("Paliers",o2.points||0);
+  if((o2.points||0)>0&&(o2.points||0)<7) out+=chip("Note","min. 7 paliers conseill\u00e9s","!");
+  setHTML("out_oedo", out);
+  try{ var rows=(o2.curvePts||[]).map(function(p){return [p[0],p[1]];}); drawOedo(rows); }catch(e){}
+}
+/* Compression simple (UCS) — qu + cu = qu/2. */
+function renderUcs(u){ u=u||{}; setHTML("out_ucs", chip("qu",f(u.qu,3),"MPa",true)+chip("cu",f(u.cu==null?null:u.cu*1000,0),"kPa",true)); }
+/* Triaxial UU — σ1/cu par eprouvette (3) + cu moyen. */
+function renderTriUU(t){
+  t=t||{}; var rows=t.rows||[];
+  for(var i=0;i<3;i++){ var r=rows[i]||{}; celId("tu_s1_"+(i+1),r.s1,0); celId("tu_cu_"+(i+1),r.cu,0); }
+  setHTML("out_triuu", chip("cu moyen",f(t.cu_uu,0),"kPa",true)+chip("\u03c6u","\u2248 0","\u00b0")+chip("\u00c9prouvettes",t.eprouvettes||0));
+}
+/* Triaxial CU/CD — s/t (centre/rayon de Mohr) par eprouvette (3) + c′/φ′. */
+function renderTriCU(t){
+  t=t||{}; var rows=t.rows||[];
+  for(var i=0;i<3;i++){ var r=rows[i]||{}; celId("tc_s_"+(i+1),r.s,0); celId("tc_t_"+(i+1),r.t,0); }
+  setHTML("out_tricu", chip("c\u0027",f(t.c,1),"kPa",true)+chip("\u03c6\u0027",f(t.phi,1),"\u00b0",true)+chip("\u00c9prouvettes",t.eprouvettes||0));
+}
+/* Permeabilite — k (cm/s et m/s), depuis l agregat serveur. */
+function renderPerm(o){ setHTML("out_perm", chip("k",o.k==null?null:o.k.toExponential(2),"cm/s",true)+chip("k",o.k==null?null:(o.k/100).toExponential(2),"m/s")); }
+/* Equivalent de sable — SE par essai (2) + SE moyen. */
+function renderEs(e){
+  e=e||{}; var rows=e.rows||[];
+  for(var i=0;i<2;i++){ var r=rows[i]||{}; celId("es_r"+(i+1),r.se,1); }
+  setHTML("out_es", chip("SE moyen",f(e.es,1),"%",true));
+}
+/* Los Angeles — LA + prise + conformite granulaire. */
+function renderLa(l){
+  l=l||{};
+  try{ setHTML("la_spec", LASPEC[laVar]); }catch(e){}
+  var el=$("la_gran"); if(el){ var g=l.conformite||"\u2014"; el.textContent=g; el.className="alert "+(g.indexOf("\u2713")===0?"ok":g.indexOf("\u2717")===0?"warn":"info"); el.style.margin="0"; }
+  setHTML("out_la", chip(l.label||"LA",l.la==null?null:l.la,"",true)+chip("Prise M",f(l.M,0),"g"));
+}
+/* Fragmentation SZ — refus/passant par tamis (5) + Σ passant + SZ. */
+function renderSz(s){
+  s=s||{}; var rows=s.rows||[];
+  for(var i=0;i<rows.length;i++){ var r=rows[i]; celSel('.sz_ref[data-s="'+r.s+'"]',r.ref,1); celSel('.sz_pas[data-s="'+r.s+'"]',r.pas,1); }
+  setHTML("out_sz", chip("\u03a3 passant",f(s.sumPass,1),"%")+chip("SZ",f(s.sz,2),"%",true));
+}
+/* Micro-Deval — mode norme (coefficient par eprouvette + conformite) OU campagne (4 pertes). */
+function renderMde(m){
+  m=m||{};
+  if(m.mode==="camp"){
+    var pertes=m.pertes||[];
+    for(var i=0;i<4;i++){ celId("mc_p"+i,pertes[i],1); }
+    celId("mc_cmds",m.cmds,1); celId("mc_cmde",m.cmde,1); celId("mc_cmd",m.cmd,2);
+    setHTML("out_mdecamp", chip("CMDS",f(m.cmds,1),"%")+chip("CMDE",f(m.cmde,1),"%",true)+chip("CMD",f(m.cmd,2),"%")+chip("MDE retenu",m.mde==null?null:m.mde,"",true));
+    return;
+  }
+  var rows=m.rows||[];
+  for(var j=0;j<2;j++){ var r=rows[j]||{}; celId("md_r"+(j+1),r.cc,1); }
+  try{
+    var k=(typeof mdeClassKey==="function")?mdeClassKey():null; var cc=k?(MDE_CLASS[k]||{}):{};
+    var cond=mdeWet==="s"?"\u00e0 sec (MDS \u2014 Annexe B, informatif)":"en pr\u00e9sence d\u2019eau (MDE)"; var spec;
+    if(mdeVar==="rb") spec="Ballast 31,5/50 mm (Annexe A) \u00b7 2 \u00e9prouvettes (10000 \u00b1 100) g \u00b7 <b>sans charge abrasive</b> \u00b7 2,0 L eau \u00b7 14000 tours \u00e0 100 tr/min \u00b7 MDE_RB = (10000 \u2212 m)/100.";
+    else spec="Classe <b>"+k+" mm</b> \u00b7 2 \u00e9prouvettes (500 \u00b1 2) g \u00b7 charge abrasive <b>"+cc.charge+" g</b> (billes acier \u00d810 mm) \u00b7 "+cc.eau+" L eau \u00b7 "+cc.tours+" tours \u00e0 100 tr/min \u00b7 essai "+cond+" \u00b7 coefficient = (M \u2212 m)/M \u00d7 100.";
+    setHTML("mde_spec", spec);
+  }catch(e){}
+  var el=$("mde_gran"); if(el&&m.conformite!=null){ el.textContent=m.conformite; el.className="alert "+(m.conformite.indexOf("\u2713")===0?"ok":m.conformite.indexOf("\u2717")===0?"warn":"info"); el.style.margin="0"; }
+  var lbl=$("mde_res_lbl"); if(lbl) lbl.textContent=m.label||"MDE"; var val=$("mde_res_val"); if(val) val.textContent=m.mde==null?"\u2014":m.mde;
+  var out=chip(m.label||"MDE",m.mde==null?null:m.mde,"",true)+chip("\u00c9prouvettes",m.essais||0);
+  if((m.essais||0)===1) out+=chip("Note","2 \u00e9prouvettes requises (Art. 6)","!");
+  setHTML("out_mde", out);
+}
+/* Masse volumique & absorption des granulats — ρa/ρrd/ρssd + WA24. */
+function renderRho(r){ r=r||{}; setHTML("out_rho", chip("\u03c1a",f(r.ra,3),"Mg/m\u00b3",true)+chip("\u03c1rd",f(r.rrd,3),"Mg/m\u00b3")+chip("\u03c1ssd",f(r.rssd,3),"Mg/m\u00b3")+chip("WA24",f(r.wa,2),"%",true)); }
+/* Sulfates — SO₃ + SO₄ = SO₃·1,2. */
+function renderSulf(s){ s=s||{}; setHTML("out_sulf", chip("SO\u2083",f(s.so3,3),"%",true)+chip("SO\u2084",f(s.so4,3),"%")); }
+/* Dispatcher des 15 essais restants (o = agregats plats ; det = sous-objets detail). */
+function renderRest(o,det){
+  det=det||{};
+  renderRhos(det.rhos); renderCbr(det.cbr); renderCisail(det.cisail); renderDens(det.dens);
+  renderOedo(det.oedo); renderUcs(det.ucs); renderTriUU(det.triuu); renderTriCU(det.tricu);
+  renderPerm(o); renderEs(det.es); renderLa(det.la); renderSz(det.sz); renderMde(det.mde);
+  renderRho(det.rho); renderSulf(det.sulf);
 }
 /* Peuple D (agregats) depuis la sortie serveur, puis appelle les render*, le verdict,
    la fiche de synthese (renderRecap, conservee) et les pastilles (updateDots). */
@@ -1150,7 +1275,7 @@ function renderAll(o){
   window.__laboLastClasse=o.classe||null;
   var det=o.detail||{};
   renderW(det.w); renderGran(det); renderAtt(det.att); renderVbs(det.vbs); renderProctor(det.proctor);
-  renderAgg(o);
+  renderRest(o,det);
   renderVerdict(o.classe);
   try{ renderRecap(o.classe||{}); }catch(e){}
   try{ updateDots(); }catch(e){}
