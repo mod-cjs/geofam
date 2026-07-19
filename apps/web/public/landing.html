@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>GEOFAM — Le calcul géotechnique, scellé sur le web</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Six logiciels de géotechnique et de chaussées dans le navigateur. Chaque calcul produit un procès-verbal numéroté, horodaté et scellé.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* =============================================================
+   GEOFAM v3 — dark technique premium (registre Linear / Vercel)
+   Noir profond éclairé, verre + liseré lumineux, accent ambre
+   unique. Signature : la carotte de sondage qui se remplit au
+   scroll, et la fiche de calcul en verre qui s'illumine au load.
+   ============================================================= */
+:root{
+  --bg:#080a0d;
+  --bg-2:#0c0f14;
+  --panel:#0f141b;
+  --panel-2:#131a23;
+  --hair:rgba(255,255,255,.07);
+  --hair-2:rgba(255,255,255,.11);
+  --edge:rgba(255,255,255,.14);      /* liseré haut de surface (le détail Linear) */
+  --ink:#eef2f6;
+  --ink-2:#aeb8c4;
+  --muted:#6b7684;
+  --faint:#48515d;
+
+  --amber:#f0a24b;                   /* accent unique — la charge, la carotte */
+  --amber-2:#ffbe6e;
+  --amber-dim:rgba(240,162,75,.14);
+  --amber-line:rgba(240,162,75,.42);
+  --seal:#4fd1b0;                    /* vérifié / scellé */
+  --seal-dim:rgba(79,209,176,.12);
+
+  /* strates de carotte */
+  --s1:#7d6f52; --s2:#a9793f; --s3:#c99a4e; --s4:#9aa0a2; --s5:#5c6b73; --s6:#3f4c54;
+
+  --maxw:1200px;
+  --gut:clamp(20px,5vw,72px);
+  --spine:60px;
+
+  --sans:'Inter',ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --disp:'Space Grotesk',var(--sans);
+  --mono:'JetBrains Mono',ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+
+  --t--1:clamp(.75rem,.72rem + .15vw,.83rem);
+  --t-0:clamp(.98rem,.95rem + .18vw,1.05rem);
+  --t-1:clamp(1.12rem,1.02rem + .4vw,1.32rem);
+  --t-2:clamp(1.45rem,1.2rem + 1vw,2rem);
+  --t-3:clamp(2rem,1.5rem + 2.1vw,3.1rem);
+  --t-4:clamp(2.6rem,1.7rem + 4.3vw,5.2rem);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{
+  margin:0;font-family:var(--sans);font-size:var(--t-0);line-height:1.62;
+  color:var(--ink);background:var(--bg);overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+/* halo d'ambiance (parallaxé au scroll) */
+.ambient{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.ambient::before{content:"";position:absolute;top:-18vh;right:-8vw;width:70vw;height:70vw;
+  background:radial-gradient(closest-side,rgba(240,162,75,.16),transparent 70%);
+  filter:blur(20px);transform:translateY(var(--par,0))}
+.ambient::after{content:"";position:absolute;bottom:-30vh;left:-14vw;width:60vw;height:60vw;
+  background:radial-gradient(closest-side,rgba(79,209,176,.08),transparent 70%);
+  filter:blur(20px)}
+.grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.035;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+main,header,footer{position:relative;z-index:2}
+
+::selection{background:var(--amber);color:#1a1206}
+a{color:inherit;text-decoration:none}
+p{margin:0}
+svg,canvas{display:block;max-width:100%}
+h1,h2,h3,h4{margin:0;font-family:var(--disp);line-height:1.03;letter-spacing:-.03em;font-weight:600;color:var(--ink)}
+
+.wrap{max-width:var(--maxw);margin-inline:auto;padding-inline:var(--gut)}
+:focus-visible{outline:2px solid var(--amber);outline-offset:3px;border-radius:3px}
+
+.eyebrow{font-family:var(--mono);font-size:var(--t--1);letter-spacing:.16em;text-transform:uppercase;
+  color:var(--amber);display:inline-flex;align-items:center;gap:.7em;font-weight:500}
+.eyebrow::before{content:"";width:20px;height:1px;background:var(--amber-line)}
+
+/* ---------- carotte de sondage (signature, se remplit au scroll) ---------- */
+.spine{position:fixed;top:0;left:0;width:var(--spine);height:100vh;z-index:6;pointer-events:none;
+  border-right:1px solid var(--hair);background:linear-gradient(var(--bg-2),var(--bg))}
+.spine .tube{position:absolute;top:8vh;bottom:8vh;left:22px;width:14px;border-radius:8px;
+  border:1px solid var(--hair-2);overflow:hidden;background:rgba(0,0,0,.4)}
+.spine .fill{position:absolute;inset:0 0 auto 0;height:0%;
+  background:linear-gradient(var(--s1),var(--s2),var(--s3),var(--s4),var(--s5),var(--s6));
+  transition:height .15s linear}
+.spine .glow{position:absolute;left:19px;width:20px;height:20px;border-radius:50%;
+  background:radial-gradient(closest-side,var(--amber),transparent);opacity:.9;
+  transform:translate(-3px,-50%);transition:top .15s linear;filter:blur(1px)}
+.spine .tick{position:absolute;left:38px;width:8px;height:1px;background:var(--faint)}
+.spine .d{position:absolute;left:2px;font-family:var(--mono);font-size:8px;color:var(--faint);
+  letter-spacing:.02em;transform:translateY(-3px)}
+.spine .here{position:absolute;left:2px;font-family:var(--mono);font-size:8px;font-weight:500;
+  color:var(--amber);transition:top .15s linear;white-space:nowrap}
+@media (max-width:1080px){.spine{display:none}}
+@media (min-width:1081px){
+  header .nav-in,.hero .wrap,.band .wrap,section .wrap,footer .wrap{padding-left:calc(var(--spine) + var(--gut))}
+}
+
+/* ---------- nav ---------- */
+header{position:sticky;top:0;z-index:40;background:rgba(8,10,13,.72);backdrop-filter:blur(14px) saturate(1.2);
+  border-bottom:1px solid var(--hair)}
+.nav-in{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:13px}
+.brand{display:flex;align-items:center;gap:11px;font-family:var(--disp);font-weight:700;font-size:1.12rem;letter-spacing:-.02em}
+.brand .logo{width:28px;height:28px;flex:none}
+.nav-links{display:flex;gap:26px;align-items:center;font-size:var(--t--1);color:var(--ink-2)}
+.nav-links a{position:relative;padding-block:3px;transition:color .18s}
+.nav-links a:hover{color:var(--ink)}
+.nav-links a::after{content:"";position:absolute;left:0;bottom:-1px;width:0;height:1px;background:var(--amber);transition:width .22s}
+.nav-links a:hover::after{width:100%}
+@media (max-width:720px){.nav-links{display:none}}
+
+.btn{display:inline-flex;align-items:center;gap:.5em;font-family:var(--sans);font-weight:500;
+  font-size:var(--t--1);padding:.72em 1.15em;border-radius:8px;border:1px solid transparent;cursor:pointer;
+  transition:transform .1s,background .2s,border-color .2s,color .2s,box-shadow .2s;white-space:nowrap}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:linear-gradient(var(--amber-2),var(--amber));color:#1a1206;font-weight:600;
+  box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 8px 20px -8px rgba(240,162,75,.5)}
+.btn-primary:hover{box-shadow:0 1px 0 rgba(255,255,255,.4) inset,0 10px 26px -8px rgba(240,162,75,.65)}
+.btn-ghost{border-color:var(--hair-2);color:var(--ink);background:rgba(255,255,255,.02)}
+.btn-ghost:hover{border-color:var(--amber-line);color:var(--amber-2)}
+
+/* surface en verre avec liseré lumineux (le détail signature) */
+.glass{position:relative;background:linear-gradient(180deg,var(--panel),var(--bg-2));
+  border:1px solid var(--hair);border-radius:14px;
+  box-shadow:0 1px 0 var(--edge) inset,0 30px 60px -34px rgba(0,0,0,.9)}
+.glass::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;border-radius:14px 14px 0 0;
+  background:linear-gradient(90deg,transparent,var(--edge),transparent)}
+
+/* ---------- hero ---------- */
+.hero{padding-block:clamp(52px,8vw,104px) clamp(36px,5vw,64px);position:relative}
+.hero-grid{display:grid;grid-template-columns:1.04fr .96fr;gap:clamp(30px,5vw,64px);align-items:center}
+@media (max-width:940px){.hero-grid{grid-template-columns:1fr;gap:40px}}
+h1.title{font-size:var(--t-4);font-weight:600;margin-top:22px;letter-spacing:-.045em;max-width:15ch}
+h1.title .amber{color:transparent;background:linear-gradient(120deg,var(--amber-2),var(--amber));
+  -webkit-background-clip:text;background-clip:text}
+.lede{margin-top:24px;font-size:var(--t-1);color:var(--ink-2);max-width:46ch;line-height:1.5;font-weight:450}
+.hero-cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
+.hero-proof{margin-top:34px;padding-top:22px;border-top:1px solid var(--hair);display:flex;flex-direction:column;gap:12px}
+.pline{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;font-family:var(--mono)}
+.pline.domains{font-size:.78rem;color:var(--ink);letter-spacing:.01em}
+.pline.domains em{color:var(--amber);font-style:normal;opacity:.75}
+.pline.benefits{font-size:.72rem;color:var(--muted);letter-spacing:.02em}
+.pline.benefits span{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.pline.benefits .pd{width:6px;height:6px;border-radius:50%;background:var(--seal);flex:none;box-shadow:0 0 8px var(--seal-dim)}
+
+/* fiche de calcul en verre */
+.sheet{overflow:hidden;transition:transform .3s cubic-bezier(.2,.7,.3,1);transform-style:preserve-3d;will-change:transform}
+.sheet-top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 16px;
+  border-bottom:1px solid var(--hair);font-family:var(--mono);font-size:.68rem;letter-spacing:.05em;
+  color:var(--muted);text-transform:uppercase}
+.sheet-top .live{display:flex;align-items:center;gap:7px;color:var(--seal)}
+.sheet-top .live b{width:7px;height:7px;border-radius:50%;background:var(--seal);box-shadow:0 0 0 3px var(--seal-dim);
+  animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.tabs{display:flex;gap:5px;padding:12px 16px 0;flex-wrap:wrap}
+.tab{font-family:var(--mono);font-size:.7rem;letter-spacing:.05em;padding:6px 11px;border-radius:7px;
+  border:1px solid transparent;background:transparent;color:var(--muted);cursor:pointer;transition:.16s}
+.tab:hover{color:var(--ink);border-color:var(--hair)}
+.tab.on{background:var(--amber-dim);border-color:var(--amber-line);color:var(--amber-2);font-weight:500}
+.sheet-body{padding:16px}
+/* transition entre logiciels : crossfade + léger slide, tempo posé (~450ms total) */
+.swap-zone{transition:opacity .18s ease, transform .18s ease}
+.swap-zone.out{opacity:0;transform:translateY(-10px);
+  transition:opacity .18s cubic-bezier(.4,0,1,1), transform .18s cubic-bezier(.4,0,1,1)}
+.swap-zone.in-prep{opacity:0;transform:translateY(12px)}
+.swap-zone.in{opacity:1;transform:translateY(0);
+  transition:opacity .3s cubic-bezier(0,0,.2,1), transform .3s cubic-bezier(0,0,.2,1)}
+.readout{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--hair);
+  border:1px solid var(--hair);border-radius:9px;overflow:hidden;margin-bottom:14px}
+.cell{background:var(--panel-2);padding:11px 13px}
+.cell .k{font-family:var(--mono);font-size:.62rem;letter-spacing:.05em;color:var(--muted);text-transform:uppercase}
+.cell .v{font-family:var(--mono);font-size:1.12rem;color:var(--ink);font-variant-numeric:tabular-nums;margin-top:3px}
+.cell .v small{color:var(--muted);font-size:.66rem}
+.cell.ok .v{color:var(--seal)}
+.cell.warn .v{color:var(--amber-2)}
+.figbox{width:100%;height:132px;border:1px solid var(--hair);border-radius:9px;overflow:hidden;
+  background:linear-gradient(180deg,rgba(240,162,75,.03),rgba(79,209,176,.02))}
+.figbox svg{width:100%;height:100%;display:block}
+/* palette & styles partagés des schémas */
+.figbox .s-strata{opacity:.5}
+.figbox .s-rule{stroke:rgba(255,255,255,.09);stroke-width:1}
+.figbox .s-struct{fill:rgba(240,162,75,.26);stroke:var(--amber);stroke-width:1.4}
+.figbox .s-concrete{fill:rgba(174,184,196,.9)}
+.figbox .s-amber{stroke:var(--amber);stroke-width:1.5;fill:none}
+.figbox .s-amber-f{fill:var(--amber)}
+.figbox .s-seal{stroke:var(--seal);stroke-width:1.5;fill:none}
+.figbox .s-seal-f{fill:var(--seal)}
+.figbox .s-lbl{fill:var(--muted);font-family:var(--mono);font-size:8.5px;letter-spacing:.02em}
+.figbox .s-lbl-a{fill:var(--amber-2);font-family:var(--mono);font-size:8.5px;letter-spacing:.02em}
+.figbox .s-lbl-s{fill:var(--seal);font-family:var(--mono);font-size:8.5px;letter-spacing:.02em}
+.figbox .s-val{fill:var(--ink);font-family:var(--mono);font-size:10px;font-weight:500}
+.figbox .s-glow{filter:drop-shadow(0 0 4px rgba(240,162,75,.5))}
+/* micro-anims d'entrée */
+@keyframes s-drop{from{transform:translateY(-14px);opacity:0}to{transform:none;opacity:1}}
+@keyframes s-rise{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
+@keyframes s-dilate{from{transform:scale(.4)}to{transform:scale(1)}}
+@keyframes s-fill-h{from{height:0}to{height:var(--fh)}}
+@keyframes s-draw{from{stroke-dashoffset:var(--len)}to{stroke-dashoffset:0}}
+@keyframes s-fade{from{opacity:0}to{opacity:1}}
+.figbox .anim-drop{animation:s-drop .5s cubic-bezier(.2,.7,.3,1) both}
+.figbox .anim-rise{animation:s-rise .55s cubic-bezier(.2,.7,.3,1) .1s both}
+.figbox .anim-dilate{transform-box:fill-box;transform-origin:center;animation:s-dilate .6s cubic-bezier(.2,.85,.25,1.1) .15s both}
+.figbox .anim-fade{animation:s-fade .5s ease .2s both}
+.figbox .anim-draw{stroke-dasharray:var(--len);animation:s-draw .7s cubic-bezier(.4,0,.2,1) .1s both}
+@media (prefers-reduced-motion:reduce){
+  .figbox .anim-drop,.figbox .anim-rise,.figbox .anim-dilate,.figbox .anim-fade,.figbox .anim-draw{animation:none}
+}
+.cap{font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-top:7px;letter-spacing:.03em}
+.slider{margin:14px 0 4px}
+.slider.hide{display:none}
+.slider label{font-family:var(--mono);font-size:.62rem;letter-spacing:.05em;color:var(--muted);text-transform:uppercase;
+  display:flex;justify-content:space-between;margin-bottom:9px}
+.slider label span{color:var(--amber-2)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;border-radius:2px;
+  background:linear-gradient(90deg,var(--amber) 0 62%,var(--hair-2) 62%);outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--amber);border:3px solid var(--panel);box-shadow:0 0 0 1px var(--amber),0 0 12px var(--amber-line);transition:transform .1s}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.15)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border:3px solid var(--panel);border-radius:50%;background:var(--amber);cursor:pointer}
+.seal-row{display:flex;align-items:center;gap:12px;margin-top:14px;padding:12px 14px;
+  border:1px solid var(--seal);border-radius:10px;background:var(--seal-dim);transition:.3s}
+.seal-row.pending{border-color:var(--amber-line);background:var(--amber-dim)}
+.seal-badge{width:34px;height:34px;flex:none}
+.seal-badge circle,.seal-badge path{transition:stroke .3s}
+.seal-row.pending .seal-badge circle,.seal-row.pending .seal-badge .chk{stroke:var(--amber-2)}
+.seal-row .st{font-size:.84rem;font-weight:600;color:var(--ink)}
+.seal-row .sh{font-family:var(--mono);font-size:.62rem;color:var(--seal);margin-top:1px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:230px}
+.seal-row.pending .sh{color:var(--amber-2)}
+
+/* ---------- bande normes : marquee premium ---------- */
+.band{border-block:1px solid var(--hair);background:var(--bg-2);overflow:hidden;padding-block:16px}
+.band-head{max-width:var(--maxw);margin-inline:auto;padding-inline:var(--gut);margin-bottom:12px}
+@media (min-width:1081px){.band-head{padding-left:calc(var(--spine) + var(--gut))}}
+.band .lbl{font-family:var(--mono);text-transform:uppercase;letter-spacing:.14em;font-size:.62rem;color:var(--muted);
+  display:inline-flex;align-items:center;gap:.7em}
+.band .lbl::before{content:"";width:20px;height:1px;background:var(--amber-line)}
+.marquee{position:relative;width:100%;overflow:hidden;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent)}
+.marquee-track{display:inline-flex;gap:12px;align-items:stretch;white-space:nowrap;will-change:transform;
+  animation:marquee-l 46s linear infinite}
+.marquee:hover .marquee-track{animation-play-state:paused}
+@keyframes marquee-l{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+/* chaque puce = un domaine, teinte de strate via --c */
+.norm-chip{display:inline-flex;align-items:center;gap:11px;flex:none;padding:9px 15px 9px 11px;
+  border:1px solid var(--hair);border-radius:10px;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--c) 12%,var(--panel)),var(--bg-2));
+  transition:border-color .2s,transform .2s,box-shadow .2s}
+.norm-chip:hover{border-color:color-mix(in srgb,var(--c) 55%,transparent);transform:translateY(-2px);
+  box-shadow:0 10px 22px -14px color-mix(in srgb,var(--c) 70%,transparent)}
+.norm-chip .ng{width:26px;height:26px;flex:none;color:var(--c);padding:4px;border-radius:7px;
+  background:color-mix(in srgb,var(--c) 16%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c) 30%,transparent)}
+.norm-chip .nt{display:inline-flex;flex-direction:column;gap:1px;line-height:1.1}
+.norm-chip b{font-family:var(--mono);font-size:.78rem;font-weight:500;color:var(--ink);letter-spacing:.02em}
+.norm-chip em{font-family:var(--mono);font-size:.58rem;font-style:normal;letter-spacing:.08em;
+  text-transform:uppercase;color:color-mix(in srgb,var(--c) 65%,var(--ink-2))}
+@media (prefers-reduced-motion:reduce){
+  .marquee-track{animation:none!important;flex-wrap:wrap;white-space:normal;justify-content:center}
+  .marquee{-webkit-mask-image:none;mask-image:none}
+}
+
+/* ---------- sections ---------- */
+section{padding-block:clamp(56px,8vw,96px);position:relative}
+section+section{border-top:1px solid var(--hair)}
+.sec-head{max-width:58ch}
+.sec-head h2{font-size:var(--t-3);margin-top:15px;letter-spacing:-.035em}
+.sec-head .sub{margin-top:16px;color:var(--ink-2);font-size:var(--t-1);line-height:1.5;font-weight:450}
+
+/* 6 logiciels */
+.tools{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:44px}
+@media (max-width:820px){.tools{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:520px){.tools{grid-template-columns:1fr}}
+.tool{position:relative;padding:22px 20px;border-radius:13px;border:1px solid var(--hair);
+  background:linear-gradient(180deg,var(--panel),var(--bg-2));overflow:hidden;
+  transition:transform .25s cubic-bezier(.2,.7,.3,1),border-color .25s,box-shadow .25s}
+.tool::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--edge),transparent);opacity:0;transition:opacity .25s}
+.tool:hover{transform:translateY(-4px);border-color:var(--amber-line);
+  box-shadow:0 20px 40px -24px rgba(240,162,75,.35)}
+.tool:hover::before{opacity:1}
+.tool .code{font-family:var(--mono);font-size:.68rem;font-weight:500;letter-spacing:.08em;color:var(--amber-2);
+  display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;
+  border:1px solid var(--amber-line);border-radius:9px;background:var(--amber-dim)}
+.tool h3{font-family:var(--disp);font-size:var(--t-1);margin-top:15px;font-weight:600}
+.tool p{margin-top:8px;color:var(--muted);font-size:var(--t--1);line-height:1.5}
+.tool .norm{font-family:var(--mono);font-size:.62rem;color:var(--ink-2);margin-top:14px;
+  padding-top:12px;border-top:1px solid var(--hair);letter-spacing:.02em}
+
+/* PV */
+.pv{display:grid;grid-template-columns:1fr 1fr;gap:clamp(30px,5vw,60px);align-items:center}
+@media (max-width:860px){.pv{grid-template-columns:1fr;gap:36px}}
+.pv-points{display:flex;flex-direction:column;margin-top:28px}
+.pv-point{display:grid;grid-template-columns:auto 1fr;gap:15px;align-items:start;padding:18px 0;border-top:1px solid var(--hair)}
+.pv-point:last-child{border-bottom:1px solid var(--hair)}
+.pv-ico{width:34px;height:34px;flex:none;border:1px solid var(--seal);border-radius:9px;display:grid;place-items:center;
+  color:var(--seal);background:var(--seal-dim);font-family:var(--mono)}
+.pv-point h4{font-family:var(--disp);font-size:1.02rem;font-weight:600;margin-bottom:3px}
+.pv-point p{color:var(--muted);font-size:var(--t--1);line-height:1.5}
+.disclaimer{margin-top:22px;font-family:var(--mono);font-size:.66rem;color:var(--muted);letter-spacing:.01em}
+.doc{padding:24px;position:relative;overflow:hidden}
+.doc-ref{font-family:var(--mono);font-size:.66rem;color:var(--muted);letter-spacing:.06em}
+.doc-h{font-family:var(--disp);font-size:1.2rem;font-weight:600;margin:6px 0 18px}
+.doc-line{height:8px;border-radius:3px;background:var(--hair);margin:9px 0}
+.doc-line.a{width:94%}.doc-line.b{width:72%}.doc-line.c{width:85%}.doc-line.d{width:58%}
+.doc-num{font-family:var(--mono);font-size:.6rem;color:var(--ink-2);margin-top:16px;padding-top:13px;border-top:1px dashed var(--hair)}
+.stamp{position:absolute;right:20px;bottom:20px;width:96px;height:96px}
+
+/* étapes */
+.steps{counter-reset:s;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:44px}
+@media (max-width:760px){.steps{grid-template-columns:1fr}}
+.step{position:relative;padding:26px 22px;border-radius:13px;border:1px solid var(--hair);
+  background:linear-gradient(180deg,var(--panel),transparent)}
+.step::before{counter-increment:s;content:counter(s,decimal-leading-zero);font-family:var(--mono);
+  font-size:.78rem;font-weight:500;color:var(--amber-2);letter-spacing:.08em}
+.step h3{font-family:var(--disp);font-size:var(--t-1);margin-top:12px;font-weight:600}
+.step p{margin-top:9px;color:var(--muted);font-size:var(--t--1);line-height:1.5}
+
+/* tarifs */
+.cur{display:inline-flex;gap:2px;margin-top:18px;border:1px solid var(--hair);border-radius:8px;padding:3px;background:var(--bg-2)}
+.cur button{font-family:var(--mono);font-size:.7rem;padding:6px 14px;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;transition:.14s}
+.cur button.on{background:var(--amber);color:#1a1206;font-weight:600}
+.prices{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:42px}
+@media (max-width:820px){.prices{grid-template-columns:1fr}}
+.price{padding:26px 22px;border-radius:14px;border:1px solid var(--hair);background:linear-gradient(180deg,var(--panel),var(--bg-2));
+  display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden}
+.price.feat{border-color:var(--amber-line);box-shadow:0 24px 50px -30px rgba(240,162,75,.4)}
+.price.feat::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;background:linear-gradient(90deg,transparent,var(--amber-line),transparent)}
+.price .ribbon{position:absolute;top:0;right:18px;background:var(--amber);color:#1a1206;font-family:var(--mono);
+  font-size:.56rem;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;border-radius:0 0 6px 6px;font-weight:600}
+.price .plan{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.price .amt{font-family:var(--disp);font-size:2.1rem;font-weight:600;font-variant-numeric:tabular-nums;margin-top:8px;letter-spacing:-.03em}
+.price .amt small{font-size:.8rem;color:var(--muted);font-weight:400;font-family:var(--mono)}
+.price .per{font-family:var(--mono);font-size:.7rem;color:var(--muted)}
+.price ul{list-style:none;padding:0;margin:16px 0 20px;display:flex;flex-direction:column;gap:10px;font-size:var(--t--1);color:var(--ink-2)}
+.price li{display:flex;gap:9px;align-items:flex-start}
+.price li::before{content:"";width:15px;height:15px;flex:none;margin-top:3px;border-radius:5px;background:var(--seal-dim);
+  border:1px solid var(--seal);background-image:linear-gradient(45deg,transparent 44%,var(--seal) 44%,var(--seal) 56%,transparent 56%)}
+.price .btn{justify-content:center;margin-top:auto}
+
+/* clôture */
+.close{text-align:center;max-width:48ch;margin-inline:auto}
+.close h2{font-size:var(--t-3);letter-spacing:-.035em}
+.close p{margin-top:16px;color:var(--ink-2);font-size:var(--t-1)}
+.close .hero-cta{justify-content:center;margin-top:28px}
+.author{margin-top:30px;font-family:var(--mono);font-size:var(--t--1);color:var(--muted);letter-spacing:.02em}
+
+/* footer */
+footer{border-top:1px solid var(--hair);padding-block:38px;color:var(--muted);background:var(--bg-2)}
+.foot-grid{display:flex;justify-content:space-between;gap:22px;flex-wrap:wrap;align-items:center}
+.foot-brand{display:flex;align-items:center;gap:11px;font-family:var(--disp);font-weight:700;font-size:1.1rem;color:var(--ink)}
+.foot-brand .logo{width:26px;height:26px}
+.foot-links{display:flex;gap:20px;flex-wrap:wrap;font-family:var(--mono);font-size:var(--t--1)}
+.foot-links a:hover{color:var(--amber-2)}
+.legal{font-family:var(--mono);font-size:.64rem;color:var(--faint);margin-top:20px;letter-spacing:.01em;max-width:74ch;line-height:1.7}
+
+/* ---------- séquence d'entrée orchestrée ---------- */
+.anim{opacity:0;transform:translateY(20px);filter:blur(6px)}
+.anim.in{opacity:1;transform:none;filter:none;
+  transition:opacity .8s cubic-bezier(.2,.7,.3,1),transform .8s cubic-bezier(.2,.7,.3,1),filter .8s ease}
+.reveal{opacity:0;transform:translateY(16px)}
+.reveal.in{opacity:1;transform:none;transition:opacity .7s cubic-bezier(.2,.7,.3,1),transform .7s cubic-bezier(.2,.7,.3,1)}
+.doc .stamp{opacity:0;transform:rotate(-26deg) scale(.4)}
+.doc.in .stamp{opacity:1;transform:rotate(-8deg) scale(1);transition:opacity .5s ease .3s,transform .7s cubic-bezier(.2,.85,.25,1.2) .3s}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .anim,.reveal,.doc .stamp{opacity:1!important;transform:none!important;filter:none!important;transition:none!important}
+  .ambient::before{transform:none!important}
+  .sheet-top .live b{animation:none}
+}
+</style>
+</head>
+<body>
+<div class="ambient" id="ambient"></div>
+<div class="grain"></div>
+
+<aside class="spine" aria-hidden="true" id="spine">
+  <div class="tube"><div class="fill" id="fill"></div></div>
+  <div class="glow" id="glow"></div>
+  <div class="here" id="here">0.0 m</div>
+</aside>
+
+<header>
+  <div class="wrap nav-in">
+    <a class="brand" href="#top" aria-label="GEOFAM, accueil">
+      <svg class="logo" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+        <rect x="1" y="1" width="26" height="26" rx="7" fill="#0f141b" stroke="rgba(255,255,255,.12)"/>
+        <rect x="8" y="6" width="4" height="16" rx="1" fill="#f0a24b"/>
+        <rect x="12" y="6" width="8" height="3.6" rx="1" fill="#eef2f6"/>
+        <rect x="12" y="12.2" width="6" height="3.6" rx="1" fill="#eef2f6"/>
+      </svg>GEOFAM
+    </a>
+    <nav class="nav-links" aria-label="Principale">
+      <a href="#logiciels">Logiciels</a><a href="#pv">PV scellé</a><a href="#methode">Méthode</a><a href="#tarifs">Tarifs</a>
+    </nav>
+    <a class="btn btn-primary" href="#tarifs">Essai 24 h</a>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero" id="s0" data-depth="0.0">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow anim" data-seq="1">Bureaux d'études · géotechnique &amp; chaussées</span>
+        <h1 class="title anim" data-seq="2">Toute la géotechnique,<br>sur <span class="amber">tous vos postes</span>.</h1>
+        <p class="lede anim" data-seq="3">Chaussées, fondations, pieux, radiers, pressiomètre, laboratoire — six logiciels métier accessibles partout, au bureau comme sur chantier. Installables en un clic comme une app ; chaque calcul ressort en PV numéroté et scellé.</p>
+        <div class="hero-cta anim" data-seq="4">
+          <a class="btn btn-primary" href="#tarifs">Démarrer l'essai gratuit</a>
+          <a class="btn btn-ghost" href="#logiciels">Voir les logiciels</a>
+        </div>
+        <div class="hero-proof anim" data-seq="5">
+          <div class="pline domains">
+            <span>Chaussées</span><em>·</em><span>Fondations</span><em>·</em><span>Pieux</span><em>·</em><span>Radiers</span><em>·</em><span>Pressiomètre</span><em>·</em><span>Labo</span>
+          </div>
+          <div class="pline benefits">
+            <span><i class="pd"></i>6 logiciels métier</span>
+            <span><i class="pd"></i>Sur tous vos postes</span>
+            <span><i class="pd"></i>Installable comme une app</span>
+          </div>
+        </div>
+      </div>
+      <div class="glass sheet anim" data-seq="4" id="sheet">
+        <div class="sheet-top"><span id="sheetTitle">ROADSENS · Note de calcul</span><span class="live"><b></b> serveur</span></div>
+        <div class="tabs" role="tablist" aria-label="Choisir un logiciel">
+          <button class="tab on" data-tool="ch" role="tab" aria-selected="true">CH</button>
+          <button class="tab" data-tool="fd" role="tab" aria-selected="false">FD</button>
+          <button class="tab" data-tool="px" role="tab" aria-selected="false">PX</button>
+          <button class="tab" data-tool="rd" role="tab" aria-selected="false">RD</button>
+          <button class="tab" data-tool="pr" role="tab" aria-selected="false">PR</button>
+          <button class="tab" data-tool="lb" role="tab" aria-selected="false">LB</button>
+        </div>
+        <div class="sheet-body">
+          <div class="swap-zone" id="swapZone">
+          <div class="readout">
+            <div class="cell"><div class="k" id="k1">Trafic cumulé</div><div class="v" id="v1">1.4×10⁷ <small>PL</small></div></div>
+            <div class="cell"><div class="k" id="k2">εz calculée</div><div class="v" id="v2">210 <small>µdef</small></div></div>
+            <div class="cell ok"><div class="k" id="k3">εz admissible</div><div class="v" id="v3">245 <small>µdef</small></div></div>
+            <div class="cell ok" id="cVerdict"><div class="k" id="k4">Vérification</div><div class="v" id="v4" aria-live="polite">Admissible</div></div>
+          </div>
+          <div id="fig" class="figbox" aria-label="Schéma de principe du logiciel sélectionné"></div>
+          <div class="cap" id="cap">Bassin de déflexion — recalculé côté serveur</div>
+          <div class="slider" id="sliderWrap">
+            <label for="traf">Trafic cumulé — faites glisser <span>↔</span></label>
+            <input id="traf" type="range" min="0" max="100" value="62" aria-label="Trafic cumulé">
+          </div>
+          </div>
+          <div class="seal-row" id="seal">
+            <svg class="seal-badge" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+              <circle cx="20" cy="20" r="18" stroke="#4fd1b0" stroke-width="1.4"/>
+              <circle cx="20" cy="20" r="13" stroke="#4fd1b0" stroke-width="1" stroke-dasharray="1.5 2.5"/>
+              <path class="chk" d="M14 20.5l4 4 8-9" stroke="#4fd1b0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div><div class="st" id="sealT">PV-2026-000481 · scellé</div><div class="sh" id="sealH">sha256 · 9f3c…a1e7 · horodaté serveur</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="band">
+    <div class="band-head"><span class="lbl">Calculs calés sur les normes en vigueur</span></div>
+    <div class="marquee" id="marquee" aria-label="Référentiels métier par domaine">
+      <div class="marquee-track">
+        <span class="norm-chip" style="--c:#a9793f">
+          <svg class="ng" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2" y="4" width="16" height="3" rx="1" fill="currentColor"/><rect x="2" y="8.5" width="16" height="3" rx="1" fill="currentColor" opacity=".6"/><rect x="2" y="13" width="16" height="3" rx="1" fill="currentColor" opacity=".35"/></svg>
+          <span class="nt"><b>AGEROUTE 2015</b><em>chaussées</em></span>
+        </span>
+        <span class="norm-chip" style="--c:#c99a4e">
+          <svg class="ng" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="8" y="2" width="4" height="8" fill="currentColor"/><rect x="3" y="10" width="14" height="4" rx="1" fill="currentColor"/><path d="M3 15h14" stroke="currentColor" stroke-width="1.5" opacity=".5" stroke-dasharray="2 2"/></svg>
+          <span class="nt"><b>Eurocode 7</b><em>fondations</em></span>
+        </span>
+        <span class="norm-chip" style="--c:#9aa0a2">
+          <svg class="ng" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="8.5" y="2" width="3" height="13" fill="currentColor"/><path d="M10 15l-2.5-3h5z" fill="currentColor"/><path d="M4 6h4M4 9h4M12 6h4M12 9h4" stroke="currentColor" stroke-width="1" opacity=".5"/></svg>
+          <span class="nt"><b>Fascicule 62</b><em>pieux</em></span>
+        </span>
+        <span class="norm-chip" style="--c:#5c6b73">
+          <svg class="ng" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2" y="7" width="16" height="5" rx="1" fill="currentColor"/><path d="M4 14v2M8 14v2M12 14v2M16 14v2" stroke="currentColor" stroke-width="1.3" opacity=".5"/></svg>
+          <span class="nt"><b>Winkler</b><em>radiers</em></span>
+        </span>
+        <span class="norm-chip" style="--c:#d8be7d">
+          <svg class="ng" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="8.5" y="2" width="3" height="16" fill="currentColor" opacity=".5"/><ellipse cx="10" cy="10" rx="4.5" ry="3" fill="currentColor"/><path d="M14 10h2M4 10h2" stroke="currentColor" stroke-width="1.3"/></svg>
+          <span class="nt"><b>Ménard</b><em>pressiomètre</em></span>
+        </span>
+        <span class="norm-chip" style="--c:#7d6f52">
+          <svg class="ng" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M6 3h8v11a4 3 0 01-8 0z" fill="currentColor"/><ellipse cx="10" cy="3" rx="4" ry="1.4" fill="currentColor" opacity=".6"/></svg>
+          <span class="nt"><b>GTR</b><em>laboratoire</em></span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <section id="logiciels" data-depth="2.0">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">La suite complète</span>
+        <h2>Chaussées, fondations, laboratoire — un seul accès.</h2>
+        <p class="sub">Six outils co-validés avec un ingénieur expert, du dimensionnement routier à l'essai de sol. Vous retrouvez l'interface que vous connaissez ; le calcul tourne sur nos serveurs.</p>
+      </div>
+      <div class="tools">
+        <article class="tool reveal"><span class="code">CH</span><h3>ROADSENS</h3><p>Dimensionnement de chaussées neuves et renforcements — modèle multicouche de Burmister.</p><div class="norm">AGEROUTE 2015 · LCPC</div></article>
+        <article class="tool reveal"><span class="code">FD</span><h3>Terzaghi</h3><p>Portance des fondations superficielles — semelles isolées, filantes, radiers.</p><div class="norm">Eurocode 7</div></article>
+        <article class="tool reveal"><span class="code">PX</span><h3>Casagrande</h3><p>Fondations profondes — pieux, frottement latéral, effort de pointe, tassement.</p><div class="norm">Fascicule 62 · Frank &amp; Zhao</div></article>
+        <article class="tool reveal"><span class="code">RD</span><h3>Geoplaque</h3><p>Radiers et plaques sur sol élastique — déflexion, distorsion, cartographie.</p><div class="norm">Éléments finis · Winkler</div></article>
+        <article class="tool reveal"><span class="code">PR</span><h3>PressioPro</h3><p>Interprétation pressiométrique Ménard — pl*, module EM, courbes et spectres.</p><div class="norm">Ménard · NF P94-110</div></article>
+        <article class="tool reveal"><span class="code">LB</span><h3>Fastlab</h3><p>Essais de laboratoire — granulométrie, limites, Proctor, CBR, œdomètre, cisaillement.</p><div class="norm">GTR · essais normalisés</div></article>
+      </div>
+    </div>
+  </section>
+
+  <section id="pv" data-depth="4.0">
+    <div class="wrap pv">
+      <div class="reveal">
+        <span class="eyebrow">La différence GEOFAM</span>
+        <h2 style="font-size:var(--t-3);margin-top:15px;letter-spacing:-.035em">Un procès-verbal qu'on ne peut pas retoucher en douce.</h2>
+        <p class="sub" style="margin-top:16px">Chaque résultat produit un document numéroté et horodaté. Le serveur en calcule une empreinte au moment du scellement — la moindre modification ultérieure casse le sceau.</p>
+        <div class="pv-points">
+          <div class="pv-point"><span class="pv-ico">↻</span><div><h4>Recalculé côté serveur</h4><p>Le moteur ré-exécute le calcul sur vos données avant de sceller — le PV reflète ce que le serveur a produit, pas ce que le poste a affiché.</p></div></div>
+          <div class="pv-point"><span class="pv-ico">#</span><div><h4>Empreinte vérifiable</h4><p>Chaque document porte une empreinte SHA-256 et un sceau HMAC. Recalculez l'empreinte : si elle correspond, le document est intact.</p></div></div>
+          <div class="pv-point"><span class="pv-ico">⧉</span><div><h4>Archivé et retrouvable</h4><p>Le PV exact est conservé sur nos serveurs, rattaché au projet client. Ré-imprimable à l'identique, opposable à votre archive.</p></div></div>
+        </div>
+        <p class="disclaimer">Dispositif d'intégrité technique. La responsabilité de l'étude reste à l'ingénieur signataire.</p>
+      </div>
+      <div class="glass doc reveal" aria-hidden="true">
+        <div class="doc-ref">PROCÈS-VERBAL · PV-2026-000481</div>
+        <div class="doc-h">Note de calcul — Fondations profondes</div>
+        <div class="doc-line a"></div><div class="doc-line b"></div><div class="doc-line c"></div>
+        <div class="doc-line a"></div><div class="doc-line d"></div><div class="doc-line b"></div>
+        <div class="doc-num">sha256 · 9f3c 4b8a … d2f1 a1e7 · horodaté 2026-04-11 09:42 UTC</div>
+        <svg class="stamp" viewBox="0 0 96 96" fill="none">
+          <circle cx="48" cy="48" r="44" stroke="#4fd1b0" stroke-width="1.5"/>
+          <circle cx="48" cy="48" r="34" stroke="#4fd1b0" stroke-width="1" stroke-dasharray="2 3"/>
+          <path d="M35 49l9 9 18-22" stroke="#4fd1b0" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path id="arc" d="M48 13a35 35 0 0 1 0 70a35 35 0 0 1 0-70"/>
+          <text fill="#4fd1b0" font-family="'JetBrains Mono',monospace" font-size="6.4" letter-spacing="2"><textPath href="#arc" startOffset="3%">SCELLÉ · HORODATÉ · INTÈGRE · </textPath></text>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section id="methode" data-depth="6.0">
+    <div class="wrap">
+      <div class="sec-head reveal"><span class="eyebrow">De la saisie au livrable</span><h2>Trois gestes, zéro friction.</h2></div>
+      <div class="steps">
+        <div class="step reveal"><h3>Saisissez</h3><p>Ouvrez le logiciel voulu, entrez vos données comme sur votre outil habituel. Rien à installer, rien à réapprendre.</p></div>
+        <div class="step reveal"><h3>Calculez</h3><p>Le calcul s'exécute sur nos serveurs et s'affiche à l'écran, rattaché au projet client concerné.</p></div>
+        <div class="step reveal"><h3>Scellez</h3><p>Un clic génère le PV numéroté et scellé, prêt à archiver et à transmettre. Retrouvable à tout moment.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tarifs" data-depth="8.0">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Tarifs</span><h2>Un abonnement, les six logiciels.</h2>
+        <p class="sub">Carte bancaire ou mobile money (Wave, Orange Money, Free) selon votre pays. Essai gratuit de 24 h, sans carte.</p>
+        <div class="cur" role="group" aria-label="Choisir la devise">
+          <button data-cur="fcfa" class="on" aria-pressed="true">FCFA</button>
+          <button data-cur="eur" aria-pressed="false">EUR</button>
+          <button data-cur="usd" aria-pressed="false">USD</button>
+        </div>
+      </div>
+      <div class="prices">
+        <div class="price reveal"><div class="plan">Mensuel</div>
+          <div class="amt" data-fcfa="32 800|FCFA" data-eur="50|€" data-usd="55|$"><span class="num">32 800</span> <small class="curl">FCFA</small></div>
+          <div class="per">par mois · 1 poste</div>
+          <ul><li>Les 6 logiciels</li><li>PV scellés illimités</li><li>Support WhatsApp</li></ul>
+          <a class="btn btn-ghost" href="#contact">Choisir le mensuel</a></div>
+        <div class="price feat reveal"><div class="ribbon">le plus choisi</div><div class="plan">Annuel</div>
+          <div class="amt" data-fcfa="196 800|FCFA" data-eur="300|€" data-usd="330|$"><span class="num">196 800</span> <small class="curl">FCFA</small></div>
+          <div class="per">par an · 1 poste — deux mois offerts</div>
+          <ul><li>Tout le mensuel</li><li>Tutoriels vidéo dédiés</li><li>Support prioritaire</li></ul>
+          <a class="btn btn-primary" href="#contact">Choisir l'annuel</a></div>
+        <div class="price reveal"><div class="plan">Bureau · à vie</div>
+          <div class="amt" data-fcfa="1 968 000|FCFA" data-eur="3 000|€" data-usd="3 300|$"><span class="num">1 968 000</span> <small class="curl">FCFA</small></div>
+          <div class="per">licence permanente · 5 postes</div>
+          <ul><li>Accès permanent, 5 postes</li><li>Mises à jour incluses</li><li>Accompagnement mise en route</li></ul>
+          <a class="btn btn-ghost" href="#contact">Parler à l'équipe</a></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="contact" data-depth="10.0">
+    <div class="wrap close reveal">
+      <h2>Faites votre premier PV scellé aujourd'hui.</h2>
+      <p>24 heures d'essai, tous les logiciels ouverts. On vous accompagne par WhatsApp.</p>
+      <div class="hero-cta"><a class="btn btn-primary" href="#">Démarrer l'essai gratuit</a><a class="btn btn-ghost" href="#">Écrire sur WhatsApp</a></div>
+      <div class="author">Édité par STARFIRE TECHNOLOGY · ingénierie géotechnique</div>
+    </div>
+  </section>
+</main>
+
+<footer><div class="wrap">
+  <div class="foot-grid">
+    <div class="foot-brand">
+      <svg class="logo" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+        <rect x="1" y="1" width="26" height="26" rx="7" fill="#0f141b" stroke="rgba(255,255,255,.12)"/>
+        <rect x="8" y="6" width="4" height="16" rx="1" fill="#f0a24b"/>
+        <rect x="12" y="6" width="8" height="3.6" rx="1" fill="#eef2f6"/>
+        <rect x="12" y="12.2" width="6" height="3.6" rx="1" fill="#eef2f6"/>
+      </svg>GEOFAM
+    </div>
+    <div class="foot-links"><a href="#logiciels">Logiciels</a><a href="#pv">PV scellé</a><a href="#tarifs">Tarifs</a><a href="#">WhatsApp</a><a href="#">Tutoriels</a></div>
+  </div>
+  <p class="legal">Le sceau des procès-verbaux est un dispositif d'intégrité technique (SHA-256 / HMAC, horodatage serveur). Il ne constitue pas une signature électronique qualifiée au sens de la loi 2008-08. © 2026 STARFIRE TECHNOLOGY. Logo GEOFAM à substituer par le fichier de marque.</p>
+</div></footer>
+
+<script>
+var REDUCE=window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+function $(id){return document.getElementById(id);}
+
+/* ---- marquee normes : duplique chaque rang pour une boucle sans couture ---- */
+(function(){
+  if(REDUCE) return; // statique en reduced-motion
+  document.querySelectorAll('.marquee-track').forEach(function(track){
+    track.innerHTML = track.innerHTML + track.innerHTML; // 2 copies → 50% = boucle parfaite
+  });
+})();
+
+window.addEventListener('load',function(){
+  if(REDUCE){document.querySelectorAll('.anim').forEach(function(e){e.classList.add('in');});return;}
+  var seq=[].slice.call(document.querySelectorAll('.hero .anim'))
+    .sort(function(a,b){return (+a.dataset.seq)-(+b.dataset.seq);});
+  seq.forEach(function(el,i){ setTimeout(function(){el.classList.add('in');}, 120+i*130); });
+});
+
+/* ---- la carte fait défiler les 6 logiciels et leurs figures ----
+   Démarre à l'entrée dans le viewport, met en pause au survol (pour laisser
+   l'utilisateur explorer manuellement), reprend quand la souris quitte. */
+(function(){
+  var sheet=$('sheet'); if(!sheet) return;
+  var order=['ch','fd','px','rd','pr','lb'], idx=0, timer=null, paused=false, started=false;
+  function selectTab(key){
+    var b=document.querySelector('.tab[data-tool="'+key+'"]'); if(b) b.click();
+  }
+  function tick(){
+    if(paused) return;
+    idx=(idx+1)%order.length;
+    selectTab(order[idx]);
+  }
+  function start(){
+    if(started||REDUCE) return; started=true;
+    timer=setInterval(tick,2600);
+  }
+  // pause quand l'utilisateur prend la main
+  sheet.addEventListener('mouseenter',function(){ paused=true; });
+  sheet.addEventListener('mouseleave',function(){ paused=false; });
+  // si l'utilisateur clique un onglet, on se cale sur son choix
+  document.querySelectorAll('.tab').forEach(function(b){
+    b.addEventListener('click',function(){ idx=order.indexOf(b.getAttribute('data-tool')); });
+  });
+  if('IntersectionObserver' in window && !REDUCE){
+    var io=new IntersectionObserver(function(es){
+      es.forEach(function(e){ if(e.isIntersecting){ start(); io.unobserve(e.target); } });
+    },{threshold:.5});
+    io.observe(sheet);
+  }
+})();
+
+
+/* ---- parallaxe légère de la carte au pointeur ---- */
+(function(){
+  var sheet=$('sheet'); if(!sheet||REDUCE) return;
+  var hero=document.querySelector('.hero');
+  hero.addEventListener('mousemove',function(e){
+    var r=hero.getBoundingClientRect();
+    var dx=(e.clientX-(r.left+r.width/2))/r.width, dy=(e.clientY-(r.top+r.height/2))/r.height;
+    sheet.style.transform='perspective(1000px) rotateY('+(dx*2.2)+'deg) rotateX('+(-dy*2.2)+'deg) translateZ(0)';
+  });
+  hero.addEventListener('mouseleave',function(){ sheet.style.transform=''; });
+})();
+
+/* ---- compteurs animés ---- */
+function animateCount(el){
+  var target=+el.getAttribute('data-count'), suf=el.getAttribute('data-suffix')||'', t0=null, dur=1100;
+  if(REDUCE||target===0){el.textContent=target+suf;return;}
+  function step(ts){ if(!t0)t0=ts; var p=Math.min((ts-t0)/dur,1); var e=1-Math.pow(1-p,3);
+    el.textContent=Math.round(target*e)+suf; if(p<1)requestAnimationFrame(step); }
+  requestAnimationFrame(step);
+}
+
+/* ---- reveal + déclenchement compteurs ---- */
+(function(){
+  var els=[].slice.call(document.querySelectorAll('.reveal'));
+  if(!('IntersectionObserver' in window)||REDUCE){
+    els.forEach(function(e){e.classList.add('in');});
+    document.querySelectorAll('[data-count]').forEach(function(e){e.textContent=e.getAttribute('data-count')+(e.getAttribute('data-suffix')||'');});
+    return;
+  }
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.16});
+  els.forEach(function(e){io.observe(e);});
+  var cio=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){animateCount(e.target);cio.unobserve(e.target);}});},{threshold:.5});
+  document.querySelectorAll('[data-count]').forEach(function(e){cio.observe(e);});
+})();
+
+/* ---- halo parallax + carotte qui se remplit ---- */
+(function(){
+  var fill=$('fill'),glow=$('glow'),here=$('here'),amb=$('ambient');
+  var secs=[].slice.call(document.querySelectorAll('section[data-depth]'));
+  var tubeTop=8,tubeBot=8; // vh
+  function onScroll(){
+    var h=document.documentElement,st=window.pageYOffset||h.scrollTop||document.body.scrollTop||0,
+        max=(h.scrollHeight||document.body.scrollHeight)-h.clientHeight,prog=max>0?Math.min(st/max,1):0;
+    if(fill)fill.style.height=(prog*100)+'%';
+    if(glow){var span=100-tubeTop-tubeBot; glow.style.top=(tubeTop+prog*span)+'vh';}
+    if(amb&&!REDUCE)amb.style.setProperty('--par',(h.scrollTop*0.12)+'px');
+    var active=secs[0],cy=window.innerHeight*0.42;
+    secs.forEach(function(el){if(el.getBoundingClientRect().top<=cy)active=el;});
+    if(here)here.textContent=active.getAttribute('data-depth')+' m';
+    if(here){var span2=100-tubeTop-tubeBot; here.style.top=(tubeTop+prog*span2-2)+'vh';}
+  }
+  window.addEventListener('scroll',onScroll,{passive:true});
+  window.addEventListener('resize',onScroll); onScroll();
+})();
+
+/* ---- schémas de principe en SVG (nets, légendés, animés) ---- */
+var figHost=$('fig');
+var SOIL=['#7d6f52','#a9793f','#c99a4e','#9aa0a2','#5c6b73'];
+var VB='0 0 260 132';
+/* bandes de sol horizontales à partir de y0 (en % de 132) */
+function strata(y0){
+  var h=132-y0, n=SOIL.length, sh=h/n, out='';
+  for(var i=0;i<n;i++){ out+='<rect class="s-strata" x="0" y="'+(y0+i*sh)+'" width="260" height="'+(sh+0.5)+'" fill="'+SOIL[i]+'"/>'; }
+  out+='<line class="s-rule" x1="0" y1="'+y0+'" x2="260" y2="'+y0+'"/>';
+  return out;
+}
+/* flèche de charge verticale (pointe en bas) */
+function loadArrow(x,y,len,cls){ cls=cls||'';
+  return '<g class="'+cls+'"><line class="s-amber s-glow" x1="'+x+'" y1="'+(y-len)+'" x2="'+x+'" y2="'+y+'"/>'
+    +'<path class="s-amber-f" d="M'+x+' '+(y+1)+' l-3.2 -5 h6.4 z"/></g>';
+}
+
+/* CH — coupe de chaussée multicouche */
+function figCH(){
+  var lays=[['Roulement',18,'rgba(240,162,75,.34)'],['Base',20,'rgba(240,162,75,.20)'],
+            ['Fondation',22,'rgba(174,184,196,.16)'],['Sol support',48,'rgba(125,111,82,.45)']];
+  var y=24,body='';
+  for(var i=0;i<lays.length;i++){ body+='<rect x="0" y="'+y+'" width="260" height="'+lays[i][1]+'" fill="'+lays[i][2]+'"/>'
+    +'<line class="s-rule" x1="0" y1="'+y+'" x2="260" y2="'+y+'"/>'
+    +'<text class="s-lbl" x="7" y="'+(y+lays[i][1]/2+3)+'">'+lays[i][0]+'</text>'; y+=lays[i][1]; }
+  return '<svg viewBox="'+VB+'" xmlns="http://www.w3.org/2000/svg">'
+    +body
+    +'<g class="anim-drop"><rect class="s-concrete" x="150" y="12" width="48" height="7" rx="1.5"/>'
+    +loadArrow(174,10,14)+'</g>'
+    +'<text class="s-lbl-a" x="150" y="8">Charge essieu</text>'
+    +'<text class="s-val anim-fade" x="200" y="120">4 couches</text>'
+    +'</svg>';
+}
+/* FD — semelle superficielle sur strates */
+function figFD(){
+  var gl=40;
+  return '<svg viewBox="'+VB+'" xmlns="http://www.w3.org/2000/svg">'
+    +strata(gl)
+    +'<g class="anim-drop">'
+    +'<rect class="s-concrete" x="124" y="'+(gl-14)+'" width="12" height="14"/>'  // poteau
+    +'<rect class="s-struct" x="95" y="'+gl+'" width="70" height="13"/>'          // semelle
+    +loadArrow(130,gl-16,14)+'</g>'
+    +'<text class="s-lbl-a" x="95" y="'+(gl-4)+'">Semelle</text>'
+    +'<line class="s-amber" x1="95" y1="'+(gl+20)+'" x2="165" y2="'+(gl+20)+'"/>'
+    +'<line class="s-amber" x1="95" y1="'+(gl+16)+'" x2="95" y2="'+(gl+24)+'"/>'
+    +'<line class="s-amber" x1="165" y1="'+(gl+16)+'" x2="165" y2="'+(gl+24)+'"/>'
+    +'<text class="s-lbl-a" x="127" y="'+(gl+31)+'">largeur B</text>'
+    +'</svg>';
+}
+/* PX — pieu : frottement latéral + pointe */
+function figPX(){
+  var gl=16, px=130, pw=16, ph=94, bot=gl+ph;
+  var fr='';
+  for(var i=1;i<6;i++){ var yy=gl+i*(ph/6);
+    fr+='<line class="s-rule" x1="'+(px+pw/2+3)+'" y1="'+yy+'" x2="'+(px+pw/2+12)+'" y2="'+yy+'" stroke="rgba(174,184,196,.7)"/>'
+      +'<line class="s-rule" x1="'+(px-pw/2-3)+'" y1="'+yy+'" x2="'+(px-pw/2-12)+'" y2="'+yy+'" stroke="rgba(174,184,196,.7)"/>'; }
+  return '<svg viewBox="'+VB+'" xmlns="http://www.w3.org/2000/svg">'
+    +strata(gl)
+    +'<g class="anim-rise"><rect class="s-struct" x="'+(px-pw/2)+'" y="'+gl+'" width="'+pw+'" height="'+ph+'" rx="1"/>'
+    +'<path class="s-seal-f" d="M'+px+' '+(bot+11)+' l-'+(pw/2)+' -11 h'+pw+' z"/></g>'
+    +loadArrow(px,gl-3,13,'anim-drop')
+    +'<g class="anim-fade">'+fr+'</g>'
+    +'<text class="s-lbl" x="'+(px+pw/2+16)+'" y="'+(gl+40)+'">frottement</text>'
+    +'<text class="s-lbl-s" x="'+(px+pw/2+16)+'" y="'+(bot-2)+'">pointe</text>'
+    +'</svg>';
+}
+/* RD — radier sur sol, charges réparties + réaction */
+function figRD(){
+  var gl=54, rw=190, rx=(260-rw)/2, rh=15;
+  var loads='',react='';
+  for(var i=0;i<5;i++){ loads+=loadArrow(rx+rw*(0.12+i*0.19),gl-rh-3,12); }
+  for(var k=0;k<7;k++){ var xx=rx+rw*(0.07+k*0.145);
+    react+='<line class="s-seal" x1="'+xx+'" y1="'+(gl+13)+'" x2="'+xx+'" y2="'+(gl+4)+'"/>'
+      +'<path class="s-seal-f" d="M'+xx+' '+(gl+3)+' l-2.5 4.5 h5 z"/>'; }
+  return '<svg viewBox="'+VB+'" xmlns="http://www.w3.org/2000/svg">'
+    +strata(gl)
+    +'<g class="anim-drop">'+loads+'</g>'
+    +'<rect class="s-struct anim-rise" x="'+rx+'" y="'+(gl-rh)+'" width="'+rw+'" height="'+rh+'" rx="1"/>'
+    +'<text class="s-lbl-a" x="'+(rx+6)+'" y="'+(gl-rh-4)+'">Radier</text>'
+    +'<g class="anim-fade">'+react+'</g>'
+    +'<text class="s-lbl-s" x="'+rx+'" y="'+(gl+26)+'">réaction du sol</text>'
+    +'</svg>';
+}
+/* PR — sondage pressiométrique : forage + sonde dilatée */
+function figPR(){
+  var gl=12, bx=130, bw=13, bh=108, sy=gl+bh*0.5;
+  var press='';
+  [[-1,0],[1,0],[-0.75,-0.55],[0.75,-0.55],[-0.75,0.55],[0.75,0.55]].forEach(function(d){
+    press+='<line class="s-amber" x1="'+(bx+d[0]*13)+'" y1="'+(sy+d[1]*16)+'" x2="'+(bx+d[0]*22)+'" y2="'+(sy+d[1]*26)+'"/>'; });
+  return '<svg viewBox="'+VB+'" xmlns="http://www.w3.org/2000/svg">'
+    +strata(gl)
+    +'<rect x="'+(bx-bw/2)+'" y="'+gl+'" width="'+bw+'" height="'+bh+'" fill="rgba(8,10,13,.55)" class="s-rule"/>'
+    +'<ellipse class="s-struct s-glow anim-dilate" cx="'+bx+'" cy="'+sy+'" rx="13" ry="17"/>'
+    +'<g class="anim-fade">'+press+'</g>'
+    +'<text class="s-lbl-a" x="'+(bx+26)+'" y="'+(sy+3)+'">sonde Ménard</text>'
+    +'<text class="s-lbl" x="'+(bx-bw/2-2)+'" y="'+(gl-3)+'">forage</text>'
+    +'</svg>';
+}
+/* LB — éprouvette cylindrique (labo) */
+function figLB(){
+  var cx=130,cw=44,cyt=22,ch=80,ry=9;
+  var strat='';
+  for(var i=1;i<4;i++){ var yy=cyt+i*(ch/4);
+    strat+='<path class="s-rule" d="M'+(cx-cw/2)+' '+yy+' Q'+cx+' '+(yy+ry*0.7)+' '+(cx+cw/2)+' '+yy+'" fill="none" stroke="rgba(174,184,196,.5)"/>'; }
+  return '<svg viewBox="'+VB+'" xmlns="http://www.w3.org/2000/svg">'
+    +'<g class="anim-rise">'
+    +'<path class="s-struct" d="M'+(cx-cw/2)+' '+cyt+' L'+(cx-cw/2)+' '+(cyt+ch)+' A'+(cw/2)+' '+ry+' 0 0 0 '+(cx+cw/2)+' '+(cyt+ch)+' L'+(cx+cw/2)+' '+cyt+'"/>'
+    +'<ellipse class="s-struct" cx="'+cx+'" cy="'+cyt+'" rx="'+(cw/2)+'" ry="'+ry+'"/>'
+    +strat+'</g>'
+    +'<g class="anim-fade">'
+    +'<line class="s-amber" x1="'+(cx-cw/2)+'" y1="'+(cyt-ry-6)+'" x2="'+(cx+cw/2)+'" y2="'+(cyt-ry-6)+'"/>'
+    +'<line class="s-amber" x1="'+(cx-cw/2)+'" y1="'+(cyt-ry-9)+'" x2="'+(cx-cw/2)+'" y2="'+(cyt-ry-3)+'"/>'
+    +'<line class="s-amber" x1="'+(cx+cw/2)+'" y1="'+(cyt-ry-9)+'" x2="'+(cx+cw/2)+'" y2="'+(cyt-ry-3)+'"/>'
+    +'<text class="s-lbl-a" x="'+(cx-20)+'" y="'+(cyt-ry-10)+'">Ø éprouvette</text></g>'
+    +'</svg>';
+}
+var FIGS={basin:figCH,slip:figFD,pile:figPX,plate:figRD,pressio:figPR,proctor:figLB};
+function drawFig(key){ if(figHost&&FIGS[key]) figHost.innerHTML=FIGS[key](); }
+/* compat : anciennes signatures appelées ailleurs */
+function drawBasin(){ drawFig('basin'); }
+function sizeCanvas(){}
+
+var TOOLS={
+  ch:{title:'ROADSENS · Note de calcul',cap:'Coupe de chaussée — schéma de principe',slider:true,fig:'basin'},
+  fd:{title:'Terzaghi · Fondation superficielle',cap:'Semelle sur sol — schéma de principe',slider:false,fig:'slip',rows:['Largeur B','1,80 m','Contrainte q','0,42 MPa','q admissible','0,55 MPa','Vérification','Admissible']},
+  px:{title:'Casagrande · Pieu foré',cap:'Pieu — frottement + pointe — schéma de principe',slider:false,fig:'pile',rows:['Longueur','12,0 m','Charge Q','1 240 kN','Q limite','1 510 kN','Vérification','Admissible']},
+  rd:{title:'Geoplaque · Radier',cap:'Radier sur sol — schéma de principe',slider:false,fig:'plate',rows:['Épaisseur','0,45 m','Déflexion max','7,8 mm','Déflexion adm.','10,0 mm','Vérification','Admissible']},
+  pr:{title:'PressioPro · Pressiomètre',cap:'Sondage pressiométrique — schéma de principe',slider:false,fig:'pressio',rows:['pl*','1,85 MPa','Module EM','14,2 MPa','Rapport EM/pl','7,7','Classe','Sol cohérent']},
+  lb:{title:'Fastlab · Essai Proctor',cap:'Éprouvette de laboratoire — schéma de principe',slider:false,fig:'proctor',rows:['γd max','1,92 t/m³','w optimal','11,4 %','CBR','32','Classe GTR','B5']}
+};
+var current='ch';
+function setSeal(ok){var s=$('seal');if(ok){s.classList.remove('pending');$('sealT').textContent='PV-2026-000481 · scellé';$('sealH').textContent='sha256 · 9f3c…a1e7 · horodaté serveur';}
+  else{s.classList.add('pending');$('sealT').textContent='Résultat non admissible — non scellé';$('sealH').textContent='ajustez les paramètres avant scellement';}}
+/* met à jour le contenu instantanément (sans transition) */
+function renderTool(key){var t=TOOLS[key];
+  $('sheetTitle').textContent=t.title;$('cap').textContent=t.cap;
+  var sw=$('sliderWrap');
+  if(t.slider){sw.classList.remove('hide');updateCH(+$('traf').value);}
+  else{sw.classList.add('hide');
+    $('k1').textContent=t.rows[0];$('v1').innerHTML=t.rows[1];$('k2').textContent=t.rows[2];$('v2').innerHTML=t.rows[3];
+    $('k3').textContent=t.rows[4];$('v3').innerHTML=t.rows[5];$('k4').textContent=t.rows[6];$('v4').textContent=t.rows[7];
+    $('cVerdict').className='cell ok';document.querySelector('#v2').parentNode.className='cell';setSeal(true);}
+  drawFig(t.fig);}
+/* change de logiciel avec crossfade + léger slide */
+var swapping=false;
+function applyTool(key){
+  if(key===current && document.querySelector('#swapZone.in-prep')===null){ /* re-render courant sans anim */ }
+  current=key;
+  var zone=$('swapZone');
+  if(!zone||REDUCE){ renderTool(key); return; }
+  if(swapping){ renderTool(key); return; } // évite les chevauchements pendant un swap
+  swapping=true;
+  zone.classList.add('out');                       // sortie : fade + slide up
+  setTimeout(function(){
+    renderTool(key);                               // swap au creux (invisible)
+    zone.classList.remove('out');
+    zone.classList.add('in-prep');                 // pré-position en bas
+    // force reflow puis entrée
+    void zone.offsetWidth;
+    requestAnimationFrame(function(){
+      zone.classList.remove('in-prep');
+      zone.classList.add('in');
+      setTimeout(function(){ zone.classList.remove('in'); swapping=false; },320);
+    });
+  },180);
+}
+function updateCH(val){var trafic=(0.6+val*0.09),ez=Math.round(150+val*1.35),adm=245;
+  $('k1').textContent='Trafic cumulé';$('v1').innerHTML=trafic.toFixed(1)+'×10⁷ <small>PL</small>';
+  $('k2').textContent='εz calculée';$('v2').innerHTML=ez+' <small>µdef</small>';
+  $('k3').textContent='εz admissible';$('v3').innerHTML=adm+' <small>µdef</small>';
+  var ok=ez<=adm;$('v4').textContent=ok?'Admissible':'Non admissible';$('cVerdict').className='cell '+(ok?'ok':'warn');
+  document.querySelector('#v2').parentNode.className='cell '+(ok?'':'warn');setSeal(ok);}
+if($('traf'))$('traf').addEventListener('input',function(){updateCH(+this.value);});
+[].forEach.call(document.querySelectorAll('.tab'),function(b){b.addEventListener('click',function(){
+  document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('on');x.setAttribute('aria-selected','false');});
+  b.classList.add('on');b.setAttribute('aria-selected','true');applyTool(b.getAttribute('data-tool'));});});
+[].forEach.call(document.querySelectorAll('.cur button'),function(b){b.addEventListener('click',function(){
+  var cur=b.getAttribute('data-cur');document.querySelectorAll('.cur button').forEach(function(x){x.classList.remove('on');x.setAttribute('aria-pressed','false');});
+  b.classList.add('on');b.setAttribute('aria-pressed','true');
+  document.querySelectorAll('.amt').forEach(function(a){var raw=a.getAttribute('data-'+cur);if(!raw)return;var p=raw.split('|');a.querySelector('.num').textContent=p[0];a.querySelector('.curl').textContent=p[1];});});});
+window.addEventListener('resize',function(){ drawFig(TOOLS[current].fig); });
+if(figHost){ applyTool('ch'); }
+</script>
+</body>
+</html>

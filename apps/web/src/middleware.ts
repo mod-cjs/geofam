@@ -98,14 +98,15 @@ async function realModeMiddleware(request: NextRequest): Promise<NextResponse> {
   // redirect direct vers l'app (visiteur déjà connecté) ----
   if (pathname === '/') {
     if (!rawToken) {
-      // Pas de token : laisse passer -> src/app/page.tsx rend la landing.
-      return NextResponse.next();
+      // Pas de token : sert la landing statique GEOFAM (public/landing.html)
+      // via rewrite -> l'URL reste `/`, le HTML est servi tel quel.
+      return NextResponse.rewrite(new URL('/landing.html', request.url));
     }
     const claims = await verifyAccessToken(rawToken);
     if (!claims?.orgs?.length) {
       // Token présent mais invalide/expiré/sans org : traité comme visiteur
       // non authentifié -> landing (jamais de redirect /login en boucle ici).
-      return NextResponse.next();
+      return NextResponse.rewrite(new URL('/landing.html', request.url));
     }
     const firstOrg = claims.orgs[0];
     return NextResponse.redirect(new URL(`/app/${firstOrg.slug}/projets`, request.url));
@@ -203,7 +204,7 @@ function mockModeMiddleware(request: NextRequest): NextResponse {
     if (authCookie?.value) {
       return NextResponse.redirect(new URL('/app/be-routes-dakar/projets', request.url));
     }
-    return NextResponse.next();
+    return NextResponse.rewrite(new URL('/landing.html', request.url));
   }
 
   // Routes auth — si déjà connecté → redirect vers l'app
@@ -266,10 +267,14 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
   // Ignorer les assets statiques et les routes API internes
+  // (dont les fichiers .html de public/ — ex. landing.html, offline.html —
+  // servis tels quels, sans logique d'auth : la cible d'un rewrite `/` ->
+  // /landing.html doit passer sans être re-routée.)
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
-    pathname.startsWith('/api/')
+    pathname.startsWith('/api/') ||
+    pathname.endsWith('.html')
   ) {
     return NextResponse.next();
   }
