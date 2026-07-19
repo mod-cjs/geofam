@@ -586,6 +586,8 @@ function camelizePv(row: Record<string, unknown>): OfficialPv {
     contentHash: row.content_hash as string,
     hmac: row.hmac as string,
     sealedAt: row.sealed_at as Date,
+    documentHtml: (row.document_html as string | null) ?? null,
+    documentFormat: (row.document_format as string | null) ?? null,
   };
 }
 

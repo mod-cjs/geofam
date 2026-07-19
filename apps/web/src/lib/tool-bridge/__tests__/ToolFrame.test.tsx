@@ -19,17 +19,19 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { mockRunCalc, mockEmitPv } = vi.hoisted(() => ({
+const { mockRunCalc, mockEmitPv, mockSaveCalcSnapshot } = vi.hoisted(() => ({
   mockRunCalc: vi.fn(),
   mockEmitPv: vi.fn(),
+  mockSaveCalcSnapshot: vi.fn(),
 }));
 
 vi.mock('@/lib/api/client', () => ({
   runCalc: mockRunCalc,
   emitPv: mockEmitPv,
+  saveCalcSnapshot: mockSaveCalcSnapshot,
 }));
 
-import { ToolFrame } from '../ToolFrame';
+import { ToolFrame, SNAPSHOT_WATCHDOG_MS } from '../ToolFrame';
 import { toolStoreKey } from '../protocol';
 
 let container: HTMLDivElement;
@@ -40,6 +42,8 @@ beforeEach(() => {
   document.body.appendChild(container);
   mockRunCalc.mockReset();
   mockEmitPv.mockReset();
+  mockSaveCalcSnapshot.mockReset();
+  mockSaveCalcSnapshot.mockResolvedValue(undefined);
   localStorage.clear();
   vi.stubGlobal(
     'fetch',
@@ -61,6 +65,7 @@ afterEach(() => {
 
 interface RenderOpts {
   onCalcResultId?: (id: string | null) => void;
+  onSnapshotStatus?: (event: { calcResultId: string; status: string }) => void;
   onPvEmitted?: (pv: unknown) => void;
   toolId?: string;
   engineId?: string;
@@ -83,6 +88,7 @@ async function renderFrame(opts: RenderOpts = {}) {
         projectLabel="Fondation A12"
         accessToken="token-abc"
         onCalcResultId={opts.onCalcResultId}
+        onSnapshotStatus={opts.onSnapshotStatus}
         onPvEmitted={opts.onPvEmitted}
       />,
     );
@@ -617,9 +623,9 @@ describe('ToolFrame — calc:request résolues DANS LE DÉSORDRE (BQ-2, audit ad
       (c) => (c[0] as { id?: string }).id === 'req_new',
     );
     expect(freshResponse).toBeTruthy();
-    expect((freshResponse?.[0] as { payload: { ok: boolean; calcResultId?: string } }).payload).toMatchObject(
-      { ok: true, calcResultId: 'calc_new' },
-    );
+    expect(
+      (freshResponse?.[0] as { payload: { ok: boolean; calcResultId?: string } }).payload,
+    ).toMatchObject({ ok: true, calcResultId: 'calc_new' });
   });
 
   it("given une requête PLUS RÉCENTE rejetée (erreur serveur) APRÈS qu'une requête plus ancienne a réussi, when l'ancienne résout ensuite, then l'erreur périmée n'écrase rien et la réussite périmée n'est pas non plus remontée", async () => {
@@ -674,14 +680,15 @@ describe('ToolFrame — calc:request résolues DANS LE DÉSORDRE (BQ-2, audit ad
     const staleSuccess = postSpy.mock.calls.find(
       (c) => (c[0] as { id?: string }).id === 'req_old',
     );
-    expect(staleSuccess, 'le succès périmé ne doit pas être renvoyé au clone').toBeUndefined();
+    expect(
+      staleSuccess,
+      'le succès périmé ne doit pas être renvoyé au clone',
+    ).toBeUndefined();
     const freshError = postSpy.mock.calls.find(
       (c) => (c[0] as { id?: string }).id === 'req_new',
     );
     expect(freshError).toBeTruthy();
-    expect(
-      (freshError?.[0] as { payload: { ok: boolean } }).payload.ok,
-    ).toBe(false);
+    expect((freshError?.[0] as { payload: { ok: boolean } }).payload.ok).toBe(false);
   });
 });
 
@@ -715,7 +722,7 @@ describe('ToolFrame — input:dirty invalide le calcul périmé (BQ-1, audit adv
     expect(onCalcResultId).toHaveBeenLastCalledWith(null);
   });
 
-  it("given aucun calcul en cours (calcResultId déjà null), when input:dirty arrive, then onCalcResultId(null) est quand même appelé, sans exception (idempotent)", async () => {
+  it('given aucun calcul en cours (calcResultId déjà null), when input:dirty arrive, then onCalcResultId(null) est quand même appelé, sans exception (idempotent)', async () => {
     const onCalcResultId = vi.fn();
     await renderFrame({ onCalcResultId });
     const iframe = getIframe();
@@ -863,6 +870,226 @@ describe('ToolFrame — store:get / store:set namespacés', () => {
       { v: 1, type: 'store:value', payload: { key: 'brouillon', value: null } },
       '*',
     );
+  });
+});
+
+describe('ToolFrame — onSnapshotStatus (M3, revue adverse — ferme la course capture/scellement)', () => {
+  it("given un calcul qui réussit, when calc:response arrive, then onSnapshotStatus('awaiting') est émis pour ce calcResultId AVANT toute capture", async () => {
+    mockRunCalc.mockResolvedValue({
+      id: 'calc_42',
+      engineId: 'terzaghi',
+      domain: 'FD',
+      status: 'DONE',
+      output: { verdict: 'PASS', rows: [] },
+    });
+    const onSnapshotStatus = vi.fn();
+    await renderFrame({ onSnapshotStatus });
+    const iframe = getIframe();
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_1',
+      payload: { engineId: 'terzaghi', label: 'Calcul test', params: {} },
+    });
+
+    expect(onSnapshotStatus).toHaveBeenCalledWith({
+      calcResultId: 'calc_42',
+      status: 'awaiting',
+    });
+    // Aucun snapshot:capture envoyé → le statut reste 'awaiting' (pas de faux 'confirmed').
+    expect(mockSaveCalcSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("given snapshot:capture reçu et saveCalcSnapshot qui résout, when la persistance aboutit, then onSnapshotStatus transite awaiting→capturing→confirmed dans l'ordre", async () => {
+    mockRunCalc.mockResolvedValue({
+      id: 'calc_42',
+      engineId: 'terzaghi',
+      domain: 'FD',
+      status: 'DONE',
+      output: { verdict: 'PASS', rows: [] },
+    });
+    mockSaveCalcSnapshot.mockResolvedValue(undefined);
+    const onSnapshotStatus = vi.fn();
+    await renderFrame({ onSnapshotStatus });
+    const iframe = getIframe();
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_1',
+      payload: { engineId: 'terzaghi', label: 'Calcul test', params: {} },
+    });
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'snapshot:capture',
+      payload: { displayHtml: '<p>affiché</p>', printHtml: '<html>imprimable</html>' },
+    });
+
+    expect(mockSaveCalcSnapshot).toHaveBeenCalledWith('org_01', 'proj_01', 'calc_42', {
+      displayHtml: '<p>affiché</p>',
+      printHtml: '<html>imprimable</html>',
+    });
+    const statuses = onSnapshotStatus.mock.calls.map((c) => c[0]);
+    expect(statuses).toEqual([
+      { calcResultId: 'calc_42', status: 'awaiting' },
+      { calcResultId: 'calc_42', status: 'capturing' },
+      { calcResultId: 'calc_42', status: 'confirmed' },
+    ]);
+  });
+
+  it("given snapshot:capture reçu et saveCalcSnapshot qui échoue, when la persistance échoue, then onSnapshotStatus transite jusqu'à 'failed' (jamais 'confirmed' à tort)", async () => {
+    mockRunCalc.mockResolvedValue({
+      id: 'calc_42',
+      engineId: 'terzaghi',
+      domain: 'FD',
+      status: 'DONE',
+      output: { verdict: 'PASS', rows: [] },
+    });
+    mockSaveCalcSnapshot.mockRejectedValue({ statusCode: 400, message: 'HTML rejeté' });
+    const onSnapshotStatus = vi.fn();
+    await renderFrame({ onSnapshotStatus });
+    const iframe = getIframe();
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_1',
+      payload: { engineId: 'terzaghi', label: 'Calcul test', params: {} },
+    });
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'snapshot:capture',
+      payload: { displayHtml: '<p>affiché</p>', printHtml: '<html>imprimable</html>' },
+    });
+
+    const statuses = onSnapshotStatus.mock.calls.map((c) => c[0]);
+    expect(statuses).toEqual([
+      { calcResultId: 'calc_42', status: 'awaiting' },
+      { calcResultId: 'calc_42', status: 'capturing' },
+      { calcResultId: 'calc_42', status: 'failed' },
+    ]);
+  });
+});
+
+describe('ToolFrame — watchdog anti soft-lock (finition avant merge, revue adverse)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("given un calcul réussi mais snapshot:capture n'arrive JAMAIS (clone qui lève au rendu), when le délai watchdog s'écoule, then le statut bascule lui-même en 'failed' (jamais bloqué en dur)", async () => {
+    mockRunCalc.mockResolvedValue({
+      id: 'calc_42',
+      engineId: 'terzaghi',
+      domain: 'FD',
+      status: 'DONE',
+      output: { verdict: 'PASS', rows: [] },
+    });
+    const onSnapshotStatus = vi.fn();
+    await renderFrame({ onSnapshotStatus });
+    const iframe = getIframe();
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_1',
+      payload: { engineId: 'terzaghi', label: 'Calcul test', params: {} },
+    });
+
+    // 'awaiting' émis, AUCUN snapshot:capture n'arrivera jamais dans ce test.
+    expect(onSnapshotStatus).toHaveBeenCalledWith({
+      calcResultId: 'calc_42',
+      status: 'awaiting',
+    });
+    expect(mockSaveCalcSnapshot).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(SNAPSHOT_WATCHDOG_MS);
+      await Promise.resolve();
+    });
+
+    const statuses = onSnapshotStatus.mock.calls.map((c) => c[0]);
+    expect(statuses).toEqual([
+      { calcResultId: 'calc_42', status: 'awaiting' },
+      { calcResultId: 'calc_42', status: 'failed' },
+    ]);
+  });
+
+  it("given snapshot:capture confirmé AVANT l'échéance du watchdog, when le délai s'écoule ensuite, then AUCUN 'failed' n'est émis (watchdog annulé, pas de double-transition)", async () => {
+    mockRunCalc.mockResolvedValue({
+      id: 'calc_42',
+      engineId: 'terzaghi',
+      domain: 'FD',
+      status: 'DONE',
+      output: { verdict: 'PASS', rows: [] },
+    });
+    mockSaveCalcSnapshot.mockResolvedValue(undefined);
+    const onSnapshotStatus = vi.fn();
+    await renderFrame({ onSnapshotStatus });
+    const iframe = getIframe();
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_1',
+      payload: { engineId: 'terzaghi', label: 'Calcul test', params: {} },
+    });
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'snapshot:capture',
+      payload: { displayHtml: '<p>affiché</p>', printHtml: '<html>imprimable</html>' },
+    });
+
+    const statusesBeforeTimeout = onSnapshotStatus.mock.calls.map((c) => c[0]);
+    expect(statusesBeforeTimeout).toEqual([
+      { calcResultId: 'calc_42', status: 'awaiting' },
+      { calcResultId: 'calc_42', status: 'capturing' },
+      { calcResultId: 'calc_42', status: 'confirmed' },
+    ]);
+
+    await act(async () => {
+      vi.advanceTimersByTime(SNAPSHOT_WATCHDOG_MS);
+      await Promise.resolve();
+    });
+
+    // Aucun appel supplémentaire — le watchdog a bien été annulé à la confirmation.
+    expect(onSnapshotStatus).toHaveBeenCalledTimes(3);
+  });
+
+  it('given le composant est démonté AVANT résolution, when le délai watchdog se serait écoulé, then aucun callback ne se déclenche après démontage (pas de fuite/état sur un composant retiré)', async () => {
+    mockRunCalc.mockResolvedValue({
+      id: 'calc_42',
+      engineId: 'terzaghi',
+      domain: 'FD',
+      status: 'DONE',
+      output: { verdict: 'PASS', rows: [] },
+    });
+    const onSnapshotStatus = vi.fn();
+    await renderFrame({ onSnapshotStatus });
+    const iframe = getIframe();
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_1',
+      payload: { engineId: 'terzaghi', label: 'Calcul test', params: {} },
+    });
+    expect(onSnapshotStatus).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      root.unmount();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(SNAPSHOT_WATCHDOG_MS);
+      await Promise.resolve();
+    });
+
+    // Toujours un seul appel ('awaiting') — le watchdog a été nettoyé au démontage.
+    expect(onSnapshotStatus).toHaveBeenCalledTimes(1);
   });
 });
 

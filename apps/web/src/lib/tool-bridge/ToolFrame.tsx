@@ -43,7 +43,28 @@ import {
   type ToolBridgeMessage,
 } from './protocol';
 
-import { emitPv, runCalc } from '@/lib/api/client';
+import { emitPv, runCalc, saveCalcSnapshot } from '@/lib/api/client';
+
+/**
+ * Statut de capture du document (option 3) pour un calcResultId donné —
+ * revue adverse M3/chemin primaire : ferme la COURSE entre « calcul terminé »
+ * (bouton PV activable) et « capture persistée » (POST snapshot best-effort,
+ * asynchrone). Sans ce statut, un hôte (page logiciel) pourrait appeler
+ * `emitPv` avant que le document ne soit réellement enregistré → PV scellé
+ * SANS document, définitif (émission idempotente, pas de re-scellement).
+ *
+ *  - 'awaiting'   : calcul terminé, aucun `snapshot:capture` reçu pour l'instant.
+ *  - 'capturing'  : `snapshot:capture` reçu, `saveCalcSnapshot` en vol.
+ *  - 'confirmed'  : persistance confirmée (200) — le document EST capturé.
+ *  - 'failed'     : persistance en échec — aucun document ne sera capturé
+ *    pour ce calcul (l'hôte doit avertir + exiger confirmation avant scellement).
+ */
+export type SnapshotCaptureStatus = 'awaiting' | 'capturing' | 'confirmed' | 'failed';
+
+export interface SnapshotStatusEvent {
+  calcResultId: string;
+  status: SnapshotCaptureStatus;
+}
 
 export interface ToolFrameProps {
   /** Identifiant de route du clone (ex. 'terzaghi') — sert au fetch + au namespace store. */
@@ -74,6 +95,13 @@ export interface ToolFrameProps {
   readOnly?: boolean;
   /** Dernier calcResultId connu — pour le bouton « Émettre PV » du shell. */
   onCalcResultId?: (calcResultId: string | null) => void;
+  /**
+   * Statut de capture du document pour le calcResultId courant (option 3,
+   * revue adverse M3/chemin primaire). Le shell doit s'en servir pour GATER
+   * le bouton d'émission de PV — jamais sceller tant que le statut n'est pas
+   * 'confirmed' (ou 'failed' avec confirmation explicite de l'ingénieur).
+   */
+  onSnapshotStatus?: (event: SnapshotStatusEvent) => void;
   /** Notifié après une émission de PV déclenchée DEPUIS l'iframe (pv:request). */
   onPvEmitted?: (pv: unknown) => void;
   /** Jeton d'accès à joindre en Authorization au fetch du clone (getStoredToken()). */
@@ -81,6 +109,18 @@ export interface ToolFrameProps {
 }
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';
+
+/**
+ * Watchdog anti soft-lock (revue adverse, finition avant merge) : si un clone
+ * lève au rendu (ou omet d'appeler son bridge de capture) APRÈS un calcul
+ * réussi, `snapshot:capture` n'arrive jamais et le statut resterait bloqué en
+ * dur sur 'awaiting' — l'hôte (page logiciel) attendrait indéfiniment une
+ * capture qui ne viendra jamais, bouton d'émission de PV gelé sans recours.
+ * Passé ce délai sans résolution ('confirmed'/'failed'), le statut bascule
+ * lui-même en 'failed' : l'ingénieur retombe sur le chemin avertir+confirmer
+ * (scellement conscient, au format standard) plutôt qu'un blocage silencieux.
+ */
+export const SNAPSHOT_WATCHDOG_MS = 7000;
 
 function apiErrorFrom(err: unknown): CalcResponsePayload['error'] {
   const e = err as Partial<{ statusCode: number; reason: string; message: string }>;
@@ -101,6 +141,7 @@ export function ToolFrame({
   projectLabel,
   readOnly,
   onCalcResultId,
+  onSnapshotStatus,
   onPvEmitted,
   accessToken,
 }: ToolFrameProps) {
@@ -117,6 +158,56 @@ export function ToolFrame({
   // — une résolution hors-ordre (rafale/clics rapprochés) est silencieusement
   // ignorée plutôt que d'écraser le shell avec un résultat plus ancien.
   const requestSeqRef = useRef(0);
+  // Dernier calcResultId serveur COURANT (dernier calc:response ok), miroir de ce
+  // qui est remonté au shell via onCalcResultId. Sert à sceller un `snapshot:capture`
+  // sur le BON calcul — JAMAIS sur un id venu de l'iframe (frontière de confiance).
+  // Invalidé (null) par `input:dirty` : plus de calcul courant → snapshot ignoré.
+  const currentCalcResultIdRef = useRef<string | null>(null);
+  // Watchdog anti soft-lock : calcResultId déjà résolus ('confirmed'/'failed')
+  // — un watchdog qui se déclenche APRÈS résolution est un no-op silencieux.
+  const snapshotResolvedRef = useRef<Set<string>>(new Set());
+  // Minuteurs en vol, par calcResultId — permet de les annuler dès résolution
+  // (succès/échec réel de la capture) ou au démontage du composant.
+  const snapshotTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
+
+  const clearSnapshotWatchdog = useCallback((calcResultId: string) => {
+    const timeoutId = snapshotTimeoutsRef.current.get(calcResultId);
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+      snapshotTimeoutsRef.current.delete(calcResultId);
+    }
+  }, []);
+
+  // Marque un calcResultId comme résolu (confirmed/failed) et annule son
+  // watchdog — évite qu'un timeout déjà écoulé ne bascule le statut en
+  // 'failed' APRÈS une confirmation réelle (ordre inverse improbable mais
+  // couvert : le check `snapshotResolvedRef.has(...)` dans le watchdog protège
+  // aussi le sens inverse).
+  const resolveSnapshotStatus = useCallback(
+    (calcResultId: string, status: 'confirmed' | 'failed') => {
+      snapshotResolvedRef.current.add(calcResultId);
+      clearSnapshotWatchdog(calcResultId);
+      onSnapshotStatus?.({ calcResultId, status });
+    },
+    [clearSnapshotWatchdog, onSnapshotStatus],
+  );
+
+  // Démonte : annule tous les watchdogs en vol (composant retiré avant
+  // résolution — ex. navigation hors de la page logiciel). La map elle-même
+  // (référence stable, créée une fois via useRef) est capturée dans une
+  // variable locale à l'effet — lint react-hooks/exhaustive-deps satisfait
+  // sans changer le comportement (même objet Map tout du long du cycle de vie).
+  useEffect(() => {
+    const timeouts = snapshotTimeoutsRef.current;
+    return () => {
+      for (const timeoutId of timeouts.values()) {
+        clearTimeout(timeoutId);
+      }
+      timeouts.clear();
+    };
+  }, []);
 
   // ---------------------------------------------------------------------
   // Chargement du clone (fetch authentifié côté client, cf. route handler)
@@ -248,7 +339,31 @@ export function ToolFrame({
               // pendant que celle-ci était en vol) : ignorée SILENCIEUSEMENT —
               // ni remontée au shell (onCalcResultId), ni renvoyée au clone.
               if (seq !== requestSeqRef.current) return;
+              currentCalcResultIdRef.current = result.id;
               onCalcResultId?.(result.id);
+              // Course M3 (revue adverse) : le calcul est connu du serveur mais
+              // AUCUN document n'est encore capturé — le shell ne doit pas
+              // encore autoriser le scellement. `snapshot:capture` (ci-dessous)
+              // fera transiter ce statut vers 'capturing' puis 'confirmed'/'failed'.
+              snapshotResolvedRef.current.delete(result.id);
+              onSnapshotStatus?.({ calcResultId: result.id, status: 'awaiting' });
+              // Watchdog anti soft-lock (revue adverse) : si `snapshot:capture`
+              // n'arrive JAMAIS (clone qui lève au rendu, bridge non appelé…),
+              // le statut ne doit pas rester bloqué en dur sur 'awaiting' — il
+              // bascule lui-même en 'failed' après SNAPSHOT_WATCHDOG_MS, sans
+              // attendre un événement qui ne viendra pas.
+              clearSnapshotWatchdog(result.id);
+              snapshotTimeoutsRef.current.set(
+                result.id,
+                setTimeout(() => {
+                  snapshotTimeoutsRef.current.delete(result.id);
+                  if (snapshotResolvedRef.current.has(result.id)) return;
+                  console.warn(
+                    `[ToolFrame] snapshot:capture jamais résolu pour ${result.id} après ${SNAPSHOT_WATCHDOG_MS}ms — statut basculé en 'failed' (watchdog anti soft-lock).`,
+                  );
+                  resolveSnapshotStatus(result.id, 'failed');
+                }, SNAPSHOT_WATCHDOG_MS),
+              );
               // ADR 0015 §4 : le clone (`mapOutputToR`) consomme la sortie serveur
               // WHITELISTÉE BRUTE (`output.cas`/`capaciteReference`/`contraintesBase`),
               // pas la forme normalisée UI (`{verdict, rows}`) que lit la page roadsens.
@@ -293,7 +408,46 @@ export function ToolFrame({
           // même : idempotent si aucun calcul n'était en cours). Rétrocompat :
           // un clone qui n'émet JAMAIS ce message ne déclenche jamais cette
           // branche — comportement inchangé.
+          // Le calcul précédent est abandonné (saisie modifiée) : son watchdog
+          // devenu sans objet est annulé (évite un 'failed' fantôme plus tard
+          // pour un calcul que l'ingénieur ne regarde de toute façon plus).
+          if (currentCalcResultIdRef.current) {
+            snapshotResolvedRef.current.add(currentCalcResultIdRef.current);
+            clearSnapshotWatchdog(currentCalcResultIdRef.current);
+          }
+          currentCalcResultIdRef.current = null;
           onCalcResultId?.(null);
+          break;
+        }
+
+        case 'snapshot:capture': {
+          // Option 3 « sceller le document imprimé » : le clone remonte le HTML
+          // qu'il vient de rendre (affichage + document imprimable auto-contenu).
+          // On le persiste sur le calcResultId COURANT connu du SERVEUR (dernier
+          // calc:response ok) — jamais un id venu de l'iframe. Sans projet réel
+          // ou sans calcul courant → no-op (même règle que pv:request).
+          const calcResultId = currentCalcResultIdRef.current;
+          const capture = msg.payload;
+          if (!capture || !orgId || !projectId || !calcResultId) break;
+          const displayHtml =
+            typeof capture.displayHtml === 'string' ? capture.displayHtml : '';
+          const printHtml =
+            typeof capture.printHtml === 'string' ? capture.printHtml : '';
+          // M3 (revue adverse) : la persistance est en vol — le shell ne doit
+          // toujours pas autoriser le scellement tant qu'elle n'a pas abouti.
+          onSnapshotStatus?.({ calcResultId, status: 'capturing' });
+          // Best-effort pour L'OUTIL : un échec de persistance ne casse PAS
+          // l'iframe et ne lui remonte AUCUNE erreur (pas de throw). Le shell,
+          // lui, EST informé via onSnapshotStatus('failed') — c'est LUI qui
+          // gate le bouton d'émission de PV, jamais un simple log avalé.
+          saveCalcSnapshot(orgId, projectId, calcResultId, { displayHtml, printHtml })
+            .then(() => {
+              resolveSnapshotStatus(calcResultId, 'confirmed');
+            })
+            .catch((err: unknown) => {
+              console.warn('[ToolFrame] snapshot:capture non persisté', err);
+              resolveSnapshotStatus(calcResultId, 'failed');
+            });
           break;
         }
 
@@ -393,8 +547,12 @@ export function ToolFrame({
     projectId,
     toolId,
     onCalcResultId,
+    onSnapshotStatus,
     onPvEmitted,
+    clearSnapshotWatchdog,
+    resolveSnapshotStatus,
   ]);
+  // `saveCalcSnapshot` est un import de module (référence stable) — pas de dép.
 
   return (
     <div

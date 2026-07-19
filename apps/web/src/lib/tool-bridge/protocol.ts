@@ -101,6 +101,29 @@ export interface InputDirtyPayload {
   toolId: string;
 }
 
+/**
+ * iframe→hôte UNIQUEMENT — remonte le DOCUMENT que l'outil cloné vient de
+ * rendre après un calcul réussi (option 3 « sceller le document imprimé ») :
+ *  - `displayHtml` = le panneau de résultats tel qu'affiché à l'écran (ce que
+ *    l'ingénieur voit) ;
+ *  - `printHtml`   = le document IMPRIMABLE auto-contenu (les zones `.printable`
+ *    + le CSS inliné, `<script>` retirés) — ré-imprimable à l'identique HORS de
+ *    l'app, sans dépendance à l'iframe ni au shell.
+ *
+ * L'hôte scelle ce HTML sur le calcResultId QU'IL connaît déjà (dernier
+ * `calc:response` ok), JAMAIS sur un id venu de l'iframe (frontière de
+ * confiance, cf. ToolFrame).
+ *
+ * Confidentialité DoD §8 : ce HTML ne contient QUE des données déjà rendues
+ * (valeurs whitelistées par le serveur) et du SVG — aucune fonction de calcul
+ * (elles sont excisées du clone), aucun symbole moteur, aucun coefficient de
+ * calibration. C'est un ARTEFACT D'AFFICHAGE, pas de la science.
+ */
+export interface SnapshotCapturePayload {
+  displayHtml: string;
+  printHtml: string;
+}
+
 /** Les deux sens — erreur de PROTOCOLE (pas une erreur métier de calcul). */
 export interface ErrorPayload {
   message: string;
@@ -127,6 +150,7 @@ export type StoreSetMessage = Envelope<'store:set', StoreSetPayload>;
 export type StoreValueMessage = Envelope<'store:value', StoreValuePayload>;
 export type PvRequestMessage = Envelope<'pv:request', PvRequestPayload>;
 export type InputDirtyMessage = Envelope<'input:dirty', InputDirtyPayload>;
+export type SnapshotCaptureMessage = Envelope<'snapshot:capture', SnapshotCapturePayload>;
 export type ProtocolErrorMessage = Envelope<'error', ErrorPayload>;
 
 export type ToolBridgeMessage =
@@ -139,6 +163,7 @@ export type ToolBridgeMessage =
   | StoreValueMessage
   | PvRequestMessage
   | InputDirtyMessage
+  | SnapshotCaptureMessage
   | ProtocolErrorMessage;
 
 const KNOWN_TYPES: ReadonlySet<ToolBridgeMessage['type']> = new Set([
@@ -151,6 +176,7 @@ const KNOWN_TYPES: ReadonlySet<ToolBridgeMessage['type']> = new Set([
   'store:value',
   'pv:request',
   'input:dirty',
+  'snapshot:capture',
   'error',
 ]);
 

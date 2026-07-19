@@ -104,6 +104,12 @@ export interface PrismaOfficialPvCore {
   contentHash: string;
   hmac: string; // sceau HMAC complet (serveur)
   sealedAt: string;
+  /**
+   * 'html' = un document client (rendu de l'outil) a été scellé avec ce PV ;
+   * `null`/absent = repli format standard (pdfmake), aucun document capturé au
+   * moment de l'émission (B1, revue adverse — bannière véridique cf. page logiciel).
+   */
+  documentFormat?: string | null;
 }
 
 /**
@@ -318,7 +324,9 @@ function normalizeOutput(output: unknown): NormalizedCalcOutput | null {
     return { verdict: o.conforme === true ? 'PASS' : 'FAIL' };
   }
   if (typeof o.verdict === 'string' && Array.isArray(o.rows)) {
-    return { verdict: o.verdict === 'PASS' ? 'PASS' : o.verdict === 'FAIL' ? 'FAIL' : 'NA' };
+    return {
+      verdict: o.verdict === 'PASS' ? 'PASS' : o.verdict === 'FAIL' ? 'FAIL' : 'NA',
+    };
   }
   // terzaghi (fondation superficielle) : sortie {cas:[…]} → verdict par cas
   if (Array.isArray(o.cas)) {
@@ -515,6 +523,9 @@ export function adaptOfficialPv(
     // Sortie non reconnue → null (fail-closed).
     output: normalizeOutput(p.output),
     sealValid,
+    // B1 (revue adverse) : 'html' seulement si le backend a effectivement scellé
+    // un document client (calc_snapshots présent au moment de l'émission).
+    documentFormat: p.documentFormat === 'html' ? 'html' : null,
   };
 }
 

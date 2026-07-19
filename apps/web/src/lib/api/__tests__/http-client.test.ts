@@ -46,6 +46,7 @@ import {
   httpEmitPv,
   httpVerifyPv,
   httpDownloadPvPdf,
+  httpGetPvDocument,
 } from '../http-client';
 
 // ---------------------------------------------------------------------------
@@ -193,7 +194,11 @@ describe('adaptPersistedCalcResult — forme POST /calc/:engine (#2)', () => {
       meta: { engineId: 'burmister', engineVersion: '1.0.0' },
       output: { conforme: true, NE: 1200000 },
     };
-    const ctx = { orgId: 'org_01', projectId: 'proj_01', params: { layers: [{ h: 0.36 }] } };
+    const ctx = {
+      orgId: 'org_01',
+      projectId: 'proj_01',
+      params: { layers: [{ h: 0.36 }] },
+    };
     const result = adaptPersistedCalcResult(raw, ctx);
 
     expect(result.id).toBe('calc_persisted_01'); // calcResultId → id
@@ -212,7 +217,11 @@ describe('adaptPersistedCalcResult — forme POST /calc/:engine (#2)', () => {
       meta: { engineId: 'burmister', engineVersion: '1.0.0' },
       output: { conforme: true, NE: 1000000 },
     };
-    const result = adaptPersistedCalcResult(raw, { orgId: 'org_01', projectId: 'p', params: {} });
+    const result = adaptPersistedCalcResult(raw, {
+      orgId: 'org_01',
+      projectId: 'p',
+      params: {},
+    });
     expect(result.status).toBe('DONE');
     expect((result.output as { verdict?: string } | null)?.verdict).toBe('PASS');
   });
@@ -234,10 +243,18 @@ describe('adaptPersistedCalcResult — forme POST /calc/:engine (#2)', () => {
     const raw: BackendPersistedCalcResult = {
       calcResultId: 'calc_hash',
       ok: true,
-      meta: { engineId: 'burmister', engineVersion: '2.0.0', engineSourceHash: 'sha256abc' },
+      meta: {
+        engineId: 'burmister',
+        engineVersion: '2.0.0',
+        engineSourceHash: 'sha256abc',
+      },
       output: { conforme: true, NE: 500000 },
     };
-    const result = adaptPersistedCalcResult(raw, { orgId: 'org_01', projectId: 'p', params: {} });
+    const result = adaptPersistedCalcResult(raw, {
+      orgId: 'org_01',
+      projectId: 'p',
+      params: {},
+    });
     expect(result.id).toBe('calc_hash');
     expect(result.engineId).toBe('burmister');
   });
@@ -387,15 +404,21 @@ describe('ENGINE_TO_DOMAIN — registryIds et slugs URL canoniques (MINEUR-1)', 
   const ctx = { orgId: 'org_01', projectId: 'proj_01', params: {} };
 
   it('registryId chaussee-burmister → domaine CH', () => {
-    expect(adaptPersistedCalcResult(mkPersisted('chaussee-burmister'), ctx).domain).toBe('CH');
+    expect(adaptPersistedCalcResult(mkPersisted('chaussee-burmister'), ctx).domain).toBe(
+      'CH',
+    );
   });
 
   it('registryId fondation-superficielle → domaine FD', () => {
-    expect(adaptPersistedCalcResult(mkPersisted('fondation-superficielle'), ctx).domain).toBe('FD');
+    expect(
+      adaptPersistedCalcResult(mkPersisted('fondation-superficielle'), ctx).domain,
+    ).toBe('FD');
   });
 
   it('registryId fondation-profonde-pieux → domaine FD', () => {
-    expect(adaptPersistedCalcResult(mkPersisted('fondation-profonde-pieux'), ctx).domain).toBe('FD');
+    expect(
+      adaptPersistedCalcResult(mkPersisted('fondation-profonde-pieux'), ctx).domain,
+    ).toBe('FD');
   });
 
   it('registryId radier-plaque → domaine FD', () => {
@@ -403,11 +426,15 @@ describe('ENGINE_TO_DOMAIN — registryIds et slugs URL canoniques (MINEUR-1)', 
   });
 
   it('registryId pressiometre-menard → domaine LB', () => {
-    expect(adaptPersistedCalcResult(mkPersisted('pressiometre-menard'), ctx).domain).toBe('LB');
+    expect(adaptPersistedCalcResult(mkPersisted('pressiometre-menard'), ctx).domain).toBe(
+      'LB',
+    );
   });
 
   it('registryId labo-classification-gtr → domaine LB', () => {
-    expect(adaptPersistedCalcResult(mkPersisted('labo-classification-gtr'), ctx).domain).toBe('LB');
+    expect(
+      adaptPersistedCalcResult(mkPersisted('labo-classification-gtr'), ctx).domain,
+    ).toBe('LB');
   });
 
   // URL slugs (backward-compat avec fixtures existantes)
@@ -428,7 +455,9 @@ describe('ENGINE_TO_DOMAIN — registryIds et slugs URL canoniques (MINEUR-1)', 
   });
 
   it('moteur inconnu → fallback CH (défaut conservateur)', () => {
-    expect(adaptPersistedCalcResult(mkPersisted('moteur-inconnu'), ctx).domain).toBe('CH');
+    expect(adaptPersistedCalcResult(mkPersisted('moteur-inconnu'), ctx).domain).toBe(
+      'CH',
+    );
   });
 });
 
@@ -640,7 +669,14 @@ describe('httpLogin', () => {
     email: 'demo@starfire.sn',
     fullName: 'Amadou Diallo',
     platformRole: null,
-    memberships: [{ orgId: 'org_01', orgName: 'BE Routes Dakar', orgSlug: 'be-routes-dakar', role: 'OWNER' }],
+    memberships: [
+      {
+        orgId: 'org_01',
+        orgName: 'BE Routes Dakar',
+        orgSlug: 'be-routes-dakar',
+        role: 'OWNER',
+      },
+    ],
   };
 
   beforeEach(() => {
@@ -793,7 +829,13 @@ describe('httpLogin — GET /auth/me et stockage profil (#9)', () => {
         makeResponse({ accessToken: mockJwt, refreshToken: 'r.tok' }),
       )
       .mockResolvedValueOnce(
-        makeResponse({ userId: 'u', email: 'e@e.sn', fullName: 'E E', platformRole: null, memberships: [] }),
+        makeResponse({
+          userId: 'u',
+          email: 'e@e.sn',
+          fullName: 'E E',
+          platformRole: null,
+          memberships: [],
+        }),
       );
     vi.stubGlobal('fetch', mockFetch);
 
@@ -1002,8 +1044,16 @@ describe('storeTokens met à jour ORGS_KEY après refresh (#18)', () => {
   it('given un refresh réussi avec nouveau JWT (orgs différentes), when refresh, then ORGS_KEY est mis à jour', async () => {
     // Scénario : 401 sur /projects → refresh → retry
     const projects: PrismaProject[] = [
-      { id: 'p01', orgId: 'org_02', name: 'T', description: null, domain: 'FD',
-        createdAt: '2026-01-01Z', updatedAt: '2026-01-01Z', createdById: 'u01' },
+      {
+        id: 'p01',
+        orgId: 'org_02',
+        name: 'T',
+        description: null,
+        domain: 'FD',
+        createdAt: '2026-01-01Z',
+        updatedAt: '2026-01-01Z',
+        createdById: 'u01',
+      },
     ];
 
     const mockFetch = vi
@@ -1020,7 +1070,9 @@ describe('storeTokens met à jour ORGS_KEY après refresh (#18)', () => {
     await httpListProjects('org_02');
 
     // Les orgs doivent être mises à jour depuis le nouveau JWT
-    const storedOrgs = JSON.parse(sessionStorage.getItem('roadsen_orgs') ?? '[]') as Array<{
+    const storedOrgs = JSON.parse(
+      sessionStorage.getItem('roadsen_orgs') ?? '[]',
+    ) as Array<{
       slug: string;
     }>;
     expect(storedOrgs).toHaveLength(1);
@@ -1063,7 +1115,13 @@ describe('refresh proactif après storeTokens (#1)', () => {
       )
       // /auth/me
       .mockResolvedValueOnce(
-        makeResponse({ userId: 'u', email: 'e@e.sn', fullName: 'Test', platformRole: null, memberships: [] }),
+        makeResponse({
+          userId: 'u',
+          email: 'e@e.sn',
+          fullName: 'Test',
+          platformRole: null,
+          memberships: [],
+        }),
       )
       // refresh proactif (appelé ~60s avant exp, soit ~60s depuis maintenant)
       .mockResolvedValueOnce(
@@ -1101,7 +1159,13 @@ describe('refresh proactif après storeTokens (#1)', () => {
         makeResponse({ accessToken: shortJwt, refreshToken: 'r.tok' }),
       )
       .mockResolvedValueOnce(
-        makeResponse({ userId: 'u', email: 'e@e.sn', fullName: 'T', platformRole: null, memberships: [] }),
+        makeResponse({
+          userId: 'u',
+          email: 'e@e.sn',
+          fullName: 'T',
+          platformRole: null,
+          memberships: [],
+        }),
       );
 
     vi.stubGlobal('fetch', mockFetch);
@@ -1362,8 +1426,79 @@ describe('httpDownloadPvPdf — contrat URL + headers (Bug B)', () => {
         blob: async () => new Blob(),
       } as unknown as Response),
     );
-    await expect(httpDownloadPvPdf('org_01', 'proj_42', 'pv_inexistant')).rejects.toMatchObject({
+    await expect(
+      httpDownloadPvPdf('org_01', 'proj_42', 'pv_inexistant'),
+    ).rejects.toMatchObject({
       statusCode: 404,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B1 (revue adverse) — httpGetPvDocument : 404 ET 409 retombent sur `null`
+// (jamais de cul-de-sac ; l'appelant retombe sur le PDF). Le 409 est loggé en
+// diagnostic distinct (anomalie d'intégrité), sans bloquer l'ingénieur.
+// ---------------------------------------------------------------------------
+
+describe('httpGetPvDocument — 404 ET 409 retombent sur null (B1)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('given un document présent (200), when httpGetPvDocument, then renvoie { html }', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => '<p>Document scellé</p>',
+      } as unknown as Response),
+    );
+    const doc = await httpGetPvDocument('org_01', 'proj_42', 'pv_99');
+    expect(doc).toEqual({ html: '<p>Document scellé</p>' });
+  });
+
+  it('given un PV sans document (404), when httpGetPvDocument, then renvoie null', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({ ok: false, status: 404 } as unknown as Response),
+    );
+    const doc = await httpGetPvDocument('org_01', 'proj_42', 'pv_ancien');
+    expect(doc).toBeNull();
+  });
+
+  it('given une intégrité rompue (409), when httpGetPvDocument, then renvoie null (repli PDF côté appelant) ET logue un diagnostic distinct', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: async () => ({ message: 'Document altéré ou sceau rompu.' }),
+      } as unknown as Response),
+    );
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const doc = await httpGetPvDocument('org_01', 'proj_42', 'pv_altere');
+
+    expect(doc).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const loggedMessage = warnSpy.mock.calls[0]?.[0] as string;
+    expect(loggedMessage).toContain('409');
+    expect(loggedMessage).toContain('Document altéré ou sceau rompu.');
+    warnSpy.mockRestore();
+  });
+
+  it('given une erreur serveur générique (500), when httpGetPvDocument, then rejette (pas de repli silencieux)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ message: 'Erreur interne' }),
+      } as unknown as Response),
+    );
+    await expect(httpGetPvDocument('org_01', 'proj_42', 'pv_99')).rejects.toMatchObject({
+      statusCode: 500,
     });
   });
 });
