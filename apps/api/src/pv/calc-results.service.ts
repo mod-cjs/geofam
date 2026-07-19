@@ -207,14 +207,30 @@ export class CalcResultsService {
    * fuite cross-tenant) : aucune distinction entre « projet vide » et « projet
    * d'un autre org » (tenant-safe). La preuve d'isolation reelle est aux e2e.
    */
-  listForProject(projectId: string): Promise<CalcResult[]> {
+  listForProject(
+    projectId: string,
+  ): Promise<Array<CalcResult & { pvId: string | null }>> {
     const orgId = requireOrgId();
-    return this.prisma.withTenant(orgId, (tx) =>
-      tx.calcResult.findMany({
+    return this.prisma.withTenant(orgId, async (tx) => {
+      const calcs = await tx.calcResult.findMany({
         where: { projectId },
         orderBy: { createdAt: 'desc' },
-      }),
-    );
+      });
+      if (calcs.length === 0) return [];
+      // pvId par calcul — indispensable au front pour distinguer l'etat SCELLE
+      // (bouton « Voir le PV »/« Imprimer ») de l'etat NON scelle (« Sceller »).
+      // 2e requete (pas de relation Prisma OfficialPv->CalcResult : le PV garde
+      // calcResultId en colonne simple pour survivre a la suppression du calcul).
+      // RLS-scopee (withTenant) + bornee aux ids du tenant courant : aucune fuite.
+      // On ne selectionne QUE id + calcResultId (jamais document_html : bande
+      // passante, cf. B1-bis).
+      const pvs = await tx.officialPv.findMany({
+        where: { calcResultId: { in: calcs.map((c) => c.id) } },
+        select: { id: true, calcResultId: true },
+      });
+      const pvByCalc = new Map(pvs.map((p) => [p.calcResultId, p.id]));
+      return calcs.map((c) => ({ ...c, pvId: pvByCalc.get(c.id) ?? null }));
+    });
   }
 
   /**

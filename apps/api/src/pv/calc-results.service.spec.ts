@@ -22,6 +22,7 @@ import { CalcResultsService } from './calc-results.service';
  */
 type Tx = {
   calcResult: { findUnique: jest.Mock; findMany: jest.Mock };
+  officialPv: { findMany: jest.Mock };
 };
 
 const ORG_ID = '11111111-1111-1111-1111-111111111111';
@@ -40,6 +41,7 @@ describe('CalcResultsService — lecture master-detail', () => {
     jest.clearAllMocks();
     tx = {
       calcResult: { findUnique: jest.fn(), findMany: jest.fn() },
+      officialPv: { findMany: jest.fn() },
     };
     prisma = {
       withTenant: jest.fn(
@@ -111,12 +113,28 @@ describe('CalcResultsService — lecture master-detail', () => {
     it('given un projet : filtre par projectId, plus recent d abord, sous withTenant', async () => {
       const rows = [{ id: 'calc-2' }, { id: 'calc-1' }] as CalcResult[];
       tx.calcResult.findMany.mockResolvedValue(rows);
+      // calc-1 est scelle (un PV le reference), calc-2 ne l'est pas.
+      tx.officialPv.findMany.mockResolvedValue([
+        { id: 'pv-9', calcResultId: 'calc-1' },
+      ]);
 
       const out = await withOrg(() => service.listForProject('proj-1'));
-      expect(out).toBe(rows);
+      // Chaque calcul porte desormais pvId : l'id du PV s'il est scelle, sinon null.
+      // C'est cette info qui permet au front d'afficher « Voir le PV »/« Imprimer »
+      // (scelle) vs « Sceller cette version » (non scelle).
+      expect(out).toEqual([
+        { id: 'calc-2', pvId: null },
+        { id: 'calc-1', pvId: 'pv-9' },
+      ]);
       expect(tx.calcResult.findMany).toHaveBeenCalledWith({
         where: { projectId: 'proj-1' },
         orderBy: { createdAt: 'desc' },
+      });
+      // Jointure pvId : bornee aux ids du tenant, id + calcResultId SEULEMENT
+      // (jamais document_html — bande passante, cf. B1-bis).
+      expect(tx.officialPv.findMany).toHaveBeenCalledWith({
+        where: { calcResultId: { in: ['calc-2', 'calc-1'] } },
+        select: { id: true, calcResultId: true },
       });
       expect(prisma.withTenant).toHaveBeenCalledWith(
         ORG_ID,
@@ -124,11 +142,13 @@ describe('CalcResultsService — lecture master-detail', () => {
       );
     });
 
-    it('given un projet sans calcul (ou hors tenant) : renvoie [] (jamais d erreur)', async () => {
+    it('given un projet sans calcul (ou hors tenant) : renvoie [] (jamais d erreur, pas de requete PV)', async () => {
       tx.calcResult.findMany.mockResolvedValue([]);
       await expect(
         withOrg(() => service.listForProject('proj-vide')),
       ).resolves.toEqual([]);
+      // Aucun calcul -> pas de 2e requete inutile.
+      expect(tx.officialPv.findMany).not.toHaveBeenCalled();
     });
   });
 });
