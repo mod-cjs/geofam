@@ -101,7 +101,7 @@ export class PvController {
   })
   listCalcResults(
     @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
-  ): Promise<CalcResult[]> {
+  ): Promise<Array<CalcResult & { pvId: string | null }>> {
     return this.calcResults.listForProject(projectId);
   }
 
