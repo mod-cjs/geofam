@@ -22,6 +22,10 @@ import { requireOrgId } from '../tenant/tenant-context';
 import { findEngineDispatchByRegistryId } from './engine-dispatch';
 import { outputsEquivalent } from './output-equivalence';
 import { renderPvPdf } from './pdf/pv-pdf';
+import {
+  extractSealedIdentity,
+  wrapSealedDocumentWithPvChrome,
+} from './pv-document-chrome';
 import { resolveVerdict } from './verdict';
 
 /**
@@ -440,8 +444,10 @@ export class PvService {
   }
 
   /**
-   * Sert le DOCUMENT CLIENT SCELLE d'un PV (option-3, 0023). C'est le HTML
-   * d'impression capture, re-affiche/imprime A L'IDENTIQUE.
+   * Sert le DOCUMENT CLIENT SCELLE d'un PV (option-3, 0023), ENROBE du cartouche
+   * PV (#pv-cartouche). Le HTML d'impression capture est re-servi avec, en plus,
+   * un bandeau + un pied + un titre de PV injectes AU SERVICE (les octets stockes
+   * restent inchanges ; la garde de re-hash porte sur les octets bruts).
    *
    * SOURCE = official_pv.document_html (copie IMMUABLE figee au scellement, B1) —
    * PAS le cache MUTABLE calc_snapshots : une re-capture apres emission n'affecte
@@ -507,13 +513,34 @@ export class PvService {
     }
     // RE-VERIFICATION D'INTEGRITE (defense en profondeur) : le document_html fige
     // doit re-produire EXACTEMENT l'empreinte scellee. Une alteration (abus DDL,
-    // corruption) casse l'egalite -> 409.
+    // corruption) casse l'egalite -> 409. LA GARDE PORTE TOUJOURS SUR LES OCTETS
+    // BRUTS STOCKES — pas sur la copie enrobee ci-dessous.
     if (sealContentHash(pv.documentHtml) !== sealedSha) {
       throw new ConflictException(
         "Le document ne correspond plus au sceau — anomalie d'intégrité, contactez le support.",
       );
     }
-    return { pv, printHtml: pv.documentHtml };
+    // ENROBAGE AU SERVICE (#pv-cartouche) : le document scelle est un rapport BRUT
+    // de l'outil, sans marque de PV. On injecte le cartouche (bandeau + pied + CSS
+    // + titre) dans une COPIE SERVIE — les octets STOCKES restent inchanges, la
+    // garde de re-hash ci-dessus porte toujours sur eux. L'empreinte imprimee dans
+    // le cartouche NE PEUT PAS etre dans le contenu hache (hash circulaire) : d'ou
+    // l'enrobage ICI (au service) et non au scellement. Les libelles projet/numero/
+    // hash/verdict/version viennent des COLONNES scellees ; l'emetteur/organisation
+    // de identity{} dans la canonique scellee.
+    const identity = extractSealedIdentity(pv.inputCanonical);
+    const printHtml = wrapSealedDocumentWithPvChrome(pv.documentHtml, {
+      pvNumber: pv.pvNumber,
+      contentHash: pv.contentHash,
+      sealedAt: pv.sealedAt,
+      projectName: pv.projectName,
+      userDisplayName: identity.userDisplayName,
+      orgDisplayName: identity.orgDisplayName,
+      engineId: pv.engineId,
+      engineVersion: pv.engineVersion,
+      verdict: pv.verdict,
+    });
+    return { pv, printHtml };
   }
 
   /** Liste les PV d'un projet du tenant (RLS scope), chacun avec son verdict. */

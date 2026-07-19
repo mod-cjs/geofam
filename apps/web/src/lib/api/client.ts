@@ -598,11 +598,13 @@ export async function downloadPvPdf(
 /**
  * Relit le DOCUMENT CLIENT SCELLÉ (HTML d'impression figé, option 3) d'un PV —
  * à afficher/imprimer TEL QUEL. `null` = PV sans document HTML servable
- * (404 : ancien PV/autre moteur ; 409 : intégrité rompue — B1, revue adverse)
- * : dans LES DEUX cas, l'appelant retombe sur le PDF pdfmake existant
- * (`downloadPvPdf`), jamais de cul-de-sac. Le 409 est loggé séparément côté
- * `httpGetPvDocument` (diagnostic d'anomalie), mais ne bloque pas l'ingénieur.
- * Toute autre erreur (réseau, 5xx…) reste propagée.
+ * (404 UNIQUEMENT : ancien PV/autre moteur — absence légitime). Un 409
+ * (intégrité rompue) ou toute autre erreur (réseau, 5xx…) est PROPAGÉ (rejette),
+ * pas de repli silencieux ici — révisé suite à reco qa-challenger : un 409
+ * n'est pas une absence de document, c'est une anomalie ; chaque appelant
+ * décide de sa politique (`PvListClient` retombe sur le PDF pdfmake, qui a son
+ * propre contrôle d'intégrité indépendant ; `CalculsClient` refuse d'imprimer
+ * et alerte, cf. `httpGetPvDocument`).
  *
  * Mode mock : pas de document client capturé → `null` (repli PDF, comme en
  * réel pour un ancien PV).

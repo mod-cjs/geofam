@@ -16,11 +16,13 @@ afterEach(() => {
 });
 
 describe('printInertHtml', () => {
-  it('given un HTML inerte, when appelé, then une iframe cachée sandboxée (sans allow-scripts) est ajoutée avec le contenu en srcdoc', () => {
+  it('given un HTML inerte, when appelé, then une iframe cachée sandboxée (allow-same-origin allow-modals, sans allow-scripts) est ajoutée avec le contenu en srcdoc', () => {
     printInertHtml('<p>Document imprimable</p>');
     const iframe = document.body.querySelector('iframe');
     expect(iframe).not.toBeNull();
-    expect(iframe!.getAttribute('sandbox')).toBe('allow-same-origin');
+    // Fix : allow-modals requis pour que print() ne soit pas ignoré par le
+    // navigateur dans un document sandboxé (cf. print-inert-html.ts).
+    expect(iframe!.getAttribute('sandbox')).toBe('allow-same-origin allow-modals');
     expect(iframe!.getAttribute('sandbox')).not.toContain('allow-scripts');
     expect(iframe!.srcdoc).toBe('<p>Document imprimable</p>');
   });

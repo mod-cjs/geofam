@@ -9,12 +9,16 @@
  *
  * Aperçu / Télécharger — option 3 (le PV = le document que l'outil imprime) :
  * on tente D'ABORD GET .../pvs/:pvId/document (le document HTML scellé de
- * l'outil, servi tel quel). 404 (PV sans document HTML — ancien PV/autre
- * moteur) OU 409 (intégrité rompue) → repli sur le PDF pdfmake existant (blob
- * URL, comportement INCHANGÉ) : B1 (revue adverse) — jamais de cul-de-sac,
- * le PDF reste un PV valide (son propre contrôle d'intégrité s'applique). Le
- * 409 est loggé séparément côté `httpGetPvDocument` (anomalie), mais ne
- * bloque pas l'ingénieur ici.
+ * l'outil, servi tel quel) via `fetchPvDocumentOrNull` (helper local). 404
+ * (PV sans document HTML — ancien PV/autre moteur, `getPvDocument` renvoie
+ * `null`) OU 409 (intégrité rompue, `getPvDocument` REJETTE — cf.
+ * http-client.ts, révisé suite à reco qa-challenger) → repli sur le PDF
+ * pdfmake existant (blob URL, comportement INCHANGÉ) : B1 (revue adverse) —
+ * jamais de cul-de-sac ici, le PDF reste un PV valide (son propre contrôle
+ * d'intégrité s'applique indépendamment). Le 409 absorbé par
+ * `fetchPvDocumentOrNull` reste une anomalie réelle : elle n'est pas masquée
+ * dans `CalculsClient`, qui n'a pas ce filet PDF indépendant et refuse
+ * d'imprimer sur 409 (fail-closed).
  */
 
 import { Lock, Download, ShieldCheck, AlertCircle, RefreshCw, Eye } from 'lucide-react';
@@ -29,6 +33,24 @@ import { listPvs, verifyPv, downloadPvPdf, getPvDocument } from '@/lib/api/clien
 import type { OfficialPv, VerifyPvResponse } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 import { printInertHtml } from '@/lib/print-inert-html';
+
+// `getPvDocument` renvoie `null` sur 404 (absence légitime) mais REJETTE sur
+// 409/intégrité rompue (cf. http-client.ts). Ici, le repli PDF a son propre
+// contrôle d'intégrité indépendant (GET .../pvs/:pvId/pdf) : on absorbe donc
+// le 409 en `null` pour conserver le comportement B1 existant (jamais de
+// cul-de-sac). Toute autre erreur (réseau, 5xx…) reste propagée telle quelle.
+async function fetchPvDocumentOrNull(
+  orgId: string,
+  projectId: string,
+  pvId: string,
+): Promise<{ html: string } | null> {
+  try {
+    return await getPvDocument(orgId, projectId, pvId);
+  } catch (err: unknown) {
+    if ((err as { statusCode?: number })?.statusCode === 409) return null;
+    throw err;
+  }
+}
 
 function formatDate(iso: string): string {
   return new Intl.DateTimeFormat('fr-FR', {
@@ -133,12 +155,12 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
       // Option 3 : tenter d'abord le document HTML scellé de l'outil. Présent
       // → on l'imprime tel quel (équivalent du "print natif" de l'outil, qui
       // permet d'enregistrer en PDF depuis la boîte de dialogue du navigateur).
-      const doc = await getPvDocument(orgId!, projetId, pv.id);
+      const doc = await fetchPvDocumentOrNull(orgId!, projetId, pv.id);
       if (doc) {
         printInertHtml(doc.html);
         return;
       }
-      // 404 (pas de document HTML pour ce PV) → repli PDF pdfmake INCHANGÉ.
+      // 404/409 (pas de document HTML servable pour ce PV) → repli PDF pdfmake INCHANGÉ.
       const blob = await downloadPvPdf(pv.id, orgId ?? undefined, projetId);
       triggerBlobDownload(blob, `${pv.number}.pdf`);
       addToast({ type: 'success', message: `${pv.number} téléchargé.` });
@@ -153,12 +175,12 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
   async function handlePreview(pv: OfficialPv) {
     setPreviewingId(pv.id);
     try {
-      const doc = await getPvDocument(orgId!, projetId, pv.id);
+      const doc = await fetchPvDocumentOrNull(orgId!, projetId, pv.id);
       if (doc) {
         setPreviewModal({ kind: 'doc', html: doc.html, number: pv.number, pvId: pv.id });
         return;
       }
-      // 404 (pas de document HTML pour ce PV) → repli PDF blob INCHANGÉ.
+      // 404/409 (pas de document HTML servable pour ce PV) → repli PDF blob INCHANGÉ.
       const blob = await downloadPvPdf(pv.id, orgId ?? undefined, projetId);
       const url = URL.createObjectURL(blob);
       previewUrlRef.current = url;

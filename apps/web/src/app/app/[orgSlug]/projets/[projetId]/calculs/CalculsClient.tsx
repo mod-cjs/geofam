@@ -9,9 +9,17 @@
  *  - de RE-AFFICHER le document EXACT que l'outil produisait (capture serveur
  *    du HTML/SVG d'affichage — ADR « option 3 : le PV = le document que l'outil
  *    imprime »), dans une iframe sandboxée en lecture seule (aucun script) ;
- *  - de RÉ-IMPRIMER ce document à l'identique (document imprimable auto-contenu
- *    capturé en même temps) ;
- *  - de SCELLER cette version (émission du PV officiel sur ce calcul).
+ *  - une fois SCELLÉ, de RÉ-IMPRIMER le document OFFICIEL (celui du PV, jamais
+ *    un aperçu qui pourrait diverger) ;
+ *  - tant que PAS scellé, de SCELLER cette version (émission du PV officiel).
+ *
+ * Barre d'actions unifiée (revue titulaire) : IDENTIQUE que l'aperçu soit
+ * capturé ou non — `renderActionsBar` est la seule source de vérité, réutilisée
+ * par les deux panneaux. Calcul scellé → « Voir le PV scellé » + « Imprimer »
+ * (document scellé) ; non scellé → « Sceller cette version » seule (aucun
+ * document officiel n'existe encore à imprimer). Le lien « Ouvrir dans le
+ * logiciel » a été retiré : il ouvrait l'outil VIERGE (aucun état restauré),
+ * sans valeur et source de confusion.
  *
  * Si aucun document n'a été capturé pour ce calcul (ancien calcul / moteur non
  * cloné / capture jamais faite — 404 serveur), on retombe sur le panneau de
@@ -29,7 +37,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
-import { listCalcResults, getCalcSnapshot, emitPv } from '@/lib/api/client';
+import {
+  listCalcResults,
+  getCalcSnapshot,
+  emitPv,
+  getPvDocument,
+} from '@/lib/api/client';
 import type { CalcResult, CalcSnapshot, NormalizedCalcOutput } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 import { printInertHtml } from '@/lib/print-inert-html';
@@ -44,21 +57,31 @@ const ENGINE_ID_ALIAS: Record<string, string> = {
   'labo-classification-gtr': 'labo',
   'fondation-terzaghi': 'terzaghi',
 };
-// slug → (nom logiciel, route). Les slugs sans page front restent listables (historique).
-const ENGINE_META: Record<string, { nom: string; route?: string }> = {
-  burmister: { nom: 'ROADSENS — Chaussées', route: 'roadsens' },
-  terzaghi: { nom: 'Terzaghi — Fondations superficielles', route: 'terzaghi' },
-  pieux: { nom: 'CASAGRANDE — Pieux', route: 'casagrande' },
-  radier: { nom: 'GEOPLAQUE — Radier', route: 'geoplaque' },
-  pressiometre: { nom: 'PressioPro — Pressiomètre', route: 'pressiopro' },
-  labo: { nom: 'FASTLAB — Laboratoire', route: 'fastlab' },
+// slug → nom métier du logiciel. Les slugs sans page front restent listables
+// (historique). Pas de lien "Ouvrir dans le logiciel" ici (retiré — l'outil
+// s'ouvrait vierge, sans l'état de ce calcul restauré).
+const ENGINE_META: Record<string, { nom: string }> = {
+  burmister: { nom: 'ROADSENS — Chaussées' },
+  terzaghi: { nom: 'Terzaghi — Fondations superficielles' },
+  pieux: { nom: 'CASAGRANDE — Pieux' },
+  radier: { nom: 'GEOPLAQUE — Radier' },
+  pressiometre: { nom: 'PressioPro — Pressiomètre' },
+  labo: { nom: 'FASTLAB — Laboratoire' },
 };
 function slugOf(engineId: string): string {
   return ENGINE_ID_ALIAS[engineId] ?? engineId;
 }
-function metaOf(engineId: string): { nom: string; route?: string } {
+function metaOf(engineId: string): { nom: string } {
   return ENGINE_META[slugOf(engineId)] ?? { nom: engineId };
 }
+
+// Style commun de la barre d'actions (les deux panneaux).
+const ACTIONS_ROW_STYLE = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 10,
+} as const;
 
 // Statut du calcul (métadonnée, jamais le détail des résultats).
 const STATUS_LABEL: Record<CalcResult['status'], string> = {
@@ -88,6 +111,17 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   // Document capturé de l'outil pour le calcul sélectionné (option 3).
   const [snapshot, setSnapshot] = useState<CalcSnapshot | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
+
+  // #6 (revue adverse) : « Imprimer » sur un calcul DÉJÀ scellé imprime le
+  // document scellé (immuable), jamais l'aperçu courant — la capture pourrait
+  // diverger du PV. `printing` couvre l'aller-retour serveur.
+  const [printing, setPrinting] = useState(false);
+  // Fail-closed sur 409/erreur réseau (reco qa-challenger) : si l'intégrité du
+  // document scellé ne peut pas être vérifiée, on n'imprime RIEN et on le dit
+  // — jamais de repli silencieux sur un rendu non garanti authentique. Seul un
+  // 404 (aucun document capturé pour ce PV — anomalie distincte, cf. #6 plus
+  // bas) reste un repli légitime.
+  const [printError, setPrintError] = useState<string | null>(null);
 
   // Scellement depuis cet écran (réutilise le flux emitPv des pages logiciels).
   const [sealing, setSealing] = useState(false);
@@ -125,6 +159,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     setSnapshot(null);
     setSealError(null);
     setSealConfirmOpen(false);
+    setPrintError(null);
     if (!selectedId || orgId === null) return;
     let cancelled = false;
     setSnapshotLoading(true);
@@ -158,9 +193,37 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   // capture (pas un simple "pas encore câblé").
   const isRoadsensCalc = !!selected && slugOf(selected.engineId) === 'burmister';
 
-  function handlePrint() {
-    if (!snapshot) return;
-    printInertHtml(snapshot.printHtml);
+  // #6 / point 4 (revue adverse qa-challenger) : le bouton « Imprimer » n'existe
+  // QUE pour un calcul déjà scellé (barre d'actions unifiée, cf. renderActionsBar)
+  // — la source de vérité pour l'impression est donc TOUJOURS le document
+  // SCELLÉ (`GET .../pvs/:pvId/document`), jamais une re-capture potentiellement
+  // divergente du PV.
+  // - 404 (`getPvDocument` → null) : PV sans document HTML capturé (ancien
+  //   PV/autre moteur) — anomalie de capture distincte, pas d'intégrité ;
+  //   repli LÉGITIME sur l'aperçu courant s'il est disponible.
+  // - 409 (`getPvDocument` rejette, cf. http-client.ts) ou toute erreur réseau :
+  //   intégrité NON vérifiable — fail-closed, on n'imprime RIEN et on le dit
+  //   (jamais de repli silencieux sur un rendu dont on ne peut garantir
+  //   l'authenticité).
+  async function handlePrint() {
+    if (!selected?.pvId || !orgId) return; // garde défensive (bouton absent sinon)
+    setPrinting(true);
+    setPrintError(null);
+    try {
+      const doc = await getPvDocument(orgId, projetId, selected.pvId);
+      if (doc) {
+        printInertHtml(doc.html);
+        return;
+      }
+      // 404 : repli légitime sur l'aperçu courant, s'il existe.
+      if (snapshot) printInertHtml(snapshot.printHtml);
+    } catch {
+      setPrintError(
+        "Impossible de vérifier l'intégrité du document scellé — impression annulée. Consultez le PV depuis l'onglet PV ou réessayez plus tard.",
+      );
+    } finally {
+      setPrinting(false);
+    }
   }
 
   async function handleSeal() {
@@ -207,6 +270,115 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     !snapshot && sealConfirmOpen
       ? 'Confirmer le scellement sans document'
       : 'Sceller cette version';
+
+  // Barre d'actions UNIFIÉE (point 3, revue titulaire) : IDENTIQUE que l'aperçu
+  // (snapshot) soit affiché ou qu'on soit replié sur le panneau de métadonnées
+  // — une seule source de vérité, réutilisée par les deux panneaux ci-dessous.
+  //  - scellé (pvId)      → « Voir le PV scellé » (primaire) + « Imprimer »
+  //    (secondaire, imprime le document scellé).
+  //  - non scellé, mais capture dispo (snapshot) ou moteur pilote (roadsens)
+  //    → « Sceller cette version » seule (aucun document officiel à imprimer
+  //    tant que ce n'est pas scellé).
+  //  - non scellé, sans capture, moteur non pilote → texte informatif seul.
+  function renderActionsBar() {
+    if (!selected) return null;
+
+    if (selected.pvId) {
+      return (
+        <div style={ACTIONS_ROW_STYLE}>
+          <Link href={pvTabHref} style={{ textDecoration: 'none' }}>
+            <Button
+              size="sm"
+              iconLeft={<Lock size={14} strokeWidth={1.5} aria-hidden="true" />}
+            >
+              Voir le PV scellé
+            </Button>
+          </Link>
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={printing}
+            iconLeft={<Printer size={14} strokeWidth={1.5} aria-hidden="true" />}
+            onClick={handlePrint}
+          >
+            Imprimer
+          </Button>
+        </div>
+      );
+    }
+
+    if (snapshot || isRoadsensCalc) {
+      return (
+        <div style={ACTIONS_ROW_STYLE}>
+          <Button
+            size="sm"
+            loading={sealing}
+            iconLeft={<Lock size={14} strokeWidth={1.5} aria-hidden="true" />}
+            onClick={handleSealClick}
+          >
+            {sealButtonLabel}
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div style={ACTIONS_ROW_STYLE}>
+        <span style={{ fontSize: 12, color: 'var(--text-tertiary, #96a0ab)' }}>
+          Aucun PV émis — ouvrez le logiciel pour en générer un.
+        </span>
+      </div>
+    );
+  }
+
+  // Avertissement M3 (revue adverse) : ne peut apparaître que quand le
+  // scellement est déclenché SANS document capturé (cf. handleSealClick) —
+  // c'est-à-dire jamais si `snapshot` est présent (handleSealClick scelle alors
+  // directement).
+  function renderSealWarning() {
+    if (!selected || selected.pvId || snapshot || !sealConfirmOpen) return null;
+    return (
+      <div
+        role="alert"
+        style={{
+          marginTop: 10,
+          fontSize: 12,
+          color: '#96701a',
+          background: '#f4edd8',
+          border: '1px solid #e6cf9c',
+          borderRadius: 8,
+          padding: '10px 12px',
+        }}
+      >
+        Le rendu de ce calcul n&apos;a pas été capturé — le PV sera émis au format
+        standard, pas le document de l&apos;outil. Relancez le calcul dans le logiciel
+        pour capturer le document.
+        <div style={{ marginTop: 8 }}>
+          <Button size="sm" variant="ghost" onClick={() => setSealConfirmOpen(false)}>
+            Annuler
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderSealError() {
+    if (!sealError) return null;
+    return (
+      <div role="alert" style={{ marginTop: 10, fontSize: 12, color: '#b23a2e' }}>
+        {sealError}
+      </div>
+    );
+  }
+
+  function renderPrintError() {
+    if (!printError) return null;
+    return (
+      <div role="alert" style={{ marginTop: 10, fontSize: 12, color: '#b23a2e' }}>
+        {printError}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -290,6 +462,10 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {/* FX-4 : le titre est le nom métier du logiciel (identique
+                          pour tous les calculs d'un même moteur) — la date/heure
+                          complète et le verdict, affichés ci-dessous, sont ce qui
+                          distingue deux calculs entre eux. */}
                       <span
                         style={{
                           fontSize: 13,
@@ -300,7 +476,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {c.label}
+                        {metaOf(c.engineId).nom}
                       </span>
                       {verdict && verdict !== 'NA' && (
                         <span
@@ -324,9 +500,13 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                         fontSize: 11,
                         color: 'var(--text-secondary, #6b7178)',
                         marginTop: 2,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
                       }}
+                      title={c.label}
                     >
-                      {metaOf(c.engineId).nom}
+                      {c.label}
                       {c.pvId ? ' · PV émis' : ''}
                     </div>
                     <div
@@ -342,6 +522,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                         month: 'short',
                         hour: '2-digit',
                         minute: '2-digit',
+                        second: '2-digit',
                       })}
                     </div>
                   </button>
@@ -373,10 +554,10 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
               <h2
                 style={{ fontSize: 16, margin: 0, color: 'var(--text-primary, #16212e)' }}
               >
-                {selected.label}
+                {metaOf(selected.engineId).nom}
               </h2>
               <div style={{ fontSize: 12, color: 'var(--text-secondary, #6b7178)' }}>
-                {metaOf(selected.engineId).nom}
+                {selected.label}
               </div>
             </div>
 
@@ -409,64 +590,10 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                   }}
                 />
 
-                <div
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    gap: 10,
-                  }}
-                >
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    iconLeft={<Printer size={14} strokeWidth={1.5} aria-hidden="true" />}
-                    onClick={handlePrint}
-                  >
-                    Imprimer les détails
-                  </Button>
-
-                  {selected.pvId ? (
-                    <Link href={pvTabHref} style={{ textDecoration: 'none' }}>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        iconLeft={<Lock size={14} strokeWidth={1.5} aria-hidden="true" />}
-                      >
-                        PV déjà scellé — voir
-                      </Button>
-                    </Link>
-                  ) : (
-                    <Button
-                      size="sm"
-                      loading={sealing}
-                      iconLeft={<Lock size={14} strokeWidth={1.5} aria-hidden="true" />}
-                      onClick={handleSealClick}
-                    >
-                      {sealButtonLabel}
-                    </Button>
-                  )}
-
-                  {metaOf(selected.engineId).route && (
-                    <Link
-                      href={`/app/${orgSlug}/logiciels/${metaOf(selected.engineId).route}`}
-                      style={{ textDecoration: 'none' }}
-                    >
-                      <Button size="sm" variant="ghost">
-                        Ouvrir dans le logiciel
-                      </Button>
-                    </Link>
-                  )}
-                </div>
-
-                {sealError && (
-                  <div
-                    role="alert"
-                    style={{ marginTop: 10, fontSize: 12, color: '#b23a2e' }}
-                  >
-                    {sealError}
-                  </div>
-                )}
+                {renderActionsBar()}
+                {renderSealWarning()}
+                {renderSealError()}
+                {renderPrintError()}
 
                 <div
                   style={{
@@ -476,9 +603,21 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                     fontStyle: 'italic',
                   }}
                 >
-                  L&apos;aperçu ci-dessus montre le rendu à l&apos;écran ; « Imprimer les
-                  détails » affiche exactement le document qui sera scellé. Formules et
-                  calcul sont appliqués côté serveur.
+                  {selected.pvId ? (
+                    <>
+                      L&apos;aperçu ci-dessus montre le rendu à l&apos;écran ; « Imprimer
+                      » affiche le document scellé (celui du PV), pas cet aperçu. Formules
+                      et calcul ont été appliqués côté serveur.
+                    </>
+                  ) : (
+                    <>
+                      L&apos;aperçu ci-dessus montre le rendu à l&apos;écran. Ce calcul
+                      n&apos;est pas encore scellé : seule l&apos;action « Sceller cette
+                      version » est proposée — l&apos;impression du document officiel ne
+                      sera possible qu&apos;une fois scellé. Formules et calcul sont
+                      appliqués côté serveur.
+                    </>
+                  )}
                 </div>
               </>
             ) : (
@@ -542,85 +681,10 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                   capturer.
                 </div>
 
-                <div
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    gap: 10,
-                  }}
-                >
-                  {metaOf(selected.engineId).route && (
-                    <Link
-                      href={`/app/${orgSlug}/logiciels/${metaOf(selected.engineId).route}`}
-                      style={{ textDecoration: 'none' }}
-                    >
-                      <Button size="sm">Ouvrir dans le logiciel</Button>
-                    </Link>
-                  )}
-                  {selected.pvId ? (
-                    <Link href={pvTabHref} style={{ textDecoration: 'none' }}>
-                      <Button size="sm" variant="secondary">
-                        Télécharger le PV scellé
-                      </Button>
-                    </Link>
-                  ) : isRoadsensCalc ? (
-                    // M3 : sceller reste possible sans document, mais jamais en un
-                    // clic silencieux — l'avertissement ci-dessous s'affiche d'abord.
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      loading={sealing}
-                      iconLeft={<Lock size={14} strokeWidth={1.5} aria-hidden="true" />}
-                      onClick={handleSealClick}
-                    >
-                      {sealButtonLabel}
-                    </Button>
-                  ) : (
-                    <span
-                      style={{ fontSize: 12, color: 'var(--text-tertiary, #96a0ab)' }}
-                    >
-                      Aucun PV émis — ouvrez le logiciel pour en générer un.
-                    </span>
-                  )}
-                </div>
-
-                {isRoadsensCalc && !selected.pvId && sealConfirmOpen && (
-                  <div
-                    role="alert"
-                    style={{
-                      marginTop: 10,
-                      fontSize: 12,
-                      color: '#96701a',
-                      background: '#f4edd8',
-                      border: '1px solid #e6cf9c',
-                      borderRadius: 8,
-                      padding: '10px 12px',
-                    }}
-                  >
-                    Le rendu de ce calcul n&apos;a pas été capturé — le PV sera émis au
-                    format standard, pas le document de l&apos;outil. Relancez le calcul
-                    dans le logiciel pour capturer le document.
-                    <div style={{ marginTop: 8 }}>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setSealConfirmOpen(false)}
-                      >
-                        Annuler
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {sealError && (
-                  <div
-                    role="alert"
-                    style={{ marginTop: 10, fontSize: 12, color: '#b23a2e' }}
-                  >
-                    {sealError}
-                  </div>
-                )}
+                {renderActionsBar()}
+                {renderSealWarning()}
+                {renderSealError()}
+                {renderPrintError()}
 
                 <div
                   style={{
@@ -630,8 +694,9 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                     fontStyle: 'italic',
                   }}
                 >
-                  Lecture seule. Le résultat se consulte dans le logiciel ; formules et
-                  calcul sont appliqués côté serveur.
+                  {selected.pvId
+                    ? 'Rendu non capturé pour ce PV — « Imprimer » affiche le document officiel scellé. Formules et calcul ont été appliqués côté serveur.'
+                    : 'Lecture seule. Le résultat se consulte dans le logiciel ; formules et calcul sont appliqués côté serveur.'}
                 </div>
               </>
             )}

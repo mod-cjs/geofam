@@ -391,28 +391,49 @@ describe('Scellement du document client — option-3 (e2e)', () => {
     // Le contenu canonique scelle porte document.sha256 = sha256(printHtml) ; ET la
     // ligne IMMUABLE porte une COPIE FIGEE des octets (B1 : document autoportant).
     const canon = await admin!.query(
-      `SELECT input_canonical, document_html, document_format FROM official_pvs WHERE id = $1`,
+      `SELECT input_canonical, document_html, document_format, pv_number, content_hash
+         FROM official_pvs WHERE id = $1`,
       [pvId],
     );
     const row = canon.rows[0] as {
       input_canonical: string;
       document_html: string | null;
       document_format: string | null;
+      pv_number: string;
+      content_hash: string;
     };
     const sealed = JSON.parse(row.input_canonical) as {
       document?: { format?: string; sha256?: string };
     };
     expect(sealed.document?.format).toBe('html');
     expect(sealed.document?.sha256).toBe(sha256(PRINT_HTML));
-    // Copie autoportante figee dans l'official_pv.
+    // Copie autoportante figee dans l'official_pv — OCTETS STOCKES INCHANGES
+    // (le cartouche est injecte au SERVICE, pas au scellement).
     expect(row.document_html).toBe(PRINT_HTML);
     expect(row.document_format).toBe('html');
 
-    // GET document -> 200 text/html, corps == printHtml capture (a l'identique).
+    // GET document -> 200 text/html. Le corps ORIGINAL de l'outil est CONSERVE
+    // (entre bandeau et pied), ET le cartouche PV (#pv-cartouche) est injecte.
     const doc = await getDoc(token, orgA, projectA, pvId);
     expect(doc.status).toBe(200);
     expect(doc.headers['content-type']).toMatch(/text\/html/);
-    expect(doc.text).toBe(PRINT_HTML);
+    // Contenu d'origine preserve (contigu entre bandeau et pied).
+    expect(doc.text).toContain('<h1>Procès-verbal</h1>');
+    expect(doc.text).toContain('distorsion = 0,5 ‰');
+    // CARTOUCHE PV : numero, empreinte COMPLETE, emetteur, organisation, note legale.
+    expect(doc.text).toContain('class="pvx-band"');
+    expect(doc.text).toContain(row.pv_number);
+    expect(doc.text).toMatch(/PV-RDS-/);
+    expect(doc.text).toContain(row.content_hash);
+    expect(doc.text).toContain('Eng A'); // emetteur scelle (full_name du seed)
+    expect(doc.text).toContain('Doc A'); // organisation scellee
+    expect(doc.text).toContain(
+      'Ne constitue pas une signature électronique qualifiée',
+    );
+    // Titre du document servi = numero de PV.
+    expect(doc.text).toContain(`<title>Procès-verbal ${row.pv_number}</title>`);
+    // Aucun script injecte (contrainte §8).
+    expect(doc.text).not.toMatch(/<script/i);
     // BARRIERE NAVIGATEUR (M1) : le document est servi inerte (CSP sandbox + nosniff).
     expect(doc.headers['content-security-policy']).toMatch(/sandbox/);
     expect(doc.headers['content-security-policy']).toMatch(
@@ -502,10 +523,12 @@ describe('Scellement du document client — option-3 (e2e)', () => {
     expect(recap.status).toBe(201);
 
     // Le document scelle reste l'ORIGINAL (source = copie immuable), 200 sans 409.
+    // Le corps ORIGINAL est servi (enrobe du cartouche) ; la re-capture n'a rien
+    // change au livrable.
     const doc = await getDoc(token, orgA, projectA, pvId);
     expect(doc.status).toBe(200);
-    expect(doc.text).toBe(PRINT_HTML);
-    expect(doc.text).not.toBe(altered);
+    expect(doc.text).toContain('<h1>Procès-verbal</h1>');
+    expect(doc.text).not.toContain('Procès-verbal MODIFIÉ');
   });
 
   // --- 8) RETRO-COMPAT (PV sans capture) ------------------------------------
@@ -571,10 +594,11 @@ describe('Scellement du document client — option-3 (e2e)', () => {
       expect(e.pv).toHaveProperty('documentFormat');
     }
 
-    // (d) mais GET .../document sert TOUJOURS les octets (source dediee).
+    // (d) mais GET .../document sert TOUJOURS le document (corps original enrobe).
     const doc = await getDoc(token, orgA, projectA, pvId);
     expect(doc.status).toBe(200);
-    expect(doc.text).toBe(PRINT_HTML);
+    expect(doc.text).toContain('<h1>Procès-verbal</h1>');
+    expect(doc.text).toContain('class="pvx-band"');
   });
 
   // --- 9) LECTURE DU SNAPSHOT AVANT SCELLEMENT (re-affichage UI) -------------

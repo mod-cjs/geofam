@@ -7,8 +7,10 @@
  *    SYNTHÉTIQUE minimal et prouve surtout que la garde §8 REJETTE du contenu fautif.
  *  - CE spec prouve le PENDANT MANQUANT : la garde §8 ACCEPTE un document ROADSENS
  *    RÉEL (doctype + <style> @media print + SVG + KPI unicode µdef/‰/×10⁷ + tableau
- *    #detout), et que le sceau le RESTITUE OCTET-À-OCTET (encodage UTF-8, SVG, CSS
- *    et caractères spéciaux compris) — la vraie preuve de fidélité côté serveur.
+ *    #detout), que les OCTETS STOCKÉS le conservent OCTET-À-OCTET (official_pvs.
+ *    document_html, encodage UTF-8/SVG/CSS/caractères spéciaux compris) — la vraie
+ *    preuve de fidélité côté serveur —, et que le document SERVI en restitue le
+ *    corps original enrobé du cartouche PV (#pv-cartouche, injecté au service).
  *
  * Le document ci-dessous est STRUCTURELLEMENT identique à ce que produit le
  * sérialiseur du clone `__roadsensSerializePrintable` (`apps/web/src/tools-cloned/
@@ -18,10 +20,10 @@
  * AUSSI dans le pipeline (enhancement) ; sinon le document embarqué sert de baseline
  * (jamais de skip).
  *
- * ESPRIT MUTATION : si le service reconstruisait le HTML au lieu de servir le
- * `print_html` capturé, l'assertion `doc.text === capturedHtml` deviendrait ROUGE ;
- * si le sceau n'incluait plus sha256(printHtml), l'égalité `sealed.document.sha256 ===
- * sha256(html)` deviendrait ROUGE.
+ * ESPRIT MUTATION : si le stockage réécrivait le HTML au lieu de figer le
+ * `print_html` capturé, l'assertion `official_pvs.document_html === capturedHtml`
+ * deviendrait ROUGE ; si le sceau n'incluait plus sha256(printHtml), l'égalité
+ * `sealed.document.sha256 === sha256(html)` deviendrait ROUGE.
  *
  * ANTI-SKIP : DATABASE_URL absent ET CI -> échec dur. Hors CI sans base -> non-exécuté
  * (honnête), interdit en CI.
@@ -309,17 +311,33 @@ describe('GOLDEN scellement du document ROADSENS réel — option-3 (e2e)', () =
     expect(sealed.document?.format).toBe('html');
     expect(sealed.document?.sha256).toBe(sha256(html));
 
-    // 3) SERVICE : GET document -> 200, corps === HTML capturé OCTET-À-OCTET, et la
-    //    ré-vérification d'intégrité (sha256) réussit (sinon 409).
+    // 3a) OCTETS STOCKÉS byte-exact : official_pvs.document_html === html capturé
+    //     (aucune ré-écriture serveur ; garde-fou d'encodage UTF-8 : µ, ‰, ×, σ, ε…).
+    const stored = await admin!.query(
+      `SELECT document_html FROM official_pvs WHERE id = $1`,
+      [pvId],
+    );
+    const storedHtml = (stored.rows[0] as { document_html: string })
+      .document_html;
+    expect(storedHtml).toBe(html);
+    expect(Buffer.byteLength(storedHtml, 'utf8')).toBe(
+      Buffer.byteLength(html, 'utf8'),
+    );
+    expect(sha256(storedHtml)).toBe(sha256(html));
+
+    // 3b) SERVICE : GET document -> 200, ré-vérification d'intégrité (sha256 sur les
+    //     OCTETS STOCKÉS) réussie (sinon 409), corps ROADSENS d'origine PRÉSENT
+    //     (contigu entre bandeau et pied), enrobé du cartouche PV (#pv-cartouche).
     const doc = await getDoc(token, pvId);
     expect(doc.status).toBe(200);
     expect(doc.headers['content-type']).toMatch(/text\/html/);
-    expect(doc.text).toBe(html);
-    // Longueur d'octets identique (garde-fou d'encodage UTF-8 : µ, ‰, ×, σ, ε…).
-    expect(Buffer.byteLength(doc.text, 'utf8')).toBe(
-      Buffer.byteLength(html, 'utf8'),
-    );
-    expect(sha256(doc.text)).toBe(sha256(html));
+    // Corps d'origine (panneaux ROADSENS non triviaux) conservé octet-à-octet.
+    expect(doc.text).toContain('id="pane-r"');
+    expect(doc.text).toContain('id="pane-d"');
+    // Cartouche PV injecté au service.
+    expect(doc.text).toContain('class="pvx-band"');
+    expect(doc.text).toMatch(/PV-RDS-/);
+    expect(doc.text).not.toMatch(/<script/i);
   }
 
   it('given un document ROADSENS réel (SVG+unicode+CSS), when capturé puis scellé, then GET document le restitue OCTET-À-OCTET', async () => {
