@@ -5,16 +5,19 @@
  * 48px · breadcrumb · Cmd+K · CTA contextuel · avatar (sans cloche — F-06)
  */
 
+import { Search } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Search } from 'lucide-react';
+import { useState, useEffect, type ReactNode } from 'react';
+
+import { QuotaIndicator } from './QuotaIndicator';
+
 import { Avatar } from '@/components/ui/Avatar';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
-import { Kbd } from '@/components/ui/Kbd';
 import { useCommandPalette } from '@/components/ui/CommandPalette';
-import { getStoredUser } from '@/lib/api/client';
-import { useState, useEffect, type ReactNode } from 'react';
-import { QuotaIndicator } from './QuotaIndicator';
+import { Kbd } from '@/components/ui/Kbd';
+import { getProjectCached, getStoredUser } from '@/lib/api/client';
+import { useOrgId } from '@/lib/org-context';
 
 interface TopbarProps {
   orgSlug: string;
@@ -35,27 +38,52 @@ export function Topbar({ orgSlug, ctaSlot, breadcrumbItems }: TopbarProps) {
     if (u) setUser(u);
   }, []);
 
+  // FX-11 : le fil d'Ariane par défaut affiche le nom du projet (pas son id
+  // tronqué) une fois résolu. `getProjectCached` réutilise le fetch déjà fait
+  // par ProjetLayoutClient (Topbar est un frère de la route projet dans
+  // l'arbre, pas un ancêtre — impossible de recevoir le nom par props).
+  const orgId = useOrgId(orgSlug);
+  const projetIdInPath = getProjetIdFromPathname(pathname);
+  const [projectName, setProjectName] = useState<string | null>(null);
+  useEffect(() => {
+    setProjectName(null);
+    if (!orgId || !projetIdInPath) return;
+    let cancelled = false;
+    getProjectCached(orgId, projetIdInPath)
+      .then((p) => {
+        if (!cancelled) setProjectName(p.name);
+      })
+      .catch(() => {
+        /* nom indisponible → repli sur l'id tronqué, cf. buildDefaultBreadcrumb */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, projetIdInPath]);
+
   // Fil d'Ariane par défaut depuis le pathname
-  const defaultBreadcrumb = buildDefaultBreadcrumb(pathname, orgSlug);
+  const defaultBreadcrumb = buildDefaultBreadcrumb(pathname, orgSlug, projectName);
   const segments = breadcrumbItems ?? defaultBreadcrumb;
 
   return (
     <header
-      style={{
-        position: 'fixed',
-        top: 0,
-        right: 0,
-        left: 0,
-        height: 48,
-        background: 'var(--surface-nav)',
-        boxShadow: 'var(--elevation-sticky)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '0 16px',
-        zIndex: 20,
-        '--surface-current': 'var(--surface-nav)',
-      } as React.CSSProperties}
+      style={
+        {
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          left: 0,
+          height: 48,
+          background: 'var(--surface-nav)',
+          boxShadow: 'var(--elevation-sticky)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '0 16px',
+          zIndex: 20,
+          '--surface-current': 'var(--surface-nav)',
+        } as React.CSSProperties
+      }
     >
       {/* Espace pour sidebar (ajusté via CSS) */}
       <div className="topbar-sidebar-offset" style={{ flexShrink: 0 }} />
@@ -85,8 +113,12 @@ export function Topbar({ orgSlug, ctaSlot, breadcrumbItems }: TopbarProps) {
           flexShrink: 0,
           transition: `background var(--dur-fast) var(--ease-state)`,
         }}
-        onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.12)'; }}
-        onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--nav-hover)'; }}
+        onMouseOver={(e) => {
+          (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.12)';
+        }}
+        onMouseOut={(e) => {
+          (e.currentTarget as HTMLElement).style.background = 'var(--nav-hover)';
+        }}
       >
         <Search size={12} strokeWidth={1.5} aria-hidden="true" />
         <span>Rechercher…</span>
@@ -97,11 +129,7 @@ export function Topbar({ orgSlug, ctaSlot, breadcrumbItems }: TopbarProps) {
       <QuotaIndicator orgSlug={orgSlug} />
 
       {/* CTA contextuel */}
-      {ctaSlot && (
-        <div style={{ flexShrink: 0 }}>
-          {ctaSlot}
-        </div>
-      )}
+      {ctaSlot && <div style={{ flexShrink: 0 }}>{ctaSlot}</div>}
 
       {/* Avatar (sans cloche — décision F-06) */}
       <Link
@@ -128,9 +156,20 @@ export function Topbar({ orgSlug, ctaSlot, breadcrumbItems }: TopbarProps) {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Extrait le projetId du pathname (`/app/[orgSlug]/projets/[projetId]/...`), sinon `null`. */
+function getProjetIdFromPathname(pathname: string): string | null {
+  const segments = pathname.split('/').filter(Boolean);
+  if (segments[0] === 'app' && segments[2] === 'projets' && segments[3]) {
+    return segments[3];
+  }
+  return null;
+}
+
 function buildDefaultBreadcrumb(
   pathname: string,
-  orgSlug: string
+  orgSlug: string,
+  /** Nom du projet déjà résolu (FX-11) — `null` tant que non chargé : repli sur l'ID tronqué. */
+  projectName: string | null,
 ): { label: string; href?: string }[] {
   const segments = pathname.split('/').filter(Boolean);
   // /app/[orgSlug]/projets/[projetId]/calculs/[calculId]
@@ -141,10 +180,9 @@ function buildDefaultBreadcrumb(
   }
 
   if (segments[2] === 'projets' && segments[3]) {
-    // Nom du projet non disponible ici sans fetch — afficher l'ID tronqué
     const projetId = segments[3];
     items.push({
-      label: `Projet ${projetId.slice(0, 8)}…`,
+      label: projectName ?? `Projet ${projetId.slice(0, 8)}…`,
       href: `/app/${orgSlug}/projets/${projetId}`,
     });
   }

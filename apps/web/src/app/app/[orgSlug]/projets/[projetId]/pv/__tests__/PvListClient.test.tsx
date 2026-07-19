@@ -25,12 +25,14 @@ const {
   mockVerifyPv,
   mockDownloadPvPdf,
   mockGetPvDocument,
+  mockGetProjectCached,
   mockPrintInertHtml,
 } = vi.hoisted(() => ({
   mockListPvs: vi.fn(),
   mockVerifyPv: vi.fn(),
   mockDownloadPvPdf: vi.fn(),
   mockGetPvDocument: vi.fn(),
+  mockGetProjectCached: vi.fn(),
   mockPrintInertHtml: vi.fn(),
 }));
 
@@ -39,6 +41,7 @@ vi.mock('@/lib/api/client', () => ({
   verifyPv: mockVerifyPv,
   downloadPvPdf: mockDownloadPvPdf,
   getPvDocument: mockGetPvDocument,
+  getProjectCached: mockGetProjectCached,
 }));
 
 vi.mock('@/lib/print-inert-html', () => ({
@@ -74,6 +77,8 @@ beforeEach(() => {
   mockVerifyPv.mockReset();
   mockDownloadPvPdf.mockReset();
   mockGetPvDocument.mockReset();
+  mockGetProjectCached.mockReset();
+  mockGetProjectCached.mockResolvedValue({ name: 'Route Dakar-Thiès — dimensionnement' });
   mockPrintInertHtml.mockReset();
   URL.createObjectURL = vi.fn(() => 'blob:mock');
   URL.revokeObjectURL = vi.fn();
@@ -253,5 +258,49 @@ describe('PvListClient — Aperçu/Télécharger tentent le document scellé en 
     expect(mockDownloadPvPdf).toHaveBeenCalledWith('pv_01', 'org_01', 'proj_01');
     expect(mockPrintInertHtml).not.toHaveBeenCalled();
     expect(container.textContent).toContain(`${PV.number} téléchargé.`);
+  });
+});
+
+describe('PvListClient — titre mnémonique (FX-10)', () => {
+  it('given un PV scellé (engineId burmister) et le projet chargé, when la liste s’affiche, then le titre est "Note de calcul — {projet} · {logiciel}" (nom métier humanisé, pas le slug)', async () => {
+    mockListPvs.mockResolvedValue([PV]);
+    mockGetProjectCached.mockResolvedValue({
+      name: 'Route Dakar-Thiès — dimensionnement',
+    });
+
+    await renderPvList();
+
+    expect(mockGetProjectCached).toHaveBeenCalledWith('org_01', 'proj_01');
+    expect(container.textContent).toContain(
+      'Note de calcul — Route Dakar-Thiès — dimensionnement · ROADSENS — Chaussées',
+    );
+    // Plus jamais le slug brut affiché comme identifiant du logiciel.
+    expect(container.textContent).not.toContain('burmister ·');
+  });
+
+  it('given le numéro officiel PV-2026-0001, when la liste s’affiche, then il reste visible en référence secondaire (pas comme titre)', async () => {
+    mockListPvs.mockResolvedValue([PV]);
+    mockGetProjectCached.mockResolvedValue({ name: 'Route Dakar-Thiès' });
+
+    await renderPvList();
+
+    // Le numéro (immuable, scellé) reste affiché — juste plus comme titre.
+    expect(container.textContent).toContain(PV.number);
+    const heading = container.querySelector(
+      '[role="listitem"] span',
+    ) as HTMLSpanElement | null;
+    expect(heading?.textContent).not.toBe(PV.number);
+    expect(heading?.textContent).toContain('Note de calcul —');
+  });
+
+  it('given le nom du projet pas encore résolu (getProjectCached en attente), when la liste s’affiche, then le titre reste correct sans planter (repli sans le segment projet)', async () => {
+    mockListPvs.mockResolvedValue([PV]);
+    // Ne se résout jamais dans le temps du test → projectName reste null.
+    mockGetProjectCached.mockReturnValue(new Promise(() => {}));
+
+    await renderPvList();
+
+    expect(container.textContent).toContain('Note de calcul — ROADSENS — Chaussées');
+    expect(container.textContent).toContain(PV.number);
   });
 });

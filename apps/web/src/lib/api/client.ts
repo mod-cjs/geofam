@@ -239,6 +239,50 @@ export async function getProject(_orgId: string, projectId: string): Promise<Pro
   return p;
 }
 
+// ---------------------------------------------------------------------------
+// Cache projet en lecture — évite les appels GET /projects/:id redondants
+// quand plusieurs composants indépendants (Topbar, ProjetLayoutClient,
+// PvListClient) ont besoin du même projet au même chargement de page (aucun
+// n'est ancêtre des autres, donc pas de prop-drilling possible). Dédoublonne
+// aussi les requêtes concurrentes (montage simultané).
+//
+// PAS une source pour un flux qui doit voir un état garanti frais après
+// mutation locale (ex. formulaire de renommage) : ceux-ci continuent d'appeler
+// `getProject` directement. Invalidée par renameProject/deleteProject.
+// ---------------------------------------------------------------------------
+
+const projectCache = new Map<string, Project>();
+const projectCacheInFlight = new Map<string, Promise<Project>>();
+
+function projectCacheKey(orgId: string, projectId: string): string {
+  return `${orgId}:${projectId}`;
+}
+
+export async function getProjectCached(
+  orgId: string,
+  projectId: string,
+): Promise<Project> {
+  const key = projectCacheKey(orgId, projectId);
+  const cached = projectCache.get(key);
+  if (cached) return cached;
+
+  let pending = projectCacheInFlight.get(key);
+  if (!pending) {
+    pending = getProject(orgId, projectId)
+      .then((p) => {
+        projectCache.set(key, p);
+        projectCacheInFlight.delete(key);
+        return p;
+      })
+      .catch((err) => {
+        projectCacheInFlight.delete(key);
+        throw err;
+      });
+    projectCacheInFlight.set(key, pending);
+  }
+  return pending;
+}
+
 /**
  * Renomme un projet — PERSISTE réellement (PATCH /projects/:id côté backend).
  * Mock : mute l'entrée MOCK_PROJECTS en place (name + updatedAt) pour que la
@@ -249,6 +293,7 @@ export async function renameProject(
   projectId: string,
   name: string,
 ): Promise<Project> {
+  projectCache.delete(projectCacheKey(orgId, projectId));
   if (_USE_REAL_BACKEND) return httpRenameProject(orgId, projectId, name);
 
   await delay(400);
@@ -266,6 +311,7 @@ export async function renameProject(
  * Mock : retire l'entrée de MOCK_PROJECTS pour reproduire cette exclusion.
  */
 export async function deleteProject(orgId: string, projectId: string): Promise<Project> {
+  projectCache.delete(projectCacheKey(orgId, projectId));
   if (_USE_REAL_BACKEND) return httpDeleteProject(orgId, projectId);
 
   await delay(400);

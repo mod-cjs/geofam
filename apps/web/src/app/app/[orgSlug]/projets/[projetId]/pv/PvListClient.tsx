@@ -29,8 +29,15 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { Skeleton } from '@/components/ui/Skeleton.client';
 import { useToast } from '@/components/ui/Toast';
-import { listPvs, verifyPv, downloadPvPdf, getPvDocument } from '@/lib/api/client';
+import {
+  getProjectCached,
+  listPvs,
+  verifyPv,
+  downloadPvPdf,
+  getPvDocument,
+} from '@/lib/api/client';
 import type { OfficialPv, VerifyPvResponse } from '@/lib/api/types';
+import { metaOf } from '@/lib/engine-labels';
 import { useOrgId } from '@/lib/org-context';
 import { printInertHtml } from '@/lib/print-inert-html';
 
@@ -81,6 +88,25 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
   const [pvs, setPvs] = useState<OfficialPv[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Nom du projet — pour le titre mnémonique des PV (FX-10). `getProjectCached`
+  // réutilise le fetch déjà fait par ProjetLayoutClient (bande projet) au lieu
+  // de dupliquer un appel GET /projects/:id.
+  const [projectName, setProjectName] = useState<string | null>(null);
+  useEffect(() => {
+    if (!orgId) return;
+    let cancelled = false;
+    getProjectCached(orgId, projetId)
+      .then((p) => {
+        if (!cancelled) setProjectName(p.name);
+      })
+      .catch(() => {
+        /* nom absent → repli sur le numéro de PV seul, cf. PvRow */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, projetId]);
 
   // Modale vérification intégrité
   const [verifyModal, setVerifyModal] = useState<{
@@ -286,6 +312,7 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
             <PvRow
               key={pv.id}
               pv={pv}
+              projectName={projectName}
               downloading={downloadingId === pv.id}
               previewing={previewingId === pv.id}
               onDownload={() => handleDownload(pv)}
@@ -510,8 +537,18 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 // Ligne PV
 // ---------------------------------------------------------------------------
 
+// Titre mnémonique (FX-10) — le numéro officiel (immuable, scellé) n'est
+// jamais le titre : il reste affiché en référence secondaire dans PvRow.
+function pvTitle(pv: OfficialPv, projectName: string | null): string {
+  const nom = metaOf(pv.engineId).nom;
+  return projectName
+    ? `Note de calcul — ${projectName} · ${nom}`
+    : `Note de calcul — ${nom}`;
+}
+
 function PvRow({
   pv,
+  projectName,
   downloading,
   previewing,
   onDownload,
@@ -519,6 +556,7 @@ function PvRow({
   onVerify,
 }: {
   pv: OfficialPv;
+  projectName: string | null;
   downloading: boolean;
   previewing: boolean;
   onDownload: () => void;
@@ -562,14 +600,19 @@ function PvRow({
       {/* Infos */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Titre mnémonique (FX-10) — projet + logiciel humanisé, jamais le
+              numéro officiel (immuable, scellé — cf. référence secondaire ci-dessous). */}
           <span
             style={{
               fontSize: 'var(--text-sm)',
               fontWeight: 500,
               color: 'var(--text-primary)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}
           >
-            {pv.number}
+            {pvTitle(pv, projectName)}
           </span>
           {/* Badge Scellé */}
           <span
@@ -583,20 +626,48 @@ function PvRow({
               fontSize: 11,
               color: 'var(--text-on-nav)',
               fontWeight: 500,
+              flexShrink: 0,
             }}
           >
             <Lock size={10} strokeWidth={1.5} aria-hidden="true" />
             Scellé
           </span>
         </div>
+        {/* Référence secondaire — numéro officiel (puce + mono, discret) + auteur/date */}
         <div
           style={{
             fontSize: 'var(--text-xs)',
             color: 'var(--text-secondary)',
             marginTop: 2,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            flexWrap: 'wrap',
           }}
         >
-          {pv.engineId} · {pv.sealedBy} · {formatDate(pv.sealedAt)}
+          <span
+            aria-hidden="true"
+            style={{
+              display: 'inline-block',
+              width: 4,
+              height: 4,
+              borderRadius: '50%',
+              background: 'var(--text-muted)',
+              flexShrink: 0,
+            }}
+          />
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontVariantNumeric: 'tabular-nums',
+              color: 'var(--text-muted)',
+            }}
+          >
+            {pv.number}
+          </span>
+          <span>
+            · {pv.sealedBy} · {formatDate(pv.sealedAt)}
+          </span>
         </div>
         {/* Hash HMAC tronqué — 8 chars, visible mais sans légende explicative */}
         <div

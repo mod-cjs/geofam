@@ -15,6 +15,7 @@ import type { Domain } from '@/components/ui/DomainTag';
 import { Skeleton } from '@/components/ui/Skeleton.client';
 import { listCalcResults, listPvs } from '@/lib/api/client';
 import type { CalcResult, OfficialPv } from '@/lib/api/types';
+import { metaOf } from '@/lib/engine-labels';
 import { useOrgId } from '@/lib/org-context';
 
 /**
@@ -168,7 +169,7 @@ export default function OverviewPage({ params: paramsPromise }: Props) {
                     fontWeight: 500,
                   }}
                 >
-                  {c.label}
+                  {metaOf(c.engineId).nom}
                 </span>
                 <Badge
                   variant={

@@ -10,7 +10,7 @@ import { usePathname } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/Badge';
-import { getProject } from '@/lib/api/client';
+import { getProjectCached } from '@/lib/api/client';
 import type { Project } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 
@@ -69,7 +69,10 @@ export default function ProjetLayoutClient({
 
   useEffect(() => {
     if (!orgId) return;
-    getProject(orgId, projetId)
+    // getProjectCached : partagé avec Topbar (fil d'Ariane) et PvListClient
+    // (titre mnémonique) — évite un GET /projects/:id redondant, ces
+    // composants n'étant pas dans une relation ancêtre/descendant.
+    getProjectCached(orgId, projetId)
       .then(setProject)
       .catch(() => {});
   }, [orgId, projetId]);
