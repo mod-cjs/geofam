@@ -662,16 +662,23 @@ export async function httpDownloadPvPdf(
  * (HTML d'impression capturé, à afficher/imprimer TEL QUEL — option 3). Réponse
  * `text/html`, pas JSON : lecture par `res.text()`, pas `apiFetch`.
  *
- * 404 = PV sans document HTML scellé (ancien PV / autre moteur) → `null`.
+ * 404 = PV sans document HTML scellé (ancien PV / autre moteur) → `null`
+ * (repli légitime : rien n'a jamais été capturé, ce n'est pas une anomalie).
+ *
  * 409 = intégrité rompue (sceau invalide ou document altéré, ConflictException
- * backend, cf. pv.service.ts documentForView) → `null` ÉGALEMENT (B1, revue
- * adverse) : par défense, on ne laisse JAMAIS l'ingénieur dans un cul-de-sac —
- * l'appelant retombe sur GET .../pvs/:pvId/pdf, qui reste un PV valide (son
- * propre contrôle d'intégrité s'applique indépendamment). Le 409 est loggé en
- * diagnostic DISTINCT (anomalie réelle, pas un simple "document absent") pour
- * ne pas se confondre avec un 404 ordinaire dans les logs/observabilité.
- * Toute AUTRE erreur (réseau, 5xx…) reste propagée : ce n'est pas un motif de
- * repli documenté, la surfacer évite de masquer une vraie panne.
+ * backend, cf. pv.service.ts documentForView) → **rejette** (ApiError
+ * statusCode 409), comme toute autre erreur serveur. Révisé (reco
+ * qa-challenger, cf. CalculsClient §Imprimer) : un 409 signale une anomalie
+ * réelle, pas une absence légitime de document — le laisser indiscernable
+ * d'un 404 pousserait un appelant à replier silencieusement sur un rendu non
+ * garanti authentique. Chaque appelant décide de sa politique de repli :
+ * `PvListClient` absorbe encore le 409 en repli PDF (son PDF a son propre
+ * contrôle d'intégrité indépendant, cf. le wrapper local `fetchPvDocumentOrNull`
+ * dans PvListClient.tsx) ;
+ * `CalculsClient` refuse d'imprimer et affiche une alerte (fail-closed, le
+ * repli n'a ici aucune vérification indépendante à s'appuyer dessus).
+ * Toute AUTRE erreur (réseau, 5xx…) reste propagée également : ce n'est pas
+ * un motif de repli documenté, la surfacer évite de masquer une vraie panne.
  */
 export async function httpGetPvDocument(
   orgId: string,
@@ -688,21 +695,6 @@ export async function httpGetPvDocument(
   });
 
   if (res.status === 404) return null;
-
-  if (res.status === 409) {
-    let message = 'Document altéré ou sceau rompu (409).';
-    try {
-      const body = (await res.json()) as { message?: string };
-      if (body?.message) message = body.message;
-    } catch {
-      /* corps non JSON */
-    }
-    // Diagnostic distinct (anomalie d'intégrité) — n'empêche PAS le repli PDF.
-    console.warn(
-      `[PV] Document scellé refusé (409, intégrité) pour ${pvId} — repli sur le PDF. ${message}`,
-    );
-    return null;
-  }
 
   if (!res.ok) {
     let message = `Erreur chargement du document (${res.status})`;

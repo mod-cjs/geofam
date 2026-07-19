@@ -638,10 +638,13 @@ test.describe('SCELLEMENT ROADSENS — capture réelle (option-3)', () => {
     await emitBtn.click();
     await expect.poll(async () => emitHit, { timeout: 15_000 }).toBe(true);
     // Bannière VÉRIDIQUE (documentFormat==='html') : annonce le document de l'outil
-    // scellé « au mm près » (la branche de repli, elle, dirait « non capturé »).
+    // scellé (intégrité + horodatage serveur) — wording honnête M2, sans « garantis »
+    // ni « au mm près » (la branche de repli, elle, dirait « non capturé »).
     const banner = page.locator('[data-testid="pv-success-banner"]');
     await expect(banner).toBeVisible({ timeout: 15_000 });
-    await expect(banner).toHaveText(/document de l.outil scellé \(au mm près\)/i);
+    await expect(banner).toHaveText(
+      /document de l.outil scellé \(intégrité \+ horodatage serveur\)/i,
+    );
     await expect(banner).not.toHaveText(/non capturé/i);
 
     await ctx.close();

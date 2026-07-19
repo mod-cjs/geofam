@@ -1435,12 +1435,15 @@ describe('httpDownloadPvPdf — contrat URL + headers (Bug B)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// B1 (revue adverse) — httpGetPvDocument : 404 ET 409 retombent sur `null`
-// (jamais de cul-de-sac ; l'appelant retombe sur le PDF). Le 409 est loggé en
-// diagnostic distinct (anomalie d'intégrité), sans bloquer l'ingénieur.
+// httpGetPvDocument : seul le 404 retombe sur `null` (absence légitime).
+// Révisé (reco qa-challenger, cf. CalculsClient) : le 409 (intégrité rompue)
+// est désormais REJETÉ comme toute autre erreur serveur — le rendre
+// indiscernable d'un 404 poussait un appelant à replier silencieusement sur
+// un document non garanti authentique. Chaque appelant (PvListClient,
+// CalculsClient) décide de sa propre politique de repli sur ce rejet.
 // ---------------------------------------------------------------------------
 
-describe('httpGetPvDocument — 404 ET 409 retombent sur null (B1)', () => {
+describe('httpGetPvDocument — seul le 404 retombe sur null, le 409 est rejeté', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -1467,7 +1470,7 @@ describe('httpGetPvDocument — 404 ET 409 retombent sur null (B1)', () => {
     expect(doc).toBeNull();
   });
 
-  it('given une intégrité rompue (409), when httpGetPvDocument, then renvoie null (repli PDF côté appelant) ET logue un diagnostic distinct', async () => {
+  it('given une intégrité rompue (409), when httpGetPvDocument, then rejette (statusCode 409, message serveur propagé) — pas de repli silencieux', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValueOnce({
@@ -1476,16 +1479,13 @@ describe('httpGetPvDocument — 404 ET 409 retombent sur null (B1)', () => {
         json: async () => ({ message: 'Document altéré ou sceau rompu.' }),
       } as unknown as Response),
     );
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const doc = await httpGetPvDocument('org_01', 'proj_42', 'pv_altere');
-
-    expect(doc).toBeNull();
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    const loggedMessage = warnSpy.mock.calls[0]?.[0] as string;
-    expect(loggedMessage).toContain('409');
-    expect(loggedMessage).toContain('Document altéré ou sceau rompu.');
-    warnSpy.mockRestore();
+    await expect(
+      httpGetPvDocument('org_01', 'proj_42', 'pv_altere'),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      message: 'Document altéré ou sceau rompu.',
+    });
   });
 
   it('given une erreur serveur générique (500), when httpGetPvDocument, then rejette (pas de repli silencieux)', async () => {

@@ -2,10 +2,12 @@
  * Tests — PvListClient, volet « option 3 » (le PV = le document que l'outil
  * imprime). Aperçu/Télécharger tentent D'ABORD le document HTML scellé
  * (GET .../pvs/:pvId/document). Contrat du client API (getPvDocument) : `null`
- * = repli PDF pdfmake INCHANGÉ (404 comme 409 — B1, revue adverse : jamais de
- * cul-de-sac, le 409 est loggé séparément côté http-client, cf.
- * http-client.test.ts). Toute AUTRE erreur (500…) reste un message d'erreur,
- * sans repli silencieux.
+ * sur 404 = repli PDF pdfmake INCHANGÉ ; 409 REJETTE désormais (cf.
+ * http-client.test.ts, révisé suite à reco qa-challenger) mais ce composant
+ * l'absorbe localement en repli PDF via `fetchPvDocumentOrNull` (B1, revue
+ * adverse : jamais de cul-de-sac ici, le PDF a son propre contrôle
+ * d'intégrité indépendant). Toute AUTRE erreur (500…) reste un message
+ * d'erreur, sans repli silencieux.
  *
  * DoD §9 : given/when/then, chemins négatifs (repli 404/409, erreur générique)
  * testés autant que le chemin heureux.
@@ -157,13 +159,33 @@ describe('PvListClient — Aperçu/Télécharger tentent le document scellé en 
     expect(container.querySelector('[data-testid="pv-preview-doc-iframe"]')).toBeNull();
   });
 
-  it("given un document altéré (409, absorbé en null par la couche API — cf. http-client.test.ts), when on clique Aperçu, then le repli PDF s'affiche quand même (B1 : jamais de cul-de-sac)", async () => {
-    // B1 (revue adverse) : httpGetPvDocument convertit désormais 404 ET 409 en
-    // `null` (avec un log distinct pour le 409, testé au niveau http-client).
-    // Du point de vue de PvListClient, un 409 est donc indiscernable d'un 404 :
-    // ce test prouve que le composant retombe bien sur le PDF dans les deux cas.
+  it("given un document altéré simulé en null (cas historique de repli), when on clique Aperçu, then le repli PDF s'affiche quand même (B1 : jamais de cul-de-sac)", async () => {
     mockListPvs.mockResolvedValue([PV]);
     mockGetPvDocument.mockResolvedValue(null);
+    mockDownloadPvPdf.mockResolvedValue(new Blob(['%PDF'], { type: 'application/pdf' }));
+
+    await renderPvList();
+    await act(async () => {
+      apercuBtn().click();
+    });
+    await flush();
+
+    expect(mockDownloadPvPdf).toHaveBeenCalledWith('pv_01', 'org_01', 'proj_01');
+    const pdfIframe = container.querySelector(
+      '[data-testid="pv-preview-iframe"]',
+    ) as HTMLIFrameElement | null;
+    expect(pdfIframe).not.toBeNull();
+    expect(container.querySelector('[data-testid="pv-preview-doc-iframe"]')).toBeNull();
+  });
+
+  it("given un document altéré (409, getPvDocument REJETTE — cf. http-client.ts révisé), when on clique Aperçu, then le repli PDF s'affiche quand même (wrapper local fetchPvDocumentOrNull, B1 : jamais de cul-de-sac)", async () => {
+    // Révisé (reco qa-challenger) : httpGetPvDocument REJETTE désormais sur
+    // 409 (au lieu de renvoyer null) pour que CalculsClient puisse fail-closed.
+    // PvListClient absorbe ce rejet localement (fetchPvDocumentOrNull) pour
+    // conserver sa politique B1 existante : le PDF a son propre contrôle
+    // d'intégrité indépendant.
+    mockListPvs.mockResolvedValue([PV]);
+    mockGetPvDocument.mockRejectedValue({ statusCode: 409, message: 'Document altéré.' });
     mockDownloadPvPdf.mockResolvedValue(new Blob(['%PDF'], { type: 'application/pdf' }));
 
     await renderPvList();

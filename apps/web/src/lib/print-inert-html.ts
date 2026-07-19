@@ -7,19 +7,26 @@
  * côté serveur (`assertInertHtml`, cf. apps/api/src/pv/html-guard.ts) — il n'y
  * a donc STRUCTURELLEMENT rien à exécuter dans ce document.
  *
- * `sandbox="allow-same-origin"` (SANS `allow-scripts`) : nécessaire pour que
- * `contentWindow.print()` soit appelable depuis ce module — un iframe
- * totalement sandboxé (`sandbox=""`) obtient une origine opaque, ce qui rend
- * `contentWindow.print()` inaccessible depuis le parent (SecurityError). Sans
- * le jeton `allow-scripts`, aucun script ne peut de toute façon s'exécuter à
- * l'intérieur — l'appel de fonctions comme `print()` reste possible depuis
- * L'EXTÉRIEUR (ce module), ce qui est exactement ce dont on a besoin ici.
+ * `sandbox="allow-same-origin allow-modals"` (SANS `allow-scripts`) :
+ * - `allow-same-origin` : nécessaire pour que `contentWindow.print()` soit
+ *   appelable depuis ce module — un iframe totalement sandboxé (`sandbox=""`)
+ *   obtient une origine opaque, ce qui rend `contentWindow.print()`
+ *   inaccessible depuis le parent (SecurityError).
+ * - `allow-modals` : sans ce jeton, Chromium/Firefox ignorent silencieusement
+ *   l'appel à `print()` depuis un document sandboxé (« Ignored call to
+ *   'print()'. The document is sandboxed, and the 'allow-modals' keyword is
+ *   not set. ») — la boîte de dialogue d'impression est une modale native.
+ * Sans le jeton `allow-scripts`, aucun script ne peut de toute façon
+ * s'exécuter à l'intérieur — l'appel de fonctions comme `print()` reste
+ * possible depuis L'EXTÉRIEUR (ce module), et `allow-modals` n'autorise que la
+ * boîte d'impression elle-même (aucun script ne tourne dans la frame pour en
+ * abuser).
  */
 export function printInertHtml(html: string): void {
   if (typeof document === 'undefined') return;
 
   const iframe = document.createElement('iframe');
-  iframe.setAttribute('sandbox', 'allow-same-origin');
+  iframe.setAttribute('sandbox', 'allow-same-origin allow-modals');
   iframe.setAttribute('aria-hidden', 'true');
   iframe.style.position = 'fixed';
   iframe.style.right = '0';

@@ -3,13 +3,26 @@
  * de l'outil → impression → scellement, ou repli métadonnées si non capturé).
  *
  * DoD §9 : given/when/then. États couverts :
- *  - snapshot présent  → iframe sandboxée + actions Imprimer/Sceller ;
- *  - snapshot absent (404) → repli sur le panneau de métadonnées existant ;
+ *  - snapshot présent  → iframe sandboxée + barre d'actions unifiée ;
+ *  - snapshot absent (404) → repli sur le panneau de métadonnées existant,
+ *    même barre d'actions unifiée ;
  *  - scellement → emitPv appelé pour le bon calcul, PV reflété localement ;
  *  - M3 (revue adverse) : sceller un calcul ROADSENS sans document capturé
  *    n'appelle JAMAIS emitPv en un clic silencieux — un avertissement explicite
  *    s'affiche d'abord, confirmation requise ; pour un moteur non pilote
  *    (capture pas encore câblée), aucun bouton Sceller n'est proposé ici.
+ *  - FX-4 (revue adverse) : le titre affiché est le nom métier du logiciel
+ *    (pas le slug technique), l'identifiant technique reste en sous-titre
+ *    discret ; deux calculs du même moteur restent distinguables (date/heure
+ *    complète + verdict).
+ *  - Actions unifiées (revue titulaire) : « Ouvrir dans le logiciel » n'existe
+ *    plus nulle part. Scellé → « Voir le PV scellé » (primaire) + « Imprimer »
+ *    (secondaire, imprime le document scellé). Non scellé → « Sceller cette
+ *    version » seule (pas de bouton Imprimer, aucun document officiel).
+ *  - Fail-closed impression (reco qa-challenger) : sur un calcul scellé,
+ *    404 (`getPvDocument` → null) = repli légitime sur l'aperçu ; 409/erreur
+ *    réseau (`getPvDocument` rejette) = message d'erreur d'intégrité, RIEN
+ *    n'est imprimé.
  *
  * Patron d'interaction : react-dom/client + act (pas de @testing-library/react
  * dans ce dépôt — cf. PvEmittedActions.test.tsx / dashboard-page.test.tsx).
@@ -19,14 +32,21 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { mockListCalcResults, mockGetCalcSnapshot, mockEmitPv, mockPush } = vi.hoisted(
-  () => ({
-    mockListCalcResults: vi.fn(),
-    mockGetCalcSnapshot: vi.fn(),
-    mockEmitPv: vi.fn(),
-    mockPush: vi.fn(),
-  }),
-);
+const {
+  mockListCalcResults,
+  mockGetCalcSnapshot,
+  mockEmitPv,
+  mockGetPvDocument,
+  mockPrintInertHtml,
+  mockPush,
+} = vi.hoisted(() => ({
+  mockListCalcResults: vi.fn(),
+  mockGetCalcSnapshot: vi.fn(),
+  mockEmitPv: vi.fn(),
+  mockGetPvDocument: vi.fn(),
+  mockPrintInertHtml: vi.fn(),
+  mockPush: vi.fn(),
+}));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
@@ -36,6 +56,11 @@ vi.mock('@/lib/api/client', () => ({
   listCalcResults: mockListCalcResults,
   getCalcSnapshot: mockGetCalcSnapshot,
   emitPv: mockEmitPv,
+  getPvDocument: mockGetPvDocument,
+}));
+
+vi.mock('@/lib/print-inert-html', () => ({
+  printInertHtml: mockPrintInertHtml,
 }));
 
 import CalculsClient from '../CalculsClient';
@@ -66,6 +91,26 @@ const CALC_TERZAGHI: CalcResult = {
   label: 'Calcul fondation n°1',
 };
 
+// Un 2e calcul du MÊME moteur que CALC — sert à prouver que le titre (nom
+// métier, identique) ne suffit plus à confondre les deux : seuls le libellé
+// technique en sous-titre et la date/heure complète + verdict distinguent.
+const CALC_2_MEME_MOTEUR: CalcResult = {
+  ...CALC,
+  id: 'calc_03',
+  label: 'chaussee-burmister',
+  output: { verdict: 'FAIL' },
+  createdAt: '2026-07-01T10:05:30.000Z',
+  updatedAt: '2026-07-01T10:05:30.000Z',
+};
+
+// Calcul déjà scellé (PV existant) — sert #6 : Imprimer doit lire le document
+// scellé, pas le snapshot courant.
+const CALC_SEALED: CalcResult = {
+  ...CALC,
+  id: 'calc_04',
+  pvId: 'pv_01',
+};
+
 const PV: OfficialPv = {
   id: 'pv_01',
   number: 'PV-2026-0001',
@@ -87,6 +132,8 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   mockListCalcResults.mockReset();
+  mockGetPvDocument.mockReset();
+  mockPrintInertHtml.mockReset();
   mockGetCalcSnapshot.mockReset();
   mockEmitPv.mockReset();
   mockPush.mockReset();
@@ -126,7 +173,7 @@ function findButtonByText(text: string): HTMLButtonElement | undefined {
 }
 
 describe("CalculsClient — document de l'outil (option 3)", () => {
-  it("given un calcul avec un document capturé, when sélectionné, then l'aperçu s'affiche en iframe sandboxée en lecture seule avec les actions Imprimer/Sceller", async () => {
+  it("given un calcul avec un document capturé (non scellé), when sélectionné, then l'aperçu s'affiche en iframe sandboxée en lecture seule avec la seule action Sceller (pas d'Imprimer, pas d'Ouvrir)", async () => {
     mockListCalcResults.mockResolvedValue([CALC]);
     mockGetCalcSnapshot.mockResolvedValue({
       displayHtml: '<p>Résultat affiché</p>',
@@ -145,8 +192,11 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
     expect(iframe!.getAttribute('sandbox')).toBe('');
     expect(iframe!.srcdoc).toBe('<p>Résultat affiché</p>');
 
-    expect(findButtonByText('Imprimer les détails')).toBeTruthy();
+    // Non scellé : Sceller seule, pas d'Imprimer tant que le document
+    // officiel n'existe pas.
     expect(findButtonByText('Sceller cette version')).toBeTruthy();
+    expect(findButtonByText('Imprimer')).toBeFalsy();
+    expect(findButtonByText('Ouvrir dans le logiciel')).toBeFalsy();
     // Panneau de métadonnées reconstruit remplacé par l'aperçu → pas de <dl>.
     expect(container.querySelector('dl')).toBeNull();
   });
@@ -163,6 +213,7 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
     // Le panneau de métadonnées existant reste consultable.
     expect(container.querySelector('dl')).not.toBeNull();
     expect(container.textContent).toContain('CONFORME');
+    expect(findButtonByText('Ouvrir dans le logiciel')).toBeFalsy();
   });
 
   it("given un calcul dont le chargement du document échoue (erreur réseau), when sélectionné, then l'écran retombe sans se bloquer sur le panneau de métadonnées", async () => {
@@ -175,7 +226,7 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
     expect(container.querySelector('dl')).not.toBeNull();
   });
 
-  it("given l'aperçu affiché, when on clique « Sceller cette version », then emitPv est appelé pour ce calcul et l'action devient « PV déjà scellé »", async () => {
+  it("given l'aperçu affiché, when on clique « Sceller cette version », then emitPv est appelé pour ce calcul et l'action devient « Voir le PV scellé » + « Imprimer »", async () => {
     mockListCalcResults.mockResolvedValue([CALC]);
     mockGetCalcSnapshot.mockResolvedValue({
       displayHtml: '<p>Résultat affiché</p>',
@@ -196,7 +247,8 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
     expect(mockEmitPv).toHaveBeenCalledWith('org_01', 'proj_01', {
       calcResultId: 'calc_01',
     });
-    expect(findButtonByText('PV déjà scellé — voir')).toBeTruthy();
+    expect(findButtonByText('Voir le PV scellé')).toBeTruthy();
+    expect(findButtonByText('Imprimer')).toBeTruthy();
     expect(findButtonByText('Sceller cette version')).toBeFalsy();
     expect(container.querySelector('[role="alert"]')).toBeNull();
   });
@@ -301,6 +353,177 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
       expect(findButtonByText('Sceller cette version')).toBeFalsy();
       expect(container.textContent).toContain('Aucun PV émis — ouvrez le logiciel');
       expect(mockEmitPv).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('FX-4 (revue adverse) — titre = nom métier, deux calculs du même moteur distinguables', () => {
+    it("given un calcul, when affiché dans la liste et dans le panneau, then le TITRE est le nom métier du logiciel et l'identifiant technique reste un sous-titre discret", async () => {
+      mockListCalcResults.mockResolvedValue([CALC]);
+      mockGetCalcSnapshot.mockResolvedValue(null);
+
+      await renderCalculs();
+
+      const item = container.querySelector('li button') as HTMLButtonElement;
+      // Titre = nom métier (pas le slug/libellé technique du calcul).
+      expect(item.textContent).toContain('ROADSENS — Chaussées');
+      // Sous-titre = libellé technique du calcul, toujours présent mais discret.
+      expect(item.textContent).toContain(CALC.label);
+
+      const heading = container.querySelector('h2') as HTMLHeadingElement;
+      expect(heading.textContent).toBe('ROADSENS — Chaussées');
+      expect(container.querySelector('section')?.textContent).toContain(CALC.label);
+    });
+
+    it('given deux calculs du même moteur, when listés, then ils restent distinguables (libellé technique et date/heure complète + verdict différents)', async () => {
+      mockListCalcResults.mockResolvedValue([CALC, CALC_2_MEME_MOTEUR]);
+      mockGetCalcSnapshot.mockResolvedValue(null);
+
+      await renderCalculs();
+
+      const items = Array.from(container.querySelectorAll('li'));
+      expect(items).toHaveLength(2);
+      // Même titre (même moteur) mais contenu de la carte différent (verdict +
+      // horodatage), donc les deux boutons ne sont jamais identiques.
+      const texts = items.map((li) => li.textContent);
+      expect(texts[0]).not.toBe(texts[1]);
+      expect(container.textContent).toContain('CONFORME');
+      expect(container.textContent).toContain('NON CONF.');
+    });
+  });
+
+  describe('Actions unifiées (revue titulaire) — scellé : Voir le PV scellé + Imprimer', () => {
+    it('given un calcul DÉJÀ scellé (PV existant) AVEC aperçu capturé, when on clique « Imprimer », then le document scellé (getPvDocument) est imprimé, pas le snapshot courant', async () => {
+      mockListCalcResults.mockResolvedValue([CALC_SEALED]);
+      mockGetCalcSnapshot.mockResolvedValue({
+        displayHtml: '<p>Aperçu courant (peut diverger)</p>',
+        printHtml: '<html><body>Snapshot courant</body></html>',
+      });
+      mockGetPvDocument.mockResolvedValue({
+        html: '<html><body>Document scellé</body></html>',
+      });
+
+      await renderCalculs();
+
+      expect(findButtonByText('Voir le PV scellé')).toBeTruthy();
+      const printBtn = findButtonByText('Imprimer');
+      expect(printBtn).toBeTruthy();
+
+      await act(async () => {
+        printBtn!.click();
+      });
+      await flush();
+
+      expect(mockGetPvDocument).toHaveBeenCalledWith('org_01', 'proj_01', 'pv_01');
+      expect(mockPrintInertHtml).toHaveBeenCalledWith(
+        '<html><body>Document scellé</body></html>',
+      );
+      expect(mockPrintInertHtml).not.toHaveBeenCalledWith(
+        '<html><body>Snapshot courant</body></html>',
+      );
+    });
+
+    it("given un calcul DÉJÀ scellé SANS aperçu capturé (repli métadonnées), when affiché, then la même barre d'actions (Voir le PV scellé + Imprimer) est proposée", async () => {
+      mockListCalcResults.mockResolvedValue([CALC_SEALED]);
+      mockGetCalcSnapshot.mockResolvedValue(null);
+      mockGetPvDocument.mockResolvedValue({
+        html: '<html><body>Document scellé</body></html>',
+      });
+
+      await renderCalculs();
+
+      expect(container.querySelector('dl')).not.toBeNull();
+      expect(findButtonByText('Voir le PV scellé')).toBeTruthy();
+      const printBtn = findButtonByText('Imprimer');
+      expect(printBtn).toBeTruthy();
+      expect(findButtonByText('Ouvrir dans le logiciel')).toBeFalsy();
+
+      await act(async () => {
+        printBtn!.click();
+      });
+      await flush();
+
+      expect(mockPrintInertHtml).toHaveBeenCalledWith(
+        '<html><body>Document scellé</body></html>',
+      );
+    });
+
+    it("given un calcul DÉJÀ scellé mais SANS document scellé récupérable (404, getPvDocument → null) ET un aperçu capturé, when on clique « Imprimer », then l'écran retombe sur le snapshot courant (repli légitime, jamais de cul-de-sac)", async () => {
+      mockListCalcResults.mockResolvedValue([CALC_SEALED]);
+      mockGetCalcSnapshot.mockResolvedValue({
+        displayHtml: '<p>Aperçu courant</p>',
+        printHtml: '<html><body>Snapshot courant (repli)</body></html>',
+      });
+      mockGetPvDocument.mockResolvedValue(null);
+
+      await renderCalculs();
+
+      await act(async () => {
+        findButtonByText('Imprimer')!.click();
+      });
+      await flush();
+
+      expect(mockGetPvDocument).toHaveBeenCalledWith('org_01', 'proj_01', 'pv_01');
+      expect(mockPrintInertHtml).toHaveBeenCalledWith(
+        '<html><body>Snapshot courant (repli)</body></html>',
+      );
+      expect(container.querySelector('[role="alert"]')).toBeNull();
+    });
+
+    it("given un calcul DÉJÀ scellé dont la lecture du document échoue (409, intégrité rompue), when on clique « Imprimer », then AUCUNE impression n'a lieu et un message d'erreur d'intégrité s'affiche (fail-closed)", async () => {
+      mockListCalcResults.mockResolvedValue([CALC_SEALED]);
+      mockGetCalcSnapshot.mockResolvedValue({
+        displayHtml: '<p>Aperçu courant</p>',
+        printHtml: '<html><body>Snapshot courant (repli)</body></html>',
+      });
+      mockGetPvDocument.mockRejectedValue({
+        statusCode: 409,
+        message: 'Document altéré ou sceau rompu.',
+      });
+
+      await renderCalculs();
+
+      await act(async () => {
+        findButtonByText('Imprimer')!.click();
+      });
+      await flush();
+
+      expect(mockPrintInertHtml).not.toHaveBeenCalled();
+      const alert = container.querySelector('[role="alert"]');
+      expect(alert).not.toBeNull();
+      expect(alert?.textContent).toContain('intégrité');
+    });
+
+    it("given un calcul DÉJÀ scellé dont la lecture du document échoue (erreur réseau générique), when on clique « Imprimer », then AUCUNE impression n'a lieu et un message d'erreur s'affiche (fail-closed, plus de repli silencieux)", async () => {
+      mockListCalcResults.mockResolvedValue([CALC_SEALED]);
+      mockGetCalcSnapshot.mockResolvedValue({
+        displayHtml: '<p>Aperçu courant</p>',
+        printHtml: '<html><body>Snapshot courant (repli réseau)</body></html>',
+      });
+      mockGetPvDocument.mockRejectedValue({ statusCode: 500, message: 'boom' });
+
+      await renderCalculs();
+
+      await act(async () => {
+        findButtonByText('Imprimer')!.click();
+      });
+      await flush();
+
+      expect(mockPrintInertHtml).not.toHaveBeenCalled();
+      expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    });
+
+    it('given un calcul PAS ENCORE scellé (aucun PV), when affiché, then getPvDocument n’est jamais appelé et aucun bouton Imprimer n’est proposé', async () => {
+      mockListCalcResults.mockResolvedValue([CALC]);
+      mockGetCalcSnapshot.mockResolvedValue({
+        displayHtml: '<p>Aperçu</p>',
+        printHtml: '<html><body>Snapshot non scellé</body></html>',
+      });
+
+      await renderCalculs();
+
+      expect(mockGetPvDocument).not.toHaveBeenCalled();
+      expect(findButtonByText('Imprimer')).toBeFalsy();
+      expect(findButtonByText('Sceller cette version')).toBeTruthy();
     });
   });
 });
