@@ -1,25 +1,51 @@
 'use client';
 
 /**
- * B-01 — Login
- * État : défaut · saisie (on-blur) · chargement · erreur identifiants inline
- * Hors shell. Focus initial sur email. Submit Entrée.
- * Pas de "créer un compte" ni "mot de passe oublié" (P1, comptes pré-provisionnés).
+ * B-01 — Login (refonte « dark technique » assortie à la landing GEOFAM v3).
+ *
+ * État : défaut · saisie (on-blur) · chargement · erreur identifiants inline.
+ * Hors shell. Focus initial sur email. Submit Entrée. Skip-link conservé.
+ * Pas de « créer un compte » ni « mot de passe oublié » (P1, comptes pré-provisionnés).
+ *
+ * La logique d'authentification (login/getStoredOrgs, returnTo, cookie mock,
+ * destination) est INCHANGÉE ; seule la présentation est refaite. Palette dark
+ * (fond #080a0d, accent ambre #f0a24b, sceau #4fd1b0) hardcodée ici pour être
+ * cohérente avec public/landing.html, indépendamment des tokens clairs de l'app.
  */
 
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, ArrowLeft } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Field';
 import { login, getStoredOrgs } from '@/lib/api/client';
 
 interface FieldErrors {
   email?: string;
   password?: string;
 }
+
+const C = {
+  bg: '#080a0d',
+  panel: '#0f141b',
+  panel2: '#131a23',
+  hair: 'rgba(255,255,255,.09)',
+  hair2: 'rgba(255,255,255,.14)',
+  ink: '#eef2f6',
+  ink2: '#aeb8c4',
+  muted: '#6b7684',
+  amber: '#f0a24b',
+  amber2: '#ffbe6e',
+  amberDim: 'rgba(240,162,75,.14)',
+  amberLine: 'rgba(240,162,75,.42)',
+  seal: '#4fd1b0',
+  sealDim: 'rgba(79,209,176,.12)',
+  fail: '#ff8a73',
+  failBg: 'rgba(255,138,115,.1)',
+  failLine: 'rgba(255,138,115,.32)',
+  mono: "'JetBrains Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace",
+};
 
 export default function LoginClient() {
   const router = useRouter();
@@ -32,6 +58,7 @@ export default function LoginClient() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [focused, setFocused] = useState<'email' | 'password' | null>(null);
 
   // Validation on-blur
   function validateEmail(value: string): string | undefined {
@@ -46,11 +73,13 @@ export default function LoginClient() {
   }
 
   function handleEmailBlur() {
+    setFocused(null);
     const err = validateEmail(email);
     setFieldErrors((prev) => ({ ...prev, email: err }));
   }
 
   function handlePasswordBlur() {
+    setFocused(null);
     const err = validatePassword(password);
     setFieldErrors((prev) => ({ ...prev, password: err }));
   }
@@ -76,15 +105,8 @@ export default function LoginClient() {
       if (!process.env.NEXT_PUBLIC_API_BASE_URL) {
         document.cookie = 'roadsen_mock_auth=1; path=/; SameSite=Lax';
       }
-      // Destination : returnTo explicite → 1re org connue → racine (middleware redirige).
-      // Plus de slug mock codé en dur.
+      // Destination : returnTo explicite → 1re org connue → back-office (SUPERADMIN).
       const orgs = getStoredOrgs();
-      // Destination :
-      //  - returnTo explicite prioritaire ;
-      //  - utilisateur tenant (≥ 1 org) → galerie des logiciels GEOFAM de sa 1re org ;
-      //  - AUCUNE org → back-office : c'est le cas du SUPERADMIN (platform_role hors JWT,
-      //    donc invisible ici) qui n'a jamais d'org. La garde serveur /admin revalide le
-      //    rôle (un éventuel utilisateur sans org NI rôle admin est renvoyé par la garde).
       const destination =
         returnTo ?? (orgs[0]?.slug ? `/app/${orgs[0].slug}/logiciels` : '/admin');
       router.push(destination);
@@ -95,6 +117,41 @@ export default function LoginClient() {
     }
   }
 
+  // ---- styles inline (dark, self-contained) ----
+  function fieldStyle(
+    name: 'email' | 'password',
+    hasError: boolean,
+  ): React.CSSProperties {
+    const active = focused === name;
+    return {
+      width: '100%',
+      padding: '12px 14px',
+      fontSize: 15,
+      color: C.ink,
+      background: C.panel2,
+      border: `1px solid ${hasError ? C.failLine : active ? C.amberLine : C.hair2}`,
+      borderRadius: 10,
+      outline: 'none',
+      boxShadow: active ? `0 0 0 3px ${hasError ? C.failBg : C.amberDim}` : 'none',
+      transition: 'border-color .15s, box-shadow .15s',
+      fontFamily: 'inherit',
+    };
+  }
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    fontFamily: C.mono,
+    fontSize: 11,
+    letterSpacing: '.08em',
+    textTransform: 'uppercase',
+    color: C.muted,
+    marginBottom: 8,
+  };
+  const errStyle: React.CSSProperties = {
+    fontSize: 12.5,
+    color: C.fail,
+    marginTop: 7,
+  };
+
   return (
     <div
       style={{
@@ -102,19 +159,22 @@ export default function LoginClient() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'var(--surface-canvas)',
         padding: '24px 16px',
+        background: C.bg,
+        backgroundImage: `radial-gradient(closest-side, rgba(240,162,75,.14), transparent 70%),
+          radial-gradient(closest-side, rgba(79,209,176,.06), transparent 70%)`,
+        backgroundPosition: '85% -10%, 5% 110%',
+        backgroundSize: '55vw 55vw, 45vw 45vw',
+        backgroundRepeat: 'no-repeat',
+        color: C.ink,
+        fontFamily: 'var(--font-sans, ui-sans-serif, system-ui, sans-serif)',
       }}
     >
       {/* Skip-link */}
       <a
         href="#login-form"
         className="sr-only"
-        style={{
-          position: 'absolute',
-          top: 8,
-          left: 8,
-        }}
+        style={{ position: 'absolute', top: 8, left: 8 }}
         onFocus={(e) => {
           e.currentTarget.style.clip = 'auto';
           e.currentTarget.style.width = 'auto';
@@ -131,44 +191,111 @@ export default function LoginClient() {
         Aller au formulaire de connexion
       </a>
 
+      {/* Retour à l'accueil */}
+      <Link
+        href="/"
+        style={{
+          position: 'absolute',
+          top: 22,
+          left: 22,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 7,
+          fontFamily: C.mono,
+          fontSize: 12,
+          letterSpacing: '.04em',
+          color: C.muted,
+          textDecoration: 'none',
+        }}
+      >
+        <ArrowLeft size={14} strokeWidth={1.6} aria-hidden="true" /> Accueil
+      </Link>
+
+      {/* Carte de connexion en verre */}
       <div
         style={{
           width: '100%',
-          maxWidth: 400,
-          background: 'var(--surface-base)',
-          borderRadius: 'var(--radius-xl)',
-          boxShadow: 'var(--elevation-modal)',
-          padding: '40px 32px',
+          maxWidth: 408,
+          position: 'relative',
+          background: `linear-gradient(180deg, ${C.panel}, ${C.bg})`,
+          border: `1px solid ${C.hair}`,
+          borderRadius: 16,
+          boxShadow:
+            '0 1px 0 rgba(255,255,255,.08) inset, 0 40px 80px -40px rgba(0,0,0,.9)',
+          padding: '40px 34px 30px',
         }}
       >
-        {/* Logo GEOFAM (public/geofam.jpeg) */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
-          <Image
-            src="/geofam.jpeg"
-            alt="GEOFAM — Géotechnique · Logiciels · Formation · Innovation"
-            width={150}
-            height={150}
-            priority
-            style={{ width: 150, height: 'auto' }}
-          />
+        {/* Liseré lumineux haut (signature v3) */}
+        <span
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            insetInline: 0,
+            top: 0,
+            height: 1,
+            borderRadius: '16px 16px 0 0',
+            background:
+              'linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent)',
+          }}
+        />
+
+        {/* Logo officiel GEOFAM (public/geofam.jpeg) dans un badge clair */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 22 }}>
+          <span
+            style={{
+              width: 112,
+              height: 112,
+              borderRadius: 18,
+              background: '#f6f4ee',
+              display: 'grid',
+              placeItems: 'center',
+              boxShadow: '0 10px 28px -16px rgba(0,0,0,.7)',
+              overflow: 'hidden',
+            }}
+          >
+            <Image
+              src="/geofam.jpeg"
+              alt="GEOFAM — Géotechnique · Logiciels · Formation · Innovation"
+              width={104}
+              height={104}
+              priority
+              style={{ width: 104, height: 'auto' }}
+            />
+          </span>
         </div>
 
-        <h1
+        <p
           style={{
-            fontSize: 'var(--text-xl)',
-            fontWeight: 600,
-            color: 'var(--text-primary)',
-            marginBottom: 4,
-            lineHeight: 1.2,
+            fontFamily: C.mono,
+            fontSize: 11,
+            letterSpacing: '.16em',
+            textTransform: 'uppercase',
+            color: C.amber,
+            textAlign: 'center',
+            marginBottom: 8,
           }}
         >
-          Connexion
+          Espace bureaux d&apos;études
+        </p>
+        <h1
+          style={{
+            fontSize: 26,
+            fontWeight: 650,
+            letterSpacing: '-.02em',
+            color: C.ink,
+            textAlign: 'center',
+            marginBottom: 6,
+            lineHeight: 1.15,
+          }}
+        >
+          Connexion à GEOFAM
         </h1>
         <p
           style={{
-            fontSize: 'var(--text-sm)',
-            color: 'var(--text-secondary)',
-            marginBottom: 28,
+            fontSize: 13.5,
+            color: C.ink2,
+            textAlign: 'center',
+            marginBottom: 26,
           }}
         >
           Accès réservé aux membres provisionnés.
@@ -182,93 +309,178 @@ export default function LoginClient() {
             style={{
               display: 'flex',
               alignItems: 'flex-start',
-              gap: 8,
-              padding: '10px 12px',
-              background: 'var(--status-fail-bg)',
-              borderRadius: 'var(--radius-base)',
+              gap: 9,
+              padding: '11px 13px',
+              background: C.failBg,
+              border: `1px solid ${C.failLine}`,
+              borderRadius: 10,
               marginBottom: 20,
             }}
           >
             <AlertCircle
               size={16}
-              strokeWidth={1.5}
+              strokeWidth={1.6}
               aria-hidden="true"
-              style={{ color: 'var(--status-fail-tx)', flexShrink: 0, marginTop: 1 }}
+              style={{ color: C.fail, flexShrink: 0, marginTop: 1 }}
             />
-            <span
-              style={{
-                fontSize: 'var(--text-sm)',
-                color: 'var(--status-fail-tx)',
-                lineHeight: 1.4,
-              }}
-            >
+            <span style={{ fontSize: 13, color: C.fail, lineHeight: 1.45 }}>
               {globalError}
             </span>
           </div>
         )}
 
         <form id="login-form" onSubmit={handleSubmit} noValidate>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <Input
-              id="login-email"
-              label="Adresse e-mail"
-              type="email"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setGlobalError(null);
-              }}
-              onBlur={handleEmailBlur}
-              error={fieldErrors.email}
-              autoComplete="email"
-              autoFocus
-              required
-              ref={emailRef}
-              placeholder="vous@bureau.sn"
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {/* Email */}
+            <div>
+              <label htmlFor="login-email" style={labelStyle}>
+                Adresse e-mail
+              </label>
+              <input
+                id="login-email"
+                type="email"
+                inputMode="email"
+                value={email}
+                ref={emailRef}
+                autoFocus
+                required
+                autoComplete="email"
+                placeholder="vous@bureau.sn"
+                aria-invalid={fieldErrors.email ? true : undefined}
+                aria-describedby={fieldErrors.email ? 'login-email-err' : undefined}
+                onFocus={() => setFocused('email')}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setGlobalError(null);
+                }}
+                onBlur={handleEmailBlur}
+                style={fieldStyle('email', !!fieldErrors.email)}
+              />
+              {fieldErrors.email && (
+                <p id="login-email-err" style={errStyle}>
+                  {fieldErrors.email}
+                </p>
+              )}
+            </div>
 
-            <Input
-              id="login-password"
-              label="Mot de passe"
-              type="password"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                setGlobalError(null);
-              }}
-              onBlur={handlePasswordBlur}
-              error={fieldErrors.password}
-              autoComplete="current-password"
-              required
-            />
+            {/* Mot de passe */}
+            <div>
+              <label htmlFor="login-password" style={labelStyle}>
+                Mot de passe
+              </label>
+              <input
+                id="login-password"
+                type="password"
+                value={password}
+                required
+                autoComplete="current-password"
+                aria-invalid={fieldErrors.password ? true : undefined}
+                aria-describedby={fieldErrors.password ? 'login-password-err' : undefined}
+                onFocus={() => setFocused('password')}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setGlobalError(null);
+                }}
+                onBlur={handlePasswordBlur}
+                style={fieldStyle('password', !!fieldErrors.password)}
+              />
+              {fieldErrors.password && (
+                <p id="login-password-err" style={errStyle}>
+                  {fieldErrors.password}
+                </p>
+              )}
+            </div>
 
-            <Button
+            {/* Bouton */}
+            <button
               type="submit"
-              variant="action"
-              size="lg"
-              loading={loading}
               disabled={loading}
-              style={{ width: '100%', marginTop: 8 }}
+              aria-busy={loading}
+              style={{
+                width: '100%',
+                marginTop: 4,
+                padding: '13px 16px',
+                fontSize: 15,
+                fontWeight: 600,
+                fontFamily: 'inherit',
+                color: '#1a1206',
+                background: loading
+                  ? C.amber
+                  : `linear-gradient(${C.amber2}, ${C.amber})`,
+                border: 'none',
+                borderRadius: 10,
+                cursor: loading ? 'default' : 'pointer',
+                boxShadow:
+                  '0 1px 0 rgba(255,255,255,.35) inset, 0 10px 24px -10px rgba(240,162,75,.6)',
+                opacity: loading ? 0.85 : 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 9,
+                transition: 'opacity .15s, box-shadow .2s',
+              }}
             >
-              Se connecter
-            </Button>
+              {loading && (
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                  style={{ animation: 'rds-spin .7s linear infinite' }}
+                >
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="9"
+                    stroke="#1a1206"
+                    strokeOpacity="0.25"
+                    strokeWidth="3"
+                  />
+                  <path
+                    d="M21 12a9 9 0 0 0-9-9"
+                    stroke="#1a1206"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              )}
+              {loading ? 'Connexion…' : 'Se connecter'}
+            </button>
           </div>
         </form>
 
-        {/* Aide de démonstration */}
-        <p
+        {/* Ligne de confiance (assortie au discours PV scellé) */}
+        <div
           style={{
-            marginTop: 24,
-            fontSize: 'var(--text-xs)',
-            color: 'var(--text-muted)',
-            textAlign: 'center',
-            lineHeight: 1.5,
+            marginTop: 22,
+            paddingTop: 18,
+            borderTop: `1px solid ${C.hair}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 9,
+            fontFamily: C.mono,
+            fontSize: 11.5,
+            letterSpacing: '.02em',
+            color: C.muted,
           }}
         >
-          Démo : saisissez n&apos;importe quel e-mail et mot de passe (sauf
-          &laquo;&nbsp;wrong&nbsp;&raquo;).
-        </p>
+          <span
+            aria-hidden="true"
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: C.seal,
+              boxShadow: `0 0 8px ${C.sealDim}`,
+            }}
+          />
+          Calcul serveur · PV scellé à chaque résultat
+        </div>
       </div>
+
+      <style>{`@keyframes rds-spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }

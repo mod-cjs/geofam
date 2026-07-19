@@ -112,6 +112,12 @@ header{position:sticky;top:0;z-index:40;background:rgba(8,10,13,.72);backdrop-fi
 .nav-in{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:13px}
 .brand{display:flex;align-items:center;gap:11px;font-family:var(--disp);font-weight:700;font-size:1.12rem;letter-spacing:-.02em}
 .brand .logo{width:28px;height:28px;flex:none}
+/* logo officiel GEOFAM (public/geofam.jpeg) — monogramme cropé dans un badge clair */
+.logo-badge{width:32px;height:32px;flex:none;border-radius:9px;
+  background:#f5f3ec url("/geofam.jpeg") no-repeat 50% 7%;background-size:156%;
+  box-shadow:0 0 0 1px var(--hair-2),0 4px 10px -5px rgba(0,0,0,.6)}
+.nav-cta{display:flex;align-items:center;gap:10px}
+@media (max-width:420px){.nav-cta .btn-ghost{display:none}}
 .nav-links{display:flex;gap:26px;align-items:center;font-size:var(--t--1);color:var(--ink-2)}
 .nav-links a{position:relative;padding-block:3px;transition:color .18s}
 .nav-links a:hover{color:var(--ink)}
@@ -393,17 +399,15 @@ footer{border-top:1px solid var(--hair);padding-block:38px;color:var(--muted);ba
 <header>
   <div class="wrap nav-in">
     <a class="brand" href="#top" aria-label="GEOFAM, accueil">
-      <svg class="logo" viewBox="0 0 28 28" fill="none" aria-hidden="true">
-        <rect x="1" y="1" width="26" height="26" rx="7" fill="#0f141b" stroke="rgba(255,255,255,.12)"/>
-        <rect x="8" y="6" width="4" height="16" rx="1" fill="#f0a24b"/>
-        <rect x="12" y="6" width="8" height="3.6" rx="1" fill="#eef2f6"/>
-        <rect x="12" y="12.2" width="6" height="3.6" rx="1" fill="#eef2f6"/>
-      </svg>GEOFAM
+      <span class="logo-badge" aria-hidden="true"></span>GEOFAM
     </a>
     <nav class="nav-links" aria-label="Principale">
       <a href="#logiciels">Logiciels</a><a href="#pv">PV scellé</a><a href="#methode">Méthode</a><a href="#tarifs">Tarifs</a>
     </nav>
-    <a class="btn btn-primary" href="#tarifs">Essai 24 h</a>
+    <div class="nav-cta">
+      <a class="btn btn-ghost" href="/login">Se connecter</a>
+      <a class="btn btn-primary" href="/login">Essai 24 h</a>
+    </div>
   </div>
 </header>
 
@@ -602,12 +606,7 @@ footer{border-top:1px solid var(--hair);padding-block:38px;color:var(--muted);ba
 <footer><div class="wrap">
   <div class="foot-grid">
     <div class="foot-brand">
-      <svg class="logo" viewBox="0 0 28 28" fill="none" aria-hidden="true">
-        <rect x="1" y="1" width="26" height="26" rx="7" fill="#0f141b" stroke="rgba(255,255,255,.12)"/>
-        <rect x="8" y="6" width="4" height="16" rx="1" fill="#f0a24b"/>
-        <rect x="12" y="6" width="8" height="3.6" rx="1" fill="#eef2f6"/>
-        <rect x="12" y="12.2" width="6" height="3.6" rx="1" fill="#eef2f6"/>
-      </svg>GEOFAM
+      <span class="logo-badge" aria-hidden="true"></span>GEOFAM
     </div>
     <div class="foot-links"><a href="#logiciels">Logiciels</a><a href="#pv">PV scellé</a><a href="#tarifs">Tarifs</a><a href="#">WhatsApp</a><a href="#">Tutoriels</a></div>
   </div>
