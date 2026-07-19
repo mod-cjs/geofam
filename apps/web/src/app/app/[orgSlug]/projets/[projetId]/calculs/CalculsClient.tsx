@@ -44,36 +44,12 @@ import {
   getPvDocument,
 } from '@/lib/api/client';
 import type { CalcResult, CalcSnapshot, NormalizedCalcOutput } from '@/lib/api/types';
+import { slugOf, metaOf } from '@/lib/engine-labels';
 import { useOrgId } from '@/lib/org-context';
 import { printInertHtml } from '@/lib/print-inert-html';
 
-// registryId (persisté backend) → slug métier court (route logiciel + libellé).
-const ENGINE_ID_ALIAS: Record<string, string> = {
-  'chaussee-burmister': 'burmister',
-  'fondation-superficielle': 'terzaghi',
-  'pressiometre-menard': 'pressiometre',
-  'fondation-profonde-pieux': 'pieux',
-  'radier-plaque': 'radier',
-  'labo-classification-gtr': 'labo',
-  'fondation-terzaghi': 'terzaghi',
-};
-// slug → nom métier du logiciel. Les slugs sans page front restent listables
-// (historique). Pas de lien "Ouvrir dans le logiciel" ici (retiré — l'outil
-// s'ouvrait vierge, sans l'état de ce calcul restauré).
-const ENGINE_META: Record<string, { nom: string }> = {
-  burmister: { nom: 'ROADSENS — Chaussées' },
-  terzaghi: { nom: 'Terzaghi — Fondations superficielles' },
-  pieux: { nom: 'CASAGRANDE — Pieux' },
-  radier: { nom: 'GEOPLAQUE — Radier' },
-  pressiometre: { nom: 'PressioPro — Pressiomètre' },
-  labo: { nom: 'FASTLAB — Laboratoire' },
-};
-function slugOf(engineId: string): string {
-  return ENGINE_ID_ALIAS[engineId] ?? engineId;
-}
-function metaOf(engineId: string): { nom: string } {
-  return ENGINE_META[slugOf(engineId)] ?? { nom: engineId };
-}
+// Pas de lien "Ouvrir dans le logiciel" ici (retiré — l'outil s'ouvrait
+// vierge, sans l'état de ce calcul restauré).
 
 // Style commun de la barre d'actions (les deux panneaux).
 const ACTIONS_ROW_STYLE = {

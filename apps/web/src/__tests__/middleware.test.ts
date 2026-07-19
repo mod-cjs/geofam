@@ -48,7 +48,12 @@ interface MockRedirectResponse {
   destination: string;
 }
 
-type MockResponse = MockNextResponse | MockRedirectResponse;
+interface MockRewriteResponse {
+  _type: 'rewrite';
+  destination: string;
+}
+
+type MockResponse = MockNextResponse | MockRedirectResponse | MockRewriteResponse;
 
 function asMock(r: unknown): MockResponse {
   return r as unknown as MockResponse;
@@ -64,6 +69,12 @@ function asRedirect(r: unknown): MockRedirectResponse {
   const m = asMock(r);
   expect(m._type).toBe('redirect');
   return m as MockRedirectResponse;
+}
+
+function asRewrite(r: unknown): MockRewriteResponse {
+  const m = asMock(r);
+  expect(m._type).toBe('rewrite');
+  return m as MockRewriteResponse;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +99,12 @@ vi.mock('next/server', () => ({
     },
     redirect: (url: URL | string) => ({
       _type: 'redirect' as const,
+      destination: url instanceof URL ? url.toString() : url,
+    }),
+    // Landing publique : `/` non authentifié est SERVI par rewrite vers
+    // /landing.html (cf. middleware.ts) — pas un `next()`.
+    rewrite: (url: URL | string) => ({
+      _type: 'rewrite' as const,
       destination: url instanceof URL ? url.toString() : url,
     }),
   },
@@ -292,19 +309,20 @@ describe('middleware réel — route racine / (landing publique GEOFAM)', () => 
   it(
     'given aucun token, ' +
       'when GET /, ' +
-      'then passe (next) — sert la landing publique (src/app/page.tsx), pas /login',
+      'then rewrite vers /landing.html — sert la landing statique GEOFAM, pas /login',
     async () => {
       const req = makeRequest('/', {});
       const res = await middleware(req);
 
-      asNext(res);
+      const rw = asRewrite(res);
+      expect(new URL(rw.destination).pathname).toBe('/landing.html');
     },
   );
 
   it(
     'given un token invalide/expiré, ' +
       'when GET /, ' +
-      'then passe (next) — traité comme non authentifié, affiche la landing (pas de boucle /login)',
+      'then rewrite vers /landing.html — traité comme non authentifié, affiche la landing (pas de boucle /login)',
     async () => {
       const token = signValidToken({
         sub: 'usr_01',
@@ -316,7 +334,8 @@ describe('middleware réel — route racine / (landing publique GEOFAM)', () => 
       const req = makeRequest('/', { roadsen_access_token: token });
       const res = await middleware(req);
 
-      asNext(res);
+      const rw = asRewrite(res);
+      expect(new URL(rw.destination).pathname).toBe('/landing.html');
     },
   );
 
