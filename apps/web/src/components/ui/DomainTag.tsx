@@ -93,8 +93,8 @@ export function DomainTag({ domain, size = 'normal', className }: DomainTagProps
       : {
           prefix: '',
           label: domain === null ? 'Non renseigné' : String(domain),
-          bg: 'var(--alt)',
-          tx: 'var(--text-sec)',
+          bg: 'var(--color-alt)',
+          tx: 'var(--color-text-sec)',
         };
 
   const isCompact = size === 'compact';

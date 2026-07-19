@@ -5,6 +5,7 @@
  */
 
 import { MessageCircle, PlaySquare, Mail } from 'lucide-react';
+
 import { CollapsiblePanel } from '@/components/ui/Card';
 import { Kbd } from '@/components/ui/Kbd';
 
@@ -36,7 +37,7 @@ const FAQ: { question: string; reponse: string }[] = [
   {
     question: 'Comment comprendre mon quota ?',
     reponse:
-      "Le quota compte les calculs exécutés sur la période de votre abonnement (pas seulement les PV émis). Il est visible en permanence dans la barre du haut (N/M calculs · X %) et en détail sur le tableau de bord et la galerie des logiciels. Au-delà de la limite, contactez votre interlocuteur pour un renouvellement ou une extension.",
+      'Le quota compte les calculs exécutés sur la période de votre abonnement (pas seulement les PV émis). Il est visible en permanence dans la barre du haut (N/M calculs · X %) et en détail sur le tableau de bord et la galerie des logiciels. Au-delà de la limite, contactez votre interlocuteur pour un renouvellement ou une extension.',
   },
   {
     question: 'Comment installer GEOFAM sur mobile ou sur ordinateur (PWA) ?',
@@ -136,11 +137,11 @@ export default function AidePage() {
               padding: '0 18px',
               borderRadius: 'var(--radius-base)',
               background: 'transparent',
-              color: 'var(--struct-petrole)',
+              color: 'var(--struct-petrole-text)',
               fontSize: 'var(--text-sm)',
               fontWeight: 600,
               textDecoration: 'none',
-              boxShadow: 'inset 0 0 0 1px var(--struct-petrole)',
+              boxShadow: 'inset 0 0 0 1px var(--struct-petrole-text)',
             }}
           >
             <PlaySquare size={18} strokeWidth={1.5} aria-hidden="true" />
@@ -184,8 +185,19 @@ export default function AidePage() {
         </h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {FAQ.map((item) => (
-            <CollapsiblePanel key={item.question} title={item.question} defaultOpen={false}>
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+            <CollapsiblePanel
+              key={item.question}
+              title={item.question}
+              defaultOpen={false}
+            >
+              <p
+                style={{
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--text-secondary)',
+                  margin: 0,
+                  lineHeight: 1.6,
+                }}
+              >
                 {item.reponse}
               </p>
             </CollapsiblePanel>

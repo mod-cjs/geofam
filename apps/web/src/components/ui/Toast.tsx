@@ -140,7 +140,7 @@ export const colorByType: Record<ToastType, { icon: string; border: string }> = 
   success: { icon: 'var(--status-pass-tx)', border: 'rgba(47,107,70,0.2)' },
   error: { icon: 'var(--status-fail-tx)', border: 'rgba(139,26,26,0.2)' },
   warning: { icon: '#92550a', border: 'rgba(146,85,10,0.2)' },
-  info: { icon: 'var(--struct-petrole)', border: 'rgba(31,78,74,0.2)' },
+  info: { icon: 'var(--struct-petrole-text)', border: 'rgba(31,78,74,0.2)' },
 };
 
 interface ToastRegionProps {

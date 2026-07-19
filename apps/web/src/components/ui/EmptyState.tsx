@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * A-16 — EmptyState
@@ -16,11 +16,12 @@
  * - CTA optionnel
  */
 
-import type { ReactNode } from "react";
-import { AlertCircle } from "lucide-react";
-import { Button } from "./Button";
+import { AlertCircle } from 'lucide-react';
+import type { ReactNode } from 'react';
 
-export type EmptyVariant = "blank" | "filtered" | "pre-calc" | "network-err";
+import { Button } from './Button';
+
+export type EmptyVariant = 'blank' | 'filtered' | 'pre-calc' | 'network-err';
 
 interface EmptyStateProps {
   variant: EmptyVariant;
@@ -49,7 +50,7 @@ export function EmptyState({
   className,
   minHeight,
 }: EmptyStateProps) {
-  const isError = variant === "network-err";
+  const isError = variant === 'network-err';
 
   return (
     <div
@@ -57,13 +58,13 @@ export function EmptyState({
       aria-live="polite"
       className={className}
       style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        textAlign: "center",
-        padding: "32px 24px",
-        minHeight: minHeight ?? (variant === "pre-calc" ? 200 : undefined),
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        padding: '32px 24px',
+        minHeight: minHeight ?? (variant === 'pre-calc' ? 200 : undefined),
         gap: 12,
       }}
     >
@@ -73,7 +74,7 @@ export function EmptyState({
           size={24}
           strokeWidth={1.5}
           aria-hidden="true"
-          style={{ color: "var(--status-fail-tx)" }}
+          style={{ color: 'var(--status-fail-tx)' }}
         />
       )}
 
@@ -81,7 +82,7 @@ export function EmptyState({
       {!isError && illustration && (
         <div
           aria-hidden="true"
-          style={{ color: "var(--struct-petrole)", opacity: 0.4, marginBottom: 4 }}
+          style={{ color: 'var(--struct-petrole-text)', opacity: 0.4, marginBottom: 4 }}
         >
           {illustration}
         </div>
@@ -92,7 +93,7 @@ export function EmptyState({
         style={{
           fontSize: 14,
           fontWeight: 500,
-          color: isError ? "var(--status-fail-tx)" : "var(--text-primary)",
+          color: isError ? 'var(--status-fail-tx)' : 'var(--text-primary)',
           lineHeight: 1.4,
           margin: 0,
         }}
@@ -105,7 +106,7 @@ export function EmptyState({
         <p
           style={{
             fontSize: 13,
-            color: "var(--text-muted)",
+            color: 'var(--text-muted)',
             lineHeight: 1.5,
             margin: 0,
             maxWidth: 400,
@@ -118,11 +119,11 @@ export function EmptyState({
       {/* CTA */}
       {ctaLabel && onCta && (
         <div style={{ marginTop: 8 }}>
-          {variant === "network-err" ? (
+          {variant === 'network-err' ? (
             <Button variant="secondary" size="sm" onClick={onCta}>
               {ctaLabel}
             </Button>
-          ) : variant === "filtered" ? (
+          ) : variant === 'filtered' ? (
             <Button variant="ghost" size="sm" onClick={onCta}>
               {ctaLabel}
             </Button>
@@ -159,7 +160,7 @@ export function NoCalcEmptyState({ onNewCalc }: { onNewCalc?: () => void }) {
       variant="blank"
       title="Aucun calcul dans ce projet."
       description="Lancez un premier calcul depuis la bibliothèque de moteurs."
-      ctaLabel={onNewCalc ? "Nouveau calcul" : undefined}
+      ctaLabel={onNewCalc ? 'Nouveau calcul' : undefined}
       onCta={onNewCalc}
     />
   );
@@ -183,7 +184,7 @@ export function NetworkErrorEmptyState({ onRetry }: { onRetry?: () => void }) {
       variant="network-err"
       title="Impossible de charger les données."
       description="Vérifiez votre connexion et réessayez."
-      ctaLabel={onRetry ? "Réessayer" : undefined}
+      ctaLabel={onRetry ? 'Réessayer' : undefined}
       onCta={onRetry}
     />
   );
@@ -196,7 +197,7 @@ export function FilterEmptyState({ onClear }: { onClear?: () => void }) {
       variant="filtered"
       title="Aucun résultat pour ces critères."
       description="Modifiez ou effacez les filtres pour afficher tous les éléments."
-      ctaLabel={onClear ? "Effacer les filtres" : undefined}
+      ctaLabel={onClear ? 'Effacer les filtres' : undefined}
       onCta={onClear}
     />
   );
