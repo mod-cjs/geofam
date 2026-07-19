@@ -164,6 +164,14 @@ export interface OfficialPv {
    * le composant appelant doit traiter `undefined` comme "non vérifié" et non "invalide".
    */
   sealValid?: boolean;
+  /**
+   * B1 (revue adverse) : 'html' = le document client (rendu de l'outil) a été
+   * scellé avec ce PV — la bannière peut annoncer « document de l'outil
+   * scellé ». `null` = repli format standard (pdfmake), aucun document
+   * capturé au moment de l'émission — la bannière ne doit JAMAIS prétendre
+   * un document fidèle dans ce cas (ni le mot « garantis » sur ce point).
+   */
+  documentFormat?: 'html' | null;
 }
 
 export interface EmitPvRequest {
@@ -175,6 +183,23 @@ export interface VerifyPvResponse {
   pvId: string;
   intact: boolean; // true = sceau vérifié côté serveur
   verifiedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Document capturé (option 3 — le PV = le document que l'outil produit)
+// ---------------------------------------------------------------------------
+
+/** Document capturé d'un calcul (avant scellement) — GET .../calc-results/:id/snapshot. */
+export interface CalcSnapshot {
+  /** Panneau de résultats tel qu'affiché à l'écran par l'outil. */
+  displayHtml: string;
+  /** Document imprimable auto-contenu (identique au print natif de l'outil). */
+  printHtml: string;
+}
+
+/** Document scellé d'un PV — GET .../pvs/:pvId/document. */
+export interface PvDocument {
+  html: string;
 }
 
 // ---------------------------------------------------------------------------

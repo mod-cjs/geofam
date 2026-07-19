@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 
 import type { CalcResultsService } from './calc-results.service';
+import type { CalcSnapshotsService } from './calc-snapshots.service';
 import { PvController } from './pv.controller';
 import type { PvService } from './pv.service';
 
@@ -29,10 +30,12 @@ describe('PvController — lecture calc_results (master-detail)', () => {
       listForProject: jest.fn(),
       getForProject: jest.fn(),
     };
-    // PvService non sollicite par ces routes : stub minimal.
+    // PvService / CalcSnapshotsService non sollicites par ces routes : stubs minimaux.
     const pv = {} as unknown as PvService;
+    const snapshots = {} as unknown as CalcSnapshotsService;
     controller = new PvController(
       calcResults as unknown as CalcResultsService,
+      snapshots,
       pv,
     );
   });

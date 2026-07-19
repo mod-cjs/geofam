@@ -1,0 +1,299 @@
+{
+  "verdict": "non satisfaisante",
+  "metrics": [
+    {
+      "label": "h paquet lié (réel)",
+      "value": "16 cm"
+    },
+    {
+      "label": "h total couches",
+      "value": "41 cm"
+    },
+    {
+      "label": "E₁ pond. / ν₁ pond.",
+      "value": "2 185 MPa"
+    },
+    {
+      "label": "Moteur",
+      "value": "Transfer Matrix"
+    }
+  ],
+  "rows": [
+    {
+      "label": "Pression p0",
+      "value": "0.662",
+      "unit": "MPa"
+    },
+    {
+      "label": "Rayon a",
+      "value": "12.5",
+      "unit": "cm"
+    },
+    {
+      "label": "Entre-axe d",
+      "value": "38",
+      "unit": "cm"
+    },
+    {
+      "label": "Risque r",
+      "value": "25",
+      "unit": "%"
+    },
+    {
+      "label": "Plateforme PF2",
+      "value": "50",
+      "unit": "MPa"
+    },
+    {
+      "label": "TMJA",
+      "value": "150",
+      "unit": "PL/j/sens"
+    },
+    {
+      "label": "CAM",
+      "value": "0.90",
+      "unit": ""
+    },
+    {
+      "label": "Durée n",
+      "value": "20",
+      "unit": "ans"
+    },
+    {
+      "label": "Taux tau",
+      "value": "4.0",
+      "unit": "%/an"
+    },
+    {
+      "label": "C cumulatif",
+      "value": "29.778",
+      "unit": ""
+    },
+    {
+      "label": "NE",
+      "value": "1.467e+6",
+      "unit": "essieux"
+    },
+    {
+      "label": "ez_adm catalogue",
+      "value": "511.5",
+      "unit": "μdef"
+    },
+    {
+      "label": "Couche 1 — BBSG classe 1 (E = 1 512 MPa — T.54)",
+      "value": "6 cm E=1 512 MPa ν=0.45",
+      "unit": ""
+    },
+    {
+      "label": "Couche 2 — Grave Bitume GB3",
+      "value": "10 cm E=2 588 MPa ν=0.45",
+      "unit": ""
+    },
+    {
+      "label": "Couche 3 — Latérite GL1",
+      "value": "25 cm E=200 MPa ν=0.35",
+      "unit": ""
+    },
+    {
+      "label": "h paquet lié (réel)",
+      "value": "16.00",
+      "unit": "cm"
+    },
+    {
+      "label": "h total couches",
+      "value": "41.00",
+      "unit": "cm"
+    },
+    {
+      "label": "Ē pondérée paquet lié",
+      "value": "2 185",
+      "unit": "MPa"
+    },
+    {
+      "label": "ν̄ pondérée paquet lié",
+      "value": "0.450",
+      "unit": ""
+    },
+    {
+      "label": "Intégration Hankel",
+      "value": "400 pts midpoint",
+      "unit": ""
+    },
+    {
+      "label": "CL surface",
+      "value": "σ_z=-m·J₀(mr) τ_rz=0",
+      "unit": ""
+    },
+    {
+      "label": "Interface critiques",
+      "value": "2 couches/PSC lue(s)",
+      "unit": ""
+    },
+    {
+      "label": "sigma_z r=0",
+      "value": "136.39",
+      "unit": "kPa"
+    },
+    {
+      "label": "sigma_r r=0",
+      "value": "-943.97",
+      "unit": "kPa"
+    },
+    {
+      "label": "sigma_z r=d/2 (x2)",
+      "value": "111.15",
+      "unit": "kPa"
+    },
+    {
+      "label": "sigma_r r=d/2 (x2)",
+      "value": "-493.50",
+      "unit": "kPa"
+    },
+    {
+      "label": "et r=0",
+      "value": "-194.51",
+      "unit": "μdef"
+    },
+    {
+      "label": "et r=d/2",
+      "value": "-285.64",
+      "unit": "μdef"
+    },
+    {
+      "label": "et retenue (max)",
+      "value": "290.58",
+      "unit": "μdef"
+    },
+    {
+      "label": "Famille de structure",
+      "value": "bitumineuse épaisse",
+      "unit": ""
+    },
+    {
+      "label": "Matériau dimensionnant",
+      "value": "e6=90 μdef",
+      "unit": ""
+    },
+    {
+      "label": "Interface C1 / C2",
+      "value": "collée",
+      "unit": ""
+    },
+    {
+      "label": "Interface C2 / C3",
+      "value": "collée",
+      "unit": ""
+    },
+    {
+      "label": "Interface C3 / PSC",
+      "value": "collée",
+      "unit": ""
+    },
+    {
+      "label": "kθ température",
+      "value": "2.143",
+      "unit": ""
+    },
+    {
+      "label": "Risque r",
+      "value": "25",
+      "unit": "%"
+    },
+    {
+      "label": "SN",
+      "value": "0.30",
+      "unit": ""
+    },
+    {
+      "label": "Sh",
+      "value": "2.50",
+      "unit": "cm"
+    },
+    {
+      "label": "δ",
+      "value": "0.3905",
+      "unit": ""
+    },
+    {
+      "label": "kr risque",
+      "value": "0.8858",
+      "unit": ""
+    },
+    {
+      "label": "kc calage",
+      "value": "1.30",
+      "unit": ""
+    },
+    {
+      "label": "ks support",
+      "value": "1.0000",
+      "unit": ""
+    },
+    {
+      "label": "et_adm r=50%",
+      "value": "232.17",
+      "unit": "μdef"
+    },
+    {
+      "label": "et_adm r=25%",
+      "value": "205.67",
+      "unit": "μdef"
+    },
+    {
+      "label": "h total couches",
+      "value": "41.00",
+      "unit": "cm"
+    },
+    {
+      "label": "sigma_z PSC",
+      "value": "40.62",
+      "unit": "kPa"
+    },
+    {
+      "label": "sigma_r PSC",
+      "value": "1.05",
+      "unit": "kPa"
+    },
+    {
+      "label": "ez axe roue",
+      "value": "822.50",
+      "unit": "μdef"
+    },
+    {
+      "label": "ez entre-jumelage",
+      "value": "891.49",
+      "unit": "μdef"
+    },
+    {
+      "label": "ez sommet couche 3 (non liée)",
+      "value": "686.12",
+      "unit": "μdef"
+    },
+    {
+      "label": "ez retenue (max)",
+      "value": "891.49",
+      "unit": "μdef"
+    },
+    {
+      "label": "ez admissible",
+      "value": "511.50",
+      "unit": "μdef"
+    },
+    {
+      "label": "Fatigue et",
+      "value": "290.58 / 205.67",
+      "unit": "μdef"
+    },
+    {
+      "label": "Orniérage ez",
+      "value": "891.49 / 511.50",
+      "unit": "μdef"
+    },
+    {
+      "label": "Verdict",
+      "value": "NON CONFORME",
+      "unit": ""
+    }
+  ],
+  "svgCount": 1
+}

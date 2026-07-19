@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, Req, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { CalcResult, OfficialPv } from '@prisma/client';
+import type { CalcResult } from '@prisma/client';
 import type { Response } from 'express';
 import { z } from 'zod';
 
@@ -9,14 +9,27 @@ import type { AuthedRequest } from '../auth/request-context';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { Consumes, RequiresEntitlement } from '../subscriptions/decorators';
 
-import type { PersistedCalcResult } from './calc-results.service';
 import { CalcResultsService } from './calc-results.service';
-import type { OfficialPvView } from './pv.service';
+import type { PersistedCalcResult } from './calc-results.service';
+import { CalcSnapshotsService } from './calc-snapshots.service';
+import { MAX_HTML_BYTES } from './html-guard';
+import type { OfficialPvView, SealedPvRow } from './pv.service';
 import { PvService } from './pv.service';
 
 // UUID des parametres de chemin (defense en profondeur : un id malforme -> 400,
 // jamais une requete base avec une valeur non-uuid).
 const uuidParam = z.string().uuid();
+
+// Corps de capture du document client (option-3). Deux HTML NON VIDES ; la garde
+// §8 (inertie + confidentialite + taille EXACTE en octets) est appliquee cote
+// service. La borne Zod est alignee sur la limite de la garde (MAX_HTML_BYTES,
+// 1 MiB) pour rejeter TOT : .max() compte les unites UTF-16 (<= octets UTF-8),
+// donc au-dela de MAX_HTML_BYTES caracteres on depasse forcement la limite octets.
+const snapshotBody = z.object({
+  displayHtml: z.string().min(1).max(MAX_HTML_BYTES),
+  printHtml: z.string().min(1).max(MAX_HTML_BYTES),
+});
+type SnapshotBody = z.infer<typeof snapshotBody>;
 
 /**
  * PvController — surface TENANT du pipeline PV (#63, incr. B).
@@ -39,6 +52,7 @@ const uuidParam = z.string().uuid();
 export class PvController {
   constructor(
     private readonly calcResults: CalcResultsService,
+    private readonly snapshots: CalcSnapshotsService,
     private readonly pv: PvService,
   ) {}
 
@@ -115,6 +129,59 @@ export class PvController {
   }
 
   /**
+   * POST /projects/:projectId/calc-results/:calcResultId/snapshot — capture du
+   * DOCUMENT que l'outil client produit A L'IMPRESSION (scellement option-3).
+   *
+   * Corps { displayHtml, printHtml }. UPSERT par calc_result_id (le calcul est
+   * immuable -> la capture est deterministe : une re-capture ecrase). GARDE §8
+   * fail-closed cote service (assertInertHtml) : un HTML executable / porteur d'un
+   * marqueur moteur / hors taille -> 400. Isolation : 404 si le calcul n'est pas
+   * dans ce projet/ce tenant. RBAC = celui du calcul (roles qui saisissent/lancent).
+   */
+  @Post('calc-results/:calcResultId/snapshot')
+  @Roles('OWNER', 'ADMIN', 'ENGINEER', 'TECHNICIAN', 'SUPERADMIN')
+  @ApiOperation({
+    summary:
+      'Capture le document client (HTML affichage + impression) d un calc_result. UPSERT + garde §8.',
+  })
+  async captureSnapshot(
+    @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
+    @Param('calcResultId', new ZodValidationPipe(uuidParam))
+    calcResultId: string,
+    @Body(new ZodValidationPipe(snapshotBody)) body: SnapshotBody,
+  ): Promise<{ ok: true }> {
+    await this.snapshots.capture({
+      projectId,
+      calcResultId,
+      displayHtml: body.displayHtml,
+      printHtml: body.printHtml,
+    });
+    return { ok: true };
+  }
+
+  /**
+   * GET /projects/:projectId/calc-results/:calcResultId/snapshot — relit le
+   * document capture d'un calcul AVANT scellement (re-affichage / re-impression
+   * cote UI). Meme isolation/RBAC que la capture. 404 tenant-safe si le calcul
+   * n'est pas dans ce projet/ce tenant OU si aucune capture n'existe (l'UI
+   * retombe sur son panneau de metadonnees).
+   */
+  @Get('calc-results/:calcResultId/snapshot')
+  // Memes roles que la capture (POST snapshot) : consigne coordinateur.
+  @Roles('OWNER', 'ADMIN', 'ENGINEER', 'TECHNICIAN', 'SUPERADMIN')
+  @ApiOperation({
+    summary:
+      'Relit le document client (HTML affichage + impression) capturé d un calc_result.',
+  })
+  getSnapshot(
+    @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
+    @Param('calcResultId', new ZodValidationPipe(uuidParam))
+    calcResultId: string,
+  ): Promise<{ displayHtml: string; printHtml: string }> {
+    return this.snapshots.readForCalc({ projectId, calcResultId });
+  }
+
+  /**
    * POST /projects/:projectId/calc-results/:id/pv — emission du PV officiel.
    * Idempotent : re-emettre le meme calcul renvoie le PV existant (pas de
    * nouveau numero).
@@ -135,7 +202,7 @@ export class PvController {
     @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
     @Param('id', new ZodValidationPipe(uuidParam)) calcResultId: string,
     @Req() req: AuthedRequest,
-  ): Promise<OfficialPv> {
+  ): Promise<SealedPvRow> {
     return this.pv.emitFromCalc({
       calcResultId,
       projectId,
@@ -186,6 +253,48 @@ export class PvController {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Length', String(pdf.length));
     res.end(pdf);
+  }
+
+  /**
+   * GET /projects/:projectId/pvs/:pvId/document — sert le DOCUMENT CLIENT SCELLE
+   * (HTML d'impression fige dans l'official_pv IMMUABLE, re-affiche/imprime a
+   * l'identique — scellement option-3). Meme garde/isolation que GET pvs/:pvId.
+   * Re-verifie le sceau du PV ET sha256(document_html) == empreinte scellee (sinon
+   * 409). PV sans document scelle -> 404 (l'appelant retombe sur le PDF pdfmake).
+   *
+   * INERTIE cote navigateur — barriere EFFECTIVE = la CSP HTTP posee ci-dessous
+   * (`sandbox`, `default-src 'none'`) + `nosniff` : c'est ELLE qui neutralise
+   * scripts/handlers au ré-affichage en-app. La garde §8 a la capture est un
+   * complement BEST-EFFORT (defense en profondeur, pas une garantie : ce n'est pas
+   * un tokenizer HTML complet). ANGLE MORT ASSUME : un document EXPORTE puis ouvert
+   * en `file://` n'a plus de CSP HTTP -> l'inertie n'y est plus garantie par le
+   * serveur (risque residuel reduit par la garde, non annule).
+   */
+  @Get('pvs/:pvId/document')
+  @Roles('OWNER', 'ADMIN', 'ENGINEER', 'TECHNICIAN', 'VIEWER', 'SUPERADMIN')
+  @ApiOperation({
+    summary: 'Sert le document client scellé (HTML) d un PV officiel.',
+  })
+  async getPvDocument(
+    @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
+    @Param('pvId', new ZodValidationPipe(uuidParam)) pvId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { printHtml } = await this.pv.documentForView({ projectId, pvId });
+    // Content-Type text/html ; charset utf-8 pour le rendu FR (accents/‰/δ).
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    // BARRIERE EFFECTIVE D'INERTIE (M1) — la CSP HTTP, independante de la garde §8 :
+    // `sandbox` (sans allow-scripts) neutralise tout JS/handler cote navigateur ;
+    // default-src 'none' coupe tout chargement ; img-src data: autorise les images
+    // embarquees ; style-src 'unsafe-inline' laisse les styles inline (pas de JS).
+    // NB : ne protege QUE le rendu servi par HTTP (pas un export ouvert en file://).
+    res.setHeader(
+      'Content-Security-Policy',
+      "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'",
+    );
+    // nosniff : le navigateur ne re-devine pas le type (pas de MIME sniffing).
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.end(printHtml);
   }
 
   /** GET /projects/:projectId/pvs — liste les PV du projet (chacun avec sealValid). */

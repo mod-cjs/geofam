@@ -7,10 +7,7 @@ import type {
   TDocumentDefinitions,
 } from 'pdfmake/interfaces';
 
-import { getPvPrinter } from './pv-pdf.fonts';
-import { COLORS, FINE_TABLE_LAYOUT, PV_STYLES } from './pv-pdf.theme';
-import { findPresentationModel } from './pv-presentation';
-import { renderRichBody } from './pv-presentation/render';
+import { buildLaboBody } from './bodies/labo';
 import { buildFonProfondeBody } from './bodies/pieux';
 import { buildPressiometreBody } from './bodies/pressiometre';
 import {
@@ -19,7 +16,18 @@ import {
   buildAxiBody,
   buildTriRaftBody,
 } from './bodies/radier';
-import { buildLaboBody } from './bodies/labo';
+import { getPvPrinter } from './pv-pdf.fonts';
+import { COLORS, FINE_TABLE_LAYOUT, PV_STYLES } from './pv-pdf.theme';
+import { findPresentationModel } from './pv-presentation';
+
+/**
+ * Le rendu PDF ne lit QUE les donnees scellees (input_canonical, meta, sceau) —
+ * jamais document_html. On accepte donc la ligne SANS ces octets (B1-bis : les
+ * lectures omettent document_html) aussi bien que la ligne complete. Type local
+ * pour eviter un import circulaire avec pv.service (qui importe ce module).
+ */
+type PvForRender = Omit<OfficialPv, 'documentHtml'>;
+import { renderRichBody } from './pv-presentation/render';
 
 /**
  * GENERATEUR DE PDF DU PV SCELLE (#63, incr. C) — design maison ROADSEN.
@@ -71,7 +79,7 @@ export interface SealedContent {
  * fragile, que le document CONTIENT bien les données scellées clés (numéro de PV,
  * empreinte SHA-256, ≥1 résultat). Le texte rendu = ce que voit le lecteur.
  */
-export function collectPvPdfText(pv: OfficialPv): string {
+export function collectPvPdfText(pv: PvForRender): string {
   const def = buildPvDocDefinition(pv);
   const out: string[] = [];
   // header/footer sont des fonctions DynamicContent (currentPage,pageCount,pageSize)
@@ -134,7 +142,7 @@ interface RenderModel {
  *
  * @throws si le secret est absent, le sceau invalide, ou la canonique illisible.
  */
-function buildRenderModel(pv: OfficialPv): RenderModel {
+function buildRenderModel(pv: PvForRender): RenderModel {
   const secret = process.env.PV_SIGNING_SECRET;
   if (!secret || secret.length === 0) {
     throw new Error(
@@ -171,7 +179,7 @@ function buildRenderModel(pv: OfficialPv): RenderModel {
 }
 
 /** Génère le PDF du PV et le résout en Buffer. FAIL-CLOSED si sceau invalide. */
-export function renderPvPdf(pv: OfficialPv): Promise<Buffer> {
+export function renderPvPdf(pv: PvForRender): Promise<Buffer> {
   // buildPvDocDefinition vérifie le sceau (fail-closed) AVANT de construire quoi
   // que ce soit. Un sceau invalide rejette la promesse (aucun octet produit).
   let docDef: TDocumentDefinitions;
@@ -195,7 +203,7 @@ export function renderPvPdf(pv: OfficialPv): Promise<Buffer> {
  * Construit la docDefinition pdfmake (testable sans générer les octets).
  * SOURCE UNIQUE = input_canonical (CRIT-1) ; FAIL-CLOSED via buildRenderModel.
  */
-export function buildPvDocDefinition(pv: OfficialPv): TDocumentDefinitions {
+export function buildPvDocDefinition(pv: PvForRender): TDocumentDefinitions {
   const model = buildRenderModel(pv);
   const { sealed, recomputedHash, sealedAt } = model;
 

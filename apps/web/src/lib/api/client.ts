@@ -31,11 +31,14 @@ import {
   httpListCalcResults,
   httpGetCalcResult,
   httpRunCalc,
+  httpSaveCalcSnapshot,
+  httpGetCalcSnapshot,
   httpListPvs,
   httpGetPv,
   httpEmitPv,
   httpVerifyPv,
   httpDownloadPvPdf,
+  httpGetPvDocument,
 } from './http-client';
 import {
   MOCK_LOGIN_RESPONSE,
@@ -54,9 +57,11 @@ import type {
   CreateProjectRequest,
   CalcResult,
   CalcRequest,
+  CalcSnapshot,
   OfficialPv,
   EmitPvRequest,
   VerifyPvResponse,
+  PvDocument,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -265,7 +270,8 @@ export async function deleteProject(orgId: string, projectId: string): Promise<P
 
   await delay(400);
   const idx = MOCK_PROJECTS.findIndex((x) => x.id === projectId);
-  if (idx === -1) throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Projet introuvable' };
+  if (idx === -1)
+    throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Projet introuvable' };
   const [archived] = MOCK_PROJECTS.splice(idx, 1);
   return archived;
 }
@@ -394,6 +400,47 @@ export async function runCalc(
   return newCalc;
 }
 
+/**
+ * Scelle le DOCUMENT rendu par l'outil (HTML d'affichage + HTML imprimable) sur
+ * un calc-result existant — option 3 « le PV = le document que l'outil produit
+ * à l'impression ». Le HTML ne transporte QUE des valeurs déjà rendues
+ * (whitelistées serveur) + SVG, jamais de science (DoD §8).
+ *
+ * Mode mock : no-op (démo sans backend de persistance). Mode réel : POST
+ * /projects/:projectId/calc-results/:calcResultId/snapshot. Best-effort côté
+ * appelant : un échec ne doit jamais casser l'outil (cf. ToolFrame).
+ */
+export async function saveCalcSnapshot(
+  orgId: string,
+  projectId: string,
+  calcResultId: string,
+  snapshot: { displayHtml: string; printHtml: string },
+): Promise<void> {
+  if (_USE_REAL_BACKEND)
+    return httpSaveCalcSnapshot(orgId, projectId, calcResultId, snapshot);
+  // Mock : rien à persister (pas de backend). Résolution silencieuse.
+  await delay(150);
+}
+
+/**
+ * Relit le DOCUMENT capturé (affichage + impression) d'un calcul — pour le
+ * re-afficher/le ré-imprimer AVANT scellement (onglet Calculs, option 3).
+ *
+ * `null` = pas de capture pour ce calcul (404 : ancien calcul, moteur non
+ * cloné, ou capture jamais faite) — l'appelant retombe sur son panneau de
+ * métadonnées. Mode mock : pas de backend de capture → `null` (déclenche le
+ * même repli, la démo continue de marcher sans capture réelle).
+ */
+export async function getCalcSnapshot(
+  orgId: string,
+  projectId: string,
+  calcResultId: string,
+): Promise<CalcSnapshot | null> {
+  if (_USE_REAL_BACKEND) return httpGetCalcSnapshot(orgId, projectId, calcResultId);
+  await delay(200);
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // PV
 // ---------------------------------------------------------------------------
@@ -458,6 +505,9 @@ export async function emitPv(
     sealedBy: 'Amadou Diallo',
     params: calc.params,
     output: calc.output,
+    // Mock : la capture (saveCalcSnapshot) réussit toujours (no-op résolu) →
+    // cohérent avec un documentFormat='html' pour la démo (bannière véridique).
+    documentFormat: 'html',
   };
   MOCK_PVS.push(newPv);
   // Lier le calcul au PV
@@ -543,4 +593,26 @@ export async function downloadPvPdf(
   // Le mock génère un PDF minimal valide (offsets xref calculés dynamiquement)
   // pour que le viewer du navigateur affiche quelque chose (pas du texte brut).
   return makeMockPvPdf(pvId);
+}
+
+/**
+ * Relit le DOCUMENT CLIENT SCELLÉ (HTML d'impression figé, option 3) d'un PV —
+ * à afficher/imprimer TEL QUEL. `null` = PV sans document HTML servable
+ * (404 : ancien PV/autre moteur ; 409 : intégrité rompue — B1, revue adverse)
+ * : dans LES DEUX cas, l'appelant retombe sur le PDF pdfmake existant
+ * (`downloadPvPdf`), jamais de cul-de-sac. Le 409 est loggé séparément côté
+ * `httpGetPvDocument` (diagnostic d'anomalie), mais ne bloque pas l'ingénieur.
+ * Toute autre erreur (réseau, 5xx…) reste propagée.
+ *
+ * Mode mock : pas de document client capturé → `null` (repli PDF, comme en
+ * réel pour un ancien PV).
+ */
+export async function getPvDocument(
+  orgId: string,
+  projectId: string,
+  pvId: string,
+): Promise<PvDocument | null> {
+  if (_USE_REAL_BACKEND) return httpGetPvDocument(orgId, projectId, pvId);
+  await delay(200);
+  return null;
 }

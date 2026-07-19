@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 import { CalcResultsService } from './calc-results.service';
+import { CalcSnapshotsService } from './calc-snapshots.service';
 import { PvController } from './pv.controller';
 import { PvService } from './pv.service';
 
@@ -20,7 +21,7 @@ import { PvService } from './pv.service';
   // quota a l'usage effectif — calcul/PV), injecte dans CalcResultsService/PvService.
   imports: [SubscriptionsModule],
   controllers: [PvController],
-  providers: [CalcResultsService, PvService],
-  exports: [CalcResultsService, PvService],
+  providers: [CalcResultsService, CalcSnapshotsService, PvService],
+  exports: [CalcResultsService, CalcSnapshotsService, PvService],
 })
 export class PvModule {}

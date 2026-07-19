@@ -6,7 +6,15 @@
  *
  * Badge "Scellé" = fond asphalte + cadenas, jamais vert (ADR 0008)
  * Vérification = appel serveur GET /projects/:id/pvs/:pvId, champ sealValid
- * Aperçu PDF = blob URL dans une modale avec iframe, révoquée à la fermeture
+ *
+ * Aperçu / Télécharger — option 3 (le PV = le document que l'outil imprime) :
+ * on tente D'ABORD GET .../pvs/:pvId/document (le document HTML scellé de
+ * l'outil, servi tel quel). 404 (PV sans document HTML — ancien PV/autre
+ * moteur) OU 409 (intégrité rompue) → repli sur le PDF pdfmake existant (blob
+ * URL, comportement INCHANGÉ) : B1 (revue adverse) — jamais de cul-de-sac,
+ * le PDF reste un PV valide (son propre contrôle d'intégrité s'applique). Le
+ * 409 est loggé séparément côté `httpGetPvDocument` (anomalie), mais ne
+ * bloque pas l'ingénieur ici.
  */
 
 import { Lock, Download, ShieldCheck, AlertCircle, RefreshCw, Eye } from 'lucide-react';
@@ -17,9 +25,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { Skeleton } from '@/components/ui/Skeleton.client';
 import { useToast } from '@/components/ui/Toast';
-import { listPvs, verifyPv, downloadPvPdf } from '@/lib/api/client';
+import { listPvs, verifyPv, downloadPvPdf, getPvDocument } from '@/lib/api/client';
 import type { OfficialPv, VerifyPvResponse } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
+import { printInertHtml } from '@/lib/print-inert-html';
 
 function formatDate(iso: string): string {
   return new Intl.DateTimeFormat('fr-FR', {
@@ -30,7 +39,9 @@ function formatDate(iso: string): string {
     minute: '2-digit',
     // timeZone déterministe → SSR (UTC) et client (fuseau local) produisent le même texte (#418)
     timeZone: 'Africa/Dakar',
-  }).format(new Date(iso)).replace(/[\u202F\u00A0]/g, ' '); // espace ICU déterministe (anti #418)
+  })
+    .format(new Date(iso))
+    .replace(/[\u202F\u00A0]/g, ' '); // espace ICU déterministe (anti #418)
 }
 
 interface PvListClientProps {
@@ -60,13 +71,14 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
   // Téléchargement PDF
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  // Aperçu PDF (Bug F) — blob URL révoquée à la fermeture
+  // Aperçu (Bug F) — soit le document HTML scellé de l'outil (option 3), soit
+  // le repli PDF (blob URL révoquée à la fermeture) si le PV n'a pas de document.
   const [previewingId, setPreviewingId] = useState<string | null>(null);
-  const [previewModal, setPreviewModal] = useState<{
-    blobUrl: string;
-    number: string;
-    pvId: string;
-  } | null>(null);
+  const [previewModal, setPreviewModal] = useState<
+    | { kind: 'pdf'; blobUrl: string; number: string; pvId: string }
+    | { kind: 'doc'; html: string; number: string; pvId: string }
+    | null
+  >(null);
   const previewUrlRef = useRef<string | null>(null);
 
   const loadPvs = useCallback(async () => {
@@ -118,7 +130,15 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
   async function handleDownload(pv: OfficialPv) {
     setDownloadingId(pv.id);
     try {
-      // Bug B : orgId et projetId requis en mode réel
+      // Option 3 : tenter d'abord le document HTML scellé de l'outil. Présent
+      // → on l'imprime tel quel (équivalent du "print natif" de l'outil, qui
+      // permet d'enregistrer en PDF depuis la boîte de dialogue du navigateur).
+      const doc = await getPvDocument(orgId!, projetId, pv.id);
+      if (doc) {
+        printInertHtml(doc.html);
+        return;
+      }
+      // 404 (pas de document HTML pour ce PV) → repli PDF pdfmake INCHANGÉ.
       const blob = await downloadPvPdf(pv.id, orgId ?? undefined, projetId);
       triggerBlobDownload(blob, `${pv.number}.pdf`);
       addToast({ type: 'success', message: `${pv.number} téléchargé.` });
@@ -129,14 +149,20 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
     }
   }
 
-  // Bug F — Aperçu PDF dans une modale
+  // Bug F — Aperçu dans une modale (document HTML scellé en priorité, repli PDF)
   async function handlePreview(pv: OfficialPv) {
     setPreviewingId(pv.id);
     try {
+      const doc = await getPvDocument(orgId!, projetId, pv.id);
+      if (doc) {
+        setPreviewModal({ kind: 'doc', html: doc.html, number: pv.number, pvId: pv.id });
+        return;
+      }
+      // 404 (pas de document HTML pour ce PV) → repli PDF blob INCHANGÉ.
       const blob = await downloadPvPdf(pv.id, orgId ?? undefined, projetId);
       const url = URL.createObjectURL(blob);
       previewUrlRef.current = url;
-      setPreviewModal({ blobUrl: url, number: pv.number, pvId: pv.id });
+      setPreviewModal({ kind: 'pdf', blobUrl: url, number: pv.number, pvId: pv.id });
     } catch (err: unknown) {
       addToast({ type: 'error', message: pdfErrorMessage(err) });
     } finally {
@@ -159,7 +185,9 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
   }
 
   if (!mounted) {
-    return <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement des PV" />;
+    return (
+      <div style={{ padding: 24 }} aria-busy="true" aria-label="Chargement des PV" />
+    );
   }
 
   return (
@@ -363,14 +391,21 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </Modal>
 
-      {/* Modale aperçu PDF (Bug F) */}
+      {/* Modale aperçu (Bug F) — document HTML scellé (option 3) ou repli PDF */}
       <Modal
         open={previewModal !== null}
         onClose={closePreview}
         title={`Aperçu — ${previewModal?.number ?? ''}`}
         size="lg"
         footer={
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', width: '100%' }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              justifyContent: 'space-between',
+              width: '100%',
+            }}
+          >
             <Button variant="ghost" size="md" onClick={closePreview}>
               Fermer
             </Button>
@@ -386,7 +421,25 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
           </div>
         }
       >
-        {previewModal && (
+        {previewModal?.kind === 'doc' && (
+          // Document HTML scellé de l'outil (option 3) : lecture seule stricte,
+          // aucun script (garde §8 côté serveur — le document est déjà inerte,
+          // sandbox="" est une seconde barrière en profondeur).
+          <iframe
+            data-testid="pv-preview-doc-iframe"
+            srcDoc={previewModal.html}
+            sandbox=""
+            title={`Aperçu — ${previewModal.number}`}
+            style={{
+              width: '100%',
+              height: 560,
+              border: 'none',
+              borderRadius: 'var(--radius-base)',
+              background: 'var(--surface-canvas)',
+            }}
+          />
+        )}
+        {previewModal?.kind === 'pdf' && (
           <iframe
             data-testid="pv-preview-iframe"
             src={previewModal.blobUrl}
@@ -415,7 +468,7 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
 function pdfErrorMessage(err: unknown): string {
   const apiErr = err as { statusCode?: number; message?: string };
   if (apiErr?.statusCode === 409) {
-    return apiErr.message ?? "Sceau invalide — ce PV ne peut pas être rendu en PDF.";
+    return apiErr.message ?? 'Sceau invalide — ce PV ne peut pas être rendu en PDF.';
   }
   return 'Erreur lors du chargement du PDF. Réessayez.';
 }

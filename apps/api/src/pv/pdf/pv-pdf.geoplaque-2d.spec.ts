@@ -69,6 +69,8 @@ function makeSealedPv(
     contentHash: sealContentHash(canonical),
     hmac: sealHmac(canonical, SECRET),
     sealedAt: new Date(sealedAtIso),
+    documentHtml: null,
+    documentFormat: null,
   };
 }
 

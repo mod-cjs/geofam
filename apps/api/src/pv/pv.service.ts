@@ -24,9 +24,18 @@ import { outputsEquivalent } from './output-equivalence';
 import { renderPvPdf } from './pdf/pv-pdf';
 import { resolveVerdict } from './verdict';
 
-/** PV officiel + verdict de verification du sceau (recalcule a la lecture). */
+/**
+ * Ligne d'official_pv SANS les octets du document (B1-bis). Les reponses de
+ * liste/lecture/emission NE renvoient JAMAIS document_html (jusqu'a 1 MiB/PV :
+ * inutile en list/get, couteux sur reseau contraint). document_format ('html'|null)
+ * EST conserve : le front en a besoin pour savoir si un document scelle existe
+ * (banniere veridique). Seul documentForView charge document_html (source dediee).
+ */
+export type SealedPvRow = Omit<OfficialPv, 'documentHtml'>;
+
+/** PV officiel (sans octets du document) + verdict de verification du sceau. */
 export interface OfficialPvView {
-  pv: OfficialPv;
+  pv: SealedPvRow;
   sealValid: boolean;
 }
 
@@ -69,18 +78,20 @@ export class PvService {
     calcResultId: string;
     projectId: string;
     userId: string;
-  }): Promise<OfficialPv> {
+  }): Promise<SealedPvRow> {
     const orgId = requireOrgId();
     const secret = this.signingSecret();
 
     return this.prisma
       .withTenant(orgId, async (tx) => {
         // IDEMPOTENCE : un PV existe-t-il deja pour ce calcul ? Si oui, on le renvoie
-        // tel quel (aucun numero brule, aucun nouveau scellement).
+        // tel quel (aucun numero brule, aucun nouveau scellement). B1-bis : on OMET
+        // document_html du retour (bande passante) — document_format reste expose.
         const existing = await tx.officialPv.findUnique({
           where: {
             orgId_calcResultId: { orgId, calcResultId: args.calcResultId },
           },
+          omit: { documentHtml: true },
         });
         if (existing) return existing;
 
@@ -235,6 +246,26 @@ export class PvService {
         // entre dans le CONTENU CANONIQUE (champ de 1er niveau, scelle par le HMAC).
         const verdict = resolveVerdict(calc.engineId, calc.output);
 
+        // DOCUMENT SCELLE (option-3, 0023) : si une capture du document client
+        // (HTML d'impression) existe pour ce calcul, on scelle son empreinte
+        // sha256(print_html) dans le contenu canonique. Le document devient alors
+        // RE-VERIFIABLE (GET /pvs/:id/document re-hache le print_html stocke et
+        // exige l'egalite avec cette empreinte scellee). ABSENTE -> champ `document`
+        // OMIS (retro-compat : les calculs sans capture gardent le PV pdfmake ; les
+        // PV deja emis, sans ce champ, restent valides et re-verifiables tels quels).
+        const snapshot = await tx.calcSnapshot.findUnique({
+          where: { calcResultId: args.calcResultId },
+          select: { printHtml: true },
+        });
+        const documentSeal: { document?: SealableValue } = snapshot
+          ? {
+              document: {
+                format: 'html',
+                sha256: sealContentHash(snapshot.printHtml),
+              },
+            }
+          : {};
+
         // CONTENU CANONIQUE : tout ce qui est scelle. sealedAt = chaine ISO.
         const content: SealableValue = {
           pvNumber,
@@ -262,6 +293,8 @@ export class PvService {
           input: calc.input,
           output: calc.output,
           scienceStatus: SCIENCE_STATUS,
+          // Empreinte du document client scelle (OMISE si aucune capture).
+          ...documentSeal,
         };
 
         const canonical = canonicalize(content);
@@ -307,7 +340,17 @@ export class PvService {
             contentHash,
             hmac,
             sealedAt: new Date(sealedAtIso),
+            // DOCUMENT CLIENT AUTOPORTANT (B1, option-3) : on FIGE les octets du
+            // print_html dans la ligne IMMUABLE au moment du scellement (comme
+            // input_canonical). Le PV devient regenerable independamment du cache
+            // MUTABLE calc_snapshots (qu'une re-capture ecraserait). NULL si aucune
+            // capture (retro-compat -> fallback PDF). sha256(document_html) reste
+            // egal a document.sha256 scelle (re-verifie au service du document).
+            documentHtml: snapshot ? snapshot.printHtml : null,
+            documentFormat: snapshot ? 'html' : null,
           },
+          // B1-bis : on ECRIT document_html (data) mais on ne le RENVOIE pas (omit).
+          omit: { documentHtml: true },
         });
       })
       .catch(async (err: unknown) => {
@@ -327,6 +370,7 @@ export class PvService {
               where: {
                 orgId_calcResultId: { orgId, calcResultId: args.calcResultId },
               },
+              omit: { documentHtml: true },
             }),
           );
           if (raced) return raced;
@@ -342,8 +386,13 @@ export class PvService {
   }): Promise<OfficialPvView> {
     const orgId = requireOrgId();
     const secret = this.signingSecret();
+    // B1-bis : on OMET document_html (jusqu'a 1 MiB) des lectures — document_format
+    // reste expose (le front sait si un document existe). Seul documentForView le charge.
     const pv = await this.prisma.withTenant(orgId, (tx) =>
-      tx.officialPv.findUnique({ where: { id: args.pvId } }),
+      tx.officialPv.findUnique({
+        where: { id: args.pvId },
+        omit: { documentHtml: true },
+      }),
     );
     if (!pv || pv.projectId !== args.projectId) {
       throw new NotFoundException(
@@ -361,7 +410,7 @@ export class PvService {
   async pdfForView(args: {
     projectId: string;
     pvId: string;
-  }): Promise<{ pv: OfficialPv; pdf: Buffer }> {
+  }): Promise<{ pv: SealedPvRow; pdf: Buffer }> {
     // getViewById -> signingSecret() : secret ABSENT = mauvaise config serveur
     // -> 503 (ServiceUnavailable), déjà géré en amont. Distinct du 409 ci-dessous.
     const { pv, sealValid } = await this.getViewById(args);
@@ -390,6 +439,83 @@ export class PvService {
     }
   }
 
+  /**
+   * Sert le DOCUMENT CLIENT SCELLE d'un PV (option-3, 0023). C'est le HTML
+   * d'impression capture, re-affiche/imprime A L'IDENTIQUE.
+   *
+   * SOURCE = official_pv.document_html (copie IMMUABLE figee au scellement, B1) —
+   * PAS le cache MUTABLE calc_snapshots : une re-capture apres emission n'affecte
+   * donc plus le livrable (regenerabilite, DoD §5).
+   *
+   * SEUL point qui charge document_html (B1-bis) : les lectures/listes l'OMETTENT
+   * pour la bande passante ; ici on doit servir les octets, donc requete DEDIEE
+   * (findUnique complet) + verification du sceau EN INTERNE (on ne passe pas par
+   * getViewById, qui renvoie une ligne sans document_html).
+   *
+   * Chaine d'integrite (fail-closed) :
+   *  1. findUnique complet + MEME isolation/RLS + 404 cross-org/hors-projet ; sceau
+   *     casse -> 409 (comme le PDF : pas de document depuis un PV au sceau rompu).
+   *  2. Le PV DOIT porter une empreinte `document` scellee -> sinon 404 (ancien
+   *     PV / autre moteur : l'appelant retombe sur le PDF pdfmake).
+   *  3. Le PV DOIT porter document_html (copie figee) -> absent -> 404 (fallback PDF).
+   *  4. RE-VERIFICATION (defense en profondeur) : sha256(document_html) DOIT egaler
+   *     l'empreinte scellee -> sinon 409 (le document a ete altere apres scellement,
+   *     ex. abus DDL). L'immuabilite (trigger 0006) rend deja l'UPDATE impossible au
+   *     runtime : ce controle est une seconde barriere.
+   *
+   * @throws NotFoundException PV absent/hors tenant, sans empreinte scellee, ou
+   *   sans document_html (fallback PDF).
+   * @throws ConflictException sceau rompu, ou document altere (hash != empreinte).
+   */
+  async documentForView(args: {
+    projectId: string;
+    pvId: string;
+  }): Promise<{ pv: OfficialPv; printHtml: string }> {
+    const orgId = requireOrgId();
+    const secret = this.signingSecret();
+    // Requete DEDIEE : ligne COMPLETE (document_html inclus) — l'unique lecture qui
+    // charge les octets. RLS scope au tenant courant.
+    const pv = await this.prisma.withTenant(orgId, (tx) =>
+      tx.officialPv.findUnique({ where: { id: args.pvId } }),
+    );
+    if (!pv || pv.projectId !== args.projectId) {
+      throw new NotFoundException(
+        'PV introuvable dans ce projet/cette organisation.',
+      );
+    }
+    // FAIL-CLOSED : un PV au sceau casse ne sert AUCUN livrable (cf. pdfForView).
+    if (!this.verify(pv, secret)) {
+      throw new ConflictException(
+        "Intégrité du PV non vérifiée — anomalie d'intégrité, contactez le support.",
+      );
+    }
+    // Empreinte `document` scellee dans la canonique. Absente -> 404 (retro-compat :
+    // PV sans capture -> l'appelant retombe sur le PDF pdfmake).
+    const sealedSha = extractSealedDocumentSha(pv.inputCanonical);
+    if (!sealedSha) {
+      throw new NotFoundException(
+        'Aucun document scellé pour ce PV (utiliser le PDF).',
+      );
+    }
+    // Source AUTOPORTANTE et IMMUABLE : les octets figes dans l'official_pv.
+    if (pv.documentHtml == null) {
+      // Empreinte scellee mais copie figee absente (ne devrait pas arriver : les
+      // deux sont ecrits ensemble a l'INSERT) -> fallback PDF plutot que 500.
+      throw new NotFoundException(
+        'Document scellé introuvable pour ce PV (utiliser le PDF).',
+      );
+    }
+    // RE-VERIFICATION D'INTEGRITE (defense en profondeur) : le document_html fige
+    // doit re-produire EXACTEMENT l'empreinte scellee. Une alteration (abus DDL,
+    // corruption) casse l'egalite -> 409.
+    if (sealContentHash(pv.documentHtml) !== sealedSha) {
+      throw new ConflictException(
+        "Le document ne correspond plus au sceau — anomalie d'intégrité, contactez le support.",
+      );
+    }
+    return { pv, printHtml: pv.documentHtml };
+  }
+
   /** Liste les PV d'un projet du tenant (RLS scope), chacun avec son verdict. */
   async listForProject(projectId: string): Promise<OfficialPvView[]> {
     const orgId = requireOrgId();
@@ -398,6 +524,8 @@ export class PvService {
       tx.officialPv.findMany({
         where: { projectId },
         orderBy: { sealedAt: 'desc' },
+        // B1-bis : liste SANS les octets du document (document_format conserve).
+        omit: { documentHtml: true },
       }),
     );
     return rows.map((pv) => ({ pv, sealValid: this.verify(pv, secret) }));
@@ -405,9 +533,14 @@ export class PvService {
 
   /**
    * Re-verifie le sceau STOCKE contre la chaine canonique STOCKEE. Une alteration
-   * de input_canonical (ou du hash/hmac) en base -> sealValid=false.
+   * de input_canonical (ou du hash/hmac) en base -> sealValid=false. N'utilise que
+   * les champs du sceau -> accepte aussi bien la ligne complete que la ligne
+   * OMISE de document_html (B1-bis).
    */
-  private verify(pv: OfficialPv, secret: string): boolean {
+  private verify(
+    pv: Pick<OfficialPv, 'inputCanonical' | 'contentHash' | 'hmac'>,
+    secret: string,
+  ): boolean {
     return verifySeal(pv.inputCanonical, pv.contentHash, pv.hmac, secret);
   }
 
@@ -428,6 +561,44 @@ export class PvService {
 
 /** Statut science = metadonnee INTERNE (pas de bandeau @science-unsigned, decision titulaire). */
 const SCIENCE_STATUS = 'unsigned';
+
+/** Empreinte hex SHA-256 attendue pour un document scelle (64 caracteres). */
+const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
+
+/**
+ * Extrait l'empreinte `document.sha256` SCELLEE d'une chaine canonique de PV.
+ * Renvoie l'empreinte (hex64) si le PV porte un document scelle au format HTML,
+ * `null` si le champ est ABSENT (PV sans capture -> l'appelant repond 404 + PDF).
+ * FAIL-CLOSED : un champ `document` PRESENT mais malforme (format inattendu ou
+ * sha256 hors charset) LEVE -> traite comme anomalie d'integrite en amont (409),
+ * jamais un rendu de document a partir d'une empreinte douteuse.
+ */
+function extractSealedDocumentSha(canonical: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(canonical);
+  } catch {
+    // Canonique illisible : le sceau aurait deja echoue (getViewById -> 409). Par
+    // prudence, on traite comme « pas de document » (l'appelant a deja barre le
+    // sceau casse en amont).
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const doc = (parsed as { document?: unknown }).document;
+  if (doc === undefined) return null; // pas de document scelle -> 404 + fallback PDF
+  if (typeof doc !== 'object' || doc === null) {
+    throw new ConflictException('Empreinte de document scellée malformée.');
+  }
+  const { format, sha256 } = doc as { format?: unknown; sha256?: unknown };
+  if (
+    format !== 'html' ||
+    typeof sha256 !== 'string' ||
+    !SHA256_HEX_RE.test(sha256)
+  ) {
+    throw new ConflictException('Empreinte de document scellée malformée.');
+  }
+  return sha256;
+}
 
 /** Formate PV-RDS-{orgSlug}-{YYYY}-{NNNNNN} (sequence sur 6 chiffres, zero-padded). */
 function formatPvNumber(orgSlug: string, year: number, seq: number): string {

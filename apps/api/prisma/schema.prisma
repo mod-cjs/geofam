@@ -165,7 +165,9 @@ model CalcResult {
 
   // FK COMPOSITE (orgId, projectId) -> projects(orgId, id) : un calcul ne reference
   // qu'un projet de SON tenant (anti cross-tenant, cf. NOTE §4 de 0004).
-  project Project @relation(fields: [orgId, projectId], references: [orgId, id], onDelete: Cascade)
+  project  Project       @relation(fields: [orgId, projectId], references: [orgId, id], onDelete: Cascade)
+  // Capture du document client (option-3) — relation 1-1 optionnelle (0023).
+  snapshot CalcSnapshot?
 
   @@unique([orgId, id]) // org-coherence de l'id local
   @@index([orgId])
@@ -173,12 +175,38 @@ model CalcResult {
   @@map("calc_results")
 }
 
-// PV OFFICIEL : AUTOPORTANT (copie figee de tout le contenu scelle) et IMMUABLE
-// (triggers BEFORE UPDATE/DELETE en 0006 ; aucun privilege UPDATE/DELETE pour le
-// runtime). Pas de FK vivante vers projects/calc_results : le PV survit a leur
-// suppression. calcResultId / projectId sont conserves comme reference/identite
-// FIGEE (sans relation Prisma). input_canonical = chaine canonique exacte scellee ;
-// content_hash = SHA-256 ; hmac = HMAC-SHA256 (clé PV_SIGNING_SECRET, jamais en base).
+// Capture du DOCUMENT que l'outil client produit A L'IMPRESSION (scellement option-3,
+// #63/0023) : HTML/SVG auto-contenu, deterministe. Filtre par la garde §8 a la capture
+// (best-effort ; l'inertie EFFECTIVE au ré-affichage vient de la CSP HTTP du service).
+// Relation 1-1 avec CalcResult (le calcul est immuable -> la capture est deterministe
+// -> re-capturer ECRASE, UPSERT par calcResultId). Table de DONNEES mutable, org-scope
+// (RLS FORCE + policy en 0023). display_html = affichage ; print_html = impression,
+// dont le sha256 entre dans le sceau du PV (integrite re-verifiable, cf. pv.service).
+model CalcSnapshot {
+  id           String   @id @default(uuid()) @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  calcResultId String   @unique @map("calc_result_id") @db.Uuid
+  displayHtml  String   @map("display_html")
+  printHtml    String   @map("print_html")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // FK COMPOSITE (orgId, calcResultId) -> calc_results(orgId, id) : une capture ne
+  // reference qu'un calcul de SON tenant (anti cross-tenant, patron 0006).
+  calcResult CalcResult @relation(fields: [orgId, calcResultId], references: [orgId, id], onDelete: Cascade)
+
+  @@unique([orgId, calcResultId]) // cote definissant du 1-1 sur la FK composite
+  @@index([orgId])
+  @@map("calc_snapshots")
+}
+
+// PV OFFICIEL : AUTOPORTANT (copie figee de TOUT le contenu scelle, DOCUMENT CLIENT
+// INCLUS) et IMMUABLE (triggers BEFORE UPDATE/DELETE en 0006 ; aucun privilege
+// UPDATE/DELETE pour le runtime). Pas de FK vivante vers projects/calc_results : le
+// PV survit a leur suppression. calcResultId / projectId sont conserves comme
+// reference/identite FIGEE (sans relation Prisma). input_canonical = chaine canonique
+// exacte scellee ; content_hash = SHA-256 ; hmac = HMAC-SHA256 (clé PV_SIGNING_SECRET,
+// jamais en base). document_html = copie FIGEE des octets du document client scelle
+// (option-3, 0024) — regenerable independamment du cache MUTABLE calc_snapshots.
 model OfficialPv {
   id               String   @id @default(uuid()) @db.Uuid
   orgId            String   @map("org_id") @db.Uuid
@@ -200,6 +228,12 @@ model OfficialPv {
   contentHash      String   @map("content_hash")
   hmac             String
   sealedAt         DateTime @map("sealed_at")
+  // DOCUMENT CLIENT SCELLE (option-3, 0024) : copie IMMUABLE des octets du print_html
+  // au scellement. NULL = PV sans capture (retro-compat -> fallback PDF). L'integrite
+  // reste re-verifiable : sha256(document_html) doit egaler document.sha256 (scelle
+  // dans input_canonical). document_format = 'html' quand present.
+  documentHtml     String?  @map("document_html")
+  documentFormat   String?  @map("document_format")
 
   @@unique([orgId, pvNumber]) // numero unique par org
   @@unique([orgId, calcResultId]) // idempotence d'emission : 1 calcul -> 1 PV

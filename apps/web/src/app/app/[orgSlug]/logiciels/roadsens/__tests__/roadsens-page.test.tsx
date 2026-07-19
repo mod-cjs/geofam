@@ -6,7 +6,13 @@
  * boucle de bridge est testée en isolation dans
  * `lib/tool-bridge/__tests__/ToolFrame.test.tsx` ; ce fichier ne couvre QUE
  * le câblage du shell (projet, gate, bouton PV branché sur le dernier
- * calcResultId remonté par ToolFrame).
+ * calcResultId ET le statut de capture remontés par ToolFrame).
+ *
+ * M3 (revue adverse, chemin primaire) : le bouton « Émettre le PV scellé » ne
+ * s'active plus sur le seul `onCalcResultId` — il attend `onSnapshotStatus`
+ * ('confirmed' ou 'failed'). Le stub ToolFrame expose donc trois déclencheurs
+ * distincts (calcul terminé / capture confirmée / capture en échec) pour
+ * reproduire fidèlement les transitions réelles de `ToolFrame`.
  *
  * Patron d'interaction : react-dom/client + act (pas de @testing-library/react
  * dans ce dépôt — cf. terzaghi-page.test.tsx / PvEmittedActions.test.tsx).
@@ -43,9 +49,11 @@ vi.mock('@/lib/api/client', () => ({
   getStoredToken: () => 'token-abc',
 }));
 
-// Stub — la boucle de bridge (ready/init/calc/store/pv) est testée dans
-// lib/tool-bridge/__tests__/ToolFrame.test.tsx. Ici on vérifie seulement le
-// câblage : props reçues + remontée de calcResultId au shell.
+// Stub — la boucle de bridge (ready/init/calc/store/pv/snapshot) est testée
+// dans lib/tool-bridge/__tests__/ToolFrame.test.tsx. Ici on vérifie seulement
+// le câblage : props reçues + remontée de calcResultId ET de statut de
+// capture au shell (M3, revue adverse — trois déclencheurs distincts pour
+// reproduire les transitions réelles awaiting→capturing→confirmed/failed).
 vi.mock('@/lib/tool-bridge/ToolFrame', () => ({
   ToolFrame: (props: {
     toolId: string;
@@ -56,14 +64,38 @@ vi.mock('@/lib/tool-bridge/ToolFrame', () => ({
     projectLabel: string;
     accessToken: string | null;
     onCalcResultId?: (id: string | null) => void;
+    onSnapshotStatus?: (event: { calcResultId: string; status: string }) => void;
   }) => (
     <div data-testid="tool-frame-stub" data-props={JSON.stringify(props)}>
       <button
         type="button"
         data-testid="simulate-calc-done"
-        onClick={() => props.onCalcResultId?.('calc_42')}
+        onClick={() => {
+          props.onCalcResultId?.('calc_42');
+          // ToolFrame réel émet TOUJOURS 'awaiting' juste après calc:response
+          // (avant même que snapshot:capture n'arrive) — cf. ToolFrame.tsx.
+          props.onSnapshotStatus?.({ calcResultId: 'calc_42', status: 'awaiting' });
+        }}
       >
         Simuler calcul terminé
+      </button>
+      <button
+        type="button"
+        data-testid="simulate-capture-confirmed"
+        onClick={() =>
+          props.onSnapshotStatus?.({ calcResultId: 'calc_42', status: 'confirmed' })
+        }
+      >
+        Simuler capture confirmée
+      </button>
+      <button
+        type="button"
+        data-testid="simulate-capture-failed"
+        onClick={() =>
+          props.onSnapshotStatus?.({ calcResultId: 'calc_42', status: 'failed' })
+        }
+      >
+        Simuler capture en échec
       </button>
     </div>
   ),
@@ -199,7 +231,10 @@ describe('Page ROADSENS — shell GEOFAM', () => {
     expect(btn.disabled).toBe(true);
   });
 
-  it('given ToolFrame remonte un calcResultId, when le calcul est "terminé", then le bouton PV s\'active', async () => {
+  // M3 (revue adverse, chemin primaire) — la course calcul-terminé vs
+  // capture-encore-en-vol : le bouton ne s'active PAS sur le seul
+  // calcResultId, il attend la confirmation de capture.
+  it('given ToolFrame remonte un calcResultId SANS capture confirmée, when le calcul est "terminé", then le bouton PV reste DÉSACTIVÉ (en attente de la capture)', async () => {
     await renderPage();
     const simulate = container.querySelector(
       '[data-testid="simulate-calc-done"]',
@@ -210,10 +245,32 @@ describe('Page ROADSENS — shell GEOFAM', () => {
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',
     ) as HTMLButtonElement;
-    expect(btn.disabled).toBe(false);
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toMatch(/Capture du document/);
   });
 
-  it('given un calcul terminé, when "Émettre le PV" cliqué et emitPv résout, then le PV scellé est affiché', async () => {
+  it("given un calcul terminé, when la capture du document est CONFIRMÉE, then le bouton PV s'active", async () => {
+    await renderPage();
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    const btn = container.querySelector(
+      '[data-testid="btn-emettre-pv"]',
+    ) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    expect(btn.textContent).toMatch(/Émettre le PV scellé/);
+  });
+
+  it("given un calcul terminé et la capture CONFIRMÉE, when \"Émettre le PV\" cliqué et emitPv résout avec documentFormat='html', then la bannière annonce le document de l'outil scellé", async () => {
     mockEmitPv.mockResolvedValue({
       id: 'pv_01',
       number: 'PV-2026-0007',
@@ -226,13 +283,20 @@ describe('Page ROADSENS — shell GEOFAM', () => {
       sealedBy: 'Amadou Diallo',
       params: {},
       output: null,
+      documentFormat: 'html',
     });
     await renderPage();
-    const simulate = container.querySelector(
-      '[data-testid="simulate-calc-done"]',
-    ) as HTMLButtonElement;
     await act(async () => {
-      simulate.click();
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed"]',
+        ) as HTMLButtonElement
+      ).click();
     });
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',
@@ -246,16 +310,70 @@ describe('Page ROADSENS — shell GEOFAM', () => {
       calcResultId: 'calc_42',
     });
     expect(container.textContent).toMatch(/PV-2026-0007/);
+    const banner = container.querySelector('[data-testid="pv-success-banner"]');
+    expect(banner!.textContent).toMatch(/document de l.outil scellé/i);
+    // Wording honnête (décision titulaire M2 + revue adverse) : jamais
+    // « garanti » ni « au mm près » — la portée réelle du sceau est
+    // l'intégrité post-scellement, pas une preuve des valeurs affichées.
+    expect(banner!.textContent).not.toMatch(/garanti/i);
+    expect(banner!.textContent).not.toMatch(/mm près/i);
   });
 
-  it('given emitPv échoue, when "Émettre le PV" cliqué, then un message d\'erreur explicite est affiché', async () => {
+  it('given un calcul terminé et la capture CONFIRMÉE, when emitPv résout avec documentFormat=null (repli backend), then la bannière annonce le format standard SANS jamais dire « garantis » sur le document', async () => {
+    mockEmitPv.mockResolvedValue({
+      id: 'pv_02',
+      number: 'PV-2026-0008',
+      orgId: 'org_01',
+      projectId: 'proj_ch_01',
+      calcResultId: 'calc_42',
+      engineId: 'burmister',
+      hmacTruncated: 'b2c3d4e5',
+      sealedAt: '2026-07-16T10:05:00.000Z',
+      sealedBy: 'Amadou Diallo',
+      params: {},
+      output: null,
+      documentFormat: null,
+    });
+    await renderPage();
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="btn-emettre-pv"]') as HTMLButtonElement
+      ).click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const banner = container.querySelector('[data-testid="pv-success-banner"]');
+    expect(banner!.textContent).toMatch(/format standard/i);
+    expect(banner!.textContent).not.toMatch(/document de l.outil scellé/i);
+    expect(banner!.textContent).not.toMatch(/garantis/i);
+  });
+
+  it("given un calcul terminé et la capture CONFIRMÉE, when emitPv échoue, then un message d'erreur explicite est affiché", async () => {
     mockEmitPv.mockRejectedValue({ message: 'Quota épuisé.' });
     await renderPage();
-    const simulate = container.querySelector(
-      '[data-testid="simulate-calc-done"]',
-    ) as HTMLButtonElement;
     await act(async () => {
-      simulate.click();
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed"]',
+        ) as HTMLButtonElement
+      ).click();
     });
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',
@@ -268,6 +386,90 @@ describe('Page ROADSENS — shell GEOFAM', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toMatch(
       /Quota épuisé/,
     );
+  });
+
+  // M3 — capture en ÉCHEC définitif : jamais un scellement silencieux.
+  it("given la capture du document ÉCHOUE définitivement, when le calcul est terminé, then le bouton PV s'active mais un clic affiche l'avertissement SANS appeler emitPv", async () => {
+    await renderPage();
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-failed"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    const btn = container.querySelector(
+      '[data-testid="btn-emettre-pv"]',
+    ) as HTMLButtonElement;
+    // 'failed' est un statut RÉSOLU (captureReady) → le bouton n'est plus grisé
+    // en attente, mais il ne scelle jamais en un clic silencieux.
+    expect(btn.disabled).toBe(false);
+
+    await act(async () => {
+      btn.click();
+    });
+
+    expect(mockEmitPv).not.toHaveBeenCalled();
+    const warning = container.querySelector('[data-testid="capture-failed-warning"]');
+    expect(warning).not.toBeNull();
+    expect(warning!.textContent).toMatch(/n.a pas pu être capturé/);
+    expect(
+      container.querySelector('[data-testid="btn-emettre-pv"]')!.textContent,
+    ).toMatch(/Confirmer l.émission sans document/);
+  });
+
+  it("given l'avertissement de capture en échec affiché, when on clique le bouton une seconde fois (confirmer), then emitPv est appelé", async () => {
+    mockEmitPv.mockResolvedValue({
+      id: 'pv_03',
+      number: 'PV-2026-0009',
+      orgId: 'org_01',
+      projectId: 'proj_ch_01',
+      calcResultId: 'calc_42',
+      engineId: 'burmister',
+      hmacTruncated: 'c3d4e5f6',
+      sealedAt: '2026-07-16T10:10:00.000Z',
+      sealedBy: 'Amadou Diallo',
+      params: {},
+      output: null,
+      documentFormat: null,
+    });
+    await renderPage();
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-failed"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    // 1er clic → avertissement seulement.
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="btn-emettre-pv"]') as HTMLButtonElement
+      ).click();
+    });
+    expect(mockEmitPv).not.toHaveBeenCalled();
+    // 2e clic (« Confirmer… ») → émission réelle.
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="btn-emettre-pv"]') as HTMLButtonElement
+      ).click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockEmitPv).toHaveBeenCalledWith('org_01', 'proj_ch_01', {
+      calcResultId: 'calc_42',
+    });
+    expect(container.textContent).toMatch(/PV-2026-0009/);
   });
 
   it("given le module burmister n'est PAS inclus dans l'abonnement, when montage, then la bannière de gate est affichée", async () => {

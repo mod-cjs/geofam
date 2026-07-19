@@ -558,6 +558,11 @@ let nid=4;
   window.__geofamBridge={
     calc:function(params){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:ENGINE_ID,label:(params&&params.projet)||null,params:params}}); }); },
     emitPv:function(calcResultId){ post({v:1,type:"pv:request",payload:{calcResultId:calcResultId}}); },
+    /* snapshot:capture (option 3 « sceller le document imprime ») : remonte a l hote le
+       HTML rendu (affichage + document imprimable auto-contenu). Sens iframe->hote SEUL,
+       fire-and-forget. Contenu = donnees deja rendues (whitelistees serveur) + SVG, jamais
+       de science (le calcul est excise). L hote le scelle sur SON dernier calcResultId. */
+    snapshot:function(displayHtml,printHtml){ post({v:1,type:"snapshot:capture",payload:{displayHtml:String(displayHtml||""),printHtml:String(printHtml||"")}}); },
     context:function(){ return ctx; }
   };
   /* input:dirty (correctif PV BQ-1) : signale a l hote que l ecran a change apres un calcul
@@ -574,6 +579,70 @@ let nid=4;
   document.addEventListener("change", __geofamEmitDirty, true);
   post({v:1,type:"ready",payload:{toolId:TOOL_ID}});
 })();
+
+/* ---- CAPTURE DU DOCUMENT (option 3 « sceller le document imprime ») ----
+   Serialise DEUX chaines HTML auto-contenues APRES un calcul reussi (pane-r/pane-d
+   deja rendus par renderRes -> renderDetails). DETERMINISTE : meme sortie serveur =
+   meme DOM rendu = meme HTML capture (aucune horloge, aucun hasard). §8 : ne contient
+   QUE des valeurs deja affichees (whitelistees serveur) + SVG ; les <script> sont retires
+   et aucune fonction de calcul n existe dans le clone (excisee). */
+/* Clone un noeud, lui ajoute .printable si demande, retire tout <script> descendant,
+   renvoie son outerHTML (ou "" si absent). */
+function __roadsensCloneClean(el, addPrintable){
+  if(!el) return "";
+  var c=el.cloneNode(true);
+  if(addPrintable && c.classList) c.classList.add("printable");
+  var scr=c.querySelectorAll?c.querySelectorAll("script"):[];
+  for(var j=0;j<scr.length;j++){ if(scr[j].parentNode) scr[j].parentNode.removeChild(scr[j]); }
+  /* Retire la chrome interactive .resbar (barre de controle avec bouton d impression,
+     non imprimee par l outil) — evite de reintroduire des handlers et fidelise le document. */
+  var rb=c.querySelectorAll?c.querySelectorAll(".resbar"):[];
+  for(var r=0;r<rb.length;r++){ if(rb[r].parentNode) rb[r].parentNode.removeChild(rb[r]); }
+  /* GARDE §8 : retire TOUT attribut gestionnaire inline on…= (sur le noeud et ses
+     descendants) ET toute URI javascript: — le document capture doit etre INERTE,
+     conformement a assertInertHtml (apps/api/src/pv/html-guard.ts). */
+  var all=c.querySelectorAll?c.querySelectorAll("*"):[];
+  var nodes=[c]; for(var a=0;a<all.length;a++){ nodes.push(all[a]); }
+  for(var n=0;n<nodes.length;n++){
+    var nd=nodes[n]; if(!nd.attributes) continue;
+    for(var k=nd.attributes.length-1;k>=0;k--){
+      var att=nd.attributes[k], an=att.name||"", av=att.value||"";
+      if(an.length>=2 && an.slice(0,2).toLowerCase()==="on"){ nd.removeAttribute(an); continue; }
+      if(/^\s*javascript:/i.test(av)) nd.removeAttribute(an);
+    }
+  }
+  return c.outerHTML||"";
+}
+/* Document IMPRIMABLE auto-contenu = en-tete .hd + zones .printable (pane-r + pane-d),
+   avec TOUT le CSS de l outil inline (styles ecran + regles @media print) -> impression
+   identique HORS de l app. On ajoute une seule regle ecran (.pane.printable{display:block})
+   pour que le document reste aussi CONSULTABLE a l ecran (les .pane sont display:none par defaut). */
+function __roadsensSerializePrintable(){
+  var styles="";
+  var sl=document.querySelectorAll("style");
+  for(var i=0;i<sl.length;i++){ styles += (sl[i].textContent||"") + "\n"; }
+  styles += "\n.pane.printable{display:block !important}\n";
+  var hd=__roadsensCloneClean(document.querySelector(".hd"), false);
+  var pr=__roadsensCloneClean(document.getElementById("pane-r"), true);
+  var pd=__roadsensCloneClean(document.getElementById("pane-d"), true);
+  return "<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\">"
+    + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+    + "<title>ROADSENS \u2014 Rapport de v\u00e9rification Burmister</title>"
+    + "<style>" + styles + "</style></head><body><main class=\"app\">"
+    + hd + pr + pd
+    + "</main></body></html>";
+}
+/* Emet snapshot:capture APRES le rendu (jamais avant). displayHtml = panneau de
+   resultats (resout) tel qu affiche ; printHtml = document imprimable auto-contenu. */
+function __roadsensCaptureSnapshot(){
+  try{
+    if(!window.__geofamBridge || typeof window.__geofamBridge.snapshot!=="function") return;
+    var resout=document.getElementById("resout");
+    var displayHtml=__roadsensCloneClean(resout, false);
+    var printHtml=__roadsensSerializePrintable();
+    window.__geofamBridge.snapshot(displayHtml, printHtml);
+  }catch(e){}
+}
 
 /* Echappement HTML minimal (messages d'erreur). */
 function _esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
@@ -1043,8 +1112,11 @@ async function runCalc(){
   var out = resp.output || {};
   if(out.erreur){ renderCalcError({message:out.erreur}); _restoreCalcBtn(); return; }
   try{ buildDFromOutput(out); renderRes(rArgFromOutput(out)); }
-  catch(e){ var el=document.getElementById('resout'); if(el) el.innerHTML='<div class="note note-a" style="margin-top:1rem"><strong>Erreur de rendu :</strong> '+_esc(e&&e.message)+'</div>'; }
+  catch(e){ var el=document.getElementById('resout'); if(el) el.innerHTML='<div class="note note-a" style="margin-top:1rem"><strong>Erreur de rendu :</strong> '+_esc(e&&e.message)+'</div>'; _restoreCalcBtn(); _gotoResults(); return; }
   _restoreCalcBtn(); _gotoResults();
+  /* Option 3 : sceller le DOCUMENT que l outil vient de rendre (pane-r + pane-d).
+     APRES le rendu, uniquement sur calcul reussi (ce bloc n est pas atteint sur erreur). */
+  __roadsensCaptureSnapshot();
 }
 
 

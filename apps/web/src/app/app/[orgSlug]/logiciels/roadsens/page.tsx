@@ -21,6 +21,24 @@
  * cette implémentation retirée ; ils sont remplacés par `roadsens-page.test.tsx`
  * (shell) + les tests du bridge (`lib/tool-bridge/__tests__/ToolFrame.test.tsx`)
  * + la spec de fidélité clone↔source gelée (à charge de qa-test).
+ *
+ * M3 — chemin PRIMAIRE (revue adverse) : le bouton « Émettre le PV scellé » ne
+ * s'active plus dès `onCalcResultId` seul — il ATTEND la confirmation de
+ * capture du document (`onSnapshotStatus`, cf. ToolFrame) avant de s'activer.
+ * Sans cette garde, une course entre « calcul terminé » et « POST snapshot
+ * best-effort encore en vol » pouvait faire sceller un PV SANS document — et
+ * comme l'émission est idempotente, c'est DÉFINITIF pour ce calcul (aucun
+ * re-scellement possible). Si la capture échoue définitivement (y compris via
+ * le watchdog anti soft-lock de `ToolFrame`, cf. `SNAPSHOT_WATCHDOG_MS`), le
+ * même patron que `CalculsClient` s'applique : avertissement explicite +
+ * second clic de confirmation avant d'émettre quand même (au format standard).
+ *
+ * Wording honnête (décision titulaire M2 + revue adverse) : la bannière de
+ * succès reflète `pv.documentFormat`, mais reste FACTUELLE dans les deux cas —
+ * la portée réelle du sceau est l'intégrité post-scellement + la sortie
+ * moteur recalculée/vérifiée, PAS une preuve infalsifiable des valeurs
+ * affichées à l'écran. Ni « garanti », ni « au mm près » : cohérent avec la
+ * note légale de l'onglet PV (sceau HMAC ≠ signature électronique qualifiée).
  */
 
 import { useParams } from 'next/navigation';
@@ -33,7 +51,7 @@ import { matchesDomain } from '@/lib/api/project-domain';
 import type { EntitlementsResponse, OfficialPv, Project } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 import { evaluateGate, isQuotaLow } from '@/lib/subscription-gate';
-import { ToolFrame } from '@/lib/tool-bridge/ToolFrame';
+import { ToolFrame, type SnapshotStatusEvent } from '@/lib/tool-bridge/ToolFrame';
 
 const TOOL_ID = 'roadsens';
 const ENGINE_ID = 'burmister';
@@ -67,6 +85,14 @@ export default function RoadsensPage() {
   const [emittingPv, setEmittingPv] = useState(false);
   const [pvResult, setPvResult] = useState<OfficialPv | null>(null);
   const [pvError, setPvError] = useState<string | null>(null);
+  // M3 (revue adverse, chemin primaire) : statut de capture du document pour
+  // le DERNIER calcResultId connu (cf. ToolFrame.onSnapshotStatus). `null` ou
+  // 'awaiting'/'capturing' = on ATTEND encore — le bouton ne s'active pas.
+  const [snapshotStatus, setSnapshotStatus] = useState<SnapshotStatusEvent | null>(null);
+  // Avertissement affiché AVANT d'émettre un PV sans document capturé (capture
+  // 'failed') — même patron que `CalculsClient` : 1er clic = avertissement,
+  // 2e clic = confirmation explicite.
+  const [emitConfirmOpen, setEmitConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!orgId) return;
@@ -86,7 +112,31 @@ export default function RoadsensPage() {
     setCalcResultId(null);
     setPvResult(null);
     setPvError(null);
+    setSnapshotStatus(null);
+    setEmitConfirmOpen(false);
   }, [projectId]);
+
+  // Miroir de `onCalcResultId`, mais réinitialise aussi la confirmation
+  // d'émission-sans-document : un NOUVEAU calcul remet tout à zéro, jamais de
+  // confirmation « héritée » d'un calcul précédent.
+  const handleCalcResultId = useCallback((id: string | null) => {
+    setCalcResultId(id);
+    setEmitConfirmOpen(false);
+  }, []);
+
+  const handleSnapshotStatus = useCallback((event: SnapshotStatusEvent) => {
+    setSnapshotStatus(event);
+  }, []);
+
+  // Statut de capture APPLICABLE au calcul COURANT uniquement (garde anti-
+  // staleness : un événement pour un calcResultId différent — calcul précédent
+  // — est ignoré, `captureStatus` retombe alors à `null`, donc au repli « en
+  // attente », jamais à un faux 'confirmed' hérité).
+  const captureStatus =
+    snapshotStatus && snapshotStatus.calcResultId === calcResultId
+      ? snapshotStatus.status
+      : null;
+  const captureReady = captureStatus === 'confirmed' || captureStatus === 'failed';
 
   const handleEmitPv = useCallback(async () => {
     if (!calcResultId || !orgId || !projectId) return;
@@ -95,6 +145,7 @@ export default function RoadsensPage() {
     try {
       const pv = await emitPv(orgId, projectId, { calcResultId });
       setPvResult(pv);
+      setEmitConfirmOpen(false);
     } catch (err: unknown) {
       setPvError(
         (err as { message?: string })?.message ?? "Erreur lors de l'émission du PV.",
@@ -104,10 +155,24 @@ export default function RoadsensPage() {
     }
   }, [calcResultId, orgId, projectId]);
 
+  // M3 : sur capture 'confirmed' → émission directe (comportement inchangé).
+  // Sur capture 'failed' → 1er clic affiche l'avertissement, seul le 2e clic
+  // (« Confirmer… ») appelle réellement emitPv. Tant que la capture n'est ni
+  // confirmée ni en échec (en cours), le bouton est désactivé — cf. `canEmitPv`.
+  const handleEmitClick = useCallback(() => {
+    if (captureStatus === 'failed' && !emitConfirmOpen) {
+      setEmitConfirmOpen(true);
+      return;
+    }
+    handleEmitPv();
+  }, [captureStatus, emitConfirmOpen, handleEmitPv]);
+
   const handleNouveauCalcul = useCallback(() => {
     setCalcResultId(null);
     setPvResult(null);
     setPvError(null);
+    setSnapshotStatus(null);
+    setEmitConfirmOpen(false);
   }, []);
 
   if (!mounted) {
@@ -119,7 +184,24 @@ export default function RoadsensPage() {
   const gate = evaluateGate(ent, ENGINE_ID);
   const project = projects.find((p) => p.id === projectId);
   const quotaLow = ent ? isQuotaLow(ent) : false;
-  const canEmitPv = !!calcResultId && !emittingPv && !pvResult;
+  // M3 (revue adverse) : n'active JAMAIS le scellement tant que la capture du
+  // document n'est pas résolue (confirmée OU en échec confirmé) — ferme la
+  // course « calcul terminé » vs « POST snapshot encore en vol ».
+  const canEmitPv = !!calcResultId && !emittingPv && !pvResult && captureReady;
+  const emitLabel = emittingPv
+    ? 'Émission…'
+    : !calcResultId
+      ? 'Émettre le PV scellé'
+      : !captureReady
+        ? 'Capture du document…'
+        : captureStatus === 'failed' && emitConfirmOpen
+          ? "Confirmer l'émission sans document"
+          : 'Émettre le PV scellé';
+  const emitTitle = !calcResultId
+    ? 'Lancez un calcul dans l’outil avant d’émettre le PV'
+    : !captureReady
+      ? 'Capture du document en cours — patientez quelques secondes.'
+      : undefined;
 
   return (
     <div
@@ -187,14 +269,10 @@ export default function RoadsensPage() {
           <button
             type="button"
             data-testid="btn-emettre-pv"
-            onClick={handleEmitPv}
+            onClick={handleEmitClick}
             disabled={!canEmitPv}
             aria-busy={emittingPv}
-            title={
-              !calcResultId
-                ? 'Lancez un calcul dans l’outil avant d’émettre le PV'
-                : undefined
-            }
+            title={emitTitle}
             style={{
               background: canEmitPv ? ACCENT : '#b7c2cd',
               color: '#fff',
@@ -206,10 +284,50 @@ export default function RoadsensPage() {
               cursor: canEmitPv ? 'pointer' : 'not-allowed',
             }}
           >
-            {emittingPv ? 'Émission…' : 'Émettre le PV scellé'}
+            {emitLabel}
           </button>
         </div>
       </div>
+
+      {/* M3 (revue adverse) : capture définitivement en échec pour ce calcul —
+          avertissement explicite AVANT tout scellement sans document (même
+          patron que CalculsClient). */}
+      {captureStatus === 'failed' && emitConfirmOpen && !pvResult && (
+        <div
+          role="alert"
+          data-testid="capture-failed-warning"
+          style={{
+            background: '#f4edd8',
+            border: '1px solid #e6cf9c',
+            color: '#96701a',
+            borderRadius: 12,
+            padding: '11px 15px',
+            marginBottom: 14,
+          }}
+        >
+          Le document de l&apos;outil n&apos;a pas pu être capturé pour ce calcul — le PV
+          sera émis au format standard, pas le document de l&apos;outil. Relancez le
+          calcul pour retenter la capture.
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => setEmitConfirmOpen(false)}
+              style={{
+                background: 'transparent',
+                border: '1px solid #96701a',
+                color: '#96701a',
+                borderRadius: 8,
+                padding: '5px 12px',
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
 
       {!gate.allowed && (
         <div
@@ -269,9 +387,28 @@ export default function RoadsensPage() {
             marginBottom: 14,
           }}
         >
-          <div style={{ fontWeight: 700, color: '#2e7d4f', marginBottom: 10 }}>
-            PV scellé n° {pvResult.number ?? pvResult.id} — intégrité + horodatage
-            garantis.
+          <div
+            data-testid="pv-success-banner"
+            style={{ fontWeight: 700, color: '#2e7d4f', marginBottom: 10 }}
+          >
+            {/* B1 (revue adverse) + wording honnête (décision titulaire M2) :
+                bannière FACTUELLE — n'annonce le document de l'outil que si le
+                backend confirme documentFormat==='html', et ne survend jamais
+                sa portée. La portée réelle du sceau = intégrité post-scellement
+                + sortie moteur recalculée/vérifiée, PAS une preuve infalsifiable
+                des valeurs affichées à l'écran — donc jamais « garanti » ni
+                « au mm près » accolés au document, dans AUCUN des deux cas. */}
+            {pvResult.documentFormat === 'html' ? (
+              <>
+                PV scellé n° {pvResult.number ?? pvResult.id} — document de l&apos;outil
+                scellé (intégrité + horodatage serveur).
+              </>
+            ) : (
+              <>
+                PV scellé n° {pvResult.number ?? pvResult.id} — émis au format standard.
+                Document de l&apos;outil non capturé pour ce calcul.
+              </>
+            )}
           </div>
           <PvEmittedActions
             pv={pvResult}
@@ -308,7 +445,8 @@ export default function RoadsensPage() {
           projectId={projectId || null}
           projectLabel={project?.name ?? ''}
           accessToken={getStoredToken()}
-          onCalcResultId={setCalcResultId}
+          onCalcResultId={handleCalcResultId}
+          onSnapshotStatus={handleSnapshotStatus}
         />
       </div>
     </div>

@@ -106,6 +106,8 @@ function sealPv(input: unknown, output: unknown): OfficialPv {
     contentHash: sealContentHash(canonical),
     hmac: sealHmac(canonical, SECRET),
     sealedAt: new Date(sealedAtIso),
+    documentHtml: null,
+    documentFormat: null,
   };
 }
 

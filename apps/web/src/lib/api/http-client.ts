@@ -43,6 +43,7 @@ import type {
   CreateProjectRequest,
   CalcResult,
   CalcRequest,
+  CalcSnapshot,
   OfficialPv,
   EmitPvRequest,
   VerifyPvResponse,
@@ -455,7 +456,10 @@ export async function httpRenameProject(
  * scellés du projet sont préservés côté serveur ; le projet disparaît
  * simplement des listes/lectures tenant (GET /projects l'exclut).
  */
-export async function httpDeleteProject(orgId: string, projectId: string): Promise<Project> {
+export async function httpDeleteProject(
+  orgId: string,
+  projectId: string,
+): Promise<Project> {
   const raw = await apiFetch<PrismaProject>(`/projects/${projectId}`, {
     method: 'DELETE',
     orgId,
@@ -516,6 +520,48 @@ export async function httpRunCalc(
   });
 }
 
+/**
+ * Persiste le DOCUMENT rendu par l'outil (option 3 « sceller le document
+ * imprimé ») sur un calc-result existant. Le HTML ne contient QUE des données
+ * déjà rendues (whitelistées serveur) + SVG — aucune science (DoD §8).
+ * Renvoie void (204/200 sans corps exploité).
+ */
+export async function httpSaveCalcSnapshot(
+  orgId: string,
+  projectId: string,
+  calcResultId: string,
+  snapshot: { displayHtml: string; printHtml: string },
+): Promise<void> {
+  await apiFetch<void>(`/projects/${projectId}/calc-results/${calcResultId}/snapshot`, {
+    method: 'POST',
+    body: JSON.stringify(snapshot),
+    orgId,
+  });
+}
+
+/**
+ * GET /projects/:projectId/calc-results/:calcResultId/snapshot — relit le
+ * document capturé de l'outil (option 3) pour re-affichage/re-impression AVANT
+ * scellement. 404 = calcul sans capture (ancien calcul / moteur non-clone) —
+ * renvoie `null` plutôt que de lever, l'appelant retombe sur son panneau de
+ * métadonnées (contrat explicite, pas une erreur).
+ */
+export async function httpGetCalcSnapshot(
+  orgId: string,
+  projectId: string,
+  calcResultId: string,
+): Promise<CalcSnapshot | null> {
+  try {
+    return await apiFetch<CalcSnapshot>(
+      `/projects/${projectId}/calc-results/${calcResultId}/snapshot`,
+      { orgId },
+    );
+  } catch (err: unknown) {
+    if ((err as ApiError)?.statusCode === 404) return null;
+    throw err;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // PV
 // ---------------------------------------------------------------------------
@@ -569,10 +615,9 @@ export async function httpVerifyPv(
   // Il n'existe pas de route /pvs/:id/verify.
   // La vérification d'intégrité = lire GET /projects/:projectId/pvs/:pvId
   // et exploiter le champ `sealValid` renvoyé par le backend.
-  const raw = await apiFetch<PrismaOfficialPv>(
-    `/projects/${projectId}/pvs/${pvId}`,
-    { orgId },
-  );
+  const raw = await apiFetch<PrismaOfficialPv>(`/projects/${projectId}/pvs/${pvId}`, {
+    orgId,
+  });
   return {
     pvId: raw.pv.id,
     intact: raw.sealValid ?? false,
@@ -610,4 +655,70 @@ export async function httpDownloadPvPdf(
     } satisfies ApiError;
   }
   return res.blob();
+}
+
+/**
+ * GET /projects/:projectId/pvs/:pvId/document — sert le DOCUMENT CLIENT SCELLÉ
+ * (HTML d'impression capturé, à afficher/imprimer TEL QUEL — option 3). Réponse
+ * `text/html`, pas JSON : lecture par `res.text()`, pas `apiFetch`.
+ *
+ * 404 = PV sans document HTML scellé (ancien PV / autre moteur) → `null`.
+ * 409 = intégrité rompue (sceau invalide ou document altéré, ConflictException
+ * backend, cf. pv.service.ts documentForView) → `null` ÉGALEMENT (B1, revue
+ * adverse) : par défense, on ne laisse JAMAIS l'ingénieur dans un cul-de-sac —
+ * l'appelant retombe sur GET .../pvs/:pvId/pdf, qui reste un PV valide (son
+ * propre contrôle d'intégrité s'applique indépendamment). Le 409 est loggé en
+ * diagnostic DISTINCT (anomalie réelle, pas un simple "document absent") pour
+ * ne pas se confondre avec un 404 ordinaire dans les logs/observabilité.
+ * Toute AUTRE erreur (réseau, 5xx…) reste propagée : ce n'est pas un motif de
+ * repli documenté, la surfacer évite de masquer une vraie panne.
+ */
+export async function httpGetPvDocument(
+  orgId: string,
+  projectId: string,
+  pvId: string,
+): Promise<{ html: string } | null> {
+  const token = getAccessToken();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (orgId) headers['X-Org-Id'] = orgId;
+
+  const res = await fetch(`${API_BASE}/projects/${projectId}/pvs/${pvId}/document`, {
+    headers,
+  });
+
+  if (res.status === 404) return null;
+
+  if (res.status === 409) {
+    let message = 'Document altéré ou sceau rompu (409).';
+    try {
+      const body = (await res.json()) as { message?: string };
+      if (body?.message) message = body.message;
+    } catch {
+      /* corps non JSON */
+    }
+    // Diagnostic distinct (anomalie d'intégrité) — n'empêche PAS le repli PDF.
+    console.warn(
+      `[PV] Document scellé refusé (409, intégrité) pour ${pvId} — repli sur le PDF. ${message}`,
+    );
+    return null;
+  }
+
+  if (!res.ok) {
+    let message = `Erreur chargement du document (${res.status})`;
+    try {
+      const body = (await res.json()) as { message?: string };
+      if (body?.message) message = body.message;
+    } catch {
+      /* corps non JSON */
+    }
+    throw {
+      statusCode: res.status,
+      reason: 'SERVER_ERROR',
+      message,
+    } satisfies ApiError;
+  }
+
+  const html = await res.text();
+  return { html };
 }
