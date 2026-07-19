@@ -11,7 +11,7 @@
 
 import {
   FolderOpen,
-    Settings,
+  Settings,
   HelpCircle,
   ChevronLeft,
   ChevronRight,
@@ -33,9 +33,9 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { Avatar } from '@/components/ui/Avatar';
 import { Logotype, StrataBar } from '@/components/ui/Logotype';
 import { logout, getStoredUser, getStoredOrgs, getEntitlements } from '@/lib/api/client';
-import { engineIdForSoftware } from '@/lib/software-catalog';
-import { useOrgId } from '@/lib/org-context';
 import type { OrgClaim } from '@/lib/api/types';
+import { useOrgId } from '@/lib/org-context';
+import { engineIdForSoftware } from '@/lib/software-catalog';
 
 const SIDEBAR_STATE_KEY = 'sidebar-desktop-state';
 
@@ -69,12 +69,42 @@ function useNavItems(orgSlug: string): NavItem[] {
 
 /** Items de navigation pour les logiciels (section dédiée). */
 const ALL_LOGICIELS: NavItem[] = [
-  { id: 'roadsens', label: 'ROADSENS — Chaussées', icon: <Route size={20} strokeWidth={1.5} aria-hidden="true" />, href: '/logiciels/roadsens' },
-  { id: 'terzaghi', label: 'Terzaghi — Fondations superficielles', icon: <Layers size={20} strokeWidth={1.5} aria-hidden="true" />, href: '/logiciels/terzaghi' },
-  { id: 'casagrande', label: 'CASAGRANDE — Pieux', icon: <Columns3 size={20} strokeWidth={1.5} aria-hidden="true" />, href: '/logiciels/casagrande' },
-  { id: 'geoplaque', label: 'GEOPLAQUE — Radier', icon: <Grid3x3 size={20} strokeWidth={1.5} aria-hidden="true" />, href: '/logiciels/geoplaque' },
-  { id: 'pressiopro', label: 'PressioPro — Pressiomètre', icon: <Gauge size={20} strokeWidth={1.5} aria-hidden="true" />, href: '/logiciels/pressiopro' },
-  { id: 'fastlab', label: 'FASTLAB — Laboratoire', icon: <FlaskConical size={20} strokeWidth={1.5} aria-hidden="true" />, href: '/logiciels/fastlab' },
+  {
+    id: 'roadsens',
+    label: 'ROADSENS — Chaussées',
+    icon: <Route size={20} strokeWidth={1.5} aria-hidden="true" />,
+    href: '/logiciels/roadsens',
+  },
+  {
+    id: 'terzaghi',
+    label: 'Terzaghi — Fondations superficielles',
+    icon: <Layers size={20} strokeWidth={1.5} aria-hidden="true" />,
+    href: '/logiciels/terzaghi',
+  },
+  {
+    id: 'casagrande',
+    label: 'CASAGRANDE — Pieux',
+    icon: <Columns3 size={20} strokeWidth={1.5} aria-hidden="true" />,
+    href: '/logiciels/casagrande',
+  },
+  {
+    id: 'geoplaque',
+    label: 'GEOPLAQUE — Radier',
+    icon: <Grid3x3 size={20} strokeWidth={1.5} aria-hidden="true" />,
+    href: '/logiciels/geoplaque',
+  },
+  {
+    id: 'pressiopro',
+    label: 'PressioPro — Pressiomètre',
+    icon: <Gauge size={20} strokeWidth={1.5} aria-hidden="true" />,
+    href: '/logiciels/pressiopro',
+  },
+  {
+    id: 'fastlab',
+    label: 'FASTLAB — Laboratoire',
+    icon: <FlaskConical size={20} strokeWidth={1.5} aria-hidden="true" />,
+    href: '/logiciels/fastlab',
+  },
 ];
 
 // La sidebar ne liste QUE les logiciels INCLUS dans le pack de l'org (entitlements).
@@ -88,9 +118,15 @@ function useLogicielsItems(orgSlug: string): NavItem[] {
     if (!orgId) return;
     let alive = true;
     getEntitlements(orgId)
-      .then((e) => { if (alive) setModules(e.modules ?? []); })
-      .catch(() => { if (alive) setModules([]); });
-    return () => { alive = false; };
+      .then((e) => {
+        if (alive) setModules(e.modules ?? []);
+      })
+      .catch(() => {
+        if (alive) setModules([]);
+      });
+    return () => {
+      alive = false;
+    };
   }, [orgId]);
 
   if (modules === null) return [];
@@ -328,7 +364,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
                     color: active ? 'var(--accent-action-on-nav)' : 'var(--text-on-nav)',
                     background: active ? 'rgba(31,78,74,0.12)' : 'transparent',
                     borderLeft: active
-                      ? '3px solid var(--struct-petrole)'
+                      ? '3px solid var(--struct-petrole-text)'
                       : '3px solid transparent',
                     fontSize: 'var(--text-sm)',
                     fontWeight: active ? 500 : 400,
@@ -403,7 +439,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
                     color: active ? 'var(--accent-action-on-nav)' : 'var(--text-on-nav)',
                     background: active ? 'rgba(31,78,74,0.12)' : 'transparent',
                     borderLeft: active
-                      ? '3px solid var(--struct-petrole)'
+                      ? '3px solid var(--struct-petrole-text)'
                       : '3px solid transparent',
                     fontSize: 'var(--text-sm)',
                     fontWeight: active ? 500 : 400,
@@ -478,7 +514,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
                     color: active ? 'var(--accent-action-on-nav)' : 'var(--text-on-nav)',
                     background: active ? 'rgba(31,78,74,0.12)' : 'transparent',
                     borderLeft: active
-                      ? '3px solid var(--struct-petrole)'
+                      ? '3px solid var(--struct-petrole-text)'
                       : '3px solid transparent',
                     fontSize: 'var(--text-sm)',
                     fontWeight: active ? 500 : 400,
@@ -629,7 +665,10 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
               <LogOut size={16} strokeWidth={1.5} aria-hidden="true" />
               {collapsed && <span className="sr-only">Se déconnecter</span>}
             </button>
-            <NavTooltip label="Se déconnecter" visible={collapsed && tooltipId === 'logout'} />
+            <NavTooltip
+              label="Se déconnecter"
+              visible={collapsed && tooltipId === 'logout'}
+            />
           </div>
         </div>
       </div>
@@ -662,7 +701,10 @@ export function Sidebar({ orgSlug }: SidebarProps) {
   // Synchronise le décalage du contenu (.shell-main) avec la largeur réelle de la
   // sidebar : sans ça, au repli (240→64) un espace vide reste à gauche.
   useEffect(() => {
-    document.documentElement.style.setProperty('--shell-sidebar-w', collapsed ? '64px' : '240px');
+    document.documentElement.style.setProperty(
+      '--shell-sidebar-w',
+      collapsed ? '64px' : '240px',
+    );
   }, [collapsed]);
 
   const [mobileOpen, setMobileOpen] = useState(false);

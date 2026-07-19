@@ -178,11 +178,13 @@ export default function ProjetLayoutClient({
                       fontWeight: active ? 600 : 400,
                       // État actif marqué en pétrole (règle shell : actif = pétrole, jamais latérite) :
                       // libellé pétrole + fond pétrole très léger + soulignement → présence sans casser l'identité.
-                      color: active ? 'var(--struct-petrole)' : 'var(--text-secondary)',
+                      color: active
+                        ? 'var(--struct-petrole-text)'
+                        : 'var(--text-secondary)',
                       background: active ? 'rgba(31, 78, 74, 0.07)' : 'transparent',
                       textDecoration: 'none',
                       borderBottom: active
-                        ? '2px solid var(--struct-petrole)'
+                        ? '2px solid var(--struct-petrole-text)'
                         : '2px solid transparent',
                       transition: `color var(--dur-fast) var(--ease-state), border-color var(--dur-fast) var(--ease-state)`,
                       whiteSpace: 'nowrap',

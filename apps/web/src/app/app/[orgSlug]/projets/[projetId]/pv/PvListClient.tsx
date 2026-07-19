@@ -358,7 +358,7 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
                 height: 16,
                 borderRadius: '50%',
                 border: '2px solid var(--border-default)',
-                borderTopColor: 'var(--struct-petrole)',
+                borderTopColor: 'var(--struct-petrole-text)',
                 animation: 'spin 1s linear infinite',
                 flexShrink: 0,
               }}

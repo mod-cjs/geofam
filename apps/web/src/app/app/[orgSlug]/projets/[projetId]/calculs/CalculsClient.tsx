@@ -300,7 +300,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
 
     return (
       <div style={ACTIONS_ROW_STYLE}>
-        <span style={{ fontSize: 12, color: 'var(--text-tertiary, #96a0ab)' }}>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
           Aucun PV émis — ouvrez le logiciel pour en générer un.
         </span>
       </div>
@@ -341,7 +341,10 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   function renderSealError() {
     if (!sealError) return null;
     return (
-      <div role="alert" style={{ marginTop: 10, fontSize: 12, color: '#b23a2e' }}>
+      <div
+        role="alert"
+        style={{ marginTop: 10, fontSize: 12, color: 'var(--status-fail-tx)' }}
+      >
         {sealError}
       </div>
     );
@@ -350,7 +353,10 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   function renderPrintError() {
     if (!printError) return null;
     return (
-      <div role="alert" style={{ marginTop: 10, fontSize: 12, color: '#b23a2e' }}>
+      <div
+        role="alert"
+        style={{ marginTop: 10, fontSize: 12, color: 'var(--status-fail-tx)' }}
+      >
         {printError}
       </div>
     );
@@ -394,7 +400,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
             Chargement…
           </div>
         ) : error ? (
-          <div style={{ fontSize: 13, color: '#b23a2e' }} role="alert">
+          <div style={{ fontSize: 13, color: 'var(--status-fail-tx)' }} role="alert">
             {error}
           </div>
         ) : calculs.length === 0 ? (
@@ -431,8 +437,8 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                       textAlign: 'left',
                       cursor: 'pointer',
                       fontFamily: 'inherit',
-                      background: active ? 'var(--surface-panel, #fff)' : 'transparent',
-                      border: `1px solid ${active ? 'var(--border-secondary, #d2d8e1)' : 'var(--border-tertiary, #e6eaef)'}`,
+                      background: active ? 'var(--surface-base)' : 'transparent',
+                      border: `1px solid ${active ? 'var(--border-default)' : 'var(--border-subtle)'}`,
                       borderRadius: 10,
                       padding: '10px 12px',
                     }}
@@ -463,8 +469,14 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                             fontWeight: 800,
                             padding: '2px 7px',
                             borderRadius: 20,
-                            background: verdict === 'PASS' ? '#e4efe6' : '#f6e5e1',
-                            color: verdict === 'PASS' ? '#2e7d4f' : '#b23a2e',
+                            background:
+                              verdict === 'PASS'
+                                ? 'var(--status-pass-bg)'
+                                : 'var(--status-fail-bg)',
+                            color:
+                              verdict === 'PASS'
+                                ? 'var(--status-pass-tx)'
+                                : 'var(--status-fail-tx)',
                           }}
                         >
                           {verdict === 'PASS' ? 'CONFORME' : 'NON CONF.'}
@@ -489,7 +501,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                       suppressHydrationWarning
                       style={{
                         fontSize: 10.5,
-                        color: 'var(--text-tertiary, #96a0ab)',
+                        color: 'var(--text-muted)',
                         marginTop: 1,
                       }}
                     >
@@ -520,8 +532,8 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
         ) : (
           <div
             style={{
-              background: 'var(--surface-panel, #fff)',
-              border: '1px solid var(--border-tertiary, #e6eaef)',
+              background: 'var(--surface-base)',
+              border: '1px solid var(--border-subtle)',
               borderRadius: 14,
               padding: '18px 20px',
             }}
@@ -559,7 +571,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                   style={{
                     width: '100%',
                     minHeight: 420,
-                    border: '1px solid var(--border-tertiary, #e6eaef)',
+                    border: '1px solid var(--border-subtle)',
                     borderRadius: 10,
                     background: '#fff',
                     marginBottom: 16,
@@ -575,7 +587,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                   style={{
                     marginTop: 16,
                     fontSize: 10.5,
-                    color: 'var(--text-tertiary, #96a0ab)',
+                    color: 'var(--text-muted)',
                     fontStyle: 'italic',
                   }}
                 >
@@ -630,7 +642,10 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                           aria-label={`Verdict : ${output.verdict === 'PASS' ? 'CONFORME' : 'NON CONFORME'}`}
                           style={{
                             fontWeight: 700,
-                            color: output.verdict === 'PASS' ? '#2e7d4f' : '#b23a2e',
+                            color:
+                              output.verdict === 'PASS'
+                                ? 'var(--status-pass-tx)'
+                                : 'var(--status-fail-tx)',
                           }}
                         >
                           {output.verdict === 'PASS' ? 'CONFORME' : 'NON CONFORME'}
@@ -649,7 +664,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                   style={{
                     marginBottom: 16,
                     fontSize: 11.5,
-                    color: 'var(--text-tertiary, #96a0ab)',
+                    color: 'var(--text-muted)',
                     fontStyle: 'italic',
                   }}
                 >
@@ -666,7 +681,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                   style={{
                     marginTop: 16,
                     fontSize: 10.5,
-                    color: 'var(--text-tertiary, #96a0ab)',
+                    color: 'var(--text-muted)',
                     fontStyle: 'italic',
                   }}
                 >

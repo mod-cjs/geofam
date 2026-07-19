@@ -246,7 +246,7 @@ export default function OverviewPage({ params: paramsPromise }: Props) {
                   size={16}
                   strokeWidth={1.5}
                   aria-hidden="true"
-                  style={{ color: 'var(--struct-petrole)' }}
+                  style={{ color: 'var(--struct-petrole-text)' }}
                 />
                 <span
                   style={{
@@ -297,7 +297,7 @@ function StatCard({
         gap: 12,
       }}
     >
-      <div style={{ color: 'var(--struct-petrole)' }}>{icon}</div>
+      <div style={{ color: 'var(--struct-petrole-text)' }}>{icon}</div>
       <div>
         <div
           style={{

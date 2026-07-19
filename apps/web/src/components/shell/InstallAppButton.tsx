@@ -20,8 +20,9 @@
  * documentée dans Sidebar/Topbar).
  */
 
-import { useCallback, useEffect, useState } from 'react';
 import { Download, Info } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+
 import { Modal } from '@/components/ui/Modal';
 
 /**
@@ -37,7 +38,8 @@ interface BeforeInstallPromptEvent extends Event {
 function isStandaloneDisplay(): boolean {
   if (typeof window === 'undefined') return false;
   const mql = window.matchMedia?.('(display-mode: standalone)');
-  const iosStandalone = (window.navigator as Navigator & { standalone?: boolean }).standalone;
+  const iosStandalone = (window.navigator as Navigator & { standalone?: boolean })
+    .standalone;
   return Boolean(mql?.matches) || iosStandalone === true;
 }
 
@@ -56,7 +58,9 @@ const linkStyle: React.CSSProperties = {
 };
 
 export function InstallAppButton() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(
+    null,
+  );
   const [installed, setInstalled] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -93,7 +97,11 @@ export function InstallAppButton() {
 
   if (deferredPrompt) {
     return (
-      <button type="button" onClick={handleInstall} style={{ ...linkStyle, color: 'var(--struct-petrole)' }}>
+      <button
+        type="button"
+        onClick={handleInstall}
+        style={{ ...linkStyle, color: 'var(--struct-petrole-text)' }}
+      >
         <Download size={14} strokeWidth={1.5} aria-hidden="true" />
         Installer l&rsquo;application
       </button>
@@ -114,37 +122,86 @@ export function InstallAppButton() {
         size="sm"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+          <p
+            style={{
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-secondary)',
+              margin: 0,
+              lineHeight: 1.6,
+            }}
+          >
             Certains navigateurs — dont <strong>DIA</strong> — ne proposent pas
-            l&rsquo;installation d&rsquo;application web. Pour installer GEOFAM, utilisez de
-            préférence <strong>Chrome</strong> ou <strong>Edge</strong>, puis suivez les
-            instructions ci-dessous selon votre appareil.
+            l&rsquo;installation d&rsquo;application web. Pour installer GEOFAM, utilisez
+            de préférence <strong>Chrome</strong> ou <strong>Edge</strong>, puis suivez
+            les instructions ci-dessous selon votre appareil.
           </p>
 
           <section>
-            <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px' }}>
+            <h3
+              style={{
+                fontSize: 'var(--text-sm)',
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+                margin: '0 0 4px',
+              }}
+            >
               Ordinateur (Chrome / Edge)
             </h3>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
-              Icône d&rsquo;installation dans la barre d&rsquo;adresse, ou menu du navigateur
-              (⋮) → « Installer l&rsquo;application ».
+            <p
+              style={{
+                fontSize: 'var(--text-sm)',
+                color: 'var(--text-secondary)',
+                margin: 0,
+                lineHeight: 1.6,
+              }}
+            >
+              Icône d&rsquo;installation dans la barre d&rsquo;adresse, ou menu du
+              navigateur (⋮) → « Installer l&rsquo;application ».
             </p>
           </section>
 
           <section>
-            <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px' }}>
+            <h3
+              style={{
+                fontSize: 'var(--text-sm)',
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+                margin: '0 0 4px',
+              }}
+            >
               Android (Chrome)
             </h3>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+            <p
+              style={{
+                fontSize: 'var(--text-sm)',
+                color: 'var(--text-secondary)',
+                margin: 0,
+                lineHeight: 1.6,
+              }}
+            >
               Menu (⋮) → « Ajouter à l&rsquo;écran d&rsquo;accueil ».
             </p>
           </section>
 
           <section>
-            <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px' }}>
+            <h3
+              style={{
+                fontSize: 'var(--text-sm)',
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+                margin: '0 0 4px',
+              }}
+            >
               iPhone / iPad (Safari)
             </h3>
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
+            <p
+              style={{
+                fontSize: 'var(--text-sm)',
+                color: 'var(--text-secondary)',
+                margin: 0,
+                lineHeight: 1.6,
+              }}
+            >
               Bouton Partager → « Sur l&rsquo;écran d&rsquo;accueil ».
             </p>
           </section>
