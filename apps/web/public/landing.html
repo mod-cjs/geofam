@@ -5,6 +5,21 @@
 <title>GEOFAM — Le calcul géotechnique, scellé sur le web</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Six logiciels de géotechnique et de chaussées dans le navigateur. Chaque calcul produit un procès-verbal numéroté, horodaté et scellé.">
+<meta name="theme-color" content="#080a0d">
+<!-- Partage social (WhatsApp, LinkedIn, Facebook) -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="GEOFAM">
+<meta property="og:title" content="GEOFAM — Six logiciels de géotechnique, un seul accès">
+<meta property="og:description" content="Chaussées, fondations, pieux, radiers, pressiomètre, laboratoire — accessibles sur tous vos postes. Chaque calcul ressort en PV numéroté et scellé.">
+<meta property="og:url" content="https://geofam.vercel.app/">
+<meta property="og:image" content="https://geofam.vercel.app/geofam.jpeg">
+<meta property="og:image:width" content="1254">
+<meta property="og:image:height" content="1254">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="GEOFAM — Six logiciels de géotechnique, un seul accès">
+<meta name="twitter:description" content="Chaussées, fondations, pieux, radiers, pressiomètre, laboratoire — sur tous vos postes. Chaque calcul ressort scellé.">
+<meta name="twitter:image" content="https://geofam.vercel.app/geofam.jpeg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -37,6 +52,13 @@
 
   /* strates de carotte */
   --s1:#7d6f52; --s2:#a9793f; --s3:#c99a4e; --s4:#9aa0a2; --s5:#5c6b73; --s6:#3f4c54;
+  /* système couleur par domaine (réutilisé : bande normes, cartes logiciels, onglets démo) */
+  --d-ch:#a9793f;   /* chaussées   · ROADSENS  */
+  --d-fd:#c99a4e;   /* fondations  · Terzaghi  */
+  --d-px:#9aa0a2;   /* pieux       · Casagrande*/
+  --d-rd:#5c6b73;   /* radiers     · Geoplaque */
+  --d-pr:#d8be7d;   /* pressiomètre· PressioPro*/
+  --d-lb:#7d6f52;   /* laboratoire · Fastlab   */
 
   --maxw:1200px;
   --gut:clamp(20px,5vw,72px);
@@ -113,17 +135,16 @@ header{position:sticky;top:0;z-index:40;background:rgba(8,10,13,.72);backdrop-fi
 .brand{display:flex;align-items:center;gap:11px;font-family:var(--disp);font-weight:700;font-size:1.12rem;letter-spacing:-.02em}
 .brand .logo{width:28px;height:28px;flex:none}
 /* logo officiel GEOFAM (public/geofam.jpeg) — monogramme cropé dans un badge clair */
-.logo-badge{width:32px;height:32px;flex:none;border-radius:9px;
+.logo-badge{width:30px;height:30px;flex:none;border-radius:8px;
   background:#f5f3ec url("/geofam.jpeg") no-repeat 50% 7%;background-size:156%;
   box-shadow:0 0 0 1px var(--hair-2),0 4px 10px -5px rgba(0,0,0,.6)}
 .nav-cta{display:flex;align-items:center;gap:10px}
-@media (max-width:420px){.nav-cta .btn-ghost{display:none}}
 .nav-links{display:flex;gap:26px;align-items:center;font-size:var(--t--1);color:var(--ink-2)}
 .nav-links a{position:relative;padding-block:3px;transition:color .18s}
 .nav-links a:hover{color:var(--ink)}
 .nav-links a::after{content:"";position:absolute;left:0;bottom:-1px;width:0;height:1px;background:var(--amber);transition:width .22s}
 .nav-links a:hover::after{width:100%}
-@media (max-width:720px){.nav-links{display:none}}
+@media (max-width:720px){.nav-links{display:none}.nav-cta .btn-ghost{display:none}}
 
 .btn{display:inline-flex;align-items:center;gap:.5em;font-family:var(--sans);font-weight:500;
   font-size:var(--t--1);padding:.72em 1.15em;border-radius:8px;border:1px solid transparent;cursor:pointer;
@@ -284,24 +305,114 @@ section+section{border-top:1px solid var(--hair)}
 .sec-head .sub{margin-top:16px;color:var(--ink-2);font-size:var(--t-1);line-height:1.5;font-weight:450}
 
 /* 6 logiciels */
-.tools{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:44px}
-@media (max-width:820px){.tools{grid-template-columns:repeat(2,1fr)}}
-@media (max-width:520px){.tools{grid-template-columns:1fr}}
-.tool{position:relative;padding:22px 20px;border-radius:13px;border:1px solid var(--hair);
-  background:linear-gradient(180deg,var(--panel),var(--bg-2));overflow:hidden;
-  transition:transform .25s cubic-bezier(.2,.7,.3,1),border-color .25s,box-shadow .25s}
-.tool::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;
-  background:linear-gradient(90deg,transparent,var(--edge),transparent);opacity:0;transition:opacity .25s}
-.tool:hover{transform:translateY(-4px);border-color:var(--amber-line);
-  box-shadow:0 20px 40px -24px rgba(240,162,75,.35)}
-.tool:hover::before{opacity:1}
-.tool .code{font-family:var(--mono);font-size:.68rem;font-weight:500;letter-spacing:.08em;color:var(--amber-2);
-  display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;
-  border:1px solid var(--amber-line);border-radius:9px;background:var(--amber-dim)}
-.tool h3{font-family:var(--disp);font-size:var(--t-1);margin-top:15px;font-weight:600}
-.tool p{margin-top:8px;color:var(--muted);font-size:var(--t--1);line-height:1.5}
-.tool .norm{font-family:var(--mono);font-size:.62rem;color:var(--ink-2);margin-top:14px;
-  padding-top:12px;border-top:1px solid var(--hair);letter-spacing:.02em}
+/* --- grille des 6 logiciels, tout visible --- */
+.grid6{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:44px}
+@media (max-width:900px){.grid6{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:560px){.grid6{grid-template-columns:1fr}}
+/* cascade à l'apparition : chaque tuile décalée */
+.g6.reveal{transition:opacity .6s cubic-bezier(.2,.7,.3,1),transform .6s cubic-bezier(.2,.7,.3,1)}
+.grid6 .g6:nth-child(1){transition-delay:.00s}
+.grid6 .g6:nth-child(2){transition-delay:.07s}
+.grid6 .g6:nth-child(3){transition-delay:.14s}
+.grid6 .g6:nth-child(4){transition-delay:.21s}
+.grid6 .g6:nth-child(5){transition-delay:.28s}
+.grid6 .g6:nth-child(6){transition-delay:.35s}
+.grid6 .g6:nth-child(7){transition-delay:.42s}
+@media (prefers-reduced-motion:reduce){.grid6 .g6{transition-delay:0s!important}}
+.g6{position:relative;display:flex;flex-direction:column;border-radius:15px;overflow:hidden;
+  border:1px solid var(--hair);background:linear-gradient(180deg,var(--panel),var(--bg-2));
+  transform-style:preserve-3d;will-change:transform;
+  transition:transform .3s cubic-bezier(.2,.7,.3,1),border-color .28s,box-shadow .28s}
+.g6.tilting{transition:border-color .28s,box-shadow .28s} /* pendant le suivi souris, pas de transition sur transform */
+/* reflet premium qui suit l'angle */
+.g6-glare{position:absolute;inset:0;z-index:3;pointer-events:none;opacity:0;transition:opacity .3s;
+  background:radial-gradient(60% 55% at var(--gx,50%) var(--gy,0%),color-mix(in srgb,var(--c) 22%,rgba(255,255,255,.14)),transparent 60%);
+  mix-blend-mode:soft-light}
+.g6:hover .g6-glare{opacity:1}
+.g6::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;z-index:2;
+  background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--c) 70%,transparent),transparent);
+  opacity:0;transition:opacity .28s}
+.g6:hover{border-color:color-mix(in srgb,var(--c) 50%,transparent);
+  box-shadow:0 24px 48px -28px color-mix(in srgb,var(--c) 75%,transparent)}
+.g6:hover::before{opacity:1}
+.g6-icon{transition:transform .3s cubic-bezier(.2,.7,.3,1)}
+.g6:hover .g6-icon{transform:translateZ(45px) scale(1.08)}
+/* visuel : icône sur fond travaillé */
+.g6-vis{position:relative;height:130px;display:grid;place-items:center;overflow:hidden;
+  border-bottom:1px solid var(--hair);
+  background:radial-gradient(120% 100% at 50% 0,color-mix(in srgb,var(--c) 14%,transparent),transparent 62%),
+    linear-gradient(180deg,var(--bg-2),var(--bg))}
+.g6-vis::before{content:"";position:absolute;inset:0;opacity:.45;pointer-events:none;
+  background-image:repeating-linear-gradient(0deg,transparent 0 13px,color-mix(in srgb,var(--c) 8%,transparent) 13px 14px);
+  -webkit-mask-image:radial-gradient(75% 75% at 50% 45%,#000,transparent 78%);
+  mask-image:radial-gradient(75% 75% at 50% 45%,#000,transparent 78%)}
+.g6-halo{position:absolute;width:120px;height:120px;border-radius:50%;
+  background:radial-gradient(closest-side,color-mix(in srgb,var(--c) 40%,transparent),transparent 70%);
+  filter:blur(13px);opacity:.7;transition:opacity .3s}
+.g6:hover .g6-halo{opacity:1}
+.g6-icon{position:relative;z-index:1;width:76px;color:var(--c);
+  filter:drop-shadow(0 5px 14px color-mix(in srgb,var(--c) 55%,transparent))}
+.g6-icon svg{width:100%;height:auto;display:block}
+/* corps */
+.g6-body{padding:18px 20px 20px;display:flex;flex-direction:column;flex:1}
+.g6-top{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.g6-code{font-family:var(--mono);font-size:.72rem;font-weight:500;letter-spacing:.05em;color:var(--c);
+  display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;flex:none;
+  border:1px solid color-mix(in srgb,var(--c) 52%,transparent);border-radius:8px;
+  background:color-mix(in srgb,var(--c) 14%,transparent)}
+.g6-dom{font-family:var(--mono);font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;
+  color:color-mix(in srgb,var(--c) 70%,var(--ink-2))}
+.g6 h3{font-family:var(--disp);font-size:var(--t-1);font-weight:600;letter-spacing:-.02em}
+.g6-body p{margin-top:8px;color:var(--muted);font-size:var(--t--1);line-height:1.5;flex:1}
+.g6-norm{font-family:var(--mono);font-size:.62rem;letter-spacing:.02em;color:var(--ink);margin-top:14px;
+  align-self:flex-start;padding:4px 10px;border-radius:6px;
+  border:1px solid color-mix(in srgb,var(--c) 40%,var(--hair));background:color-mix(in srgb,var(--c) 8%,transparent)}
+
+/* --- animations d'icônes au survol (propres à chaque métier) --- */
+.g6 .an-dash,.g6 .an-load,.g6 .an-fric,.g6 .an-pulse,.g6 .an-b1,.g6 .an-b2,.g6 .an-b3{will-change:transform}
+/* CH : la ligne médiane défile */
+.g6:hover .an-dash{animation:an-road 1.1s linear infinite}
+@keyframes an-road{to{stroke-dashoffset:-44}}
+/* FD & RD : la charge descend puis remonte */
+.g6:hover .an-load{animation:an-drop 1.2s ease-in-out infinite}
+@keyframes an-drop{0%,100%{transform:translateY(0)}50%{transform:translateY(4px)}}
+/* PX : le frottement pulse le long du fût */
+.g6:hover .an-fric{animation:an-fric 1.1s ease-in-out infinite}
+@keyframes an-fric{0%,100%{opacity:.3}50%{opacity:.85}}
+/* PR : la sonde se dilate */
+.g6 .an-pulse{transform-box:fill-box;transform-origin:center}
+.g6:hover .an-pulse{animation:an-pulse 1.3s ease-in-out infinite}
+@keyframes an-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+/* LB : les bulles montent */
+.g6:hover .an-b1{animation:an-bub 1.4s ease-in infinite}
+.g6:hover .an-b2{animation:an-bub 1.4s ease-in infinite .3s}
+.g6:hover .an-b3{animation:an-bub 1.4s ease-in infinite .6s}
+@keyframes an-bub{0%{transform:translateY(0);opacity:.6}70%{opacity:.3}100%{transform:translateY(-10px);opacity:0}}
+@media (prefers-reduced-motion:reduce){
+  .g6:hover .an-dash,.g6:hover .an-load,.g6:hover .an-fric,.g6:hover .an-pulse,
+  .g6:hover .an-b1,.g6:hover .an-b2,.g6:hover .an-b3{animation:none}
+}
+
+/* --- 7ᵉ tuile : appel à l'action --- */
+.g6-cta{--c:var(--amber);display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:14px;
+  padding:26px 24px;border-radius:15px;position:relative;overflow:hidden;text-decoration:none;
+  border:1px solid var(--amber-line);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--amber) 16%,var(--panel)),var(--bg-2));
+  transition:transform .28s cubic-bezier(.2,.7,.3,1),box-shadow .28s,border-color .28s}
+.g6-cta::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.6;
+  background:radial-gradient(90% 70% at 80% 20%,color-mix(in srgb,var(--amber) 22%,transparent),transparent 70%)}
+.g6-cta:hover{transform:translateY(-5px);border-color:var(--amber-2);
+  box-shadow:0 26px 50px -28px color-mix(in srgb,var(--amber) 80%,transparent)}
+.g6-cta .cta-k{position:relative;font-family:var(--mono);font-size:.62rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--amber-2)}
+.g6-cta h3{position:relative;font-family:var(--disp);font-size:var(--t-2);font-weight:600;letter-spacing:-.025em;color:var(--ink)}
+.g6-cta p{position:relative;color:var(--ink-2);font-size:var(--t--1);line-height:1.5;margin:0}
+.g6-cta .cta-btn{position:relative;margin-top:4px;display:inline-flex;align-items:center;gap:.5em;
+  font-family:var(--sans);font-weight:600;font-size:var(--t--1);padding:.7em 1.15em;border-radius:8px;
+  background:linear-gradient(var(--amber-2),var(--amber));color:#1a1206;
+  box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 8px 20px -8px rgba(240,162,75,.5);
+  transition:transform .12s}
+.g6-cta:hover .cta-btn{transform:translateX(3px)}
 
 /* PV */
 .pv{display:grid;grid-template-columns:1fr 1fr;gap:clamp(30px,5vw,60px);align-items:center}
@@ -332,26 +443,75 @@ section+section{border-top:1px solid var(--hair)}
 .step h3{font-family:var(--disp);font-size:var(--t-1);margin-top:12px;font-weight:600}
 .step p{margin-top:9px;color:var(--muted);font-size:var(--t--1);line-height:1.5}
 
+/* --- Méthode fusionnée : 2 étapes compactes + étape scellé (héros) --- */
+.method-grid{display:grid;grid-template-columns:0.92fr 1.08fr;gap:clamp(28px,5vw,56px);margin-top:44px;align-items:center}
+@media (max-width:900px){.method-grid{grid-template-columns:1fr;gap:34px}}
+.mcol{display:flex;flex-direction:column;gap:14px}
+.mstep{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start;padding:20px 20px;
+  border-radius:13px;border:1px solid var(--hair);background:linear-gradient(180deg,var(--panel),transparent);
+  transition:border-color .25s}
+.mstep:hover{border-color:var(--hair-2)}
+.mstep-n{font-family:var(--mono);font-size:.9rem;font-weight:500;color:var(--muted);letter-spacing:.06em;
+  width:38px;height:38px;flex:none;display:grid;place-items:center;border:1px solid var(--hair);border-radius:9px}
+.mstep-n.on{color:var(--seal);border-color:var(--seal);background:var(--seal-dim);
+  box-shadow:0 0 20px -6px color-mix(in srgb,var(--seal) 60%,transparent)}
+.mstep h3{font-family:var(--disp);font-size:var(--t-1);font-weight:600;display:flex;align-items:center;gap:10px}
+.mstep p{margin-top:7px;color:var(--muted);font-size:var(--t--1);line-height:1.5}
+.mtag{font-family:var(--mono);font-size:.56rem;letter-spacing:.08em;text-transform:uppercase;color:var(--seal);
+  border:1px solid var(--seal);border-radius:5px;padding:2px 7px;background:var(--seal-dim)}
+/* colonne scellé (héros) */
+.mseal{position:relative}
+.mseal .doc{padding:24px}
+.mseal-points{display:flex;flex-direction:column;gap:2px;margin-top:18px}
+.mp{display:grid;grid-template-columns:auto 1fr;gap:13px;align-items:start;padding:13px 0;border-top:1px solid var(--hair)}
+.mp:first-child{border-top:0}
+.mp-i{width:30px;height:30px;flex:none;border:1px solid var(--seal);border-radius:8px;display:grid;place-items:center;
+  color:var(--seal);background:var(--seal-dim);font-family:var(--mono)}
+.mp b{font-family:var(--disp);font-size:.98rem;font-weight:600;display:block;margin-bottom:2px}
+.mp span{color:var(--muted);font-size:var(--t--1);line-height:1.45}
+.mseal .disclaimer{margin-top:16px}
+
 /* tarifs */
-.cur{display:inline-flex;gap:2px;margin-top:18px;border:1px solid var(--hair);border-radius:8px;padding:3px;background:var(--bg-2)}
-.cur button{font-family:var(--mono);font-size:.7rem;padding:6px 14px;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;transition:.14s}
-.cur button.on{background:var(--amber);color:#1a1206;font-weight:600}
-.prices{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:42px}
+.cur{display:inline-flex;gap:3px;margin-top:20px;border:1px solid var(--hair);border-radius:9px;padding:4px;background:var(--bg-2)}
+.cur button{font-family:var(--mono);font-size:.72rem;padding:7px 16px;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;transition:.16s}
+.cur button:hover{color:var(--ink)}
+.cur button.on{background:linear-gradient(var(--amber-2),var(--amber));color:#1a1206;font-weight:600;
+  box-shadow:0 1px 0 rgba(255,255,255,.3) inset,0 6px 16px -8px rgba(240,162,75,.5)}
+.prices{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:42px;align-items:start}
 @media (max-width:820px){.prices{grid-template-columns:1fr}}
-.price{padding:26px 22px;border-radius:14px;border:1px solid var(--hair);background:linear-gradient(180deg,var(--panel),var(--bg-2));
-  display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden}
-.price.feat{border-color:var(--amber-line);box-shadow:0 24px 50px -30px rgba(240,162,75,.4)}
-.price.feat::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;background:linear-gradient(90deg,transparent,var(--amber-line),transparent)}
-.price .ribbon{position:absolute;top:0;right:18px;background:var(--amber);color:#1a1206;font-family:var(--mono);
-  font-size:.56rem;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;border-radius:0 0 6px 6px;font-weight:600}
+.price{padding:28px 24px;border-radius:15px;border:1px solid var(--hair);
+  background:linear-gradient(180deg,var(--panel),var(--bg-2));
+  display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden;
+  transition:transform .28s cubic-bezier(.2,.7,.3,1),border-color .28s,box-shadow .28s}
+/* liseré lumineux universel (détail Linear) */
+.price::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--edge),transparent);opacity:.6}
+.price:hover{transform:translateY(-5px);border-color:var(--hair-2);
+  box-shadow:0 26px 50px -30px rgba(0,0,0,.9)}
+/* carte mise en avant : ambre + halo + glow */
+.price.feat{border-color:var(--amber-line);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--amber) 12%,var(--panel)),var(--bg-2));
+  box-shadow:0 30px 60px -32px color-mix(in srgb,var(--amber) 70%,transparent)}
+.price.feat::before{background:linear-gradient(90deg,transparent,var(--amber-line),transparent);opacity:1}
+.price.feat::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background:radial-gradient(80% 50% at 50% 0,color-mix(in srgb,var(--amber) 18%,transparent),transparent 70%)}
+.price.feat:hover{transform:translateY(-7px);border-color:var(--amber-2);
+  box-shadow:0 34px 66px -30px color-mix(in srgb,var(--amber) 85%,transparent)}
+.price>*{position:relative;z-index:1}
+.price .ribbon{position:absolute;top:0;right:20px;z-index:2;background:linear-gradient(var(--amber-2),var(--amber));
+  color:#1a1206;font-family:var(--mono);font-size:.56rem;letter-spacing:.1em;text-transform:uppercase;
+  padding:5px 11px;border-radius:0 0 7px 7px;font-weight:600;box-shadow:0 6px 16px -8px rgba(240,162,75,.6)}
 .price .plan{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.price .amt{font-family:var(--disp);font-size:2.1rem;font-weight:600;font-variant-numeric:tabular-nums;margin-top:8px;letter-spacing:-.03em}
+.price.feat .plan{color:var(--amber-2)}
+.price .amt{font-family:var(--disp);font-size:2.3rem;font-weight:600;font-variant-numeric:tabular-nums;margin-top:10px;letter-spacing:-.03em}
 .price .amt small{font-size:.8rem;color:var(--muted);font-weight:400;font-family:var(--mono)}
-.price .per{font-family:var(--mono);font-size:.7rem;color:var(--muted)}
-.price ul{list-style:none;padding:0;margin:16px 0 20px;display:flex;flex-direction:column;gap:10px;font-size:var(--t--1);color:var(--ink-2)}
-.price li{display:flex;gap:9px;align-items:flex-start}
-.price li::before{content:"";width:15px;height:15px;flex:none;margin-top:3px;border-radius:5px;background:var(--seal-dim);
-  border:1px solid var(--seal);background-image:linear-gradient(45deg,transparent 44%,var(--seal) 44%,var(--seal) 56%,transparent 56%)}
+.price .per{font-family:var(--mono);font-size:.7rem;color:var(--muted);margin-top:2px}
+.price ul{list-style:none;padding:0;margin:18px 0 22px;display:flex;flex-direction:column;gap:11px;font-size:var(--t--1);color:var(--ink-2)}
+.price li{display:flex;gap:10px;align-items:flex-start}
+.price li::before{content:"";width:17px;height:17px;flex:none;margin-top:2px;border-radius:5px;
+  background:var(--seal-dim);border:1px solid var(--seal);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234fd1b0' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13l4 4 10-11'/%3E%3C/svg%3E");
+  background-size:12px;background-repeat:no-repeat;background-position:center}
 .price .btn{justify-content:center;margin-top:auto}
 
 /* clôture */
@@ -377,13 +537,144 @@ footer{border-top:1px solid var(--hair);padding-block:38px;color:var(--muted);ba
 .reveal{opacity:0;transform:translateY(16px)}
 .reveal.in{opacity:1;transform:none;transition:opacity .7s cubic-bezier(.2,.7,.3,1),transform .7s cubic-bezier(.2,.7,.3,1)}
 .doc .stamp{opacity:0;transform:rotate(-26deg) scale(.4)}
-.doc.in .stamp{opacity:1;transform:rotate(-8deg) scale(1);transition:opacity .5s ease .3s,transform .7s cubic-bezier(.2,.85,.25,1.2) .3s}
+.doc.in .stamp,.mseal.in .stamp{opacity:1;transform:rotate(-8deg) scale(1);transition:opacity .5s ease .3s,transform .7s cubic-bezier(.2,.85,.25,1.2) .3s}
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   .anim,.reveal,.doc .stamp{opacity:1!important;transform:none!important;filter:none!important;transition:none!important}
   .ambient::before{transform:none!important}
   .sheet-top .live b{animation:none}
 }
+
+/* =========== moyens de paiement par devise (chantier 7) =========== */
+.pay{display:flex;align-items:center;justify-content:center;gap:16px 22px;flex-wrap:wrap;margin-top:30px;
+  padding-top:24px;border-top:1px solid var(--hair)}
+.pay-lbl{font-family:var(--mono);font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.pay-list{display:flex;gap:10px;flex-wrap:wrap}
+.pay-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:9px;
+  border:1px solid var(--hair);background:var(--bg-2);font-family:var(--mono);font-size:.72rem;color:var(--ink);
+  animation:pay-in .35s cubic-bezier(.2,.7,.3,1) both}
+.pay-chip .pay-dot{width:8px;height:8px;border-radius:2px;flex:none}
+@keyframes pay-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.pay-chip{animation:none}}
+
+.wrap-narrow{max-width:820px}
+.faq{margin-top:40px;display:flex;flex-direction:column;gap:10px}
+.faq-item{border:1px solid var(--hair);border-radius:12px;overflow:hidden;
+  background:linear-gradient(180deg,var(--panel),var(--bg-2));transition:border-color .25s}
+.faq-item.open{border-color:var(--hair-2)}
+.faq-q{width:100%;display:flex;align-items:center;justify-content:space-between;gap:18px;cursor:pointer;
+  padding:20px 22px;border:0;background:transparent;text-align:left;
+  font-family:var(--disp);font-size:1.05rem;font-weight:600;color:var(--ink);letter-spacing:-.01em}
+.faq-q:hover{color:var(--amber-2)}
+.faq-ic{position:relative;width:18px;height:18px;flex:none}
+.faq-ic::before,.faq-ic::after{content:"";position:absolute;background:var(--amber-2);border-radius:2px;
+  transition:transform .3s cubic-bezier(.2,.7,.3,1),opacity .3s}
+.faq-ic::before{top:8px;left:0;width:18px;height:2px}
+.faq-ic::after{top:0;left:8px;width:2px;height:18px}
+.faq-item.open .faq-ic::after{transform:rotate(90deg);opacity:0}
+.faq-a{max-height:0;overflow:hidden;transition:max-height .35s cubic-bezier(.4,0,.2,1)}
+.faq-a p{padding:0 22px 20px;color:var(--ink-2);font-size:var(--t-0);line-height:1.6;max-width:70ch}
+@media (prefers-reduced-motion:reduce){.faq-a{transition:none}.faq-ic::before,.faq-ic::after{transition:none}}
+
+.res-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:44px}
+@media (max-width:820px){.res-grid{grid-template-columns:1fr}}
+.res-card{position:relative;padding:28px 26px;border-radius:15px;border:1px solid var(--hair);overflow:hidden;
+  background:linear-gradient(180deg,var(--panel),var(--bg-2));display:flex;flex-direction:column}
+.res-card::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--edge),transparent);opacity:.6}
+.res-ico{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;margin-bottom:16px;
+  color:var(--amber-2);background:var(--amber-dim);border:1px solid var(--amber-line)}
+.res-ico svg{width:24px;height:24px}
+.res-card h3{font-family:var(--disp);font-size:var(--t-1);font-weight:600;letter-spacing:-.02em}
+.res-card>p{margin-top:8px;color:var(--muted);font-size:var(--t--1);line-height:1.5}
+.res-video .btn{align-self:flex-start;margin-top:20px}
+.man-list{list-style:none;padding:0;margin:18px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media (max-width:520px){.man-list{grid-template-columns:1fr}}
+.man-list a,.man-soon>span{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+  border:1px solid var(--hair);background:var(--bg-2);font-family:var(--mono);font-size:.76rem;
+  color:var(--ink);text-decoration:none;transition:border-color .2s,transform .2s,background .2s}
+.man-list a:hover{border-color:var(--hair-2);transform:translateY(-2px)}
+.man-list .mc{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex:none;
+  border-radius:7px;font-size:.64rem;font-weight:500;color:var(--c);
+  border:1px solid color-mix(in srgb,var(--c) 50%,transparent);background:color-mix(in srgb,var(--c) 14%,transparent)}
+.man-list .man-dl{margin-left:auto;font-size:.64rem;letter-spacing:.04em;color:var(--muted)}
+.man-list a:hover .man-dl{color:var(--amber-2)}
+.man-soon>span{opacity:.5;cursor:not-allowed}
+.man-soon .man-dl{color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+/* lien manuel sur chaque carte logiciel */
+.g6-man{margin-top:12px;font-family:var(--mono);font-size:.64rem;letter-spacing:.03em;text-decoration:none;
+  color:color-mix(in srgb,var(--c) 75%,var(--ink-2));display:inline-flex;align-items:center;gap:6px;
+  align-self:flex-start;transition:color .2s}
+.g6-man:hover{color:var(--c)}
+.g6-man.disabled{color:var(--muted);opacity:.6;pointer-events:none}
+
+.modal-overlay{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;
+  padding:20px;background:rgba(4,6,9,.72);backdrop-filter:blur(6px);
+  opacity:0;visibility:hidden;transition:opacity .25s,visibility .25s}
+.modal-overlay.open{opacity:1;visibility:visible}
+.modal{position:relative;width:100%;max-width:440px;border-radius:16px;padding:30px 28px;
+  background:linear-gradient(180deg,var(--panel),var(--bg-2));border:1px solid var(--hair-2);
+  box-shadow:0 1px 0 var(--edge) inset,0 40px 80px -30px rgba(0,0,0,.9);
+  transform:translateY(14px) scale(.98);transition:transform .3s cubic-bezier(.2,.7,.3,1)}
+.modal-overlay.open .modal{transform:none}
+.modal::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;border-radius:16px 16px 0 0;
+  background:linear-gradient(90deg,transparent,var(--edge),transparent)}
+.modal-close{position:absolute;top:16px;right:16px;width:32px;height:32px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--hair);background:transparent;color:var(--muted);font-size:1.1rem;line-height:1;
+  display:grid;place-items:center;transition:.18s}
+.modal-close:hover{color:var(--ink);border-color:var(--hair-2)}
+.modal .eyebrow{margin-bottom:12px}
+.modal h3{font-family:var(--disp);font-size:var(--t-2);font-weight:600;letter-spacing:-.02em}
+.modal p{margin-top:10px;color:var(--ink-2);font-size:var(--t-0);line-height:1.5}
+.modal-actions{display:flex;flex-direction:column;gap:11px;margin-top:24px}
+.modal-btn{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:11px;cursor:pointer;
+  text-decoration:none;border:1px solid var(--hair);background:var(--bg-2);transition:transform .12s,border-color .2s,background .2s}
+.modal-btn:hover{transform:translateY(-2px)}
+.modal-btn .mb-ico{width:38px;height:38px;flex:none;border-radius:9px;display:grid;place-items:center}
+.modal-btn .mb-ico svg{width:20px;height:20px}
+.modal-btn .mb-txt{display:flex;flex-direction:column;gap:1px}
+.modal-btn .mb-txt b{font-family:var(--disp);font-size:1rem;font-weight:600;color:var(--ink)}
+.modal-btn .mb-txt span{font-family:var(--mono);font-size:.66rem;color:var(--muted);letter-spacing:.02em}
+.modal-btn.wa{border-color:color-mix(in srgb,#25d366 40%,transparent)}
+.modal-btn.wa:hover{border-color:#25d366;background:color-mix(in srgb,#25d366 8%,var(--bg-2))}
+.modal-btn.wa .mb-ico{background:color-mix(in srgb,#25d366 16%,transparent);color:#25d366}
+.modal-btn.em{border-color:var(--amber-line)}
+.modal-btn.em:hover{border-color:var(--amber-2);background:color-mix(in srgb,var(--amber) 8%,var(--bg-2))}
+.modal-btn.em .mb-ico{background:var(--amber-dim);color:var(--amber-2)}
+.modal .mb-ar{margin-left:auto;color:var(--muted);font-family:var(--mono)}
+
+/* =========== bouton WhatsApp flottant (chantier 2) =========== */
+.wa-float{position:fixed;right:22px;bottom:22px;z-index:150;display:inline-flex;align-items:center;gap:10px;
+  padding:13px 18px 13px 15px;border-radius:100px;text-decoration:none;font-family:var(--sans);font-weight:600;
+  font-size:.9rem;color:#0b3d1e;background:linear-gradient(#2ee06f,#25d366);
+  box-shadow:0 8px 24px -6px rgba(37,211,102,.55),0 1px 0 rgba(255,255,255,.3) inset;
+  transform:translateY(0);transition:transform .25s cubic-bezier(.2,.7,.3,1),box-shadow .25s,opacity .3s;
+  opacity:0;pointer-events:none}
+.wa-float.show{opacity:1;pointer-events:auto}
+.wa-float:hover{transform:translateY(-3px);box-shadow:0 12px 30px -6px rgba(37,211,102,.7),0 1px 0 rgba(255,255,255,.35) inset}
+.wa-float svg{width:22px;height:22px;flex:none}
+.wa-float .wa-label{white-space:nowrap}
+@media (max-width:560px){.wa-float{padding:14px;border-radius:50%}.wa-float .wa-label{display:none}}
+@media (prefers-reduced-motion:reduce){.wa-float{transition:opacity .3s}}
+
+/* =========== menu mobile / burger (chantier 3) =========== */
+.burger{display:none;width:42px;height:42px;border-radius:10px;border:1px solid var(--hair);
+  background:rgba(255,255,255,.02);cursor:pointer;padding:0;place-items:center;flex-direction:column;gap:5px}
+.burger span{display:block;width:18px;height:2px;border-radius:2px;background:var(--ink);transition:transform .28s,opacity .2s}
+.burger.on span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+.burger.on span:nth-child(2){opacity:0}
+.burger.on span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+@media (max-width:720px){.burger{display:grid}}
+.mobile-menu{position:fixed;inset:0;z-index:120;background:rgba(8,10,13,.97);backdrop-filter:blur(10px);
+  display:flex;flex-direction:column;padding:88px var(--gut) 32px;gap:6px;
+  opacity:0;visibility:hidden;transform:translateY(-8px);transition:opacity .28s,visibility .28s,transform .28s}
+.mobile-menu.open{opacity:1;visibility:visible;transform:none}
+.mobile-menu a{font-family:var(--disp);font-size:1.5rem;font-weight:600;color:var(--ink);text-decoration:none;
+  padding:14px 0;border-bottom:1px solid var(--hair);letter-spacing:-.02em}
+.mobile-menu .mm-login,.mobile-menu .mm-cta{border-bottom:0}
+.mobile-menu .mm-cta{display:flex;flex-direction:column;gap:11px;margin-top:22px}
+.mobile-menu .mm-cta .btn{justify-content:center;font-size:.95rem;padding:.85em 1.15em}
+.mobile-menu .mm-login{font-family:var(--mono);font-size:.9rem;font-weight:400;color:var(--ink-2);padding:12px 0}
 </style>
 </head>
 <body>
@@ -402,14 +693,27 @@ footer{border-top:1px solid var(--hair);padding-block:38px;color:var(--muted);ba
       <span class="logo-badge" aria-hidden="true"></span>GEOFAM
     </a>
     <nav class="nav-links" aria-label="Principale">
-      <a href="#logiciels">Logiciels</a><a href="#pv">PV scellé</a><a href="#methode">Méthode</a><a href="#tarifs">Tarifs</a>
+      <a href="#logiciels">Logiciels</a><a href="#methode">Méthode &amp; PV</a><a href="#ressources">Ressources</a><a href="#tarifs">Tarifs</a>
     </nav>
     <div class="nav-cta">
       <a class="btn btn-ghost" href="/login">Se connecter</a>
-      <a class="btn btn-primary" href="/login">Essai 24 h</a>
+      <a class="btn btn-primary" href="#tarifs" data-contact="essai">Essai 24 h</a>
     </div>
+    <button class="burger" id="burger" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
   </div>
 </header>
+
+<div class="mobile-menu" id="mobileMenu">
+  <a href="#logiciels">Logiciels</a>
+  <a href="#methode">Méthode &amp; PV</a>
+  <a href="#tarifs">Tarifs</a>
+  <a href="#ressources">Ressources</a>
+  <a href="#faq">FAQ</a>
+  <div class="mm-cta">
+    <a class="btn btn-primary" href="#tarifs" data-contact="essai">Démarrer l'essai</a>
+    <a class="mm-login" href="/login">Se connecter →</a>
+  </div>
+</div>
 
 <main id="top">
   <section class="hero" id="s0" data-depth="0.0">
@@ -419,8 +723,8 @@ footer{border-top:1px solid var(--hair);padding-block:38px;color:var(--muted);ba
         <h1 class="title anim" data-seq="2">Toute la géotechnique,<br>sur <span class="amber">tous vos postes</span>.</h1>
         <p class="lede anim" data-seq="3">Chaussées, fondations, pieux, radiers, pressiomètre, laboratoire — six logiciels métier accessibles partout, au bureau comme sur chantier. Installables en un clic comme une app ; chaque calcul ressort en PV numéroté et scellé.</p>
         <div class="hero-cta anim" data-seq="4">
-          <a class="btn btn-primary" href="#tarifs">Démarrer l'essai gratuit</a>
-          <a class="btn btn-ghost" href="#logiciels">Voir les logiciels</a>
+          <a class="btn btn-primary" href="#tarifs" data-contact="essai">Démarrer l'essai gratuit</a>
+          <a class="btn btn-ghost" href="#" data-contact="demo">Demander une démo</a>
         </div>
         <div class="hero-proof anim" data-seq="5">
           <div class="pline domains">
@@ -475,27 +779,27 @@ footer{border-top:1px solid var(--hair);padding-block:38px;color:var(--muted);ba
     <div class="band-head"><span class="lbl">Calculs calés sur les normes en vigueur</span></div>
     <div class="marquee" id="marquee" aria-label="Référentiels métier par domaine">
       <div class="marquee-track">
-        <span class="norm-chip" style="--c:#a9793f">
+        <span class="norm-chip" style="--c:var(--d-ch)">
           <svg class="ng" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2" y="4" width="16" height="3" rx="1" fill="currentColor"/><rect x="2" y="8.5" width="16" height="3" rx="1" fill="currentColor" opacity=".6"/><rect x="2" y="13" width="16" height="3" rx="1" fill="currentColor" opacity=".35"/></svg>
           <span class="nt"><b>AGEROUTE 2015</b><em>chaussées</em></span>
         </span>
-        <span class="norm-chip" style="--c:#c99a4e">
+        <span class="norm-chip" style="--c:var(--d-fd)">
           <svg class="ng" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="8" y="2" width="4" height="8" fill="currentColor"/><rect x="3" y="10" width="14" height="4" rx="1" fill="currentColor"/><path d="M3 15h14" stroke="currentColor" stroke-width="1.5" opacity=".5" stroke-dasharray="2 2"/></svg>
           <span class="nt"><b>Eurocode 7</b><em>fondations</em></span>
         </span>
-        <span class="norm-chip" style="--c:#9aa0a2">
+        <span class="norm-chip" style="--c:var(--d-px)">
           <svg class="ng" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="8.5" y="2" width="3" height="13" fill="currentColor"/><path d="M10 15l-2.5-3h5z" fill="currentColor"/><path d="M4 6h4M4 9h4M12 6h4M12 9h4" stroke="currentColor" stroke-width="1" opacity=".5"/></svg>
           <span class="nt"><b>Fascicule 62</b><em>pieux</em></span>
         </span>
-        <span class="norm-chip" style="--c:#5c6b73">
+        <span class="norm-chip" style="--c:var(--d-rd)">
           <svg class="ng" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2" y="7" width="16" height="5" rx="1" fill="currentColor"/><path d="M4 14v2M8 14v2M12 14v2M16 14v2" stroke="currentColor" stroke-width="1.3" opacity=".5"/></svg>
           <span class="nt"><b>Winkler</b><em>radiers</em></span>
         </span>
-        <span class="norm-chip" style="--c:#d8be7d">
+        <span class="norm-chip" style="--c:var(--d-pr)">
           <svg class="ng" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="8.5" y="2" width="3" height="16" fill="currentColor" opacity=".5"/><ellipse cx="10" cy="10" rx="4.5" ry="3" fill="currentColor"/><path d="M14 10h2M4 10h2" stroke="currentColor" stroke-width="1.3"/></svg>
           <span class="nt"><b>Ménard</b><em>pressiomètre</em></span>
         </span>
-        <span class="norm-chip" style="--c:#7d6f52">
+        <span class="norm-chip" style="--c:var(--d-lb)">
           <svg class="ng" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M6 3h8v11a4 3 0 01-8 0z" fill="currentColor"/><ellipse cx="10" cy="3" rx="4" ry="1.4" fill="currentColor" opacity=".6"/></svg>
           <span class="nt"><b>GTR</b><em>laboratoire</em></span>
         </span>
@@ -503,70 +807,169 @@ footer{border-top:1px solid var(--hair);padding-block:38px;color:var(--muted);ba
     </div>
   </div>
 
-  <section id="logiciels" data-depth="2.0">
+  <section id="logiciels" data-depth="2.5">
     <div class="wrap">
       <div class="sec-head reveal">
         <span class="eyebrow">La suite complète</span>
-        <h2>Chaussées, fondations, laboratoire — un seul accès.</h2>
-        <p class="sub">Six outils co-validés avec un ingénieur expert, du dimensionnement routier à l'essai de sol. Vous retrouvez l'interface que vous connaissez ; le calcul tourne sur nos serveurs.</p>
+        <h2>Six logiciels métier. Un seul accès.</h2>
+        <p class="sub">Chaque outil couvre un domaine, avec sa norme et son livrable. Sélectionnez-en un pour le découvrir.</p>
       </div>
-      <div class="tools">
-        <article class="tool reveal"><span class="code">CH</span><h3>ROADSENS</h3><p>Dimensionnement de chaussées neuves et renforcements — modèle multicouche de Burmister.</p><div class="norm">AGEROUTE 2015 · LCPC</div></article>
-        <article class="tool reveal"><span class="code">FD</span><h3>Terzaghi</h3><p>Portance des fondations superficielles — semelles isolées, filantes, radiers.</p><div class="norm">Eurocode 7</div></article>
-        <article class="tool reveal"><span class="code">PX</span><h3>Casagrande</h3><p>Fondations profondes — pieux, frottement latéral, effort de pointe, tassement.</p><div class="norm">Fascicule 62 · Frank &amp; Zhao</div></article>
-        <article class="tool reveal"><span class="code">RD</span><h3>Geoplaque</h3><p>Radiers et plaques sur sol élastique — déflexion, distorsion, cartographie.</p><div class="norm">Éléments finis · Winkler</div></article>
-        <article class="tool reveal"><span class="code">PR</span><h3>PressioPro</h3><p>Interprétation pressiométrique Ménard — pl*, module EM, courbes et spectres.</p><div class="norm">Ménard · NF P94-110</div></article>
-        <article class="tool reveal"><span class="code">LB</span><h3>Fastlab</h3><p>Essais de laboratoire — granulométrie, limites, Proctor, CBR, œdomètre, cisaillement.</p><div class="norm">GTR · essais normalisés</div></article>
+
+      <div class="grid6 reveal" id="grid6">
+        <article class="g6 reveal" style="--c:var(--d-ch)" data-k="ch"><div class="g6-glare"></div>
+          <div class="g6-vis"><div class="g6-halo"></div><div class="g6-icon" data-icon="ch"></div></div>
+          <div class="g6-body">
+            <div class="g6-top"><span class="g6-code">CH</span><span class="g6-dom">chaussées</span></div>
+            <h3>ROADSENS</h3>
+            <p>Dimensionnement de chaussées neuves et de renforcements — modèle multicouche de Burmister, déformations admissibles vérifiées.</p>
+            <div class="g6-norm">AGEROUTE 2015 · LCPC</div>
+            <a class="g6-man" href="/manuels/roadsens.pdf" target="_blank" rel="noopener">Manuel PDF ↓</a>
+          </div>
+        </article>
+        <article class="g6 reveal" style="--c:var(--d-fd)" data-k="fd"><div class="g6-glare"></div>
+          <div class="g6-vis"><div class="g6-halo"></div><div class="g6-icon" data-icon="fd"></div></div>
+          <div class="g6-body">
+            <div class="g6-top"><span class="g6-code">FD</span><span class="g6-dom">fondations</span></div>
+            <h3>Terzaghi</h3>
+            <p>Portance des fondations superficielles — semelles isolées, filantes et radiers, contrainte admissible et tassements.</p>
+            <div class="g6-norm">Eurocode 7</div>
+            <a class="g6-man" href="/manuels/terzaghi.pdf" target="_blank" rel="noopener">Manuel PDF ↓</a>
+          </div>
+        </article>
+        <article class="g6 reveal" style="--c:var(--d-px)" data-k="px"><div class="g6-glare"></div>
+          <div class="g6-vis"><div class="g6-halo"></div><div class="g6-icon" data-icon="px"></div></div>
+          <div class="g6-body">
+            <div class="g6-top"><span class="g6-code">PX</span><span class="g6-dom">pieux</span></div>
+            <h3>Casagrande</h3>
+            <p>Fondations profondes — frottement latéral, effort de pointe et tassement du pieu, à l'unité ou en groupe.</p>
+            <div class="g6-norm">Fascicule 62 · Frank &amp; Zhao</div>
+            <a class="g6-man" href="/manuels/casagrande.pdf" target="_blank" rel="noopener">Manuel PDF ↓</a>
+          </div>
+        </article>
+        <article class="g6 reveal" style="--c:var(--d-rd)" data-k="rd"><div class="g6-glare"></div>
+          <div class="g6-vis"><div class="g6-halo"></div><div class="g6-icon" data-icon="rd"></div></div>
+          <div class="g6-body">
+            <div class="g6-top"><span class="g6-code">RD</span><span class="g6-dom">radiers</span></div>
+            <h3>Geoplaque</h3>
+            <p>Radiers et dallages sur sol élastique — champ de déflexion, distorsion et réaction du sol (Winkler).</p>
+            <div class="g6-norm">Éléments finis · Winkler</div>
+            <a class="g6-man" href="/manuels/geoplaque.pdf" target="_blank" rel="noopener">Manuel PDF ↓</a>
+          </div>
+        </article>
+        <article class="g6 reveal" style="--c:var(--d-pr)" data-k="pr"><div class="g6-glare"></div>
+          <div class="g6-vis"><div class="g6-halo"></div><div class="g6-icon" data-icon="pr"></div></div>
+          <div class="g6-body">
+            <div class="g6-top"><span class="g6-code">PR</span><span class="g6-dom">pressiomètre</span></div>
+            <h3>PressioPro</h3>
+            <p>Interprétation pressiométrique Ménard — pression limite pl*, module EM, classification du sol et courbes.</p>
+            <div class="g6-norm">Ménard · NF P94-110</div>
+            <span class="g6-man disabled">Manuel bientôt disponible</span>
+          </div>
+        </article>
+        <article class="g6 reveal" style="--c:var(--d-lb)" data-k="lb"><div class="g6-glare"></div>
+          <div class="g6-vis"><div class="g6-halo"></div><div class="g6-icon" data-icon="lb"></div></div>
+          <div class="g6-body">
+            <div class="g6-top"><span class="g6-code">LB</span><span class="g6-dom">laboratoire</span></div>
+            <h3>Fastlab</h3>
+            <p>Essais de laboratoire — granulométrie, limites, Proctor, CBR, œdomètre, cisaillement, classés GTR.</p>
+            <div class="g6-norm">GTR · essais normalisés</div>
+            <a class="g6-man" href="/manuels/fastlab.pdf" target="_blank" rel="noopener">Manuel PDF ↓</a>
+          </div>
+        </article>
+        <a class="g6-cta reveal" href="#tarifs">
+          <span class="cta-k">Les six, ensemble</span>
+          <h3>Essayez gratuitement</h3>
+          <p>24 h d'accès à tous les logiciels, sur tous vos postes. Sans carte.</p>
+          <span class="cta-btn">Démarrer l'essai →</span>
+        </a>
       </div>
     </div>
   </section>
 
-  <section id="pv" data-depth="4.0">
-    <div class="wrap pv">
-      <div class="reveal">
-        <span class="eyebrow">La différence GEOFAM</span>
-        <h2 style="font-size:var(--t-3);margin-top:15px;letter-spacing:-.035em">Un procès-verbal qu'on ne peut pas retoucher en douce.</h2>
-        <p class="sub" style="margin-top:16px">Chaque résultat produit un document numéroté et horodaté. Le serveur en calcule une empreinte au moment du scellement — la moindre modification ultérieure casse le sceau.</p>
-        <div class="pv-points">
-          <div class="pv-point"><span class="pv-ico">↻</span><div><h4>Recalculé côté serveur</h4><p>Le moteur ré-exécute le calcul sur vos données avant de sceller — le PV reflète ce que le serveur a produit, pas ce que le poste a affiché.</p></div></div>
-          <div class="pv-point"><span class="pv-ico">#</span><div><h4>Empreinte vérifiable</h4><p>Chaque document porte une empreinte SHA-256 et un sceau HMAC. Recalculez l'empreinte : si elle correspond, le document est intact.</p></div></div>
-          <div class="pv-point"><span class="pv-ico">⧉</span><div><h4>Archivé et retrouvable</h4><p>Le PV exact est conservé sur nos serveurs, rattaché au projet client. Ré-imprimable à l'identique, opposable à votre archive.</p></div></div>
-        </div>
-        <p class="disclaimer">Dispositif d'intégrité technique. La responsabilité de l'étude reste à l'ingénieur signataire.</p>
-      </div>
-      <div class="glass doc reveal" aria-hidden="true">
-        <div class="doc-ref">PROCÈS-VERBAL · PV-2026-000481</div>
-        <div class="doc-h">Note de calcul — Fondations profondes</div>
-        <div class="doc-line a"></div><div class="doc-line b"></div><div class="doc-line c"></div>
-        <div class="doc-line a"></div><div class="doc-line d"></div><div class="doc-line b"></div>
-        <div class="doc-num">sha256 · 9f3c 4b8a … d2f1 a1e7 · horodaté 2026-04-11 09:42 UTC</div>
-        <svg class="stamp" viewBox="0 0 96 96" fill="none">
-          <circle cx="48" cy="48" r="44" stroke="#4fd1b0" stroke-width="1.5"/>
-          <circle cx="48" cy="48" r="34" stroke="#4fd1b0" stroke-width="1" stroke-dasharray="2 3"/>
-          <path d="M35 49l9 9 18-22" stroke="#4fd1b0" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path id="arc" d="M48 13a35 35 0 0 1 0 70a35 35 0 0 1 0-70"/>
-          <text fill="#4fd1b0" font-family="'JetBrains Mono',monospace" font-size="6.4" letter-spacing="2"><textPath href="#arc" startOffset="3%">SCELLÉ · HORODATÉ · INTÈGRE · </textPath></text>
-        </svg>
-      </div>
-    </div>
-  </section>
-
-  <section id="methode" data-depth="6.0">
+  <section id="methode" data-depth="5.0">
     <div class="wrap">
-      <div class="sec-head reveal"><span class="eyebrow">De la saisie au livrable</span><h2>Trois gestes, zéro friction.</h2></div>
-      <div class="steps">
-        <div class="step reveal"><h3>Saisissez</h3><p>Ouvrez le logiciel voulu, entrez vos données comme sur votre outil habituel. Rien à installer, rien à réapprendre.</p></div>
-        <div class="step reveal"><h3>Calculez</h3><p>Le calcul s'exécute sur nos serveurs et s'affiche à l'écran, rattaché au projet client concerné.</p></div>
-        <div class="step reveal"><h3>Scellez</h3><p>Un clic génère le PV numéroté et scellé, prêt à archiver et à transmettre. Retrouvable à tout moment.</p></div>
+      <div class="sec-head reveal"><span class="eyebrow">De la saisie au livrable</span><h2>Trois gestes. Le dernier fait toute la différence.</h2></div>
+
+      <div class="method-grid">
+        <!-- deux étapes compactes -->
+        <div class="mcol">
+          <div class="mstep reveal">
+            <div class="mstep-n">01</div>
+            <div><h3>Saisissez</h3><p>L'interface que vous connaissez déjà — vos données, le projet client concerné. Rien à installer, rien à réapprendre.</p></div>
+          </div>
+          <div class="mstep reveal">
+            <div class="mstep-n">02</div>
+            <div><h3>Calculez</h3><p>Le calcul suit la norme de son domaine et se rattache automatiquement au dossier client. Vos hypothèses restent tracées.</p></div>
+          </div>
+          <div class="mstep reveal">
+            <div class="mstep-n on">03</div>
+            <div><h3>Scellez <span class="mtag">le livrable</span></h3><p>Un clic transforme le calcul en procès-verbal scellé. C'est là que se joue la vraie valeur — un document que personne ne peut retoucher sans que ça se voie.</p></div>
+          </div>
+        </div>
+
+        <!-- étape héros : le PV scellé, absorbé ici -->
+        <div class="mseal reveal">
+          <div class="glass doc" aria-hidden="true">
+            <div class="doc-ref">PROCÈS-VERBAL · PV-2026-000481</div>
+            <div class="doc-h">Note de calcul — Fondations profondes</div>
+            <div class="doc-line a"></div><div class="doc-line b"></div><div class="doc-line c"></div>
+            <div class="doc-line a"></div><div class="doc-line d"></div>
+            <div class="doc-num">sha256 · 9f3c 4b8a … d2f1 a1e7 · horodaté 2026-04-11 09:42 UTC</div>
+            <svg class="stamp" viewBox="0 0 96 96" fill="none">
+              <circle cx="48" cy="48" r="44" stroke="#4fd1b0" stroke-width="1.5"/>
+              <circle cx="48" cy="48" r="34" stroke="#4fd1b0" stroke-width="1" stroke-dasharray="2 3"/>
+              <path d="M35 49l9 9 18-22" stroke="#4fd1b0" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path id="arcM" d="M48 13a35 35 0 0 1 0 70a35 35 0 0 1 0-70"/>
+              <text fill="#4fd1b0" font-family="'JetBrains Mono',monospace" font-size="6.4" letter-spacing="2"><textPath href="#arcM" startOffset="3%">SCELLÉ · HORODATÉ · INTÈGRE · </textPath></text>
+            </svg>
+          </div>
+          <div class="mseal-points">
+            <div class="mp"><span class="mp-i">↻</span><div><b>Numéroté &amp; horodaté</b><span>Chaque PV porte une référence unique et l'heure exacte du scellement.</span></div></div>
+            <div class="mp"><span class="mp-i">#</span><div><b>Vérifiable</b><span>Une empreinte permet de confirmer que le document n'a pas été modifié.</span></div></div>
+            <div class="mp"><span class="mp-i">⧉</span><div><b>Archivé &amp; retrouvable</b><span>Conservé et rattaché au projet, ré-imprimable à l'identique.</span></div></div>
+          </div>
+          <p class="disclaimer">Dispositif d'intégrité technique. La responsabilité de l'étude reste à l'ingénieur signataire.</p>
+        </div>
       </div>
     </div>
   </section>
 
-  <section id="tarifs" data-depth="8.0">
+  <section id="ressources" data-depth="6.5">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Ressources</span>
+        <h2>De quoi prendre en main, tout de suite.</h2>
+        <p class="sub">Des tutoriels vidéo et un manuel par logiciel pour démarrer sans accroc.</p>
+      </div>
+      <div class="res-grid">
+        <div class="res-card res-video reveal">
+          <div class="res-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg></div>
+          <h3>Tutoriels vidéo</h3>
+          <p>Prises en main, cas pratiques et astuces, en français, sur notre chaîne YouTube.</p>
+          <a class="btn btn-primary" href="https://www.youtube.com/@GEOTECHNIQUE-c7h" target="_blank" rel="noopener">Voir les tutoriels →</a>
+        </div>
+        <div class="res-card res-manuals reveal">
+          <div class="res-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h5"/></svg></div>
+          <h3>Manuels d'utilisation</h3>
+          <p>Le guide complet de chaque logiciel, au format PDF.</p>
+          <ul class="man-list">
+            <li><a href="/manuels/roadsens.pdf" target="_blank" rel="noopener"><span class="mc" style="--c:var(--d-ch)">CH</span>ROADSENS<span class="man-dl">PDF ↓</span></a></li>
+            <li><a href="/manuels/terzaghi.pdf" target="_blank" rel="noopener"><span class="mc" style="--c:var(--d-fd)">FD</span>Terzaghi<span class="man-dl">PDF ↓</span></a></li>
+            <li><a href="/manuels/casagrande.pdf" target="_blank" rel="noopener"><span class="mc" style="--c:var(--d-px)">PX</span>Casagrande<span class="man-dl">PDF ↓</span></a></li>
+            <li><a href="/manuels/geoplaque.pdf" target="_blank" rel="noopener"><span class="mc" style="--c:var(--d-rd)">RD</span>Geoplaque<span class="man-dl">PDF ↓</span></a></li>
+            <li class="man-soon"><span><span class="mc" style="--c:var(--d-pr)">PR</span>PressioPro<span class="man-dl">bientôt</span></span></li>
+            <li><a href="/manuels/fastlab.pdf" target="_blank" rel="noopener"><span class="mc" style="--c:var(--d-lb)">LB</span>Fastlab<span class="man-dl">PDF ↓</span></a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tarifs" data-depth="7.5">
     <div class="wrap">
       <div class="sec-head reveal">
         <span class="eyebrow">Tarifs</span><h2>Un abonnement, les six logiciels.</h2>
-        <p class="sub">Carte bancaire ou mobile money (Wave, Orange Money, Free) selon votre pays. Essai gratuit de 24 h, sans carte.</p>
+        <p class="sub">Carte bancaire, mobile money ou virement selon votre pays. Essai gratuit de 24 h, sans carte.</p>
         <div class="cur" role="group" aria-label="Choisir la devise">
           <button data-cur="fcfa" class="on" aria-pressed="true">FCFA</button>
           <button data-cur="eur" aria-pressed="false">EUR</button>
@@ -578,26 +981,69 @@ footer{border-top:1px solid var(--hair);padding-block:38px;color:var(--muted);ba
           <div class="amt" data-fcfa="32 800|FCFA" data-eur="50|€" data-usd="55|$"><span class="num">32 800</span> <small class="curl">FCFA</small></div>
           <div class="per">par mois · 1 poste</div>
           <ul><li>Les 6 logiciels</li><li>PV scellés illimités</li><li>Support WhatsApp</li></ul>
-          <a class="btn btn-ghost" href="#contact">Choisir le mensuel</a></div>
+          <a class="btn btn-ghost" href="#" data-contact="formule" data-formule="Mensuel">Choisir cette formule</a></div>
         <div class="price feat reveal"><div class="ribbon">le plus choisi</div><div class="plan">Annuel</div>
           <div class="amt" data-fcfa="196 800|FCFA" data-eur="300|€" data-usd="330|$"><span class="num">196 800</span> <small class="curl">FCFA</small></div>
           <div class="per">par an · 1 poste — deux mois offerts</div>
           <ul><li>Tout le mensuel</li><li>Tutoriels vidéo dédiés</li><li>Support prioritaire</li></ul>
-          <a class="btn btn-primary" href="#contact">Choisir l'annuel</a></div>
+          <a class="btn btn-primary" href="#" data-contact="formule" data-formule="Annuel">Choisir cette formule</a></div>
         <div class="price reveal"><div class="plan">Bureau · à vie</div>
           <div class="amt" data-fcfa="1 968 000|FCFA" data-eur="3 000|€" data-usd="3 300|$"><span class="num">1 968 000</span> <small class="curl">FCFA</small></div>
           <div class="per">licence permanente · 5 postes</div>
           <ul><li>Accès permanent, 5 postes</li><li>Mises à jour incluses</li><li>Accompagnement mise en route</li></ul>
-          <a class="btn btn-ghost" href="#contact">Parler à l'équipe</a></div>
+          <a class="btn btn-ghost" href="#" data-contact="formule" data-formule="Bureau à vie">Choisir cette formule</a></div>
+      </div>
+      <div class="pay reveal">
+        <span class="pay-lbl">Paiement accepté</span>
+        <div class="pay-list">
+          <span class="pay-chip"><span class="pay-dot" style="background:var(--amber)"></span>Carte bancaire</span>
+          <span class="pay-chip"><span class="pay-dot" style="background:var(--seal)"></span>Mobile money</span>
+          <span class="pay-chip"><span class="pay-dot" style="background:#8892a0"></span>Virement</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" data-depth="8.7">
+    <div class="wrap wrap-narrow">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Questions fréquentes</span>
+        <h2>Ce qu'on nous demande le plus.</h2>
+      </div>
+      <div class="faq" id="faqList">
+        <div class="faq-item reveal">
+          <button class="faq-q" aria-expanded="false"><span>GEOFAM fonctionne-t-il sans connexion internet ?</span><span class="faq-ic" aria-hidden="true"></span></button>
+          <div class="faq-a"><p>GEOFAM s'utilise dans le navigateur et s'installe comme une application (PWA) sur vos postes. Une connexion est nécessaire pour lancer les calculs et sceller les PV, puisqu'ils sont produits côté serveur. L'interface, elle, reste accessible même quand le réseau est instable.</p></div>
+        </div>
+        <div class="faq-item reveal">
+          <button class="faq-q" aria-expanded="false"><span>Où sont hébergées mes données et sont-elles protégées ?</span><span class="faq-ic" aria-hidden="true"></span></button>
+          <div class="faq-a"><p>Vos projets et vos PV sont conservés sur nos serveurs, rattachés à votre compte et à chaque dossier client. Chaque document scellé porte une empreinte qui permet de vérifier qu'il n'a pas été modifié. Vous pouvez les retrouver et les ré-imprimer à l'identique à tout moment.</p></div>
+        </div>
+        <div class="faq-item reveal">
+          <button class="faq-q" aria-expanded="false"><span>Quels moyens de paiement sont acceptés selon mon pays ?</span><span class="faq-ic" aria-hidden="true"></span></button>
+          <div class="faq-a"><p>Vous pouvez régler par carte bancaire (Visa, Mastercard), par mobile money ou par virement. Le sélecteur de devise en haut de la grille tarifaire adapte les prix à votre zone — en FCFA, en euros ou en dollars. Pour les modalités précises selon votre pays, écrivez-nous sur WhatsApp.</p></div>
+        </div>
+        <div class="faq-item reveal">
+          <button class="faq-q" aria-expanded="false"><span>Puis-je utiliser GEOFAM sur plusieurs postes ?</span><span class="faq-ic" aria-hidden="true"></span></button>
+          <div class="faq-a"><p>Oui. L'abonnement individuel donne accès sur vos postes de travail, au bureau comme sur chantier — il suffit de vous connecter. La formule Bureau à vie couvre jusqu'à cinq postes simultanés pour une équipe.</p></div>
+        </div>
+        <div class="faq-item reveal">
+          <button class="faq-q" aria-expanded="false"><span>Le procès-verbal scellé est-il une signature électronique ?</span><span class="faq-ic" aria-hidden="true"></span></button>
+          <div class="faq-a"><p>Non, et la distinction est importante. Le sceau est un dispositif d'intégrité technique : il garantit que le document n'a pas été altéré après son édition. Ce n'est pas une signature électronique qualifiée au sens légal, et la responsabilité de l'étude reste celle de l'ingénieur signataire.</p></div>
+        </div>
+        <div class="faq-item reveal">
+          <button class="faq-q" aria-expanded="false"><span>Suis-je accompagné pour démarrer ?</span><span class="faq-ic" aria-hidden="true"></span></button>
+          <div class="faq-a"><p>Oui. Vous disposez de tutoriels vidéo et d'un manuel par logiciel, et notre équipe reste joignable par WhatsApp pour vous aider à la prise en main. La formule Bureau à vie inclut un accompagnement dédié à la mise en route.</p></div>
+        </div>
       </div>
     </div>
   </section>
 
   <section id="contact" data-depth="10.0">
     <div class="wrap close reveal">
-      <h2>Faites votre premier PV scellé aujourd'hui.</h2>
-      <p>24 heures d'essai, tous les logiciels ouverts. On vous accompagne par WhatsApp.</p>
-      <div class="hero-cta"><a class="btn btn-primary" href="#">Démarrer l'essai gratuit</a><a class="btn btn-ghost" href="#">Écrire sur WhatsApp</a></div>
+      <h2>Ouvrez les six logiciels aujourd'hui.</h2>
+      <p>24 heures d'essai, tous les outils accessibles, sur tous vos postes. On vous accompagne par WhatsApp.</p>
+      <div class="hero-cta"><a class="btn btn-primary" href="#tarifs" data-contact="essai">Démarrer l'essai gratuit</a><a class="btn btn-ghost" href="https://wa.me/221768745508?text=Bonjour%2C%20j%27ai%20une%20question%20sur%20GEOFAM." target="_blank" rel="noopener">Écrire sur WhatsApp</a></div>
       <div class="author">Édité par STARFIRE TECHNOLOGY · ingénierie géotechnique</div>
     </div>
   </section>
@@ -608,16 +1054,15 @@ footer{border-top:1px solid var(--hair);padding-block:38px;color:var(--muted);ba
     <div class="foot-brand">
       <span class="logo-badge" aria-hidden="true"></span>GEOFAM
     </div>
-    <div class="foot-links"><a href="#logiciels">Logiciels</a><a href="#pv">PV scellé</a><a href="#tarifs">Tarifs</a><a href="#">WhatsApp</a><a href="#">Tutoriels</a></div>
+    <div class="foot-links"><a href="#logiciels">Logiciels</a><a href="#methode">Méthode &amp; PV</a><a href="#ressources">Ressources</a><a href="#tarifs">Tarifs</a><a href="#faq">FAQ</a><a href="/login">Se connecter</a><a href="https://wa.me/221768745508?text=Bonjour%2C%20j%27ai%20une%20question%20sur%20GEOFAM." target="_blank" rel="noopener">WhatsApp</a><a href="https://www.youtube.com/@GEOTECHNIQUE-c7h" target="_blank" rel="noopener">Tutoriels</a></div>
   </div>
-  <p class="legal">Le sceau des procès-verbaux est un dispositif d'intégrité technique (SHA-256 / HMAC, horodatage serveur). Il ne constitue pas une signature électronique qualifiée au sens de la loi 2008-08. © 2026 STARFIRE TECHNOLOGY. Logo GEOFAM à substituer par le fichier de marque.</p>
+  <p class="legal">Le sceau des procès-verbaux est un dispositif d'intégrité technique (SHA-256 / HMAC, horodatage serveur). Il ne constitue pas une signature électronique qualifiée au sens de la loi 2008-08. © 2026 STARFIRE TECHNOLOGY.</p>
 </div></footer>
 
 <script>
 var REDUCE=window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches;
 function $(id){return document.getElementById(id);}
 
-/* ---- marquee normes : duplique chaque rang pour une boucle sans couture ---- */
 (function(){
   if(REDUCE) return; // statique en reduced-motion
   document.querySelectorAll('.marquee-track').forEach(function(track){
@@ -760,8 +1205,8 @@ function figFD(){
   return '<svg viewBox="'+VB+'" xmlns="http://www.w3.org/2000/svg">'
     +strata(gl)
     +'<g class="anim-drop">'
-    +'<rect class="s-concrete" x="124" y="'+(gl-14)+'" width="12" height="14"/>'  // poteau
-    +'<rect class="s-struct" x="95" y="'+gl+'" width="70" height="13"/>'          // semelle
+    +'<rect class="s-concrete" x="124" y="'+(gl-14)+'" width="12" height="14"/>'
+    +'<rect class="s-struct" x="95" y="'+gl+'" width="70" height="13"/>'
     +loadArrow(130,gl-16,14)+'</g>'
     +'<text class="s-lbl-a" x="95" y="'+(gl-4)+'">Semelle</text>'
     +'<line class="s-amber" x1="95" y1="'+(gl+20)+'" x2="165" y2="'+(gl+20)+'"/>'
@@ -903,6 +1348,190 @@ if($('traf'))$('traf').addEventListener('input',function(){updateCH(+this.value)
   document.querySelectorAll('.amt').forEach(function(a){var raw=a.getAttribute('data-'+cur);if(!raw)return;var p=raw.split('|');a.querySelector('.num').textContent=p[0];a.querySelector('.curl').textContent=p[1];});});});
 window.addEventListener('resize',function(){ drawFig(TOOLS[current].fig); });
 if(figHost){ applyTool('ch'); }
+
+/* ---- grille 6 logiciels : injecte les icônes travaillées ---- */
+(function(){
+  var grid=document.getElementById('grid6'); if(!grid) return;
+  var ICON={
+    ch:'<svg viewBox="0 0 100 100" fill="none"><defs><linearGradient id="gch" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".45"/><stop offset="1" stop-color="currentColor" stop-opacity=".08"/></linearGradient></defs>'
+      +'<path d="M40 18 L60 18 L86 90 L14 90 Z" fill="url(#gch)"/>'
+      +'<path d="M40 18 L60 18 L86 90 L14 90 Z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>'
+      +'<path class="an-dash" d="M50 22 L50 34 M50 44 L50 56 M50 66 L50 82" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" opacity=".9" stroke-dasharray="12 10"/>'
+      +'<path d="M31 46 L69 46 M26 66 L74 66" stroke="currentColor" stroke-width="1.2" opacity=".35"/>'
+      +'<path d="M14 90 L86 90" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
+    fd:'<svg viewBox="0 0 100 100" fill="none"><defs><linearGradient id="gfd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".5"/><stop offset="1" stop-color="currentColor" stop-opacity=".12"/></linearGradient></defs>'
+      +'<rect x="10" y="60" width="80" height="30" fill="currentColor" opacity=".08"/>'
+      +'<path d="M10 60 H90 M10 72 H90 M10 84 H90" stroke="currentColor" stroke-width="1" opacity=".25"/>'
+      +'<rect x="43" y="24" width="14" height="30" fill="url(#gfd)"/><rect x="43" y="24" width="14" height="30" stroke="currentColor" stroke-width="2"/>'
+      +'<rect x="26" y="54" width="48" height="14" rx="1.5" fill="url(#gfd)"/><rect x="26" y="54" width="48" height="14" rx="1.5" stroke="currentColor" stroke-width="2.2"/>'
+      +'<g class="an-load"><path d="M50 12 V22" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M50 24 l-4 -6 h8 z" fill="currentColor"/></g>'
+      +'<path d="M26 76 H74" stroke="currentColor" stroke-width="1.4" opacity=".6"/><path d="M26 73 v6 M74 73 v6" stroke="currentColor" stroke-width="1.4" opacity=".6"/></svg>',
+    px:'<svg viewBox="0 0 100 100" fill="none"><defs><linearGradient id="gpx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".5"/><stop offset="1" stop-color="currentColor" stop-opacity=".14"/></linearGradient></defs>'
+      +'<path d="M14 24 H86 M14 40 H86 M14 56 H86 M14 72 H86" stroke="currentColor" stroke-width="1" opacity=".28"/>'
+      +'<rect x="44" y="14" width="12" height="66" rx="1" fill="url(#gpx)"/><rect x="44" y="14" width="12" height="66" rx="1" stroke="currentColor" stroke-width="2.2"/>'
+      +'<path d="M50 80 l-7 12 h14 z" fill="currentColor"/>'
+      +'<path class="an-fric" d="M58 30 h9 M33 30 h9 M58 46 h9 M33 46 h9 M58 62 h9 M33 62 h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".55"/>'
+      +'<path d="M50 8 V14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>',
+    rd:'<svg viewBox="0 0 100 100" fill="none"><defs><linearGradient id="grd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".5"/><stop offset="1" stop-color="currentColor" stop-opacity=".12"/></linearGradient></defs>'
+      +'<rect x="12" y="60" width="76" height="28" fill="currentColor" opacity=".07"/><path d="M12 60 H88 M12 74 H88" stroke="currentColor" stroke-width="1" opacity=".25"/>'
+      +'<rect x="16" y="44" width="68" height="16" rx="2" fill="url(#grd)"/><rect x="16" y="44" width="68" height="16" rx="2" stroke="currentColor" stroke-width="2.2"/>'
+      +'<g class="an-load"><path d="M28 22 V40 M44 22 V40 M60 22 V40 M72 22 V40" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" opacity=".85"/>'
+      +'<path d="M28 40 l-3 -5 h6 z M44 40 l-3 -5 h6 z M60 40 l-3 -5 h6 z M72 40 l-3 -5 h6 z" fill="currentColor" opacity=".85"/></g>'
+      +'<path d="M26 78 V68 M40 78 V68 M54 78 V68 M68 78 V68" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".5"/></svg>',
+    pr:'<svg viewBox="0 0 100 100" fill="none"><defs><radialGradient id="gpr"><stop offset="0" stop-color="currentColor" stop-opacity=".55"/><stop offset="1" stop-color="currentColor" stop-opacity=".15"/></radialGradient></defs>'
+      +'<rect x="40" y="10" width="20" height="80" fill="currentColor" opacity=".06"/><path d="M40 10 V90 M60 10 V90" stroke="currentColor" stroke-width="1.2" opacity=".3"/>'
+      +'<path d="M50 10 V34 M50 66 V90" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'
+      +'<ellipse class="an-pulse" cx="50" cy="50" rx="17" ry="20" fill="url(#gpr)"/><ellipse class="an-pulse" cx="50" cy="50" rx="17" ry="20" stroke="currentColor" stroke-width="2.2"/>'
+      +'<path d="M70 42 q7 8 0 16 M78 36 q12 14 0 28" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" opacity=".55"/>'
+      +'<path d="M30 42 q-7 8 0 16 M22 36 q-12 14 0 28" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" opacity=".55"/></svg>',
+    lb:'<svg viewBox="0 0 100 100" fill="none"><defs><linearGradient id="glb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".15"/><stop offset="1" stop-color="currentColor" stop-opacity=".5"/></linearGradient></defs>'
+      +'<path d="M38 14 H62 M45 14 V44 L29 80 a7 7 0 0 0 6 10 H65 a7 7 0 0 0 6 -10 L55 44 V14" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>'
+      +'<path d="M36 60 L64 60 L69 74 a7 7 0 0 1 -4 16 H35 a7 7 0 0 1 -4 -16 Z" fill="url(#glb)"/>'
+      +'<path d="M40 68 h4 M40 76 h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".6"/>'
+      +'<circle class="an-b1" cx="52" cy="74" r="2.6" fill="currentColor" opacity=".7"/><circle class="an-b2" cx="58" cy="82" r="1.8" fill="currentColor" opacity=".55"/><circle class="an-b3" cx="46" cy="80" r="1.5" fill="currentColor" opacity=".5"/></svg>'
+  };
+  grid.querySelectorAll('.g6-icon').forEach(function(el){
+    var k=el.getAttribute('data-icon'); if(ICON[k]) el.innerHTML=ICON[k];
+  });
+
+  /* tilt 3D subtil au survol (relief premium, pas de flip) */
+  var REDUCEM = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  var fine = window.matchMedia && window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+  if(!REDUCEM && fine){
+    grid.querySelectorAll('.g6').forEach(function(card){
+      var glare=card.querySelector('.g6-glare'), raf=null, tx=0, ty=0;
+      function onMove(e){
+        var r=card.getBoundingClientRect();
+        var px=(e.clientX-r.left)/r.width, py=(e.clientY-r.top)/r.height; // 0..1
+        tx=(py-0.5)*-16; ty=(px-0.5)*16; // inclinaison max ~16°
+        if(glare){glare.style.setProperty('--gx',(px*100)+'%');glare.style.setProperty('--gy',(py*100)+'%');}
+        if(!raf) raf=requestAnimationFrame(apply);
+      }
+      function apply(){
+        raf=null;
+        card.style.transform='perspective(650px) rotateX('+tx+'deg) rotateY('+ty+'deg) translateY(-6px)';
+      }
+      card.addEventListener('mouseenter',function(){card.classList.add('tilting');});
+      card.addEventListener('mousemove',onMove);
+      card.addEventListener('mouseleave',function(){
+        card.classList.remove('tilting');
+        if(raf){cancelAnimationFrame(raf);raf=null;}
+        card.style.transform=''; // revient à plat en douceur (transition CSS)
+      });
+    });
+  }
+})();
+/* ===== parcours utilisateur : modale contact + flottant + burger (chantiers 1,2,3) ===== */
+function initParcours(){
+  var WA='https://wa.me/221768745508?text=';
+  var EM='mailto:direction@geofam.tech';
+  var INTENTS={
+    demo:{eye:'Demander une démo',title:'Voir GEOFAM en action',
+      desc:'On vous montre les six logiciels et le procès-verbal scellé, en direct.',
+      msg:'Bonjour, je souhaite une démonstration de GEOFAM.',subj:'Demande de démonstration GEOFAM'},
+    essai:{eye:'Essai gratuit',title:'Démarrez votre essai de 24 h',
+      desc:'Accès à tous les logiciels pendant 24 heures. Dites-nous simplement bonjour pour recevoir vos accès.',
+      msg:'Bonjour, je souhaite démarrer l\'essai gratuit de GEOFAM (24 h).',subj:'Essai gratuit GEOFAM (24 h)'},
+    formule:{eye:'Souscription',title:'Souscrire à une formule',
+      desc:'On finalise votre souscription et vos accès ensemble, par le canal de votre choix.',
+      msg:'Bonjour, je souhaite souscrire à la formule GEOFAM.',subj:'Souscription GEOFAM'}
+  };
+  var modal=document.getElementById('contactModal');
+  if(!modal) return;
+  var cmWa=document.getElementById('cmWa'), cmEmail=document.getElementById('cmEmail'),
+      cmEye=document.getElementById('cmEyebrow'), cmTitle=document.getElementById('cmTitle'), cmDesc=document.getElementById('cmDesc'),
+      cmClose=document.getElementById('cmClose'), lastFocus=null;
+
+  function openModal(intent,formule){
+    var d=INTENTS[intent]||INTENTS.demo;
+    var msg=d.msg, subj=d.subj;
+    if(intent==='formule' && formule){ msg='Bonjour, je souhaite souscrire à la formule GEOFAM '+formule+'.'; subj='Souscription GEOFAM — '+formule; }
+    cmEye.textContent=d.eye; cmTitle.textContent=d.title; cmDesc.textContent=d.desc;
+    cmWa.href=WA+encodeURIComponent(msg);
+    cmEmail.href=EM+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(msg);
+    modal.hidden=false; requestAnimationFrame(function(){modal.classList.add('open');});
+    lastFocus=document.activeElement; cmClose.focus();
+    document.body.style.overflow='hidden';
+  }
+  function closeModal(){
+    modal.classList.remove('open');
+    setTimeout(function(){modal.hidden=true;},260);
+    document.body.style.overflow='';
+    if(lastFocus)lastFocus.focus();
+  }
+  // ouvre via tout élément [data-contact]
+  document.querySelectorAll('[data-contact]').forEach(function(el){
+    el.addEventListener('click',function(e){
+      e.preventDefault();
+      openModal(el.getAttribute('data-contact'), el.getAttribute('data-formule'));
+    });
+  });
+  cmClose.addEventListener('click',closeModal);
+  modal.addEventListener('click',function(e){ if(e.target===modal) closeModal(); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&modal.classList.contains('open')) closeModal(); });
+  // ferme la modale quand on part vers WhatsApp/e-mail
+  cmWa.addEventListener('click',closeModal); cmEmail.addEventListener('click',closeModal);
+
+  /* bouton WhatsApp flottant : apparaît après un peu de scroll */
+  var waFloat=document.getElementById('waFloat');
+  if(waFloat){
+    function onScrollWA(){ if(window.scrollY>500) waFloat.classList.add('show'); else waFloat.classList.remove('show'); }
+    window.addEventListener('scroll',onScrollWA,{passive:true}); onScrollWA();
+  }
+
+  /* burger / menu mobile */
+  var burger=document.getElementById('burger'), mm=document.getElementById('mobileMenu');
+  if(burger&&mm){
+    function toggleMenu(open){
+      burger.classList.toggle('on',open); mm.classList.toggle('open',open);
+      burger.setAttribute('aria-expanded',open?'true':'false');
+      document.body.style.overflow=open?'hidden':'';
+    }
+    burger.addEventListener('click',function(){ toggleMenu(!mm.classList.contains('open')); });
+    // ferme au clic sur un lien du menu
+    mm.querySelectorAll('a').forEach(function(a){
+      a.addEventListener('click',function(){ toggleMenu(false); });
+    });
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&mm.classList.contains('open')) toggleMenu(false); });
+  }
+
+  /* FAQ accordéon (chantier 5) */
+  document.querySelectorAll('.faq-item').forEach(function(item){
+    var q=item.querySelector('.faq-q'), a=item.querySelector('.faq-a');
+    q.addEventListener('click',function(){
+      var open=item.classList.contains('open');
+      if(open){ item.classList.remove('open'); q.setAttribute('aria-expanded','false'); a.style.maxHeight=null; }
+      else{ item.classList.add('open'); q.setAttribute('aria-expanded','true'); a.style.maxHeight=a.scrollHeight+'px'; }
+    });
+  });
+}
+if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',initParcours);}else{initParcours();}
 </script>
+<a class="wa-float" id="waFloat" href="https://wa.me/221768745508?text=Bonjour%2C%20j%27ai%20une%20question%20sur%20GEOFAM." target="_blank" rel="noopener" aria-label="Nous écrire sur WhatsApp">
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.5 14.4c-.3-.15-1.7-.85-2-.95-.26-.1-.45-.15-.65.15-.19.29-.74.94-.91 1.13-.17.19-.34.22-.63.07-.3-.15-1.25-.46-2.38-1.47-.88-.78-1.47-1.75-1.64-2.04-.17-.29-.02-.45.13-.6.13-.13.3-.34.44-.51.15-.17.19-.29.29-.48.1-.19.05-.36-.02-.51-.08-.15-.65-1.57-.9-2.15-.24-.56-.48-.49-.65-.5h-.56c-.19 0-.51.07-.77.36-.26.29-1.01.99-1.01 2.41s1.04 2.8 1.18 2.99c.15.19 2.03 3.1 4.92 4.35.69.3 1.22.47 1.64.6.69.22 1.32.19 1.81.11.55-.08 1.7-.69 1.94-1.36.24-.67.24-1.24.17-1.36-.07-.12-.26-.19-.55-.34zM12.05 21.5h-.02a9.4 9.4 0 0 1-4.79-1.31l-.34-.2-3.56.93.95-3.47-.22-.36a9.38 9.38 0 0 1-1.44-5.01c0-5.19 4.23-9.41 9.43-9.41 2.52 0 4.88.98 6.66 2.76a9.35 9.35 0 0 1 2.76 6.66c-.01 5.19-4.24 9.41-9.42 9.41zM20.13 3.89A11.32 11.32 0 0 0 12.05.55C5.8.55.72 5.63.72 11.87c0 2 .52 3.95 1.51 5.67L.63 23.45l6.05-1.59a11.3 11.3 0 0 0 5.37 1.37h.01c6.24 0 11.32-5.08 11.33-11.32a11.26 11.26 0 0 0-3.32-8.02z"/></svg>
+  <span class="wa-label">Une question ?</span>
+</a>
+
+<!-- Modale contact (chantier 1) -->
+<div class="modal-overlay" id="contactModal" role="dialog" aria-modal="true" aria-labelledby="cmTitle" hidden>
+  <div class="modal">
+    <button class="modal-close" id="cmClose" aria-label="Fermer">✕</button>
+    <span class="eyebrow" id="cmEyebrow">Contactez-nous</span>
+    <h3 id="cmTitle">Parlons de votre besoin</h3>
+    <p id="cmDesc">Choisissez le canal qui vous convient — on vous répond rapidement.</p>
+    <div class="modal-actions">
+      <a class="modal-btn wa" id="cmWa" href="#" target="_blank" rel="noopener">
+        <span class="mb-ico"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.5 14.4c-.3-.15-1.7-.85-2-.95-.26-.1-.45-.15-.65.15-.19.29-.74.94-.91 1.13-.17.19-.34.22-.63.07-.3-.15-1.25-.46-2.38-1.47-.88-.78-1.47-1.75-1.64-2.04-.17-.29-.02-.45.13-.6.13-.13.3-.34.44-.51.15-.17.19-.29.29-.48.1-.19.05-.36-.02-.51-.08-.15-.65-1.57-.9-2.15-.24-.56-.48-.49-.65-.5h-.56c-.19 0-.51.07-.77.36-.26.29-1.01.99-1.01 2.41s1.04 2.8 1.18 2.99c.15.19 2.03 3.1 4.92 4.35.69.3 1.22.47 1.64.6.69.22 1.32.19 1.81.11.55-.08 1.7-.69 1.94-1.36.24-.67.24-1.24.17-1.36-.07-.12-.26-.19-.55-.34z"/></svg></span>
+        <span class="mb-txt"><b>WhatsApp</b><span>Réponse rapide, message pré-rempli</span></span>
+        <span class="mb-ar">→</span>
+      </a>
+      <a class="modal-btn em" id="cmEmail" href="#">
+        <span class="mb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>
+        <span class="mb-txt"><b>E-mail</b><span>direction@geofam.tech</span></span>
+        <span class="mb-ar">→</span>
+      </a>
+    </div>
+  </div>
+</div>
 </body>
 </html>
