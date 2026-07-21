@@ -571,12 +571,21 @@ function PvRow({
         alignItems: 'center',
         gap: 16,
         padding: '14px 16px',
+        // Surface PLATE, volontairement pas « verre » : le dégradé du verre
+        // descend jusqu'à la couleur du fond, ce qui délave des lignes
+        // répétées et leur fait perdre leur contour. Le verre est réservé au
+        // panneau de détail (surface unique, mise en avant).
         background: 'var(--surface-base)',
+        border: '1px solid var(--border-subtle)',
         borderRadius: 'var(--radius-lg)',
         boxShadow: 'var(--elevation-card)',
       }}
     >
-      {/* Icône */}
+      {/* Icône — fond asphalte, JAMAIS vert (ADR 0008). Le scellement n'est pas
+          un verdict : un PV peut être scellé tout en rapportant un calcul NON
+          CONFORME. Le teinter en vert ferait lire « tout va bien » à côté d'un
+          résultat en échec — l'ambiguïté exacte que l'ADR interdit. Le vert et
+          le rouge restent réservés aux verdicts de conformité. */}
       <div
         style={{
           width: 36,
@@ -621,6 +630,7 @@ function PvRow({
               alignItems: 'center',
               gap: 3,
               padding: '1px 6px',
+              // Asphalte + cadenas, jamais vert (ADR 0008) — cf. l'icône.
               background: 'var(--surface-nav)',
               borderRadius: 'var(--radius-sm)',
               fontSize: 11,

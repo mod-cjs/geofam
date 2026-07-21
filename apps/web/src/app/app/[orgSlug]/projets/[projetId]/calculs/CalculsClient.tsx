@@ -319,9 +319,9 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
         style={{
           marginTop: 10,
           fontSize: 12,
-          color: '#96701a',
-          background: '#f4edd8',
-          border: '1px solid #e6cf9c',
+          color: 'var(--status-warn-tx)',
+          background: 'var(--status-warn-bg)',
+          border: '1px solid var(--warn-line, var(--status-warn-tx))',
           borderRadius: 8,
           padding: '10px 12px',
         }}
@@ -531,10 +531,8 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
           />
         ) : (
           <div
+            className="surface-glass"
             style={{
-              background: 'var(--surface-base)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 14,
               padding: '18px 20px',
             }}
           >

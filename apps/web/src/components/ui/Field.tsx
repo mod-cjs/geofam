@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 /**
  * A-02 + A-03 + A-04 + A-05 — Field (Input / Select / Textarea / Checkbox / Radio / Switch)
@@ -10,7 +10,7 @@
  * - 218 champs métier = dérivés depuis ENGINE_DESCRIPTORS (Lot 3 — combinatoire Code)
  */
 
-import { AlertCircle, Check, ChevronDown } from "lucide-react";
+import { AlertCircle, Check, ChevronDown } from 'lucide-react';
 import {
   forwardRef,
   type InputHTMLAttributes,
@@ -18,13 +18,13 @@ import {
   type TextareaHTMLAttributes,
   type ReactNode,
   useState,
-} from "react";
+} from 'react';
 
 /* ------------------------------------------------------------------ */
 /* Types partagés                                                       */
 /* ------------------------------------------------------------------ */
 
-export type FieldState = "default" | "valid" | "error" | "warning" | "disabled";
+export type FieldState = 'default' | 'valid' | 'error' | 'warning' | 'disabled';
 
 interface FieldWrapperProps {
   label: string;
@@ -54,79 +54,80 @@ function FieldWrapper({
   children,
 }: FieldWrapperProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       {/* Label */}
       <label
         htmlFor={id}
         style={{
           fontSize: 12,
           fontWeight: 500,
-          color: state === "disabled" ? "var(--text-muted)" : "var(--text-secondary)",
+          color: state === 'disabled' ? 'var(--text-muted)' : 'var(--text-secondary)',
           lineHeight: 1.4,
         }}
       >
         {label}
         {required && (
-          <span aria-hidden="true" style={{ color: "var(--status-fail-tx)", marginLeft: 2 }}>
+          <span
+            aria-hidden="true"
+            style={{ color: 'var(--status-fail-tx)', marginLeft: 2 }}
+          >
             *
           </span>
         )}
         {unit && (
-          <span
-            style={{ marginLeft: 4, color: "var(--text-muted)", fontWeight: 400 }}
-          >
+          <span style={{ marginLeft: 4, color: 'var(--text-muted)', fontWeight: 400 }}>
             ({unit})
           </span>
         )}
       </label>
 
       {/* Champ + icône d'état */}
-      <div style={{ position: "relative" }}>
+      <div style={{ position: 'relative' }}>
         {children}
 
         {/* Icône d'état (on-blur) */}
-        {state === "valid" && (
+        {state === 'valid' && (
           <span
             aria-hidden="true"
             style={{
-              position: "absolute",
+              position: 'absolute',
               right: 10,
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "var(--status-pass-tx)",
-              display: "flex",
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--status-pass-tx)',
+              display: 'flex',
               animation: `rds-fade-in var(--dur-fast) var(--ease-entrance)`,
             }}
           >
             <Check size={16} strokeWidth={1.5} />
           </span>
         )}
-        {state === "error" && (
+        {state === 'error' && (
           <span
             aria-hidden="true"
             style={{
-              position: "absolute",
+              position: 'absolute',
               right: 10,
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "var(--status-fail-tx)",
-              display: "flex",
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--status-fail-tx)',
+              display: 'flex',
               animation: `rds-fade-in var(--dur-fast) var(--ease-entrance)`,
             }}
           >
             <AlertCircle size={16} strokeWidth={1.5} />
           </span>
         )}
-        {state === "warning" && (
+        {state === 'warning' && (
           <span
             aria-hidden="true"
             style={{
-              position: "absolute",
+              position: 'absolute',
               right: 10,
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "#b45309",
-              display: "flex",
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--status-warn-tx)',
+              display: 'flex',
             }}
           >
             <AlertCircle size={16} strokeWidth={1.5} />
@@ -136,7 +137,7 @@ function FieldWrapper({
 
       {/* Aide contextuelle */}
       {hint && !error && !warning && (
-        <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>{hint}</p>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>{hint}</p>
       )}
 
       {/* Message erreur (on-blur) */}
@@ -146,10 +147,10 @@ function FieldWrapper({
           role="alert"
           style={{
             fontSize: 12,
-            color: "var(--status-fail-tx)",
+            color: 'var(--status-fail-tx)',
             margin: 0,
-            display: "flex",
-            alignItems: "center",
+            display: 'flex',
+            alignItems: 'center',
             gap: 4,
             animation: `rds-fade-in var(--dur-fast) var(--ease-entrance)`,
           }}
@@ -164,7 +165,7 @@ function FieldWrapper({
           id={`${id}-warning`}
           style={{
             fontSize: 12,
-            color: "#92400e",
+            color: 'var(--status-warn-tx)',
             margin: 0,
           }}
         >
@@ -179,7 +180,7 @@ function FieldWrapper({
 /* Input texte                                                          */
 /* ------------------------------------------------------------------ */
 
-interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "size"> {
+interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label: string;
   id: string;
   unit?: string;
@@ -204,7 +205,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
     required,
     ...rest
   },
-  ref
+  ref,
 ) {
   const [internalError, setInternalError] = useState<string | undefined>();
   const [internalWarning, setInternalWarning] = useState<string | undefined>();
@@ -213,21 +214,21 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   const error = externalError ?? internalError;
   const warning = externalWarning ?? internalWarning;
 
-  let state: FieldState = externalState ?? "default";
-  if (disabled) state = "disabled";
-  else if (error) state = "error";
-  else if (warning) state = "warning";
-  else if (touched && !error && !warning && rest.value !== "" && rest.value !== undefined)
-    state = "valid";
+  let state: FieldState = externalState ?? 'default';
+  if (disabled) state = 'disabled';
+  else if (error) state = 'error';
+  else if (warning) state = 'warning';
+  else if (touched && !error && !warning && rest.value !== '' && rest.value !== undefined)
+    state = 'valid';
 
   const borderColor =
-    state === "error"
-      ? "var(--status-fail-tx)"
-      : state === "warning"
-        ? "#b45309"
-        : state === "valid"
-          ? "var(--status-pass-tx)"
-          : "var(--border-default)";
+    state === 'error'
+      ? 'var(--status-fail-tx)'
+      : state === 'warning'
+        ? 'var(--status-warn-tx)'
+        : state === 'valid'
+          ? 'var(--status-pass-tx)'
+          : 'var(--border-default)';
 
   return (
     <FieldWrapper
@@ -246,32 +247,33 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         id={id}
         disabled={disabled}
         required={required}
-        aria-invalid={state === "error" ? "true" : undefined}
+        aria-invalid={state === 'error' ? 'true' : undefined}
         aria-describedby={error ? `${id}-error` : warning ? `${id}-warning` : undefined}
         style={{
-          width: "100%",
+          width: '100%',
           height: 38,
-          padding: state === "error" || state === "valid" || state === "warning"
-            ? "0 36px 0 12px"
-            : "0 12px",
-          borderRadius: "var(--radius-base)",
+          padding:
+            state === 'error' || state === 'valid' || state === 'warning'
+              ? '0 36px 0 12px'
+              : '0 12px',
+          borderRadius: 'var(--radius-base)',
           border: `1px solid ${borderColor}`,
-          background: disabled ? "var(--color-alt, #eef0f1)" : "var(--surface-base)",
-          fontFamily: "var(--font-sans)",
+          background: disabled ? 'var(--color-alt, #eef0f1)' : 'var(--surface-base)',
+          fontFamily: 'var(--font-sans)',
           fontSize: 14,
-          color: disabled ? "var(--text-muted)" : "var(--text-primary)",
-          outline: "none",
+          color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
+          outline: 'none',
           transition: `border-color var(--dur-fast) var(--ease-state), box-shadow var(--dur-fast) var(--ease-state)`,
-          cursor: disabled ? "not-allowed" : "text",
+          cursor: disabled ? 'not-allowed' : 'text',
         }}
         onFocus={(e) => {
-          e.currentTarget.style.borderColor = "var(--accent-action)";
-          e.currentTarget.style.boxShadow = "0 0 0 3px rgba(160,82,38,0.12)";
+          e.currentTarget.style.borderColor = 'var(--accent-action)';
+          e.currentTarget.style.boxShadow = '0 0 0 3px rgba(160,82,38,0.12)';
           rest.onFocus?.(e);
         }}
         onBlur={(e) => {
-          e.currentTarget.style.borderColor = "";
-          e.currentTarget.style.boxShadow = "";
+          e.currentTarget.style.borderColor = '';
+          e.currentTarget.style.boxShadow = '';
           setTouched(true);
           if (onValidate) {
             const result = onValidate(e.currentTarget.value);
@@ -291,7 +293,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 /* Select                                                               */
 /* ------------------------------------------------------------------ */
 
-interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "size"> {
+interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
   label: string;
   id: string;
   hint?: string;
@@ -302,13 +304,13 @@ interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "siz
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
   { label, id, hint, error, fieldState, disabled, required, children, ...rest },
-  ref
+  ref,
 ) {
   const [focused, setFocused] = useState(false);
 
-  let state: FieldState = fieldState ?? "default";
-  if (disabled) state = "disabled";
-  else if (error) state = "error";
+  let state: FieldState = fieldState ?? 'default';
+  if (disabled) state = 'disabled';
+  else if (error) state = 'error';
 
   return (
     <FieldWrapper
@@ -319,33 +321,39 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
       error={error}
       state={state}
     >
-      <div style={{ position: "relative" }}>
+      <div style={{ position: 'relative' }}>
         <select
           {...rest}
           ref={ref}
           id={id}
           disabled={disabled}
           required={required}
-          aria-invalid={state === "error" ? "true" : undefined}
+          aria-invalid={state === 'error' ? 'true' : undefined}
           aria-describedby={error ? `${id}-error` : undefined}
           style={{
-            width: "100%",
+            width: '100%',
             height: 38,
-            padding: "0 36px 0 12px",
-            borderRadius: "var(--radius-base)",
-            border: `1px solid ${state === "error" ? "var(--status-fail-tx)" : focused ? "var(--accent-action)" : "var(--border-default)"}`,
-            background: disabled ? "var(--color-alt, #eef0f1)" : "var(--surface-base)",
-            fontFamily: "var(--font-sans)",
+            padding: '0 36px 0 12px',
+            borderRadius: 'var(--radius-base)',
+            border: `1px solid ${state === 'error' ? 'var(--status-fail-tx)' : focused ? 'var(--accent-action)' : 'var(--border-default)'}`,
+            background: disabled ? 'var(--color-alt, #eef0f1)' : 'var(--surface-base)',
+            fontFamily: 'var(--font-sans)',
             fontSize: 14,
-            color: disabled ? "var(--text-muted)" : "var(--text-primary)",
-            outline: "none",
-            appearance: "none",
-            cursor: disabled ? "not-allowed" : "pointer",
-            boxShadow: focused ? "0 0 0 3px rgba(160,82,38,0.12)" : undefined,
+            color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
+            outline: 'none',
+            appearance: 'none',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            boxShadow: focused ? '0 0 0 3px rgba(160,82,38,0.12)' : undefined,
             transition: `border-color var(--dur-fast) var(--ease-state), box-shadow var(--dur-fast) var(--ease-state)`,
           }}
-          onFocus={(e) => { setFocused(true); rest.onFocus?.(e); }}
-          onBlur={(e) => { setFocused(false); rest.onBlur?.(e); }}
+          onFocus={(e) => {
+            setFocused(true);
+            rest.onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            rest.onBlur?.(e);
+          }}
         >
           {children}
         </select>
@@ -353,13 +361,13 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
         <span
           aria-hidden="true"
           style={{
-            position: "absolute",
+            position: 'absolute',
             right: 10,
-            top: "50%",
-            transform: "translateY(-50%)",
-            color: "var(--text-muted)",
-            display: "flex",
-            pointerEvents: "none",
+            top: '50%',
+            transform: 'translateY(-50%)',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            pointerEvents: 'none',
           }}
         >
           <ChevronDown size={16} strokeWidth={1.5} />
@@ -383,13 +391,13 @@ interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
   { label, id, hint, error, fieldState, disabled, required, ...rest },
-  ref
+  ref,
 ) {
   const [focused, setFocused] = useState(false);
 
-  let state: FieldState = fieldState ?? "default";
-  if (disabled) state = "disabled";
-  else if (error) state = "error";
+  let state: FieldState = fieldState ?? 'default';
+  if (disabled) state = 'disabled';
+  else if (error) state = 'error';
 
   return (
     <FieldWrapper
@@ -406,26 +414,32 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
         id={id}
         disabled={disabled}
         required={required}
-        aria-invalid={state === "error" ? "true" : undefined}
+        aria-invalid={state === 'error' ? 'true' : undefined}
         aria-describedby={error ? `${id}-error` : undefined}
         style={{
-          width: "100%",
+          width: '100%',
           minHeight: 88,
-          padding: "10px 12px",
-          borderRadius: "var(--radius-base)",
-          border: `1px solid ${state === "error" ? "var(--status-fail-tx)" : focused ? "var(--accent-action)" : "var(--border-default)"}`,
-          background: disabled ? "var(--color-alt, #eef0f1)" : "var(--surface-base)",
-          fontFamily: "var(--font-sans)",
+          padding: '10px 12px',
+          borderRadius: 'var(--radius-base)',
+          border: `1px solid ${state === 'error' ? 'var(--status-fail-tx)' : focused ? 'var(--accent-action)' : 'var(--border-default)'}`,
+          background: disabled ? 'var(--color-alt, #eef0f1)' : 'var(--surface-base)',
+          fontFamily: 'var(--font-sans)',
           fontSize: 14,
-          color: disabled ? "var(--text-muted)" : "var(--text-primary)",
-          outline: "none",
-          resize: "vertical",
-          cursor: disabled ? "not-allowed" : "text",
-          boxShadow: focused ? "0 0 0 3px rgba(160,82,38,0.12)" : undefined,
+          color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
+          outline: 'none',
+          resize: 'vertical',
+          cursor: disabled ? 'not-allowed' : 'text',
+          boxShadow: focused ? '0 0 0 3px rgba(160,82,38,0.12)' : undefined,
           transition: `border-color var(--dur-fast) var(--ease-state), box-shadow var(--dur-fast) var(--ease-state)`,
         }}
-        onFocus={(e) => { setFocused(true); rest.onFocus?.(e); }}
-        onBlur={(e) => { setFocused(false); rest.onBlur?.(e); }}
+        onFocus={(e) => {
+          setFocused(true);
+          rest.onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setFocused(false);
+          rest.onBlur?.(e);
+        }}
       />
     </FieldWrapper>
   );
@@ -435,22 +449,32 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
 /* Checkbox                                                             */
 /* ------------------------------------------------------------------ */
 
-interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "size"> {
+interface CheckboxProps extends Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  'type' | 'size'
+> {
   label: string;
   id: string;
   indeterminate?: boolean;
   error?: string;
 }
 
-export function Checkbox({ label, id, indeterminate, error, disabled, ...rest }: CheckboxProps) {
+export function Checkbox({
+  label,
+  id,
+  indeterminate,
+  error,
+  disabled,
+  ...rest
+}: CheckboxProps) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
       <input
         {...rest}
         type="checkbox"
         id={id}
         disabled={disabled}
-        aria-invalid={error ? "true" : undefined}
+        aria-invalid={error ? 'true' : undefined}
         ref={(el) => {
           if (el) el.indeterminate = indeterminate ?? false;
         }}
@@ -458,8 +482,8 @@ export function Checkbox({ label, id, indeterminate, error, disabled, ...rest }:
           width: 16,
           height: 16,
           marginTop: 2,
-          accentColor: "var(--accent-action)",
-          cursor: disabled ? "not-allowed" : "pointer",
+          accentColor: 'var(--accent-action)',
+          cursor: disabled ? 'not-allowed' : 'pointer',
           flexShrink: 0,
         }}
       />
@@ -467,8 +491,8 @@ export function Checkbox({ label, id, indeterminate, error, disabled, ...rest }:
         htmlFor={id}
         style={{
           fontSize: 14,
-          color: disabled ? "var(--text-muted)" : "var(--text-primary)",
-          cursor: disabled ? "not-allowed" : "pointer",
+          color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
+          cursor: disabled ? 'not-allowed' : 'pointer',
           lineHeight: 1.5,
         }}
       >
@@ -478,7 +502,7 @@ export function Checkbox({ label, id, indeterminate, error, disabled, ...rest }:
         <p
           id={`${id}-error`}
           role="alert"
-          style={{ fontSize: 12, color: "var(--status-fail-tx)", margin: 0 }}
+          style={{ fontSize: 12, color: 'var(--status-fail-tx)', margin: 0 }}
         >
           {error}
         </p>
@@ -491,14 +515,17 @@ export function Checkbox({ label, id, indeterminate, error, disabled, ...rest }:
 /* Radio                                                                */
 /* ------------------------------------------------------------------ */
 
-interface RadioProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "size"> {
+interface RadioProps extends Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  'type' | 'size'
+> {
   label: string;
   id: string;
 }
 
 export function Radio({ label, id, disabled, ...rest }: RadioProps) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <input
         {...rest}
         type="radio"
@@ -507,8 +534,8 @@ export function Radio({ label, id, disabled, ...rest }: RadioProps) {
         style={{
           width: 16,
           height: 16,
-          accentColor: "var(--accent-action)",
-          cursor: disabled ? "not-allowed" : "pointer",
+          accentColor: 'var(--accent-action)',
+          cursor: disabled ? 'not-allowed' : 'pointer',
           flexShrink: 0,
         }}
       />
@@ -516,8 +543,8 @@ export function Radio({ label, id, disabled, ...rest }: RadioProps) {
         htmlFor={id}
         style={{
           fontSize: 14,
-          color: disabled ? "var(--text-muted)" : "var(--text-primary)",
-          cursor: disabled ? "not-allowed" : "pointer",
+          color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
+          cursor: disabled ? 'not-allowed' : 'pointer',
         }}
       >
         {label}
@@ -540,10 +567,7 @@ interface SwitchProps {
 
 export function Switch({ label, id, checked = false, onChange, disabled }: SwitchProps) {
   return (
-    <div
-      style={{ display: "flex", alignItems: "center", gap: 10 }}
-      role="group"
-    >
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }} role="group">
       <button
         type="button"
         role="switch"
@@ -552,15 +576,15 @@ export function Switch({ label, id, checked = false, onChange, disabled }: Switc
         disabled={disabled}
         onClick={() => !disabled && onChange?.(!checked)}
         style={{
-          display: "inline-flex",
-          alignItems: "center",
+          display: 'inline-flex',
+          alignItems: 'center',
           width: 36,
           height: 20,
           borderRadius: 10,
-          padding: "0 2px",
-          border: "none",
-          background: checked ? "var(--accent-action)" : "var(--border-default)",
-          cursor: disabled ? "not-allowed" : "pointer",
+          padding: '0 2px',
+          border: 'none',
+          background: checked ? 'var(--accent-action)' : 'var(--border-default)',
+          cursor: disabled ? 'not-allowed' : 'pointer',
           transition: `background-color var(--dur-fast) var(--ease-state)`,
           opacity: disabled ? 0.55 : 1,
           flexShrink: 0,
@@ -568,13 +592,13 @@ export function Switch({ label, id, checked = false, onChange, disabled }: Switc
       >
         <span
           style={{
-            display: "block",
+            display: 'block',
             width: 16,
             height: 16,
-            borderRadius: "50%",
-            background: "#fff",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-            transform: checked ? "translateX(16px)" : "translateX(0)",
+            borderRadius: '50%',
+            background: '#fff',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+            transform: checked ? 'translateX(16px)' : 'translateX(0)',
             transition: `transform var(--dur-fast) var(--ease-state)`,
           }}
         />
@@ -583,8 +607,8 @@ export function Switch({ label, id, checked = false, onChange, disabled }: Switc
         htmlFor={id}
         style={{
           fontSize: 14,
-          color: disabled ? "var(--text-muted)" : "var(--text-primary)",
-          cursor: disabled ? "not-allowed" : "pointer",
+          color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
+          cursor: disabled ? 'not-allowed' : 'pointer',
         }}
       >
         {label}
@@ -594,10 +618,10 @@ export function Switch({ label, id, checked = false, onChange, disabled }: Switc
 }
 
 /* Inject fade-in keyframe */
-if (typeof document !== "undefined") {
-  const id = "__rds-fade-in";
+if (typeof document !== 'undefined') {
+  const id = '__rds-fade-in';
   if (!document.getElementById(id)) {
-    const style = document.createElement("style");
+    const style = document.createElement('style');
     style.id = id;
     style.textContent = `@keyframes rds-fade-in{from{opacity:0}to{opacity:1}}`;
     document.head.appendChild(style);

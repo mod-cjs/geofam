@@ -174,9 +174,9 @@ export default function LogicielsGallery() {
         <div
           role="status"
           style={{
-            background: '#f4edd8',
-            border: '1px solid #e6cf9c',
-            color: '#96701a',
+            background: 'var(--status-warn-bg)',
+            border: '1px solid var(--warn-line, var(--status-warn-tx))',
+            color: 'var(--status-warn-tx)',
             borderRadius: 10,
             padding: '10px 14px',
             fontSize: 13,

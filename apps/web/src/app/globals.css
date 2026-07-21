@@ -75,6 +75,11 @@
   --status-pass-tx: #2f6b46; /* 5,13:1 sur pass-bg */
   --status-fail-bg: #fbeceb;
   --status-fail-tx: #8b1a1a; /* 8,12:1 sur fail-bg */
+  /* Avertissement (quota bas, document non capturé…) : ni verdict pass ni
+     verdict fail — état intermédiaire qui APPELLE une action sans la bloquer.
+     Ambre, aligné sur l'accent maison. */
+  --status-warn-bg: #fbf1e3;
+  --status-warn-tx: #7a4a12; /* 7,4:1 sur warn-bg */
   /* Aliases excellence-v1 */
   --color-verdict-pass-bg: var(--status-pass-bg);
   --color-verdict-pass-fg: var(--status-pass-tx);
@@ -199,6 +204,10 @@
   --status-pass-tx: #4fd1b0;
   --status-fail-bg: rgba(255, 138, 115, 0.12);
   --status-fail-tx: #ff8a73;
+  /* Avertissement dark : même logique translucide que pass/fail.
+     #f0a24b sur panel (#0f141b) ~8,1:1 — AA large. */
+  --status-warn-bg: rgba(240, 162, 75, 0.13);
+  --status-warn-tx: #f0a24b;
 
   /* Tags de domaine (CH./FD./LB.) dark : les valeurs :root (#f0ede9 etc.)
      ne sont PAS redéfinies par défaut ici -> elles sont héritées telles
@@ -223,6 +232,11 @@
   --bad: #ff8a73;
   --bad-dim: rgba(255, 138, 115, 0.12);
   --bad-line: rgba(255, 138, 115, 0.34);
+  /* Avertissement — triplet complet (teinte/fond/liseré), même forme que
+     seal et bad, pour les bandeaux et bordures d'alerte non bloquante. */
+  --warn: #f0a24b;
+  --warn-dim: rgba(240, 162, 75, 0.13);
+  --warn-line: rgba(240, 162, 75, 0.42);
 
   /* Aliases dark */
   --color-text: var(--text-primary);
@@ -386,4 +400,43 @@ td.coeff {
 /* ------------------------------------------------------------------ */
 .admin-breadcrumb-link:hover {
   text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------ */
+/* 11. SURFACE « VERRE » — carte instrument de la refonte dark          */
+/*                                                                      */
+/* Le liseré lumineux en haut de carte demande un pseudo-élément, donc  */
+/* une classe : impossible en style inline. Utilisée par le panneau de  */
+/* détail des calculs, et réutilisable par les autres cartes de la      */
+/* refonte.                                                             */
+/*                                                                      */
+/* En clair, le dégradé et le liseré s'annulent (surface plate) : la    */
+/* profondeur du verre n'a de sens que sur fond sombre, et un liseré    */
+/* blanc sur papier se lirait comme un artefact.                        */
+/* ------------------------------------------------------------------ */
+.surface-glass {
+  position: relative;
+  background: var(--surface-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+}
+
+[data-theme='dark'] .surface-glass {
+  /* Le dégradé s'arrête sur --surface-nav (#0b0e13), PAS sur --surface-canvas
+     (#080a0d) : s'il descendait jusqu'à la couleur de la page, le bas de la
+     carte se fondrait dans le fond et la carte perdrait son contour. */
+  background: linear-gradient(180deg, var(--surface-base), var(--surface-nav));
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.14) inset,
+    0 30px 60px -34px rgba(0, 0, 0, 0.9);
+}
+
+[data-theme='dark'] .surface-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+  pointer-events: none;
 }

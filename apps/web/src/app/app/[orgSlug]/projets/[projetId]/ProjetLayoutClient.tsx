@@ -9,16 +9,19 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 
-import { Badge } from '@/components/ui/Badge';
-import { getProjectCached } from '@/lib/api/client';
+import { DomainTag } from '@/components/ui/DomainTag';
+import { getProjectCached, listCalcResults, listPvs } from '@/lib/api/client';
 import type { Project } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
+import { projectRef } from '@/lib/project-ref';
 
 interface Tab {
   id: string;
   label: string;
   href: string;
   pattern: RegExp;
+  /** Clé de compteur affiché en pastille — absent = onglet sans compteur. */
+  count?: 'calculs' | 'pv';
 }
 
 function buildTabs(orgSlug: string, projetId: string): Tab[] {
@@ -35,12 +38,14 @@ function buildTabs(orgSlug: string, projetId: string): Tab[] {
       label: 'Calculs',
       href: `${base}/calculs`,
       pattern: /\/calculs(\/|$)/,
+      count: 'calculs',
     },
     {
       id: 'pv',
       label: 'PV & Livrables',
       href: `${base}/pv`,
       pattern: /\/pv(\/|$)/,
+      count: 'pv',
     },
     {
       id: 'infos',
@@ -65,6 +70,12 @@ export default function ProjetLayoutClient({
   const pathname = usePathname();
   const orgId = useOrgId(orgSlug);
   const [project, setProject] = useState<Project | null>(null);
+  // `null` = pas encore connu : on n'affiche RIEN plutôt qu'un « 0 » qui
+  // ferait croire à un projet vide pendant le chargement (ou après un échec).
+  const [counts, setCounts] = useState<{ calculs: number | null; pv: number | null }>({
+    calculs: null,
+    pv: null,
+  });
   const tabs = buildTabs(orgSlug, projetId);
 
   useEffect(() => {
@@ -75,6 +86,25 @@ export default function ProjetLayoutClient({
     getProjectCached(orgId, projetId)
       .then(setProject)
       .catch(() => {});
+  }, [orgId, projetId]);
+
+  useEffect(() => {
+    if (!orgId) return;
+    let annule = false;
+    // Compteurs d'onglets : chaque liste échoue indépendamment (allSettled) —
+    // un PV illisible ne doit pas effacer le compteur des calculs.
+    Promise.allSettled([listCalcResults(orgId, projetId), listPvs(orgId, projetId)]).then(
+      ([c, p]) => {
+        if (annule) return;
+        setCounts({
+          calculs: c.status === 'fulfilled' ? c.value.length : null,
+          pv: p.status === 'fulfilled' ? p.value.length : null,
+        });
+      },
+    );
+    return () => {
+      annule = true;
+    };
   }, [orgId, projetId]);
 
   function isTabActive(tab: Tab): boolean {
@@ -131,7 +161,29 @@ export default function ProjetLayoutClient({
             {project?.name ?? '—'}
           </span>
           {project && (
-            <Badge variant="neutre" label={project.domain ?? 'Domaine non défini'} />
+            <>
+              {/* Référence courte : repère de lecture stable, dérivé de
+                  l'identité du projet. Le seul numéro qui fait référence
+                  reste celui du PV — d'où le libellé neutre « réf. ». */}
+              <span
+                title={`Référence courte du projet — ${projectRef(project)}`}
+                style={{
+                  fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                  fontSize: 10.5,
+                  letterSpacing: '0.04em',
+                  color: 'var(--text-muted)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '2px 6px',
+                  lineHeight: 1,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+              >
+                {projectRef(project)}
+              </span>
+              <DomainTag domain={project.domain} />
+            </>
           )}
         </div>
 
@@ -169,6 +221,13 @@ export default function ProjetLayoutClient({
                     role="tab"
                     aria-selected={active}
                     id={`tab-${tab.id}`}
+                    // La pastille chiffrée est décorative (aria-hidden) : le
+                    // compte est porté ici, sinon il serait perdu à l'oral.
+                    aria-label={
+                      tab.count && counts[tab.count] !== null
+                        ? `${tab.label} (${counts[tab.count]})`
+                        : undefined
+                    }
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -181,7 +240,12 @@ export default function ProjetLayoutClient({
                       color: active
                         ? 'var(--struct-petrole-text)'
                         : 'var(--text-secondary)',
-                      background: active ? 'rgba(31, 78, 74, 0.07)' : 'transparent',
+                      // Teinte dérivée de la couleur d'état active : en dark le
+                      // pétrole codé en dur était quasi invisible sur le panel.
+                      background: active
+                        ? 'color-mix(in srgb, var(--struct-petrole-text) 10%, transparent)'
+                        : 'transparent',
+                      gap: 7,
                       textDecoration: 'none',
                       borderBottom: active
                         ? '2px solid var(--struct-petrole-text)'
@@ -201,6 +265,29 @@ export default function ProjetLayoutClient({
                     }}
                   >
                     {tab.label}
+                    {/* Compteur : rendu seulement quand la valeur est CONNUE.
+                        Tant qu'elle ne l'est pas, aucune pastille — mieux vaut
+                        rien qu'un « 0 » qui se lirait comme « projet vide ». */}
+                    {tab.count && counts[tab.count] !== null && (
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 600,
+                          lineHeight: 1,
+                          padding: '2px 6px',
+                          borderRadius: 999,
+                          color: active
+                            ? 'var(--struct-petrole-text)'
+                            : 'var(--text-muted)',
+                          background: active
+                            ? 'color-mix(in srgb, var(--struct-petrole-text) 16%, transparent)'
+                            : 'var(--surface-alt, rgba(127,127,127,0.12))',
+                        }}
+                      >
+                        {counts[tab.count]}
+                      </span>
+                    )}
                   </Link>
                 </li>
               );

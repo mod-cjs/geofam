@@ -242,9 +242,9 @@ export default function PressioProPage() {
           role="alert"
           data-testid="gate-banner"
           style={{
-            background: '#f4edd8',
-            border: '1px solid #e6cf9c',
-            color: '#96701a',
+            background: 'var(--status-warn-bg)',
+            border: '1px solid var(--warn-line, var(--status-warn-tx))',
+            color: 'var(--status-warn-tx)',
             borderRadius: 12,
             padding: '11px 15px',
             marginBottom: 14,
@@ -257,9 +257,9 @@ export default function PressioProPage() {
         <div
           role="status"
           style={{
-            background: '#f4edd8',
-            border: '1px solid #e6cf9c',
-            color: '#96701a',
+            background: 'var(--status-warn-bg)',
+            border: '1px solid var(--warn-line, var(--status-warn-tx))',
+            color: 'var(--status-warn-tx)',
             borderRadius: 12,
             padding: '11px 15px',
             marginBottom: 14,
