@@ -27,6 +27,23 @@ services:
     # main.ts doit lire process.env.PORT (NestJS le fait via app.listen(process.env.PORT ?? 3001)).
     startCommand: pnpm --filter @roadsen/api start:prod
 
+    # preDeployCommand : exécuté APRÈS le build, AVANT la bascule zéro-coupure.
+    # `prisma migrate deploy` applique les migrations EN ATTENTE de façon
+    # idempotente ; en cas d'échec le déploiement s'arrête AVANT la bascule —
+    # jamais de code livré sur une base au schéma incompatible.
+    #
+    # POURQUOI CE BLOC EXISTE (incident) : sans lui, un déploiement livrait le
+    # nouveau code mais NE MIGRAIT PAS la base. Le code lisait alors une colonne
+    # absente (`projects.archived_at`, migration 0026) → 500 sur toute lecture
+    # de projet, tant qu'on ne migrait pas la base À LA MAIN. Cette ligne ferme
+    # cette faille : la migration fait désormais partie du déploiement.
+    #
+    # PORTÉE : couvre les migrations additives (ALTER TABLE / CREATE INDEX). Une
+    # future migration créant un RÔLE (CREATE ROLE) peut échouer si l'utilisateur
+    # managé n'a pas CREATEROLE — cf. infra/recette/RUNBOOK.md ; à traiter au cas
+    # par cas, hors de ce correctif.
+    preDeployCommand: npm install -g pnpm@9.12.0 && pnpm --filter @roadsen/api exec prisma migrate deploy
+
     healthCheckPath: /health
 
     envVars:
