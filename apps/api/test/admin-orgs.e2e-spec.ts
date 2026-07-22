@@ -262,6 +262,7 @@ describe('Back-office lecture SUPERADMIN (e2e)', () => {
   // --- 1) LISTE CROSS-TENANT (piege n°1) ------------------------------------
 
   it('1) GET /admin/orgs renvoie A ET B (pas filtre a 0 par la RLS), avec abo', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const superToken = await login(emailSuper());
 
@@ -296,6 +297,7 @@ describe('Back-office lecture SUPERADMIN (e2e)', () => {
   // --- 2) RECHERCHE USERS bornee + pas de fuite de hash ----------------------
 
   it('2) GET /admin/users?q= retrouve le compte, ne fuit pas le hash, borne limit', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const superToken = await login(emailSuper());
 
@@ -327,6 +329,7 @@ describe('Back-office lecture SUPERADMIN (e2e)', () => {
   // --- 3) DETAIL COMPOSITE + USAGE ------------------------------------------
 
   it('3) GET /admin/orgs/:id renvoie identite + membres + abo + usage', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const superToken = await login(emailSuper());
 
@@ -362,6 +365,7 @@ describe('Back-office lecture SUPERADMIN (e2e)', () => {
   });
 
   it('3bis) GET /admin/orgs/:id/usage renvoie l agregat du mois', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const superToken = await login(emailSuper());
     const res = await authGet(`/admin/orgs/${orgA}/usage`, superToken);
@@ -376,6 +380,7 @@ describe('Back-office lecture SUPERADMIN (e2e)', () => {
   });
 
   it('3ter) GET /admin/orgs/:id sur un orgId inconnu -> 404', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const superToken = await login(emailSuper());
     const res = await authGet(`/admin/orgs/${randomUUID()}`, superToken);
@@ -392,6 +397,7 @@ describe('Back-office lecture SUPERADMIN (e2e)', () => {
   // STOCKEE, pas une derivation du pack. Mutation : retirer la colonne entitlements
   // du SELECT (ou la mapper depuis le pack) -> ce test vire ROUGE.
   it('3quater) GET /admin/orgs/:id -> subscription.entitlements = la liste REELLE stockee (pas une approximation du pack)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const superToken = await login(emailSuper());
     const res = await authGet(`/admin/orgs/${orgA}`, superToken);
@@ -407,6 +413,7 @@ describe('Back-office lecture SUPERADMIN (e2e)', () => {
   // --- 4) RBAC + /admin/me ---------------------------------------------------
 
   it('4) RBAC : un OWNER (non-SUPERADMIN) sur /admin/** -> 403 ; me confirme SUPERADMIN', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const superToken = await login(emailSuper());
     const ownerToken = await login(emailOwnerA()); // OWNER de A, pas SUPERADMIN
@@ -443,6 +450,7 @@ describe('Back-office lecture SUPERADMIN (e2e)', () => {
   // Si withTenant(orgB) fuyait l'usage d'orgA, orgB/usage afficherait 2/1 (les
   // compteurs d'orgA) et byMember listerait memberEng -> ce test vire ROUGE.
   it('5) GIVEN orgA a de l usage et orgB n en a aucun WHEN GET /admin/orgs/:orgB/usage THEN 0/0 et byMember vide (aucune fuite d orgA)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const superToken = await login(emailSuper());
 
@@ -523,6 +531,7 @@ describe('Back-office lecture SUPERADMIN (e2e)', () => {
   //       (backslash) ne casse NI la requete (200, pas 500) NI n'ELARGIT le
   //       resultat (aucune de nos orgs seedees ne remonte).
   it('7) GIVEN une org au % litteral et sa jumelle sans WHEN GET /admin/orgs?q=50%off THEN seule l org au % litteral matche (joker echappe)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const superToken = await login(emailSuper());
 
@@ -601,6 +610,7 @@ describe('Back-office lecture SUPERADMIN (e2e)', () => {
   // leverait « integer out of range » -> 500). Mutation : retirer le .max
   // laisserait passer Zod puis casser en 500 -> ce test vire ROUGE.
   it('9) GIVEN offset hors int-range WHEN GET /admin/orgs?offset=99999999999 THEN 400 (borne DTO, pas 500 SQL)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const superToken = await login(emailSuper());
     const res = await authGet(`/admin/orgs?offset=99999999999`, superToken);

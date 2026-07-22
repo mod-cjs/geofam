@@ -198,12 +198,17 @@ describe('Cycle de vie projet — rename + soft-delete (e2e)', () => {
     if (admin) {
       try {
         // official_pvs immuable (trigger) : DISABLE TRIGGER USER le temps de purger.
-        await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
-        await admin.query(`DELETE FROM official_pvs WHERE org_id IN ($1,$2)`, [
-          orgA,
-          orgB,
-        ]);
-        await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        try {
+          await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+          await admin.query(
+            `DELETE FROM official_pvs WHERE org_id IN ($1,$2)`,
+            [orgA, orgB],
+          );
+        } finally {
+          // try/finally : un echec de DELETE ne doit JAMAIS laisser la base de
+          // recette avec son trigger d'immuabilite desactive.
+          await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        }
         await admin.query(`DELETE FROM projects WHERE org_id IN ($1,$2)`, [
           orgA,
           orgB,
@@ -279,6 +284,7 @@ describe('Cycle de vie projet — rename + soft-delete (e2e)', () => {
   // --- 1) RENOMMAGE PERSISTE (re-GET renvoie le nouveau nom) -----------------
 
   it('1) PATCH /projects/:id renomme ET le renommage PERSISTE (re-GET = nouveau nom)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
 
@@ -303,6 +309,7 @@ describe('Cycle de vie projet — rename + soft-delete (e2e)', () => {
   // --- 2) VALIDATION : nom vide -> 400 ---------------------------------------
 
   it('2) PATCH avec un nom vide -> 400 (borne Zod, jamais de nom vide en base)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const res = await patchName(token, orgA, projRename, { name: '   ' });
@@ -315,6 +322,7 @@ describe('Cycle de vie projet — rename + soft-delete (e2e)', () => {
   // --- 3) ISOLATION : ownerB ne peut pas renommer un projet d'orgA -----------
 
   it('3) ISOLATION : ownerB (orgB) PATCH un projet d orgA -> 404 et le nom d orgA reste inchange', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const tokenB = await login(emailB());
     // userB agit dans SON org (orgB) mais vise l'id d'un projet d'orgA : RLS ->
@@ -333,6 +341,7 @@ describe('Cycle de vie projet — rename + soft-delete (e2e)', () => {
   // --- 4) RBAC : VIEWER ne peut pas renommer ---------------------------------
 
   it('4) RBAC : un VIEWER ne peut pas renommer -> 403', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const tokenView = await login(emailView());
     const res = await patchName(tokenView, orgA, projRename, {
@@ -344,6 +353,7 @@ describe('Cycle de vie projet — rename + soft-delete (e2e)', () => {
   // --- 5) SOFT-DELETE : disparait des lectures, PV scelle PRESERVE -----------
 
   it('5) DELETE /projects/:id archive le projet (invisible) MAIS preserve son PV scelle', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
 
@@ -405,6 +415,7 @@ describe('Cycle de vie projet — rename + soft-delete (e2e)', () => {
   // --- 6) IDEMPOTENCE : re-supprimer un projet deja archive -> 404 -----------
 
   it('6) DELETE d un projet deja archive -> 404 (idempotence de la suppression)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const res = await del(token, orgA, projDelete);
@@ -414,6 +425,7 @@ describe('Cycle de vie projet — rename + soft-delete (e2e)', () => {
   // --- 7) RBAC : VIEWER ne peut pas supprimer --------------------------------
 
   it('7) RBAC : un VIEWER ne peut pas supprimer -> 403', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const tokenView = await login(emailView());
     const res = await del(tokenView, orgA, projRename);

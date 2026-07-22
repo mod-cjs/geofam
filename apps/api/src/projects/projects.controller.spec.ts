@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { z } from 'zod';
 
+import { ROLES_KEY } from '../auth/decorators';
 import type { AuthedRequest } from '../auth/request-context';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 
@@ -186,5 +187,71 @@ describe('ProjectsController.rename / remove — 404 tenant-safe', () => {
     await expect(controller.remove('proj-absent')).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+});
+
+/**
+ * ProjectsController.removePermanently — SUPPRESSION DEFINITIVE.
+ *
+ * Verrouille la couche controleur : traduction `null` -> 404 tenant-safe, et
+ * surtout le RBAC DECLARE. Detruire n'est pas archiver : la liste des roles est
+ * une SENTINELLE — si quelqu'un y rajoute ENGINEER (ou pire), ce test rougit.
+ * Le 403 REEL est prouve par les e2e (test/projects-permanent-delete.e2e-spec.ts).
+ */
+describe('ProjectsController.removePermanently — suppression définitive', () => {
+  let service: { deletePermanently: jest.Mock };
+  let controller: ProjectsController;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = { deletePermanently: jest.fn() };
+    controller = new ProjectsController(service as unknown as ProjectsService);
+  });
+
+  it('given un projet du tenant : renvoie le projet détruit et passe l’id au service', async () => {
+    const project = { id: 'proj-1', name: 'Chantier' };
+    service.deletePermanently.mockResolvedValue(project);
+
+    await expect(controller.removePermanently('proj-1')).resolves.toBe(project);
+    expect(service.deletePermanently).toHaveBeenCalledWith('proj-1');
+  });
+
+  it('given service null (absent / hors-tenant / déjà détruit) : 404 tenant-safe', async () => {
+    service.deletePermanently.mockResolvedValue(null);
+
+    await expect(
+      controller.removePermanently('proj-absent'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  /**
+   * Rôles DÉCLARÉS sur un handler, lus là où le RolesGuard les lit : la
+   * métadonnée posée par @Roles sur la fonction du handler. On passe par le
+   * descripteur de propriété plutôt que par `prototype.methode` — c'est la même
+   * fonction, sans la référence de méthode non liée que la règle `unbound-method`
+   * interdit à juste titre ailleurs.
+   */
+  const rolesDeclares = (methode: string): string[] => {
+    const descripteur = Object.getOwnPropertyDescriptor(
+      ProjectsController.prototype,
+      methode,
+    );
+    expect(descripteur).toBeDefined();
+    return Reflect.getMetadata(ROLES_KEY, descripteur!.value) as string[];
+  };
+
+  it('RBAC DÉCLARÉ : OWNER/ADMIN/SUPERADMIN uniquement — ni ENGINEER, ni TECHNICIAN, ni VIEWER', () => {
+    // Sentinelle d'élargissement : détruire est plus grave qu'archiver, la liste
+    // est volontairement PLUS COURTE que celle de @Delete(':projectId').
+    expect([...rolesDeclares('removePermanently')].sort()).toEqual([
+      'ADMIN',
+      'OWNER',
+      'SUPERADMIN',
+    ]);
+  });
+
+  it('RBAC COMPARÉ : l’archivage reste ouvert à ENGINEER, la destruction NON', () => {
+    expect(rolesDeclares('remove')).toContain('ENGINEER');
+    expect(rolesDeclares('removePermanently')).not.toContain('ENGINEER');
   });
 });

@@ -342,6 +342,7 @@ describe('Back-office Vague 2 : comptes globaux + abo + transfert OWNER (e2e)', 
   // --- 1) DESACTIVATION / REACTIVATION GLOBALE -------------------------------
 
   it('1) desactivation globale : active=false -> login 401 ; active=true -> login 200 ; audit trace', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
 
@@ -364,6 +365,7 @@ describe('Back-office Vague 2 : comptes globaux + abo + transfert OWNER (e2e)', 
   // --- 2) ANTI AUTO-DESACTIVATION --------------------------------------------
 
   it('2) anti auto-desactivation : un SUPERADMIN qui se desactive -> 400, reste actif', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
     const res = await setActive(superId, false);
@@ -375,6 +377,7 @@ describe('Back-office Vague 2 : comptes globaux + abo + transfert OWNER (e2e)', 
   // --- 3) RESET MOT DE PASSE --------------------------------------------------
 
   it('3) reset mdp : nouveau mdp passe, ancien echoue ; audit SANS mdp/hash', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
 
@@ -398,6 +401,7 @@ describe('Back-office Vague 2 : comptes globaux + abo + transfert OWNER (e2e)', 
   // --- 4) RESET MDP : chemins negatifs ---------------------------------------
 
   it('4) reset mdp faible (<12) -> 400 ; user inconnu -> 404', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
     expect((await resetPassword(userToggle, 'court')).status).toBe(400);
@@ -407,6 +411,7 @@ describe('Back-office Vague 2 : comptes globaux + abo + transfert OWNER (e2e)', 
   // --- 5) RATTACHER UN ABO ----------------------------------------------------
 
   it('5) rattacher abo : org SANS abo -> 201 + cree ; org avec abo actif -> 409 ; inconnue -> 404', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
 
@@ -431,6 +436,7 @@ describe('Back-office Vague 2 : comptes globaux + abo + transfert OWNER (e2e)', 
   // --- 6) TRANSFERT D'OWNER ---------------------------------------------------
 
   it('6) transfert owner : promeut le nouveau (OWNER), retrograde l ancien (ADMIN), trace', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
 
@@ -451,6 +457,7 @@ describe('Back-office Vague 2 : comptes globaux + abo + transfert OWNER (e2e)', 
   });
 
   it('6b) transfert vers un NON-membre -> 400, aucun changement', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
     const before = await memberRole(orgA, memberEng); // OWNER (apres 6)
@@ -462,6 +469,7 @@ describe('Back-office Vague 2 : comptes globaux + abo + transfert OWNER (e2e)', 
   // --- 7) ACTEUR = SUB JWT (injection de corps ignoree) ----------------------
 
   it('7) acteur = sub JWT : un actorUserId injecte dans le corps est IGNORE', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
     const forged = randomUUID();
@@ -475,6 +483,7 @@ describe('Back-office Vague 2 : comptes globaux + abo + transfert OWNER (e2e)', 
   // --- 8) ISOLATION : orgB temoin ne bouge pas -------------------------------
 
   it('8) isolation : les mutations sur A/NoSub ne touchent PAS org B', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     // B garde son unique OWNER et son abo ACTIF intacts.
     expect((await memberRole(orgB, ownerB)).role).toBe('OWNER');
@@ -488,6 +497,7 @@ describe('Back-office Vague 2 : comptes globaux + abo + transfert OWNER (e2e)', 
   // --- 9) RBAC ----------------------------------------------------------------
 
   it('9) RBAC : un non-SUPERADMIN (OWNER) sur chaque nouvelle route -> 403', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const ownerToken = await token(emailOwnerA()); // ADMIN de A depuis le transfert, non SUPERADMIN
     const auth = (r: request.Test) =>

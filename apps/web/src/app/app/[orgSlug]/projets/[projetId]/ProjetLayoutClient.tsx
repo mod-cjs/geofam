@@ -24,15 +24,17 @@ interface Tab {
   count?: 'calculs' | 'pv';
 }
 
+// Deux onglets (maquette finale, écran 2/3) : « Vue d'ensemble » et
+// « Informations » disparaissent. Leurs seules informations réelles
+// (compteurs, nom, domaine) sont déjà portées par cette bande (ci-dessous) et
+// par la liste des projets — cf. rename-inline.test.tsx pour le renommage en
+// ligne et les actions d'archivage désormais sur la liste, pas ici.
+// L'ancienne route /overview et /infos ne disparaît pas pour autant : elle
+// redirige vers Calculs plutôt que de laisser un 404 (des liens/signets
+// existent) — cf. overview/page.tsx et infos/page.tsx.
 function buildTabs(orgSlug: string, projetId: string): Tab[] {
   const base = `/app/${orgSlug}/projets/${projetId}`;
   return [
-    {
-      id: 'overview',
-      label: "Vue d'ensemble",
-      href: `${base}/overview`,
-      pattern: /\/overview$/,
-    },
     {
       id: 'calculs',
       label: 'Calculs',
@@ -42,16 +44,10 @@ function buildTabs(orgSlug: string, projetId: string): Tab[] {
     },
     {
       id: 'pv',
-      label: 'PV & Livrables',
+      label: 'PV scellés',
       href: `${base}/pv`,
       pattern: /\/pv(\/|$)/,
       count: 'pv',
-    },
-    {
-      id: 'infos',
-      label: 'Informations',
-      href: `${base}/infos`,
-      pattern: /\/infos$/,
     },
   ];
 }
@@ -98,11 +94,19 @@ export default function ProjetLayoutClient({
   }
 
   return (
+    // Hauteur BORNÉE (pas `minHeight`) : c'est la condition pour que l'onglet
+    // Calculs puisse offrir un panneau de détail pleine hauteur avec défilement
+    // interne, plutôt que de laisser croître la page entière. La hauteur vit
+    // dans `.app-tab-shell` (globals.css) et non ici : elle a besoin de DEUX
+    // déclarations `height` (repli `vh`, puis `dvh` qui l'écrase) — impossible
+    // en style inline, où une clé ne peut pas se répéter. Sans `dvh`, la barre
+    // du navigateur mobile pousserait le pied d'actions hors écran.
     <div
+      className="app-tab-shell"
       style={{
         display: 'flex',
         flexDirection: 'column',
-        minHeight: 'calc(100vh - 48px)',
+        minHeight: 0,
       }}
     >
       {/* Bande projet 44px */}
@@ -282,8 +286,25 @@ export default function ProjetLayoutClient({
         </nav>
       </div>
 
-      {/* Contenu de l'onglet */}
-      <div style={{ flex: 1 }}>{children}</div>
+      {/* Contenu de l'onglet — `minHeight: 0` est le correctif du piège flex
+          classique : sans lui, ce conteneur grandirait avec son contenu au
+          lieu de se borner à l'espace restant, et l'onglet Calculs ne pourrait
+          jamais offrir un panneau pleine hauteur avec défilement interne.
+          `overflow: auto` conserve un comportement de défilement NORMAL pour
+          les onglets qui n'ont pas leur propre région de défilement interne
+          (PV scellés) : leur contenu défile ici plutôt que dans le document,
+          sans changement perceptible pour l'utilisateur. */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'auto',
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }

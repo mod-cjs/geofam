@@ -229,10 +229,16 @@ describe('ProjectsService.rename / archive', () => {
 
     const out = await withOrg(() => service.archive('proj-1'));
     expect(out).toBe(archived);
-    expect(tx.project.updateMany).toHaveBeenCalledWith({
-      where: { id: 'proj-1', status: { not: 'ARCHIVED' } },
-      data: { status: 'ARCHIVED' },
-    });
+    const appels = tx.project.updateMany.mock.calls as Array<
+      [{ where: unknown; data: { status: string; archivedAt: unknown } }]
+    >;
+    expect(appels).toHaveLength(1);
+    const appel = appels[0][0];
+    expect(appel.where).toEqual({ id: 'proj-1', status: { not: 'ARCHIVED' } });
+    expect(appel.data.status).toBe('ARCHIVED');
+    // archivedAt (0026) : la date du geste est posee ICI et nulle part ailleurs.
+    // Sans elle, la vue « Archives » ne peut ni dater ni trier.
+    expect(appel.data.archivedAt).toBeInstanceOf(Date);
   });
 
   it('archive : deja archive / absent -> null (404 par le controleur)', async () => {

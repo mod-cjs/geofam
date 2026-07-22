@@ -149,12 +149,17 @@ describe('PDF du PV — surface tenant (e2e)', () => {
   afterAll(async () => {
     if (admin) {
       try {
-        await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
-        await admin.query(`DELETE FROM official_pvs WHERE org_id IN ($1,$2)`, [
-          orgA,
-          orgB,
-        ]);
-        await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        try {
+          await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+          await admin.query(
+            `DELETE FROM official_pvs WHERE org_id IN ($1,$2)`,
+            [orgA, orgB],
+          );
+        } finally {
+          // try/finally : un echec de DELETE ne doit JAMAIS laisser la base de
+          // recette avec son trigger d'integrite desactive.
+          await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        }
         await admin.query(`DELETE FROM pv_counters WHERE org_id IN ($1,$2)`, [
           orgA,
           orgB,
@@ -277,6 +282,7 @@ describe('PDF du PV — surface tenant (e2e)', () => {
   }
 
   it('1) GET pvs/:id/pdf -> 200, application/pdf, attachment, %PDF, taille>0', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const { pvId, pvNumber } = await emitPvInA();
@@ -301,6 +307,7 @@ describe('PDF du PV — surface tenant (e2e)', () => {
   });
 
   it('2) CONTENU : le rendu contient numero de PV, hash SHA-256 et >= 1 resultat', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const { pvId } = await emitPvInA();
     // On lit le PV REELLEMENT persiste (superuser) et on verifie le texte rendu.
@@ -322,6 +329,7 @@ describe('PDF du PV — surface tenant (e2e)', () => {
   });
 
   it('3) REGENERABILITE : deux generations du meme PV -> octets identiques', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const { pvId } = await emitPvInA();
@@ -344,6 +352,7 @@ describe('PDF du PV — surface tenant (e2e)', () => {
   });
 
   it('4) ISOLATION : PDF d un PV via un autre org -> 404', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const { pvId } = await emitPvInA();
     const tokenB = await login(emailB());
@@ -355,6 +364,7 @@ describe('PDF du PV — surface tenant (e2e)', () => {
   });
 
   it('5) ROLES : VIEWER peut telecharger le PDF (lecture)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const { pvId } = await emitPvInA();
     const tokenView = await login(emailView());
@@ -373,6 +383,7 @@ describe('PDF du PV — surface tenant (e2e)', () => {
   });
 
   it('6) AUCUNE fuite science_status / unsigned dans le rendu', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const { pvId } = await emitPvInA();
     const rows = await admin!.query(
@@ -402,6 +413,7 @@ describe('PDF du PV — surface tenant (e2e)', () => {
   //  ne l'atteint plus) est en plus assurée au niveau unitaire
   //  (src/pv/pdf/pv-pdf.multipage.spec.ts).
   it('7) RENDU LABO : gabarit métier dédié, complet, débordant sur plusieurs pages', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const { pvId, pvNumber } = await emitPvInA('labo', laboInput);
@@ -467,6 +479,7 @@ describe('PDF du PV — surface tenant (e2e)', () => {
   //  texte des OCTETS RÉELS (pdf-parse) et on vérifie numéro de PV + empreinte
   //  SHA-256 (64 hex) présents -> ferme la boucle docDefinition → octets.
   it('8) OCTETS RÉELS : le texte extrait du PDF contient numéro + hash SHA-256', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const { pvId, pvNumber } = await emitPvInA();
@@ -505,6 +518,7 @@ describe('PDF du PV — surface tenant (e2e)', () => {
 
   // --- 9) ANTI-FUITE SCIENCE + WORDING HONNÊTE SUR LES OCTETS -----------------
   it('9) OCTETS RÉELS : pas de fuite science ; note d’intégrité présente ; termes juridiques bannis', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const { pvId } = await emitPvInA();
@@ -534,6 +548,7 @@ describe('PDF du PV — surface tenant (e2e)', () => {
 
   // --- 10) FAIL-CLOSED HTTP (CRIT-1) : sceau invalide -> 409, pas de PDF -------
   it('10) FAIL-CLOSED : input_canonical altéré en base -> PDF refusé (409)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const { pvId } = await emitPvInA();
@@ -543,12 +558,18 @@ describe('PDF du PV — surface tenant (e2e)', () => {
 
     // ALTÉRATION de input_canonical en base (trigger d'immuabilité désactivé le
     // temps de la falsification de test) -> le sceau ne vérifie plus.
-    await admin!.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
-    await admin!.query(
-      `UPDATE official_pvs SET input_canonical = input_canonical || ' falsifie' WHERE id = $1`,
-      [pvId],
-    );
-    await admin!.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+    try {
+      await admin!.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+      await admin!.query(
+        `UPDATE official_pvs SET input_canonical = input_canonical || ' falsifie' WHERE id = $1`,
+        [pvId],
+      );
+    } finally {
+      // try/finally : si l'UPDATE echoue, le trigger d'immuabilite d'official_pvs
+      // doit etre RETABLI quoi qu'il arrive — jamais de base de recette laissee
+      // sans sa protection.
+      await admin!.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+    }
 
     // Après : génération REFUSÉE (fail-closed) -> 409, aucun PDF.
     const refused = await downloadPdf(token, pvId);

@@ -1,10 +1,14 @@
 'use client';
 
 /**
- * B-24/B-25 — Onglet PV & Livrables
- * Liste des PV scellés + actions Aperçu / Télécharger / Vérifier intégrité
+ * B-24/B-25 — Onglet PV scellés (maquette finale, écran 3 : liste simple de
+ * cartes, PAS de panneau de détail scindé — contrairement à Calculs).
+ * Liste des PV scellés + actions Vérifier / Aperçu / Télécharger.
  *
- * Badge "Scellé" = fond asphalte + cadenas, jamais vert (ADR 0008)
+ * Verdict de conformité ET badge "Scellé" affichés côte à côte, jamais
+ * fusionnés (cf. verdict.tsx) : le scellement atteste l'intégrité, jamais la
+ * conformité. Badge "Scellé" = fond asphalte + cadenas, jamais vert (ADR 0008)
+ * — quel que soit le verdict (un PV peut être scellé ET NON CONFORME).
  * Vérification = appel serveur GET /projects/:id/pvs/:pvId, champ sealValid
  *
  * Aperçu / Télécharger — option 3 (le PV = le document que l'outil imprime) :
@@ -23,6 +27,8 @@
 
 import { Lock, Download, ShieldCheck, AlertCircle, RefreshCw, Eye } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+import { VerdictTag } from '../verdict';
 
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -248,7 +254,7 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
           marginBottom: 20,
         }}
       >
-        PV & Livrables
+        PV scellés
       </h2>
 
       {/* Chargement */}
@@ -563,6 +569,15 @@ function PvRow({
   onPreview: () => void;
   onVerify: () => void;
 }) {
+  // Verdict de conformité — DISTINCT du scellement (cf. badge « Scellé »
+  // ci-dessous), jamais fusionné (maquette finale, écran 3). Un PV est déjà
+  // SCELLÉ : `pv.verdict` (copie du verdict scellé côté serveur, ADR 0012)
+  // fait foi ici, PAS une re-dérivation de `pv.output` par duck-typing (cf.
+  // verdict.tsx — les deux logiques sont indépendantes et peuvent diverger).
+  // `undefined` seulement si le backend ne renvoie pas la colonne (cas
+  // défensif) — pas de badge affiché plutôt qu'un verdict inventé.
+  const verdict = pv.verdict;
+
   return (
     <div
       role="listitem"
@@ -571,6 +586,7 @@ function PvRow({
         alignItems: 'center',
         gap: 16,
         padding: '14px 16px',
+        flexWrap: 'wrap',
         // Surface PLATE, volontairement pas « verre » : le dégradé du verre
         // descend jusqu'à la couleur du fond, ce qui délave des lignes
         // répétées et leur fait perdre leur contour. Le verre est réservé au
@@ -608,41 +624,20 @@ function PvRow({
 
       {/* Infos */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Titre mnémonique (FX-10) — projet + logiciel humanisé, jamais le
-              numéro officiel (immuable, scellé — cf. référence secondaire ci-dessous). */}
-          <span
-            style={{
-              fontSize: 'var(--text-sm)',
-              fontWeight: 500,
-              color: 'var(--text-primary)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {pvTitle(pv, projectName)}
-          </span>
-          {/* Badge Scellé */}
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 3,
-              padding: '1px 6px',
-              // Asphalte + cadenas, jamais vert (ADR 0008) — cf. l'icône.
-              background: 'var(--surface-nav)',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: 11,
-              color: 'var(--text-on-nav)',
-              fontWeight: 500,
-              flexShrink: 0,
-            }}
-          >
-            <Lock size={10} strokeWidth={1.5} aria-hidden="true" />
-            Scellé
-          </span>
-        </div>
+        {/* Titre mnémonique (FX-10) — projet + logiciel humanisé, jamais le
+            numéro officiel (immuable, scellé — cf. référence secondaire ci-dessous). */}
+        <span
+          style={{
+            fontSize: 'var(--text-sm)',
+            fontWeight: 500,
+            color: 'var(--text-primary)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {pvTitle(pv, projectName)}
+        </span>
         {/* Référence secondaire — numéro officiel (puce + mono, discret) + auteur/date */}
         <div
           style={{
@@ -693,6 +688,36 @@ function PvRow({
           {pv.hmacTruncated}
         </div>
       </div>
+
+      {/* Verdict de conformité — DISTINCT du scellement, jamais fusionné :
+          un PV peut être parfaitement scellé (intégrité) et rapporter
+          NON CONFORME (résultat). NON APPLICABLE (ex. radier) est un cas
+          réel, neutre (cf. verdict.tsx — ADR 0008). Rien d'affiché si le
+          verdict n'est pas exploitable (ancien PV) — pas de verdict inventé. */}
+      {verdict && <VerdictTag verdict={verdict} compact />}
+
+      {/* Badge Scellé — atteste l'INTÉGRITÉ, jamais la conformité : reste en
+          asphalte + cadenas, JAMAIS vert (ADR 0008), quel que soit le
+          verdict ci-dessus. Coloré vert une fois par erreur (revue titulaire) —
+          l'ambiguïté exacte que l'ADR interdit : un PV scellé NON CONFORME
+          aurait alors semblé "tout va bien". */}
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 3,
+          padding: '1px 6px',
+          background: 'var(--surface-nav)',
+          borderRadius: 'var(--radius-sm)',
+          fontSize: 11,
+          color: 'var(--text-on-nav)',
+          fontWeight: 500,
+          flexShrink: 0,
+        }}
+      >
+        <Lock size={10} strokeWidth={1.5} aria-hidden="true" />
+        Scellé
+      </span>
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>

@@ -489,6 +489,27 @@ export async function httpDeleteProject(
   return adaptProject(raw);
 }
 
+/**
+ * Suppression DÉFINITIVE (irréversible), à distinguer de httpDeleteProject qui
+ * archive. Passe par apiFetch comme toute autre route : le refresh transparent
+ * sur 401 et le refresh proactif s'appliquent donc ici aussi. Une action
+ * destructive qui échouerait sur un jeton expiré — au lieu de le renouveler —
+ * obligerait l'utilisateur a refaire une confirmation forte pour rien.
+ * Le 409 « PV scellé » remonte tel quel dans ApiError.message (apiFetch lit
+ * deja `message` du corps d'erreur) : l'appelant peut l'afficher sans le
+ * reconstruire.
+ */
+export async function httpDeleteProjectPermanently(
+  orgId: string,
+  projectId: string,
+): Promise<Project> {
+  const raw = await apiFetch<PrismaProject>(`/projects/${projectId}/permanent`, {
+    method: 'DELETE',
+    orgId,
+  });
+  return adaptProject(raw);
+}
+
 // ---------------------------------------------------------------------------
 // CALCULS
 // ---------------------------------------------------------------------------

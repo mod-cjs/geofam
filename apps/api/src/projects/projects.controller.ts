@@ -146,6 +146,40 @@ export class ProjectsController {
   }
 
   /**
+   * DELETE /projects/:projectId/permanent — SUPPRESSION DEFINITIVE, IRREVERSIBLE.
+   *
+   * A distinguer de DELETE /projects/:projectId, qui ARCHIVE (reversible). La
+   * maquette validee propose les deux gestes ; seul l'archivage existait cote
+   * serveur, donc la corbeille ne pouvait jamais etre videe.
+   *
+   * RBAC PLUS STRICT que l'archivage : OWNER/ADMIN (+SUPERADMIN) uniquement.
+   * DETRUIRE N'EST PAS ARCHIVER — un ENGINEER, qui peut retirer un projet des
+   * listes, ne peut pas anéantir son contenu ; a fortiori ni TECHNICIAN ni VIEWER.
+   *
+   * 409 si le projet porte au moins un PV scelle (on n'orpheline jamais un
+   * livrable scelle) ; 404 tenant-safe sinon (absent / hors tenant / deja
+   * detruit, indistinguables). Renvoie le projet tel qu'il etait avant
+   * destruction, pour que l'interface puisse le nommer dans sa confirmation.
+   */
+  // ORDRE IMPORTANT : declaree AVANT @Delete(':projectId'). Les deux motifs n'ont
+  // pas le meme nombre de segments, donc Nest ne les confond pas aujourd'hui ;
+  // l'ordre est neanmoins tenu comme une regle de ce controleur (le meme piege a
+  // deja coute un aller-retour sur @Get('archived/list')).
+  @Delete(':projectId/permanent')
+  @Roles('OWNER', 'ADMIN', 'SUPERADMIN')
+  async removePermanently(
+    @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
+  ): Promise<Project> {
+    const project = await this.projects.deletePermanently(projectId);
+    if (!project) {
+      throw new NotFoundException(
+        'Projet introuvable dans cette organisation.',
+      );
+    }
+    return project;
+  }
+
+  /**
    * DELETE /projects/:projectId — SUPPRESSION (soft-delete) d'un projet.
    *
    * Le projet passe en ARCHIVED : il disparait des listes/lectures tenant mais

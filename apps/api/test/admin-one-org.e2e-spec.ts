@@ -310,6 +310,7 @@ describe('Un user = une org + retrait hard-delete (e2e)', () => {
   // --- 1) ONE-ORG : refus d'une 2e org -------------------------------------
 
   it('1) un user déjà membre actif de A -> ajout à B refusé (409) ; il reste dans A seule', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -332,6 +333,7 @@ describe('Un user = une org + retrait hard-delete (e2e)', () => {
   // --- 2) LIBÉRÉ APRÈS RETRAIT ---------------------------------------------
 
   it('2) ajouté à A, retiré de A, puis ajouté à B -> OK (le retrait libère le user)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -351,6 +353,7 @@ describe('Un user = une org + retrait hard-delete (e2e)', () => {
   // --- 3) HARD DELETE + RÉ-AJOUT MÊME ORG + DONNÉES PRÉSERVÉES --------------
 
   it('3) retrait = appartenance SUPPRIMÉE (absente de la liste) ; calc/ledger préservés ; ré-ajout même org OK', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -404,6 +407,7 @@ describe('Un user = une org + retrait hard-delete (e2e)', () => {
   // --- 4) ANTI-LOCKOUT ------------------------------------------------------
 
   it('4) retirer le dernier OWNER actif -> 409 ; l OWNER reste', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -419,6 +423,7 @@ describe('Un user = une org + retrait hard-delete (e2e)', () => {
   // --- 5) AUDIT MEMBER_REMOVED SANS SECRET ----------------------------------
 
   it('5) audit : MEMBER_REMOVED tracé, payload {role, mode:HARD} sans aucun secret', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     // memberFreed a été retiré de A en test 2 -> une trace MEMBER_REMOVED existe.
     const { rows } = await admin!.query<{
@@ -443,6 +448,7 @@ describe('Un user = une org + retrait hard-delete (e2e)', () => {
   // --- 6) CRÉATION D'ORG AVEC OWNER DÉJÀ ENGAGÉ -----------------------------
 
   it('6) createOrg avec un owner déjà engagé (ownerC) -> 409 ; un owner LIBRE -> 201', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 

@@ -22,6 +22,7 @@ import { requireOrgId } from '../tenant/tenant-context';
 import { findEngineDispatchByRegistryId } from './engine-dispatch';
 import { outputsEquivalent } from './output-equivalence';
 import { renderPvPdf } from './pdf/pv-pdf';
+import { assertProjetEcrivable } from './project-write-guard';
 import {
   extractSealedIdentity,
   wrapSealedDocumentWithPvChrome,
@@ -109,16 +110,25 @@ export class PvService {
           );
         }
 
-        // Libelle projet — projects est une table de DONNEES (roadsen_app garde
-        // le DML) -> lecture directe sous RLS, inchangee.
-        const project = await tx.project.findUnique({
-          where: { id: args.projectId },
-          select: { name: true },
-        });
-        if (!project) {
-          // Ne devrait pas arriver (FK), mais fail-closed plutot que sceller a vide.
-          throw new NotFoundException('Projet introuvable.');
-        }
+        // Le projet doit etre ECRIVABLE : present dans le tenant (RLS), NON archive,
+        // et VERROUILLE (FOR SHARE) jusqu'au COMMIT — sinon une suppression
+        // definitive concurrente pouvait detruire le projet entre ce controle et
+        // l'INSERT ci-dessous, et laisser un PV SCELLE ORPHELIN (revue adverse :
+        // course TOCTOU ; official_pvs n'a aucune FK qui l'aurait rattrape).
+        //
+        // On APPELLE la garde au lieu de re-ecrire son predicat : la regle de
+        // statut vit a UN SEUL endroit (project-write-guard), sinon les deux copies
+        // divergent — et c'est un predicat de securite. Elle rend {id, name} : le
+        // libelle scelle vient de la MEME lecture que le controle (pas de seconde
+        // requete qui pourrait voir un autre etat).
+        //
+        // PLACE DANS LA SEQUENCE (inchangee) : APRES le test d'idempotence — une
+        // RE-lecture d'un PV deja emis reste servie, y compris sur projet archive
+        // (cf. projects-lifecycle.e2e) ; seule l'EMISSION est barree. Et AVANT
+        // allocate_pv_number / reserveUnit : aucun numero brule, aucun quota
+        // consomme sur un refus. C'est aussi le PREMIER verrou de la transaction
+        // (ordre anti-interblocage, cf. project-write-guard).
+        const project = await assertProjetEcrivable(tx, args.projectId);
 
         // IDENTITE A SCELLER (org + emetteur) — lecture via fonction DEFINER.
         //

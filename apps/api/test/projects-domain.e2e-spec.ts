@@ -150,6 +150,7 @@ describe('Domaine metier projet — persistance + validation (e2e)', () => {
   // --- 1) POST avec domain -> persiste et renvoie domain ---------------------
 
   it('1) POST /projects {name, domain:FD} -> 201, domain persiste (re-GET liste le domaine)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const t = await login();
     const created = await request(server())
@@ -176,6 +177,7 @@ describe('Domaine metier projet — persistance + validation (e2e)', () => {
   // --- 2) POST sans domain -> 400 --------------------------------------------
 
   it('2) POST /projects {name} SANS domain -> 400 (domain REQUIS, pas de defaut silencieux)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const t = await login();
     const res = await request(server())
@@ -187,6 +189,7 @@ describe('Domaine metier projet — persistance + validation (e2e)', () => {
   });
 
   it('2b) POST /projects avec un domain HORS enum -> 400', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const t = await login();
     const res = await request(server())
@@ -200,6 +203,7 @@ describe('Domaine metier projet — persistance + validation (e2e)', () => {
   // --- 3) GET liste renvoie domain (NULL pour un projet legacy) --------------
 
   it('3) GET /projects expose domain pour chaque projet ; le projet LEGACY a domain=null', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const t = await login();
     const list = await request(server())

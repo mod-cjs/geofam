@@ -76,7 +76,10 @@ describe('ProjectsService.restore — annuler un archivage', () => {
     // de sens et doit rester un 404 (cf. #3).
     expect(tx.project.updateMany).toHaveBeenCalledWith({
       where: { id: 'proj-1', status: 'ARCHIVED' },
-      data: { status: 'ACTIVE' },
+      // archivedAt remis a null (0026) : un projet redevenu actif ne conserve pas
+      // la trace d'un archivage annule, sinon la vue « Archives » daterait un
+      // geste qui n'a plus cours.
+      data: { status: 'ACTIVE', archivedAt: null },
     });
     expect(out).toMatchObject({ id: 'proj-1', status: 'ACTIVE' });
   });

@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
+
 import PvListClient from './PvListClient';
 
 export const metadata: Metadata = {
-  title: 'PV & Livrables — GEOFAM',
+  title: 'PV scellés — GEOFAM',
 };
 
 interface Props {

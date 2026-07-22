@@ -136,6 +136,12 @@ model Project {
   createdById String         @map("created_by_id") @db.Uuid
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
+  // Date du DERNIER archivage (0026). NULLABLE, et c'est le contrat : null = ce
+  // projet n'est pas archive (restore() la remet a null). `updated_at` ne pouvait
+  // pas servir — il bouge a chaque renommage, donc il ne date pas le geste. Les
+  // projets archives AVANT 0026 restent a null : leur date n'a jamais ete
+  // enregistree, l'inventer serait une donnee fausse.
+  archivedAt  DateTime?      @map("archived_at")
 
   org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   calcs CalcResult[]
@@ -143,6 +149,8 @@ model Project {
   @@unique([orgId, id]) // cible de FK COMPOSITE (org_id, .) des tables enfant (0006)
   @@index([orgId])
   @@index([orgId, status])
+  // Couvre la vue « Archives » (0026) : filtre org (RLS) + tri archived_at DESC.
+  @@index([orgId, archivedAt(sort: Desc)])
   @@map("projects")
 }
 

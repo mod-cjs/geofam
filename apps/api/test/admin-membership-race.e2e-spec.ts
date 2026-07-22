@@ -264,6 +264,7 @@ describe('Durcissement des courses d appartenance — migration 0021 (e2e)', () 
   // ===================================================================
 
   it('M2) reactiver A un user devenu actif dans B -> 409 (un user = une org)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     await loginSuper();
 
@@ -297,6 +298,7 @@ describe('Durcissement des courses d appartenance — migration 0021 (e2e)', () 
   });
 
   it('M2 bis) la SUSPENSION n est jamais bloquee par la garde one-org', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     await loginSuper();
     // U est actif dans B (etat de fin du test precedent). Le suspendre doit rester
@@ -310,6 +312,7 @@ describe('Durcissement des courses d appartenance — migration 0021 (e2e)', () 
   // ===================================================================
 
   it('M1) transfert(R,N) puis retrait(R,N) concurrent -> retrait refuse (R0008), org garde >= 1 OWNER', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
 
     const Client = loadPgClient();

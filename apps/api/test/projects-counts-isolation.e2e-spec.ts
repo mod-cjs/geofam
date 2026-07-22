@@ -180,12 +180,17 @@ describe('Compteurs de projet — isolation multi-tenant (e2e)', () => {
   afterAll(async () => {
     if (admin) {
       try {
-        await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
-        await admin.query(`DELETE FROM official_pvs WHERE org_id IN ($1,$2)`, [
-          orgA,
-          orgB,
-        ]);
-        await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        try {
+          await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+          await admin.query(
+            `DELETE FROM official_pvs WHERE org_id IN ($1,$2)`,
+            [orgA, orgB],
+          );
+        } finally {
+          // try/finally : un echec de DELETE ne doit JAMAIS laisser la base de
+          // recette avec son trigger d'integrite desactive.
+          await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        }
         await admin.query(`DELETE FROM calc_results WHERE org_id IN ($1,$2)`, [
           orgA,
           orgB,
@@ -240,6 +245,7 @@ describe('Compteurs de projet — isolation multi-tenant (e2e)', () => {
   }
 
   it('#1 CONTRÔLE POSITIF — given orgA (3 calculs, 1 PV), when GET /projects, then les vraies valeurs', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailA());
     const res = await request(server())
@@ -257,6 +263,7 @@ describe('Compteurs de projet — isolation multi-tenant (e2e)', () => {
   });
 
   it('#2 ISOLATION LISTE — given orgB (5 calculs, 2 PV), when orgA liste, then rien de B ne fuit', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailA());
     const res = await request(server())
@@ -277,6 +284,7 @@ describe('Compteurs de projet — isolation multi-tenant (e2e)', () => {
   });
 
   it('#3 ISOLATION DÉTAIL — given GET /projects/:id chez orgA, then compteurs de A seulement', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailA());
     const res = await request(server())
@@ -290,6 +298,7 @@ describe('Compteurs de projet — isolation multi-tenant (e2e)', () => {
   });
 
   it('#4 CROSS-TENANT — given orgB, when il demande le détail d’un projet d’orgA, then 404 (aucun compteur ne fuit)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailB());
     const res = await request(server())
@@ -303,6 +312,7 @@ describe('Compteurs de projet — isolation multi-tenant (e2e)', () => {
   });
 
   it('#5 PROJET VIDE — given un projet sans contenu, then 0 et 0 (valeur connue, pas absente)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailA());
     const res = await request(server())

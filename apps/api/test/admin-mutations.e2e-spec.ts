@@ -337,6 +337,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   // --- 1) IDEMPOTENCE TOP-UP -------------------------------------------------
 
   it('1) idempotence top-up : 2 appels MEME cle -> quota +delta UNE fois, 1 audit', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -357,6 +358,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   // --- 2) reserveUnit NON-REGRESSION (le point qui casse si le GRANT est mal fait) --
 
   it('2) reserveUnit : un calcul consomme toujours le quota APRES le re-scope colonne', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const before = await subRow();
 
@@ -373,6 +375,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   // --- 3) QUOTA DIRECT INTERDIT (chemin non trace ferme) ---------------------
 
   it('3) quota direct interdit : roadsen_app ne peut plus UPDATE subscriptions SET quota', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     // Sous le role applicatif roadsen_app + contexte tenant, l'UPDATE de la colonne
     // quota doit etre refuse (insufficient_privilege) : le GRANT n'accorde que
@@ -407,6 +410,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   // --- 4) GARDE MONEY : quota resultant < consommation -> 400 ----------------
 
   it('4) garde money : baisse rendant quota < consommation -> 400, aucun changement', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const before = await subRow(); // conso = 1 (apres T2), quota = 150
@@ -428,6 +432,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   // --- 5) SUSPENSION ORG EFFECTIVE + auth NON-REGRESSION ---------------------
 
   it('5) suspension org : membre 200 -> SUSPENDED -> 403 ; ACTIVE -> 200 revient', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -448,6 +453,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   // --- 6) ANTI-ESCALADE / ANTI-LOCKOUT ---------------------------------------
 
   it('6a) anti-escalade : role OWNER par la route -> 400 (Zod)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const res = await setRole(orgA, memberRole, 'OWNER');
@@ -455,6 +461,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   });
 
   it('6b) anti-lockout : retrograder le dernier OWNER actif -> 409', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const res = await setRole(orgA, ownerA, 'ENGINEER');
@@ -467,6 +474,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   });
 
   it('6c) anti-lockout : retirer le dernier OWNER actif -> 409', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const res = await removeMember(orgA, ownerA);
@@ -481,6 +489,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   // --- 7) ROLE / RETRAIT (happy path) ----------------------------------------
 
   it('7) role happy path 200 (ENGINEER->ADMIN) puis retrait HARD 200 (appartenance SUPPRIMEE)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -505,6 +514,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   // --- 8) RENOUVELLEMENT ------------------------------------------------------
 
   it('8) renouvellement : reset consommation a 0 + nouvelle fenetre, trace', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const before = await subRow();
@@ -524,6 +534,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   // --- 9) ENTITLEMENTS --------------------------------------------------------
 
   it('9) entitlements : edition pack + modules, trace', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const res = await setEntitlements(orgA, 'FONDATIONS', [
@@ -545,6 +556,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   // --- 10) AUDIT IMMUABLE -----------------------------------------------------
 
   it('10) audit immuable : UPDATE/DELETE sur admin_audit_log -> refuse (trigger)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     // Au moins une ligne existe (top-up de T1). On tente une mutation directe -> RAISE.
     await expect(
@@ -563,6 +575,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   // --- 11) RBAC ---------------------------------------------------------------
 
   it('11) RBAC : un non-SUPERADMIN (OWNER) sur une route de mutation -> 403', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const ownerToken = await login(emailOwnerA()); // OWNER de A, pas SUPERADMIN
     const res = await request(server())
@@ -578,6 +591,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   //  owned roadsen_auth) INSERT. Sans le grant INSERT -> 42501/500. Chemin app, PAS un seed.
 
   it('12) MUST-FIX : POST /admin/orgs AVEC abonnement (chemin app) -> 201 + abo cree', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const slug = `wiz-${randomUUID().slice(0, 8)}`;
@@ -616,6 +630,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   // --- 13) IDEMPOTENCE MONEY NON DEGRADABLE : en-tete obligatoire sur topup/renew --
 
   it('13) money : topup / renew SANS Idempotency-Key -> 400 (pas d auto-generation)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const noKeyTopup = await request(server())
@@ -636,6 +651,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   // --- 14) DELTA BORNE : anti-overflow int32 ---------------------------------
 
   it('14) delta borne : |delta| > 1_000_000 -> 400 (anti-overflow int)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const res = await topup(
@@ -654,6 +670,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
   //  l'ordre correct (idempotence d'abord), le rejeu est un NO-OP succes.
 
   it('15) F1 : rejeu MEME cle d un delta NEGATIF -> no-op succes (pas 400), decompte UNE fois', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const before = await subRow();

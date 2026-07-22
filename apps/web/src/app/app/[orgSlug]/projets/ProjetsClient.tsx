@@ -3,6 +3,18 @@
 /**
  * B-07 / B-08 — Liste des projets + état vide + modale « Nouveau projet » (F-03)
  * États : chargement · vide · filtre sans résultat · erreur · liste
+ *
+ * P0 (écran 1, maquette validée 21/07/2026) — ajouts de ce lot :
+ *  - recherche par nom ET description, insensible casse/accents ;
+ *  - compteurs Actifs/Archivés connus SANS ouvrir la vue Archivés ;
+ *  - chips de domaine (effectif, cumulatif, désactivé à zéro — jamais masqué) ;
+ *  - indicateur de tri non retriable côté client (le serveur fait foi) ;
+ *  - menu d'actions par ligne (⋮) : Renommer / Archiver / Supprimer définitivement ;
+ *  - colonne Contenu (N calculs / N PV) ;
+ *  - suppression DÉFINITIVE, distincte de l'archivage (irréversible, confirmation forte) ;
+ *  - affordances d'écriture gouvernées par le rôle courant (confort d'usage
+ *    UNIQUEMENT — cf. RowActionsMenu et BoutonRestaurer plus bas : la seule
+ *    barrière réelle reste le RBAC serveur).
  */
 
 import {
@@ -13,6 +25,8 @@ import {
   Search,
   Trash2,
   Pencil,
+  MoreVertical,
+  Archive,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
@@ -30,13 +44,57 @@ import {
   listProjects,
   createProject,
   deleteProject,
+  deleteProjectPermanently,
   renameProject,
+  getStoredOrgs,
 } from '@/lib/api/client';
 import type { Project, ProjectDomain } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 import { libelleRelatif } from '@/lib/relative-day';
 
-type SortKey = 'date-desc' | 'name-asc';
+const DOMAINES: readonly ProjectDomain[] = ['CH', 'FD', 'LB'];
+const DOMAIN_LABEL: Record<ProjectDomain, string> = {
+  CH: 'Chaussées',
+  FD: 'Fondations',
+  LB: 'Laboratoire',
+};
+
+/**
+ * Rôles autorisés à ÉCRIRE (créer/renommer/archiver/restaurer), alignés sur le
+ * RBAC réel du serveur (@Roles sur ProjectsController — OWNER/ADMIN/ENGINEER,
+ * hors SUPERADMIN back-office non pertinent ici).
+ */
+const WRITE_ROLES = new Set(['OWNER', 'ADMIN', 'ENGINEER']);
+/** Suppression DÉFINITIVE : rôles plus restreints (OWNER/ADMIN uniquement — brief). */
+const HARD_DELETE_ROLES = new Set(['OWNER', 'ADMIN']);
+
+/**
+ * Normalise une chaîne pour une comparaison insensible à la casse ET aux
+ * accents (« Étude » doit matcher une recherche tapée « etude »).
+ */
+function normaliser(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+/**
+ * Rôle courant DANS CETTE ORGANISATION — lu depuis les claims JWT stockés au
+ * login (`getStoredOrgs`, alimenté par `storeTokens`/le mock au login), PAS
+ * déduit ni fabriqué côté navigateur.
+ *
+ * ⚠️ CE N'EST PAS UNE BARRIÈRE DE SÉCURITÉ : masquer un bouton n'autorise
+ * rien, seul le RBAC serveur (@Roles) fait foi. `null` (rôle non résolu —
+ * SSR, org absente des claims) est traité comme PERMISSIF par défaut : on ne
+ * devine jamais un refus, un rôle réellement insuffisant se traduit par un
+ * 403 serveur que l'appelant gère proprement (cf. handleHardDeleteProject).
+ */
+function useRoleCourant(orgSlug: string): string | null {
+  const [role, setRole] = useState<string | null>(null);
+  useEffect(() => {
+    const orgs = getStoredOrgs() as Array<{ slug: string; role: string }>;
+    setRole(orgs.find((o) => o.slug === orgSlug)?.role ?? null);
+  }, [orgSlug]);
+  return role;
+}
 
 /**
  * Date relative calculée côté client uniquement (useEffect après montage).
@@ -90,8 +148,15 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
   const router = useRouter();
   const { addToast } = useToast();
   const orgId = useOrgId(orgSlug);
+  const role = useRoleCourant(orgSlug);
+  const canWrite = role === null ? true : WRITE_ROLES.has(role);
+  const canHardDelete = role === null ? true : HARD_DELETE_ROLES.has(role);
 
-  const [projects, setProjects] = useState<Project[]>([]);
+  // Actifs et archivés sont chargés ENSEMBLE, dès le premier rendu : sans
+  // cela, le compteur « Archivés N » serait inconnu tant qu'on n'a pas ouvert
+  // cette vue — exactement le défaut mesuré (P0-2 de ce lot).
+  const [activeProjects, setActiveProjects] = useState<Project[]>([]);
+  const [archivedProjects, setArchivedProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
@@ -103,9 +168,11 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
   const [newDomain, setNewDomain] = useState<ProjectDomain>('CH');
   const [newNameError, setNewNameError] = useState<string | undefined>();
 
-  // Recherche / tri
+  // Recherche / filtres
   const [query, setQuery] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('date-desc');
+  const [selectedDomains, setSelectedDomains] = useState<Set<ProjectDomain>>(
+    () => new Set(),
+  );
   // Vue « Archivés » (P0-8) : sans elle, un projet archivé serait introuvable —
   // la modale de suppression promettrait une réversibilité inaccessible.
   const [vue, setVue] = useState<'actifs' | 'archives'>('actifs');
@@ -114,9 +181,15 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
   // enterree au 4e onglet, pendant que la suppression avait deux acces directs.
   const [renommage, setRenommage] = useState<string | null>(null);
 
-  // Suppression (soft-delete)
+  // Suppression (archivage réversible)
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Suppression DÉFINITIVE (irréversible, distincte de l'archivage — P0-9)
+  const [projectToHardDelete, setProjectToHardDelete] = useState<Project | null>(null);
+  const [hardDeleteConfirmText, setHardDeleteConfirmText] = useState('');
+  const [hardDeleteError, setHardDeleteError] = useState<string | null>(null);
+  const [hardDeleting, setHardDeleting] = useState(false);
 
   function resetNewProjectForm() {
     setNewName('');
@@ -134,21 +207,32 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
     setLoading(true);
     setError(null);
     try {
-      const data =
-        vue === 'archives'
-          ? await listArchivedProjects(orgId)
-          : await listProjects(orgId);
-      setProjects(data);
+      const [actifs, archives] = await Promise.all([
+        listProjects(orgId),
+        listArchivedProjects(orgId),
+      ]);
+      setActiveProjects(actifs);
+      setArchivedProjects(archives);
     } catch {
       setError('Impossible de charger les projets. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }
-  }, [orgId, vue]);
+  }, [orgId]);
 
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  // Liste de la vue courante — la bascule Actifs/Archivés ne redéclenche AUCUN
+  // appel réseau : les deux listes sont déjà en mémoire (cf. loadProjects).
+  const projects = vue === 'archives' ? archivedProjects : activeProjects;
+
+  function resetHardDeleteState() {
+    setProjectToHardDelete(null);
+    setHardDeleteConfirmText('');
+    setHardDeleteError(null);
+  }
 
   async function handleRename(projet: Project, nouveau: string) {
     const nom = nouveau.trim();
@@ -160,7 +244,7 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
     try {
       const maj = await renameProject(orgId, projet.id, nom);
       // Mise a jour LOCALE : pas de rechargement complet de la liste.
-      setProjects((prev) => prev.map((p) => (p.id === projet.id ? maj : p)));
+      setActiveProjects((prev) => prev.map((p) => (p.id === projet.id ? maj : p)));
       addToast({ type: 'success', message: `Projet renommé « ${maj.name} ».` });
     } catch {
       // AUCUNE UI optimiste : on n'a jamais affiche le nouveau nom, donc rien a
@@ -173,10 +257,11 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
     if (!orgId) return;
     setRestaurationEnCours(projet.id);
     try {
-      await restoreProject(orgId, projet.id);
-      // Le projet quitte la vue « Archivés » : on le retire localement plutôt
-      // que de tout recharger — le retour serveur fait déjà foi.
-      setProjects((prev) => prev.filter((p) => p.id !== projet.id));
+      const restaure = await restoreProject(orgId, projet.id);
+      // Retiré des archivés, réinjecté dans les actifs : les DEUX compteurs
+      // restent exacts sans recharger la liste complète.
+      setArchivedProjects((prev) => prev.filter((p) => p.id !== projet.id));
+      setActiveProjects((prev) => [restaure, ...prev]);
       addToast({ type: 'success', message: `« ${projet.name} » restauré.` });
     } catch {
       addToast({ type: 'error', message: 'Restauration impossible.' });
@@ -203,7 +288,7 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
         domain: newDomain,
       });
       // En tête de liste : cohérent avec le tri par défaut (le plus récent d'abord).
-      setProjects((prev) => [p, ...prev]);
+      setActiveProjects((prev) => [p, ...prev]);
       setNewProjectOpen(false);
       resetNewProjectForm();
       addToast({ type: 'success', message: `Projet "${p.name}" créé.` });
@@ -219,8 +304,11 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
     if (!projectToDelete || !orgId) return;
     setDeleting(true);
     try {
-      await deleteProject(orgId, projectToDelete.id);
-      setProjects((prev) => prev.filter((p) => p.id !== projectToDelete.id));
+      const archive = await deleteProject(orgId, projectToDelete.id);
+      // Retiré des actifs, réinjecté dans les archivés : les DEUX compteurs
+      // restent exacts sans recharger la liste complète.
+      setActiveProjects((prev) => prev.filter((p) => p.id !== projectToDelete.id));
+      setArchivedProjects((prev) => [archive, ...prev]);
       addToast({
         type: 'success',
         message: `Projet "${projectToDelete.name}" archivé. Les PV scellés restent conservés.`,
@@ -233,22 +321,96 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
     }
   }
 
+  async function handleHardDeleteProject() {
+    if (!projectToHardDelete || !orgId) return;
+    // Garde-fou en plus du bouton désactivé : jamais d'appel API sur une
+    // saisie qui ne correspond pas EXACTEMENT au nom du projet.
+    if (hardDeleteConfirmText.trim() !== projectToHardDelete.name) return;
+
+    setHardDeleting(true);
+    setHardDeleteError(null);
+    const cible = projectToHardDelete;
+    try {
+      await deleteProjectPermanently(orgId, cible.id);
+      setActiveProjects((prev) => prev.filter((p) => p.id !== cible.id));
+      setArchivedProjects((prev) => prev.filter((p) => p.id !== cible.id));
+      addToast({
+        type: 'success',
+        message: `Projet "${cible.name}" supprimé définitivement.`,
+      });
+      resetHardDeleteState();
+    } catch (err) {
+      const statusCode = (err as { statusCode?: number } | undefined)?.statusCode;
+      const message = (err as { message?: string } | undefined)?.message;
+      if (statusCode === 409) {
+        setHardDeleteError(
+          message ??
+            'Ce projet porte au moins un PV scellé : suppression définitive impossible.',
+        );
+      } else if (statusCode === 404) {
+        setHardDeleteError(
+          message ?? 'Projet introuvable — il a peut-être déjà été supprimé.',
+        );
+      } else if (statusCode === 403) {
+        setHardDeleteError(
+          message ??
+            'Vous n’avez pas les droits pour supprimer définitivement ce projet.',
+        );
+      } else {
+        addToast({
+          type: 'error',
+          message: 'Erreur lors de la suppression définitive du projet.',
+        });
+      }
+    } finally {
+      setHardDeleting(false);
+    }
+  }
+
+  /** Ouvre la modale d'archivage à la place de la suppression définitive (repli 409). */
+  function proposerArchivageALaPlace() {
+    const p = projectToHardDelete;
+    resetHardDeleteState();
+    if (p) setProjectToDelete(p);
+  }
+
+  // Effectifs par domaine — TOUJOURS calculés sur la vue courante (actifs OU
+  // archivés), indépendamment de la recherche et des chips déjà sélectionnées
+  // (facette stable, pas un second filtre qui se retire lui-même).
+  const domainCounts = useMemo(() => {
+    const counts: Record<ProjectDomain, number> = { CH: 0, FD: 0, LB: 0 };
+    for (const p of projects) {
+      if (p.domain && p.domain in counts) counts[p.domain] += 1;
+    }
+    return counts;
+  }, [projects]);
+
+  function toggleDomain(d: ProjectDomain) {
+    setSelectedDomains((prev) => {
+      const next = new Set(prev);
+      if (next.has(d)) next.delete(d);
+      else next.add(d);
+      return next;
+    });
+  }
+
   const visibleProjects = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const filtered = q
-      ? projects.filter((p) => p.name.toLowerCase().includes(q))
-      : projects;
-    const sorted = [...filtered];
-    if (sortKey === 'name-asc') {
-      sorted.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-      return sorted;
+    const q = normaliser(query.trim());
+    let list = projects;
+    if (q) {
+      list = list.filter((p) => {
+        const hay = normaliser(`${p.name} ${p.description ?? ''}`);
+        return hay.includes(q);
+      });
+    }
+    if (selectedDomains.size > 0) {
+      list = list.filter((p) => p.domain !== null && selectedDomains.has(p.domain));
     }
     // Tri par activité : le SERVEUR fait foi (il seul connaît le dernier calcul
-    // et le dernier PV). Le front ne retrie plus — il y avait jusqu'ici deux
-    // vérités d'ordre, dont aucune ne reflétait l'activité réelle : le serveur
-    // triait sur createdAt, le front retriait sur updatedAt.
-    return sorted;
-  }, [projects, query, sortKey]);
+    // et le dernier PV). Le front ne retrie JAMAIS — il y avait jusqu'ici deux
+    // vérités d'ordre, dont aucune ne reflétait l'activité réelle.
+    return list;
+  }, [projects, query, selectedDomains]);
 
   return (
     <div style={{ padding: '32px 32px', maxWidth: 1100, margin: '0 auto' }}>
@@ -284,14 +446,18 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
             {orgSlug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
           </p>
         </div>
-        <Button
-          variant="action"
-          size="md"
-          iconLeft={<Plus size={16} strokeWidth={1.5} aria-hidden="true" />}
-          onClick={() => setNewProjectOpen(true)}
-        >
-          Nouveau projet
-        </Button>
+        {/* Confort d'usage (pas une barrière de sécurité, cf. useRoleCourant) :
+            un VIEWER/TECHNICIAN ne voit pas un bouton que le serveur refuserait. */}
+        {canWrite && (
+          <Button
+            variant="action"
+            size="md"
+            iconLeft={<Plus size={16} strokeWidth={1.5} aria-hidden="true" />}
+            onClick={() => setNewProjectOpen(true)}
+          >
+            Nouveau projet
+          </Button>
+        )}
       </div>
 
       {/* État chargement */}
@@ -346,7 +512,7 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
         </div>
       )}
 
-      {/* État vide (aucun projet du tout) */}
+      {/* État vide (aucun projet du tout, dans CETTE vue) */}
       {!loading &&
         !error &&
         projects.length === 0 &&
@@ -364,117 +530,176 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
             variant="blank"
             title="Aucun projet pour le moment"
             description="Créez votre premier projet pour démarrer un calcul géotechnique ou routier."
-            ctaLabel="Nouveau projet"
-            onCta={() => setNewProjectOpen(true)}
+            ctaLabel={canWrite ? 'Nouveau projet' : undefined}
+            onCta={canWrite ? () => setNewProjectOpen(true) : undefined}
           />
         ))}
 
-      {/* Barre recherche + tri */}
-      {!loading && !error && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            marginBottom: 16,
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 200 }}>
-            <Search
-              size={15}
-              strokeWidth={1.5}
-              aria-hidden="true"
+      {/* Barre d'outils : recherche, bascule Actifs/Archivés, chips domaine, tri */}
+      {!loading &&
+        !error &&
+        (activeProjects.length > 0 || archivedProjects.length > 0) && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 16,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 200 }}>
+              <Search
+                size={15}
+                strokeWidth={1.5}
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  left: 10,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)',
+                  pointerEvents: 'none',
+                }}
+              />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Filtrer par nom ou description"
+                aria-label="Filtrer les projets"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px 8px 32px',
+                  fontSize: 'var(--text-sm)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-lg)',
+                  background: 'var(--surface-base)',
+                  color: 'var(--text-primary)',
+                }}
+              />
+            </div>
+
+            {/* Bascule Actifs / Archivés (P0-8) — compteurs connus SANS ouvrir la
+              vue (P0-2 de ce lot) : les deux listes sont chargées ensemble.
+              Traitement NEUTRE : ni verdict, ni accent de statut (ADR 0008). */}
+            <div
+              role="group"
+              aria-label="Filtrer par état"
               style={{
-                position: 'absolute',
-                left: 10,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: 'var(--text-muted)',
-                pointerEvents: 'none',
-              }}
-            />
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Rechercher un projet…"
-              aria-label="Rechercher un projet par nom"
-              style={{
-                width: '100%',
-                padding: '8px 12px 8px 32px',
-                fontSize: 'var(--text-sm)',
+                display: 'inline-flex',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-lg)',
-                background: 'var(--surface-base)',
-                color: 'var(--text-primary)',
+                overflow: 'hidden',
               }}
-            />
-          </div>
-          <select
-            value={sortKey}
-            onChange={(e) => setSortKey(e.target.value as SortKey)}
-            aria-label="Trier les projets"
-            style={{
-              padding: '8px 12px',
-              fontSize: 'var(--text-sm)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
-              background: 'var(--surface-base)',
-              color: 'var(--text-primary)',
-            }}
-          >
-            <option value="date-desc">Dernière activité</option>
-            <option value="name-asc">Nom (A → Z)</option>
-          </select>
+            >
+              {(
+                [
+                  ['actifs', 'Actifs', activeProjects.length],
+                  ['archives', 'Archivés', archivedProjects.length],
+                ] as const
+              ).map(([v, label, count]) => (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={vue === v}
+                  onClick={() => setVue(v)}
+                  style={{
+                    padding: '7px 13px',
+                    minHeight: 32,
+                    fontSize: 'var(--text-sm)',
+                    border: 0,
+                    background:
+                      vue === v ? 'var(--state-selected-bg)' : 'var(--surface-base)',
+                    color: vue === v ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    fontWeight: vue === v ? 600 : 400,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {label}{' '}
+                  <b style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                    {count}
+                  </b>
+                </button>
+              ))}
+            </div>
 
-          {/* Bascule Actifs / Archivés (P0-8). Sans ce point d'entrée, un projet
-              archivé serait introuvable et la réversibilité promise par la
-              modale de suppression resterait inaccessible. Traitement NEUTRE :
-              ni verdict, ni accent de statut (ADR 0008). */}
-          <div
-            role="group"
-            aria-label="Filtrer par état"
-            style={{
-              display: 'inline-flex',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
-              overflow: 'hidden',
-            }}
-          >
-            {(['actifs', 'archives'] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                aria-pressed={vue === v}
-                onClick={() => setVue(v)}
-                style={{
-                  padding: '7px 13px',
-                  minHeight: 32,
-                  fontSize: 'var(--text-sm)',
-                  border: 0,
-                  background:
-                    vue === v ? 'var(--state-selected-bg)' : 'var(--surface-base)',
-                  color: vue === v ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  fontWeight: vue === v ? 600 : 400,
-                  cursor: 'pointer',
-                }}
-              >
-                {v === 'actifs' ? 'Actifs' : 'Archivés'}
-              </button>
-            ))}
+            {/* Chips de domaine : cumulatifs, effectif affiché, un domaine à ZÉRO
+              reste visible mais désactivé — jamais masqué en silence (cf.
+              maquette « Pourquoi PressioPro n'apparaît pas »). */}
+            {DOMAINES.map((d) => {
+              const count = domainCounts[d];
+              const pressed = selectedDomains.has(d);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  aria-pressed={pressed}
+                  disabled={count === 0}
+                  onClick={() => toggleDomain(d)}
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    padding: '6px 10px',
+                    borderRadius: 999,
+                    border: `1px solid ${pressed ? 'var(--border-focus)' : 'var(--border-subtle)'}`,
+                    background: pressed
+                      ? 'var(--state-selected-bg)'
+                      : 'var(--surface-base)',
+                    color: pressed ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    fontWeight: pressed ? 600 : 400,
+                    cursor: count === 0 ? 'not-allowed' : 'pointer',
+                    opacity: count === 0 ? 0.45 : 1,
+                  }}
+                >
+                  {DOMAIN_LABEL[d]}{' '}
+                  <b style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                    {count}
+                  </b>
+                </button>
+              );
+            })}
+
+            <div style={{ flex: 1 }} />
+
+            {/* Indicateur de tri — NON interactif : le serveur trie déjà par
+              dernière activité décroissante ; un basculeur client ne pourrait
+              proposer que des ordres que le serveur sait rendre, et il n'y en
+              a qu'un aujourd'hui. Cf. incident passé : deux vérités d'ordre
+              (front/serveur), aucune ne reflétant l'activité réelle. */}
+            <span
+              role="status"
+              aria-label="Trié par dernière activité, décroissant"
+              style={{
+                fontSize: 'var(--text-xs)',
+                padding: '6px 10px',
+                borderRadius: 999,
+                border: '1px solid var(--border-focus)',
+                background: 'var(--state-selected-bg)',
+                color: 'var(--text-primary)',
+                fontWeight: 500,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Dernière activité ↓
+            </span>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Filtre sans résultat */}
       {!loading && !error && projects.length > 0 && visibleProjects.length === 0 && (
         <EmptyState
           variant="blank"
           title="Aucun projet ne correspond"
-          description={`Aucun projet ne correspond à « ${query} ».`}
-          ctaLabel="Réinitialiser la recherche"
-          onCta={() => setQuery('')}
+          description={
+            query.trim()
+              ? `Aucun projet ne correspond à « ${query} ».`
+              : 'Aucun projet ne correspond aux filtres sélectionnés.'
+          }
+          ctaLabel="Réinitialiser les filtres"
+          onCta={() => {
+            setQuery('');
+            setSelectedDomains(new Set());
+          }}
         />
       )}
 
@@ -489,8 +714,11 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
             <ProjectRow
               key={project.id}
               project={project}
+              canWrite={canWrite}
+              canHardDelete={canHardDelete}
               onClick={() => router.push(`/app/${orgSlug}/projets/${project.id}`)}
-              onDelete={() => setProjectToDelete(project)}
+              onArchiveRequest={() => setProjectToDelete(project)}
+              onHardDeleteRequest={() => setProjectToHardDelete(project)}
               enRenommage={renommage === project.id}
               onStartRename={() => setRenommage(project.id)}
               onRename={(nom) => handleRename(project, nom)}
@@ -578,13 +806,13 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
         </form>
       </Modal>
 
-      {/* Modale confirmation suppression (soft-delete / archivage) */}
+      {/* Modale confirmation archivage (réversible) */}
       <Modal
         open={projectToDelete !== null}
         onClose={() => {
           if (!deleting) setProjectToDelete(null);
         }}
-        title="Supprimer le projet ?"
+        title="Archiver le projet ?"
         size="sm"
         footer={
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -602,7 +830,7 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
               loading={deleting}
               onClick={handleDeleteProject}
             >
-              Supprimer le projet
+              Archiver le projet
             </Button>
           </div>
         }
@@ -610,7 +838,8 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
         <p
           style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', margin: 0 }}
         >
-          Le projet « {projectToDelete?.name} » sera retiré de la liste des projets.
+          Le projet « {projectToDelete?.name} » sera retiré de la liste des projets
+          actifs.
         </p>
         <p
           style={{
@@ -624,6 +853,315 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
           », d&apos;où vous pourrez le restaurer vous-même à tout moment.
         </p>
       </Modal>
+
+      {/* Modale confirmation suppression DÉFINITIVE (irréversible, P0-9) —
+          DISTINCTE de l'archivage ci-dessus : saisie du nom du projet exigée,
+          patron usuel pour une destruction irréversible. */}
+      <Modal
+        open={projectToHardDelete !== null}
+        onClose={() => {
+          if (!hardDeleting) resetHardDeleteState();
+        }}
+        title="Supprimer définitivement le projet ?"
+        size="sm"
+        footer={
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={resetHardDeleteState}
+              disabled={hardDeleting}
+            >
+              Annuler
+            </Button>
+            <Button
+              variant="danger"
+              size="md"
+              loading={hardDeleting}
+              disabled={
+                !!hardDeleteError ||
+                !projectToHardDelete ||
+                hardDeleteConfirmText.trim() !== projectToHardDelete.name
+              }
+              onClick={handleHardDeleteProject}
+            >
+              Supprimer définitivement
+            </Button>
+          </div>
+        }
+      >
+        <p
+          style={{
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-primary)',
+            margin: 0,
+            fontWeight: 600,
+          }}
+        >
+          Cette action est IRRÉVERSIBLE.
+        </p>
+        <p
+          style={{
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-secondary)',
+            marginTop: 8,
+          }}
+        >
+          Le projet « {projectToHardDelete?.name} », ses calculs et les documents associés
+          seront supprimés définitivement — aucune restauration ne sera possible, à la
+          différence de l&apos;archivage.
+        </p>
+
+        {hardDeleteError ? (
+          <div
+            role="alert"
+            style={{
+              marginTop: 12,
+              padding: '10px 12px',
+              borderRadius: 'var(--radius-base)',
+              border: '1px solid var(--border-default)',
+              background: 'var(--surface-raised)',
+              color: 'var(--text-primary)',
+              fontSize: 'var(--text-sm)',
+            }}
+          >
+            {hardDeleteError}
+            {/pv\s*scell/i.test(hardDeleteError) && (
+              <div style={{ marginTop: 8 }}>
+                <Button variant="secondary" size="sm" onClick={proposerArchivageALaPlace}>
+                  Archiver à la place
+                </Button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ marginTop: 12 }}>
+            <Input
+              id="hard-delete-confirm"
+              label={`Saisissez « ${projectToHardDelete?.name ?? ''} » pour confirmer`}
+              value={hardDeleteConfirmText}
+              onChange={(e) => setHardDeleteConfirmText(e.target.value)}
+              placeholder={projectToHardDelete?.name}
+              autoFocus
+            />
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Menu d'actions par ligne (⋮) — Renommer / Archiver / Supprimer définitivement
+// ---------------------------------------------------------------------------
+
+function RowActionsMenu({
+  project,
+  canWrite,
+  canHardDelete,
+  onRename,
+  onArchive,
+  onHardDelete,
+  archive = false,
+}: {
+  project: Project;
+  canWrite: boolean;
+  canHardDelete: boolean;
+  onRename: () => void;
+  onArchive: () => void;
+  onHardDelete: () => void;
+  /**
+   * Vue « Archivés » : Renommer/Archiver n'ont aucun sens sur une ligne déjà
+   * archivée (non proposés) ; seule « Supprimer définitivement » reste,
+   * gatée sur canHardDelete — cas d'usage PRINCIPAL côté serveur (on archive
+   * pour se débarrasser, puis on vide la corbeille).
+   */
+  archive?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocMouseDown(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onDocKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        btnRef.current?.focus();
+      }
+    }
+    document.addEventListener('mousedown', onDocMouseDown);
+    document.addEventListener('keydown', onDocKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown);
+      document.removeEventListener('keydown', onDocKeyDown);
+    };
+  }, [open]);
+
+  // Confort d'usage UNIQUEMENT (cf. useRoleCourant) : sans AUCUNE action
+  // à proposer, pas de menu du tout plutôt qu'un menu vide. En vue Archivés,
+  // seule canHardDelete gouverne (Renommer/Archiver n'existent pas ici).
+  if (archive ? !canHardDelete : !canWrite && !canHardDelete) return null;
+
+  const menuItemStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    textAlign: 'left',
+    padding: '8px 10px',
+    border: 0,
+    background: 'none',
+    fontSize: 'var(--text-sm)',
+    color: 'var(--text-primary)',
+    borderRadius: 'var(--radius-base)',
+    cursor: 'pointer',
+  };
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label={`Actions sur le projet ${project.name}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        style={{
+          display: 'inline-grid',
+          placeItems: 'center',
+          width: 28,
+          height: 28,
+          border: 0,
+          borderRadius: 'var(--radius-base)',
+          background: 'none',
+          color: 'var(--text-muted)',
+          cursor: 'pointer',
+        }}
+      >
+        <MoreVertical size={16} strokeWidth={1.5} aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          aria-label={`Actions sur le projet ${project.name}`}
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 'calc(100% + 4px)',
+            zIndex: 5,
+            minWidth: 210,
+            background: 'var(--surface-overlay)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-lg)',
+            padding: 5,
+            boxShadow: 'var(--elevation-popover)',
+          }}
+        >
+          {!archive && canWrite && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                onRename();
+              }}
+              style={menuItemStyle}
+            >
+              <Pencil size={13} strokeWidth={1.5} aria-hidden="true" />
+              Renommer
+            </button>
+          )}
+          {!archive && canWrite && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                onArchive();
+              }}
+              style={menuItemStyle}
+            >
+              <Archive size={13} strokeWidth={1.5} aria-hidden="true" />
+              Archiver
+            </button>
+          )}
+          {!archive && canWrite && canHardDelete && (
+            <hr
+              style={{
+                border: 0,
+                borderTop: '1px solid var(--border-subtle)',
+                margin: '5px 2px',
+              }}
+            />
+          )}
+          {canHardDelete && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                onHardDelete();
+              }}
+              style={menuItemStyle}
+            >
+              <Trash2 size={13} strokeWidth={1.5} aria-hidden="true" />
+              Supprimer définitivement
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Colonne « Contenu » — N calculs / N PV (PV omis si 0)
+// ---------------------------------------------------------------------------
+
+function badgeStyle(): React.CSSProperties {
+  return {
+    fontFamily: 'var(--font-mono)',
+    fontSize: 11,
+    color: 'var(--text-secondary)',
+    border: '1px solid var(--border-subtle)',
+    borderRadius: 999,
+    padding: '3px 8px',
+    whiteSpace: 'nowrap',
+  };
+}
+
+function ContentBadges({ project }: { project: Project }) {
+  // Compteur pas encore connu (backend antérieur / mock sans compteurs) :
+  // aucune pastille plutôt qu'un « 0 » trompeur (cf. types.ts — calcCount).
+  if (project.calcCount === undefined) return null;
+  return (
+    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', flexShrink: 0 }}>
+      <span style={badgeStyle()}>
+        <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+          {project.calcCount}
+        </b>{' '}
+        calcul{project.calcCount === 1 ? '' : 's'}
+      </span>
+      {typeof project.pvCount === 'number' && project.pvCount > 0 && (
+        <span style={badgeStyle()}>
+          <b style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+            {project.pvCount}
+          </b>{' '}
+          PV
+        </span>
+      )}
     </div>
   );
 }
@@ -634,8 +1172,11 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
 
 function ProjectRow({
   project,
+  canWrite,
+  canHardDelete,
   onClick,
-  onDelete,
+  onArchiveRequest,
+  onHardDeleteRequest,
   enRenommage = false,
   onStartRename,
   onRename,
@@ -645,14 +1186,17 @@ function ProjectRow({
   restauration = false,
 }: {
   project: Project;
+  canWrite: boolean;
+  canHardDelete: boolean;
   onClick: () => void;
-  onDelete: () => void;
+  onArchiveRequest: () => void;
+  onHardDeleteRequest: () => void;
   /** Renommage en ligne (P0-7). */
   enRenommage?: boolean;
   onStartRename?: () => void;
   onRename?: (nom: string) => void;
   onCancelRename?: () => void;
-  /** Vue « Archivés » : la corbeille cède la place au bouton Restaurer. */
+  /** Vue « Archivés » : le menu cède la place au bouton Restaurer. */
   archive?: boolean;
   onRestore?: () => void;
   restauration?: boolean;
@@ -748,7 +1292,7 @@ function ProjectRow({
           ) : (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {project.name}
-              {onStartRename && !archive && (
+              {onStartRename && !archive && canWrite && (
                 <button
                   type="button"
                   aria-label={`Renommer le projet ${project.name}`}
@@ -773,20 +1317,25 @@ function ProjectRow({
             </span>
           )}
         </div>
-        {project.description && (
-          <div
-            style={{
-              fontSize: 'var(--text-xs)',
-              color: 'var(--text-secondary)',
-              marginTop: 2,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {project.description}
-          </div>
-        )}
+        {/* Ligne de description — toujours rendue (P0-7) : la description est
+            désormais persistée ; « Aucune description. » atténué signale un
+            champ CONNU et vide, pas un champ jamais rempli en silence. */}
+        <div
+          style={{
+            fontSize: 'var(--text-xs)',
+            color: 'var(--text-secondary)',
+            marginTop: 2,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {project.description ? (
+            project.description
+          ) : (
+            <span style={{ opacity: 0.6 }}>Aucune description.</span>
+          )}
+        </div>
       </div>
 
       <DomainTag domain={project.domain} />
@@ -808,41 +1357,40 @@ function ProjectRow({
         />
       </div>
 
-      {archive && onRestore ? (
-        <BoutonRestaurer
-          onRestore={onRestore}
-          enCours={restauration}
-          nom={project.name}
-        />
+      <ContentBadges project={project} />
+
+      {archive ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {canWrite && onRestore && (
+            <BoutonRestaurer
+              onRestore={onRestore}
+              enCours={restauration}
+              nom={project.name}
+            />
+          )}
+          {/* Suppression définitive proposée aussi en vue Archivés — cas
+              d'usage PRINCIPAL côté serveur (on archive pour se débarrasser,
+              puis on vide la corbeille). Renommer/Archiver n'ont pas de sens
+              ici (archive=true les masque dans RowActionsMenu). */}
+          <RowActionsMenu
+            project={project}
+            canWrite={canWrite}
+            canHardDelete={canHardDelete}
+            onRename={() => onStartRename?.()}
+            onArchive={onArchiveRequest}
+            onHardDelete={onHardDeleteRequest}
+            archive
+          />
+        </div>
       ) : (
-        <button
-          type="button"
-          aria-label={`Supprimer le projet ${project.name}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'none',
-            border: 'none',
-            borderRadius: 'var(--radius-base)',
-            padding: 6,
-            cursor: 'pointer',
-            color: 'var(--text-muted)',
-            flexShrink: 0,
-          }}
-          onMouseOver={(e) => {
-            (e.currentTarget as HTMLElement).style.color = 'var(--status-fail-tx)';
-          }}
-          onMouseOut={(e) => {
-            (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)';
-          }}
-        >
-          <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" />
-        </button>
+        <RowActionsMenu
+          project={project}
+          canWrite={canWrite}
+          canHardDelete={canHardDelete}
+          onRename={() => onStartRename?.()}
+          onArchive={onArchiveRequest}
+          onHardDelete={onHardDeleteRequest}
+        />
       )}
     </div>
   );
@@ -850,7 +1398,7 @@ function ProjectRow({
 
 /**
  * Bouton de restauration (P0-8) — rend vraie la réversibilité promise par la
- * modale de suppression. Traitement NEUTRE : restaurer n'est ni un verdict ni
+ * modale d'archivage. Traitement NEUTRE : restaurer n'est ni un verdict ni
  * une action destructive (ADR 0008 — ni vert, ni rouge, ni accent de statut).
  */
 function BoutonRestaurer({

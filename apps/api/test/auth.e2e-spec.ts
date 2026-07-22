@@ -193,6 +193,7 @@ describe('Auth + RBAC + tenant (e2e)', () => {
   }
 
   it('login : bon mot de passe -> 200 + tokens', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const res = await request(server())
       .post('/auth/login')
@@ -204,6 +205,7 @@ describe('Auth + RBAC + tenant (e2e)', () => {
   });
 
   it('login : mauvais mot de passe -> 401 generique', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const res = await request(server())
       .post('/auth/login')
@@ -212,6 +214,7 @@ describe('Auth + RBAC + tenant (e2e)', () => {
   });
 
   it('login : email inconnu -> 401 (meme reponse, pas d oracle)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const res = await request(server())
       .post('/auth/login')
@@ -220,6 +223,7 @@ describe('Auth + RBAC + tenant (e2e)', () => {
   });
 
   it('login : corps invalide (Zod) -> 400', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const res = await request(server())
       .post('/auth/login')
@@ -228,12 +232,14 @@ describe('Auth + RBAC + tenant (e2e)', () => {
   });
 
   it('route protegee : sans token -> 401', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const res = await request(server()).get('/projects').set('x-org-id', orgA);
     expect(res.status).toBe(401);
   });
 
   it('route protegee : token mais SANS org -> 403', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const { access } = await login(emailEng());
     const res = await request(server())
@@ -243,6 +249,7 @@ describe('Auth + RBAC + tenant (e2e)', () => {
   });
 
   it('route protegee : token + org membre -> 200', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const { access } = await login(emailEng());
     const res = await request(server())
@@ -254,6 +261,7 @@ describe('Auth + RBAC + tenant (e2e)', () => {
   });
 
   it('CROSS-ORG : user de orgA demandant orgB -> 403 (aucun membership)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const { access } = await login(emailEng()); // membre de orgA seulement
     const res = await request(server())
@@ -264,6 +272,7 @@ describe('Auth + RBAC + tenant (e2e)', () => {
   });
 
   it('RBAC : VIEWER ne peut pas creer de projet -> 403', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const { access } = await login(emailView());
     const res = await request(server())
@@ -275,6 +284,7 @@ describe('Auth + RBAC + tenant (e2e)', () => {
   });
 
   it('RBAC : ENGINEER peut creer un projet -> 201 et scope orgA', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const { access } = await login(emailEng());
     const res = await request(server())
@@ -289,6 +299,7 @@ describe('Auth + RBAC + tenant (e2e)', () => {
   });
 
   it('refresh : refresh token -> nouvelle paire', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const { refresh } = await login(emailEng());
     const res = await request(server())
@@ -301,6 +312,7 @@ describe('Auth + RBAC + tenant (e2e)', () => {
   });
 
   it('refresh : access token presente en refresh -> 401 (type discrimine)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const { access } = await login(emailEng());
     const res = await request(server())
@@ -310,6 +322,7 @@ describe('Auth + RBAC + tenant (e2e)', () => {
   });
 
   it('access token rejette en tant que... access reste OK (sanity type)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const { refresh } = await login(emailEng());
     // un refresh token presente comme Bearer (access) sur route protegee -> 401

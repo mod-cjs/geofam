@@ -517,6 +517,83 @@ describe('adaptOfficialPv — sealHash tronqué à 8 caractères', () => {
 });
 
 // ---------------------------------------------------------------------------
+// adaptOfficialPv — verdict SCELLÉ (BLOQUANT qa-challenger, verdict.tsx)
+//
+// Le serveur scelle un verdict explicite (ADR 0012, `official_pvs.verdict` :
+// CONFORME/NON_CONFORME/NON_APPLICABLE — apps/api/src/pv/verdict.ts). Ce bloc
+// prouve que l'adapter le PROPAGE (mappé PASS/FAIL/NA), au lieu de le
+// re-dériver de `output` comme le faisait `extractVerdict` — les deux
+// logiques sont indépendantes et peuvent diverger.
+// ---------------------------------------------------------------------------
+
+describe('adaptOfficialPv — verdict scellé (mappe la colonne serveur, ne la re-dérive pas)', () => {
+  function pvAvecVerdict(
+    verdict: string | undefined,
+    output: unknown,
+  ): PrismaOfficialPvFlat {
+    return {
+      id: 'pv_verdict_test',
+      orgId: 'org_01',
+      calcResultId: 'calc_01',
+      projectId: 'proj_01',
+      pvNumber: 'PV-RDS-test-2026-000099',
+      userId: 'usr-uuid',
+      projectName: 'Test',
+      engineId: 'chaussee-burmister',
+      engineVersion: '1.0.0',
+      inputCanonical: '{}',
+      output,
+      scienceStatus: 'signed',
+      verdict,
+      contentHash: 'chxx',
+      hmac: 'aabbccdd12345678',
+      sealedAt: '2026-06-28T10:00:00.000Z',
+    };
+  }
+
+  it('given verdict scellé CONFORME, then OfficialPv.verdict = PASS', () => {
+    const result = adaptOfficialPv(
+      pvAvecVerdict('CONFORME', { conforme: true }) as unknown as PrismaOfficialPv,
+    );
+    expect(result.verdict).toBe('PASS');
+  });
+
+  it('given verdict scellé NON_CONFORME, then OfficialPv.verdict = FAIL', () => {
+    const result = adaptOfficialPv(
+      pvAvecVerdict('NON_CONFORME', { conforme: false }) as unknown as PrismaOfficialPv,
+    );
+    expect(result.verdict).toBe('FAIL');
+  });
+
+  it('given verdict scellé NON_APPLICABLE, then OfficialPv.verdict = NA', () => {
+    const result = adaptOfficialPv(
+      pvAvecVerdict('NON_APPLICABLE', { q_adm: 250 }) as unknown as PrismaOfficialPv,
+    );
+    expect(result.verdict).toBe('NA');
+  });
+
+  it('given colonne verdict absente (défensif), then OfficialPv.verdict = undefined (aucun verdict fabriqué)', () => {
+    const result = adaptOfficialPv(
+      pvAvecVerdict(undefined, { conforme: true }) as unknown as PrismaOfficialPv,
+    );
+    expect(result.verdict).toBeUndefined();
+  });
+
+  it('given pv.verdict scellé CONFORME mais output re-dérivable en FAIL (duck-typing divergent), then OfficialPv.verdict suit le SCEAU (PASS), pas output', () => {
+    // Le sceau dit CONFORME ; l'output brut, lui, ressemble à un échec pour
+    // normalizeOutput (conforme:false). Sans la propagation directe de
+    // `verdict`, un mutant qui re-dériverait depuis `output` resterait invisible.
+    const result = adaptOfficialPv(
+      pvAvecVerdict('CONFORME', { conforme: false }) as unknown as PrismaOfficialPv,
+    );
+    expect(result.verdict).toBe('PASS');
+    // `output` reste normalisé indépendamment (sa propre logique fail-closed) —
+    // les deux champs coexistent, ce test ne prétend pas qu'ils sont fusionnés.
+    expect((result.output as { verdict?: string } | null)?.verdict).toBe('FAIL');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // #4 — adaptOfficialPv : forme plate (POST emit — OfficialPv Prisma direct)
 // ---------------------------------------------------------------------------
 

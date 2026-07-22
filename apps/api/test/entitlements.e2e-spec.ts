@@ -119,6 +119,7 @@ describe('GET /me/entitlements (e2e)', () => {
   const server = () => app!.getHttpServer() as Parameters<typeof request>[0];
 
   it('given un tenant valide (abonnement actif), then 200 avec pack/modules/expiration/quota coherents — JAMAIS 500', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const login = await request(server())
       .post('/auth/login')
@@ -157,6 +158,7 @@ describe('GET /me/entitlements (e2e)', () => {
   });
 
   it('given un utilisateur NON membre de l org, then jamais de fuite (403/404, pas 500)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const login = await request(server())
       .post('/auth/login')

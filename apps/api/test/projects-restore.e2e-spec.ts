@@ -206,6 +206,7 @@ describe('Restauration de projet + description — e2e (Postgres réel)', () => 
   }
 
   it('#2 ISOLATION ÉCRITURE — orgB restaure un projet d’orgA → 404, ET la ligne d’orgA reste ARCHIVED', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const tB = await login(mailB());
     const res = await request(server())
@@ -219,6 +220,7 @@ describe('Restauration de projet + description — e2e (Postgres réel)', () => 
   });
 
   it('#3 ISOLATION LECTURE — la liste des archivés d’orgB ne contient aucun projet d’orgA', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const tB = await login(mailB());
     const res = await request(server())
@@ -230,6 +232,7 @@ describe('Restauration de projet + description — e2e (Postgres réel)', () => 
   });
 
   it('#4 RBAC — un VIEWER peut LISTER les archivés mais ne peut PAS restaurer (403)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const tV = await login(mailViewer());
     // Voir : autorisé (un VIEWER lit déjà tout le tenant).
@@ -246,6 +249,7 @@ describe('Restauration de projet + description — e2e (Postgres réel)', () => 
   });
 
   it('#1 CYCLE + #5 IDEMPOTENCE — restaurer rend le projet visible ; re-restaurer → 404', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const tA = await login(mailA());
 
@@ -286,6 +290,7 @@ describe('Restauration de projet + description — e2e (Postgres réel)', () => 
   });
 
   it('#6 DESCRIPTION — POST avec description → GET la renvoie (chemin complet, zod compris)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const tA = await login(mailA());
     const texte = 'Reconnaissance géotechnique — 3 sondages pressiométriques.';
@@ -312,6 +317,7 @@ describe('Restauration de projet + description — e2e (Postgres réel)', () => 
   });
 
   it('#7 BORNE — une description trop longue est REFUSÉE (400), jamais tronquée en silence', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const tA = await login(mailA());
     const res = await request(server())

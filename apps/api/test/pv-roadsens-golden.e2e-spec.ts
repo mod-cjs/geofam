@@ -196,9 +196,16 @@ describe('GOLDEN scellement du document ROADSENS réel — option-3 (e2e)', () =
   afterAll(async () => {
     if (admin) {
       try {
-        await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
-        await admin.query(`DELETE FROM official_pvs WHERE org_id = $1`, [orgA]);
-        await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        try {
+          await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+          await admin.query(`DELETE FROM official_pvs WHERE org_id = $1`, [
+            orgA,
+          ]);
+        } finally {
+          // try/finally : un echec de DELETE ne doit JAMAIS laisser la base de
+          // recette avec son trigger d'immuabilite desactive.
+          await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        }
         await admin.query(`DELETE FROM pv_counters WHERE org_id = $1`, [orgA]);
         await admin.query(`DELETE FROM calc_snapshots WHERE org_id = $1`, [
           orgA,
@@ -341,6 +348,7 @@ describe('GOLDEN scellement du document ROADSENS réel — option-3 (e2e)', () =
   }
 
   it('given un document ROADSENS réel (SVG+unicode+CSS), when capturé puis scellé, then GET document le restitue OCTET-À-OCTET', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     // Sanity : le document embarqué est structurellement roadsens (non trivial).
     expect(PRINT_HTML).toContain('id="pane-r"');

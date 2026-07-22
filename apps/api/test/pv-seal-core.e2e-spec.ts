@@ -257,12 +257,17 @@ describe('Coeur d integrite du PV scelle (calc_results + official_pvs)', () => {
       try {
         // official_pvs est IMMUABLE meme pour le superuser via le trigger DML :
         // on DESACTIVE le trigger le temps du teardown (DDL, droit du superuser).
-        await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
-        await admin.query(`DELETE FROM official_pvs WHERE org_id IN ($1,$2)`, [
-          orgA,
-          orgB,
-        ]);
-        await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        try {
+          await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+          await admin.query(
+            `DELETE FROM official_pvs WHERE org_id IN ($1,$2)`,
+            [orgA, orgB],
+          );
+        } finally {
+          // try/finally : un echec de DELETE ne doit JAMAIS laisser la base de
+          // recette avec son trigger d'immuabilite desactive.
+          await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        }
         await admin.query(`DELETE FROM pv_counters WHERE org_id IN ($1,$2)`, [
           orgA,
           orgB,

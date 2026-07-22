@@ -301,6 +301,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 1) UPDATE IDENTITE -----------------------------------------------------
 
   it('1) update identite : email normalise + nom ; audit before/after SANS secret', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
 
@@ -329,6 +330,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 2) UNICITE EMAIL -------------------------------------------------------
 
   it('2) unicite : viser l email d un AUTRE user -> 409, base inchangee ; son propre email -> 200', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
 
@@ -352,6 +354,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 3) IDENTITE : chemins negatifs ----------------------------------------
 
   it('3) identite : user inconnu -> 404 ; email invalide -> 400', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
     expect(
@@ -371,6 +374,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 4) ROLE PLATEFORME : promote / revoke ---------------------------------
 
   it('4) role plateforme : promote SUPPORT (200) puis revoke null (200) ; audit before/after', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
 
@@ -391,6 +395,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 5) ANTI-LOCKOUT : dernier SUPERADMIN actif ----------------------------
 
   it('5) anti-lockout : quand l acteur est le SEUL SUPERADMIN actif, se retrograder -> 409', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
 
@@ -435,6 +440,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 6) ANTI AUTO-RETROGRADATION (avec un 2e SUPERADMIN) --------------------
 
   it('6) auto-retrogradation : avec un 2e SUPERADMIN present, se retrograder soi-meme -> 400', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
 
@@ -451,6 +457,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 7) RETROGRADER UN AUTRE SUPERADMIN (pas de sur-blocage) ----------------
 
   it('7) retrograder un AUTRE SUPERADMIN quand >=2 presents -> 200', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
     // etat : superId + super2 SUPERADMIN. On retrograde super2 -> autorise (superId reste).
@@ -462,6 +469,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 8) ROLE INVALIDE / USER INCONNU ---------------------------------------
 
   it('8) role invalide -> 400 ; user inconnu -> 404', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
     expect((await setPlatformRole(normalUser, 'ROOT')).status).toBe(400);
@@ -471,6 +479,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 9) ACTEUR = SUB JWT ----------------------------------------------------
 
   it('9) acteur = sub JWT : un actorUserId injecte dans le corps est IGNORE', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await token(emailSuper());
     const forged = randomUUID();
@@ -488,6 +497,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 10) RBAC ---------------------------------------------------------------
 
   it('10) RBAC : un non-SUPERADMIN (OWNER) sur chaque nouvelle route -> 403', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const ownerToken = await token(emailOwnerA());
     const auth = (r: request.Test) =>
@@ -507,6 +517,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 11) RBAC : SUPPORT n'accede PAS aux mutations (SUPERADMIN-only) ---------
 
   it('11) RBAC : un SUPPORT sur PATCH /users/:id ET /users/:id/platform-role -> 403', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     // Un role plateforme SUPPORT est authentifie mais n'a PAS les droits de mutation du
     // back-office (routes @Roles(SUPERADMIN)). Deny-by-default : SUPPORT != SUPERADMIN.
@@ -528,6 +539,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 12) MAJEUR-2 : un SUPERADMIN DESACTIVE perd l'acces plateforme ----------
 
   it('12) SUPERADMIN desactive -> auth_get_platform_role NULL -> 403 (token encore valide)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     // super2 est SUPERADMIN actif : on capture un token AVANT desactivation (il reste
     // cryptographiquement valide). superId le desactive (autorise : superId reste actif).
@@ -573,6 +585,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 13) MAJEUR-1 : lockout inter-chemins ferme (R0013 dans set_user_active) -
 
   it('13) inter-chemins : desactiver le DERNIER SUPERADMIN actif -> R0013 (409), etat intact', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     // L'invariant "au moins un SUPERADMIN actif" est GLOBAL et couvre DEUX chemins :
     // set_platform_role (retrait de role) ET set_user_active (desactivation de compte).
@@ -632,6 +645,7 @@ describe('Back-office : gestion utilisateurs (identite + role plateforme) (e2e)'
   // --- 14) MAJEUR-1 : la course set_platform_role<->set_user_active se serialise -
 
   it('14) course retrogradation<->desactivation : jamais 0 SUPERADMIN actif', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     // superId + super2 sont les DEUX seuls SUPERADMIN actifs. On lance EN PARALLELE :
     //  - set_platform_role(super2 -> null)  [retire le role de super2]

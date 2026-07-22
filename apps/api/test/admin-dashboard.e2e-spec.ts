@@ -287,6 +287,7 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
   // --- 1) STATS : deltas EXACTS vs baseline --------------------------------
 
   it('1) GET /admin/stats : agregats = baseline + deltas seedes (scalaires seulement)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -340,6 +341,7 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
   // --- 2) ORGS : filtre par statut + tri SQL (quota / expiration) ----------
 
   it('2a) GET /admin/orgs?q=&status=ACTIVE : ne renvoie que les orgs ACTIVE', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const res = await asSuper(
       `/admin/orgs?q=${PREFIX}&status=ACTIVE&limit=100`,
@@ -354,6 +356,7 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
   });
 
   it('2b) GET /admin/orgs?q=&sort=quota : tri par quota DESC, orgs sans abo en dernier', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const res = await asSuper(`/admin/orgs?q=${PREFIX}&sort=quota&limit=100`);
     expect(res.status).toBe(200);
@@ -371,6 +374,7 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
   });
 
   it('2c) GET /admin/orgs?q=&sort=expiration : tri par date_fin ASC (expire en tete)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const res = await asSuper(
       `/admin/orgs?q=${PREFIX}&sort=expiration&limit=100`,
@@ -395,6 +399,7 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
   };
 
   it('3a) filter=expired : inclut org3, exclut org1/org2', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const s = await subSlugs('expired');
     expect(s).toContain(slug(3));
@@ -403,6 +408,7 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
   });
 
   it('3b) filter=expiring : inclut org2, exclut org1/org3', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const s = await subSlugs('expiring');
     expect(s).toContain(slug(2));
@@ -411,6 +417,7 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
   });
 
   it('3c) filter=noquota : inclut org1 (100/100), exclut org2', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const s = await subSlugs('noquota');
     expect(s).toContain(slug(1));
@@ -418,6 +425,7 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
   });
 
   it('3d) filter=nosub : inclut org5/org6, exclut org1', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const s = await subSlugs('nosub');
     expect(s).toContain(slug(5));
@@ -428,6 +436,7 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
   // --- 4) AUDIT GLOBAL + BACKPORT ------------------------------------------
 
   it('4) backport : createUser/createOrg/addMember/setMemberActive TRACENT (acteur=super), audit filtrable', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const t0 = new Date(Date.now() - 1000).toISOString();
@@ -511,6 +520,7 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
   // --- 7) ACTEUR = SUB JWT, jamais le corps (lecon #42) --------------------
 
   it('7) backport : un corps qui tente d imposer actorUserId est ignore -> audit = sub JWT', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const t0 = new Date(Date.now() - 1000).toISOString();
@@ -550,6 +560,7 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
   // --- 5) ISOLATION ---------------------------------------------------------
 
   it('5) isolation : SANS le drapeau, roadsen_app ne lit AUCUNE subscription cross-tenant', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     // Contexte tenant = org2 ; on tente de lire l'abo d'org1 -> 0 ligne (RLS org-scope).
     await admin!.query(`BEGIN`);
@@ -580,6 +591,7 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
   // --- 6) RBAC --------------------------------------------------------------
 
   it('6) RBAC : un non-SUPERADMIN sur /stats /audit /subscriptions /orgs /orgs/:id -> 403', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const ownerToken = await login(emailOwner(1)); // OWNER d'org1, pas SUPERADMIN
     // On INCLUT /admin/orgs et une route de DETAIL /admin/orgs/:orgId (verrou contre une
@@ -607,6 +619,7 @@ describe('Back-office tableau de bord + vues globales (e2e)', () => {
   //  le motif est PRESERVE mais que les cles brutes ont DISPARU du payload. On verifie
   //  aussi qu'un ORG_PROVISIONED ne fuite plus owner_user_id/slug par son payload.
   it('8) minimisation : GET /admin/audit garde le motif mais retire montants/owner du payload', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const t0 = new Date(Date.now() - 1000).toISOString();

@@ -34,6 +34,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 
+import { extractVerdict, VerdictTag } from '../verdict';
+
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
@@ -161,6 +163,9 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
 
   const selected = calculs.find((c) => c.id === selectedId) ?? null;
   const output = (selected?.output ?? null) as NormalizedCalcOutput | null;
+  // Trois verdicts, pas deux — TOUJOURS extrait (y compris NA), affiché dans
+  // l'en-tête du panneau quel que soit l'état (aperçu ou repli métadonnées).
+  const verdictOfSelected = selected ? extractVerdict(selected.output) : undefined;
   const goGallery = () => router.push(`/app/${orgSlug}/logiciels`);
   const pvTabHref = `/app/${orgSlug}/projets/${projetId}/pv`;
   // Pilote option 3 = roadsens (les autres logiciels ne capturent pas encore le
@@ -362,20 +367,83 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     );
   }
 
+  // Note de fidélité et de confidentialité (DoD §8) — l'engagement tenu par
+  // ce panneau : le document AFFICHÉ est celui du logiciel client, reproduit
+  // à l'identique (option 3, capture serveur) — jamais reconstruit ni recalculé
+  // dans le navigateur. Cette mention n'est honnête QUE quand un document a
+  // réellement été capturé (`snapshot`) : sans capture, il n'y a rien à
+  // "reproduire à l'identique" — on ne le prétend donc pas dans ce cas, mais
+  // le calcul reste, lui, TOUJOURS exécuté côté serveur.
+  function renderConfidentialityNote(hasSnapshot: boolean) {
+    if (!selected) return null;
+    if (hasSnapshot) {
+      const fidelity =
+        "Rendu produit par le logiciel du client, reproduit à l'identique. Calcul exécuté côté serveur.";
+      const suffix = selected.pvId
+        ? ' « Imprimer » affiche le document scellé (celui du PV), pas cet aperçu.'
+        : " Ce calcul n'est pas encore scellé : seule l'action « Sceller cette version » est proposée — l'impression du document officiel ne sera possible qu'une fois scellé.";
+      return (
+        <div
+          style={{
+            marginTop: 12,
+            fontSize: 10.5,
+            color: 'var(--text-muted)',
+            fontStyle: 'italic',
+          }}
+        >
+          {fidelity}
+          {suffix}
+        </div>
+      );
+    }
+    return (
+      <div
+        style={{
+          marginTop: 12,
+          fontSize: 10.5,
+          color: 'var(--text-muted)',
+          fontStyle: 'italic',
+        }}
+      >
+        {selected.pvId
+          ? 'Rendu non capturé pour ce PV — « Imprimer » affiche le document officiel scellé. Calcul exécuté côté serveur.'
+          : 'Lecture seule. Le résultat se consulte dans le logiciel ; calcul exécuté côté serveur.'}
+      </div>
+    );
+  }
+
   return (
+    // Panneau de détail PLEINE HAUTEUR (correction titulaire, maquette écran
+    // 2) : `height: '100%'` + `minHeight: 0` sur toute la chaîne flex, plutôt
+    // qu'une hauteur dictée par le contenu. `height: '100%'` ne fonctionne que
+    // parce que ProjetLayoutClient BORNE désormais la hauteur disponible
+    // (`height: calc(100vh - 48px)`, pas `minHeight`) — pas un calc() ad hoc
+    // propre à cet écran. `overflow: hidden` ici : la page ne défile jamais,
+    // seules les DEUX régions internes (liste, document) défilent.
     <div
       style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(260px, 320px) 1fr',
         gap: 20,
-        padding: '24px 20px 56px',
-        maxWidth: 1200,
-        margin: '0 auto',
+        padding: 20,
+        height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
       }}
     >
       {/* Colonne gauche — historique */}
-      <aside className="calculs-list-col">
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+      <aside
+        className="calculs-list-col"
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            marginBottom: 12,
+            flex: 'none',
+          }}
+        >
           <h1 style={{ fontSize: 17, margin: 0, color: 'var(--text-primary, #16212e)' }}>
             Calculs
           </h1>
@@ -390,177 +458,241 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
             fontSize: 11.5,
             color: 'var(--text-secondary, #6b7178)',
             margin: '0 0 12px',
+            flex: 'none',
           }}
         >
           Historique en lecture. Les calculs se lancent depuis les logiciels.
         </p>
 
-        {loading ? (
-          <div style={{ fontSize: 13, color: 'var(--text-secondary, #6b7178)' }}>
-            Chargement…
-          </div>
-        ) : error ? (
-          <div style={{ fontSize: 13, color: 'var(--status-fail-tx)' }} role="alert">
-            {error}
-          </div>
-        ) : calculs.length === 0 ? (
-          <EmptyState
-            variant="blank"
-            title="Aucun calcul"
-            description="Lancez un calcul depuis un logiciel ; il apparaîtra ici."
-            ctaLabel="Ouvrir un logiciel"
-            onCta={goGallery}
-          />
-        ) : (
-          <ul
-            role="list"
-            style={{
-              listStyle: 'none',
-              padding: 0,
-              margin: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 6,
-            }}
-          >
-            {calculs.map((c) => {
-              const active = c.id === selectedId;
-              const out = c.output as NormalizedCalcOutput | null;
-              const verdict = out?.verdict;
-              return (
-                <li key={c.id}>
-                  <button
-                    onClick={() => setSelectedId(c.id)}
-                    aria-current={active ? 'true' : undefined}
-                    style={{
-                      width: '100%',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      fontFamily: 'inherit',
-                      background: active ? 'var(--surface-base)' : 'transparent',
-                      border: `1px solid ${active ? 'var(--border-default)' : 'var(--border-subtle)'}`,
-                      borderRadius: 10,
-                      padding: '10px 12px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {/* FX-4 : le titre est le nom métier du logiciel (identique
+        {/* SEULE région défilante de cette colonne — l'en-tête ci-dessus
+            reste fixe pendant que l'historique défile. */}
+        <div
+          data-testid="calculs-list-scroll"
+          style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}
+        >
+          {loading ? (
+            <div style={{ fontSize: 13, color: 'var(--text-secondary, #6b7178)' }}>
+              Chargement…
+            </div>
+          ) : error ? (
+            <div style={{ fontSize: 13, color: 'var(--status-fail-tx)' }} role="alert">
+              {error}
+            </div>
+          ) : calculs.length === 0 ? (
+            <EmptyState
+              variant="blank"
+              title="Aucun calcul"
+              description="Lancez un calcul depuis un logiciel ; il apparaîtra ici."
+              ctaLabel="Ouvrir un logiciel"
+              onCta={goGallery}
+            />
+          ) : (
+            <ul
+              role="list"
+              style={{
+                listStyle: 'none',
+                padding: 0,
+                margin: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+              }}
+            >
+              {calculs.map((c) => {
+                const active = c.id === selectedId;
+                const verdict = extractVerdict(c.output);
+                return (
+                  <li key={c.id}>
+                    <button
+                      onClick={() => setSelectedId(c.id)}
+                      aria-current={active ? 'true' : undefined}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        background: active ? 'var(--surface-base)' : 'transparent',
+                        border: `1px solid ${active ? 'var(--border-default)' : 'var(--border-subtle)'}`,
+                        borderRadius: 10,
+                        padding: '10px 12px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {/* FX-4 : le titre est le nom métier du logiciel (identique
                           pour tous les calculs d'un même moteur) — la date/heure
                           complète et le verdict, affichés ci-dessous, sont ce qui
                           distingue deux calculs entre eux. */}
-                      <span
+                        <span
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: 'var(--text-primary, #16212e)',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {metaOf(c.engineId).nom}
+                        </span>
+                        {/* Trois verdicts, pas deux — NON APPLICABLE (moteur
+                          d'extraction/classification, ex. GEOPLAQUE/radier)
+                          n'est PAS masqué : c'est une information réelle,
+                          pas un échec, cf. verdict.tsx (ADR 0008 neutre). */}
+                        {verdict && (
+                          <VerdictTag
+                            verdict={verdict}
+                            compact
+                            style={{ marginLeft: 'auto' }}
+                          />
+                        )}
+                      </div>
+                      <div
                         style={{
-                          fontSize: 13,
-                          fontWeight: 600,
-                          color: 'var(--text-primary, #16212e)',
+                          fontSize: 11,
+                          color: 'var(--text-secondary, #6b7178)',
+                          marginTop: 2,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
                         }}
+                        title={c.label}
                       >
-                        {metaOf(c.engineId).nom}
-                      </span>
-                      {verdict && verdict !== 'NA' && (
-                        <span
-                          style={{
-                            marginLeft: 'auto',
-                            flex: 'none',
-                            fontSize: 9.5,
-                            fontWeight: 800,
-                            padding: '2px 7px',
-                            borderRadius: 20,
-                            background:
-                              verdict === 'PASS'
-                                ? 'var(--status-pass-bg)'
-                                : 'var(--status-fail-bg)',
-                            color:
-                              verdict === 'PASS'
-                                ? 'var(--status-pass-tx)'
-                                : 'var(--status-fail-tx)',
-                          }}
-                        >
-                          {verdict === 'PASS' ? 'CONFORME' : 'NON CONF.'}
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: 'var(--text-secondary, #6b7178)',
-                        marginTop: 2,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                      title={c.label}
-                    >
-                      {c.label}
-                      {c.pvId ? ' · PV émis' : ''}
-                    </div>
-                    <div
-                      suppressHydrationWarning
-                      style={{
-                        fontSize: 10.5,
-                        color: 'var(--text-muted)',
-                        marginTop: 1,
-                      }}
-                    >
-                      {new Date(c.createdAt).toLocaleString('fr-FR', {
-                        day: '2-digit',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                      })}
-                    </div>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                        {c.label}
+                        {c.pvId ? ' · PV émis' : ''}
+                      </div>
+                      <div
+                        suppressHydrationWarning
+                        style={{
+                          fontSize: 10.5,
+                          color: 'var(--text-muted)',
+                          marginTop: 1,
+                        }}
+                      >
+                        {new Date(c.createdAt).toLocaleString('fr-FR', {
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        })}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </aside>
 
-      {/* Colonne droite — document de l'outil (option 3) ou, à défaut, métadonnées. */}
-      <section className="calculs-panel">
+      {/* Colonne droite — document de l'outil (option 3) ou, à défaut, métadonnées.
+          Toujours pleine hauteur : que le calcul soit sélectionné ou non
+          (état vide compris), la colonne occupe l'espace disponible. */}
+      <section
+        className="calculs-panel"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          minHeight: 0,
+          overflow: 'hidden',
+        }}
+      >
         {!selected ? (
-          <EmptyState
-            variant="pre-calc"
-            title="Sélectionnez un calcul"
-            description="Choisissez un calcul dans l'historique pour en consulter le document."
-          />
-        ) : (
           <div
-            className="surface-glass"
             style={{
-              padding: '18px 20px',
+              flex: '1 1 auto',
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
             }}
           >
-            <div style={{ marginBottom: 16 }}>
-              <h2
-                style={{ fontSize: 16, margin: 0, color: 'var(--text-primary, #16212e)' }}
-              >
-                {metaOf(selected.engineId).nom}
-              </h2>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary, #6b7178)' }}>
-                {selected.label}
+            <EmptyState
+              variant="pre-calc"
+              title="Sélectionnez un calcul"
+              description="Choisissez un calcul dans l'historique pour en consulter le document."
+              minHeight="100%"
+            />
+          </div>
+        ) : (
+          <div
+            data-testid="calc-detail-panel"
+            className="surface-glass"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+              minHeight: 0,
+              overflow: 'hidden',
+            }}
+          >
+            {/* En-tête — fixe, ne défile jamais. Le verdict de conformité y
+                reste TOUJOURS visible (avant correction : absent dès qu'un
+                aperçu snapshot était affiché — cf. Trois verdicts, pas deux). */}
+            <div
+              data-testid="calc-detail-header"
+              style={{
+                flex: 'none',
+                padding: '18px 20px 14px',
+                borderBottom: '1px solid var(--border-subtle)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 10,
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h2
+                  style={{
+                    fontSize: 16,
+                    margin: 0,
+                    color: 'var(--text-primary, #16212e)',
+                  }}
+                >
+                  {metaOf(selected.engineId).nom}
+                </h2>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary, #6b7178)' }}>
+                  {selected.label}
+                </div>
               </div>
+              {/* Verdict TOUJOURS visible dans l'en-tête, que le document soit
+                affiché (aperçu) ou en repli métadonnées — cf. verdict.tsx. */}
+              {verdictOfSelected && (
+                <VerdictTag verdict={verdictOfSelected} style={{ fontSize: 9.5 }} />
+              )}
             </div>
 
-            {snapshotLoading ? (
-              <div
-                aria-busy="true"
-                aria-label="Chargement du document"
-                style={{
-                  fontSize: 13,
-                  color: 'var(--text-secondary, #6b7178)',
-                  padding: '20px 0',
-                }}
-              >
-                Chargement du document…
-              </div>
-            ) : snapshot ? (
-              <>
+            {/* Corps — SEULE région qui défile dans ce panneau (pas la page).
+              Aucune action ici : les actions restent ancrées dans le pied,
+              en dehors de cette zone défilante. */}
+            <div
+              data-testid="calc-detail-body"
+              style={{
+                flex: '1 1 auto',
+                minHeight: 0,
+                overflowY: 'auto',
+                padding: '16px 20px',
+                // Colonne flex pour que le document (iframe) puisse REMPLIR la
+                // hauteur restante au lieu de rester a une taille fixe. Sans
+                // cela, le panneau etait bien pleine hauteur mais son contenu
+                // s'arretait a 420px : document coupe en plein milieu, et un
+                // grand vide en dessous — exactement le defaut signale.
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              {snapshotLoading ? (
+                <div
+                  aria-busy="true"
+                  aria-label="Chargement du document"
+                  style={{
+                    fontSize: 13,
+                    color: 'var(--text-secondary, #6b7178)',
+                    padding: '20px 0',
+                  }}
+                >
+                  Chargement du document…
+                </div>
+              ) : snapshot ? (
                 <iframe
                   data-testid="calc-snapshot-frame"
                   title={`Aperçu du calcul — ${selected.label}`}
@@ -568,126 +700,104 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                   sandbox=""
                   style={{
                     width: '100%',
+                    // REMPLIT la hauteur disponible et defile EN INTERNE. On ne
+                    // peut pas dimensionner l'iframe sur la hauteur de son
+                    // contenu : `sandbox=""` interdit tout script, donc rien ne
+                    // peut mesurer le document depuis l'interieur et nous le
+                    // renvoyer. Faire remplir est la seule option honnete — et
+                    // c'est aussi ce que demande la maquette (le document du
+                    // logiciel client occupe la place).
+                    flex: '1 1 auto',
+                    // Plancher : sur un ecran tres court, le document garde une
+                    // hauteur lisible et c'est le panneau qui defile.
                     minHeight: 420,
                     border: '1px solid var(--border-subtle)',
                     borderRadius: 10,
                     background: '#fff',
-                    marginBottom: 16,
                   }}
                 />
+              ) : (
+                <>
+                  <dl
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'auto 1fr',
+                      rowGap: 8,
+                      columnGap: 14,
+                      fontSize: 13,
+                      margin: '0 0 20px',
+                    }}
+                  >
+                    <dt style={{ color: 'var(--text-secondary, #6b7178)' }}>Date</dt>
+                    <dd suppressHydrationWarning style={{ margin: 0 }}>
+                      {new Date(selected.createdAt).toLocaleString('fr-FR', {
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </dd>
 
+                    <dt style={{ color: 'var(--text-secondary, #6b7178)' }}>Statut</dt>
+                    <dd style={{ margin: 0 }}>{STATUS_LABEL[selected.status]}</dd>
+
+                    {/* Trois verdicts, pas deux — NON APPLICABLE affiché, pas
+                      masqué (avant correction : la ligne disparaissait
+                      entièrement pour ce cas réel, ex. radier). */}
+                    {output && verdictOfSelected && (
+                      <>
+                        <dt style={{ color: 'var(--text-secondary, #6b7178)' }}>
+                          Verdict
+                        </dt>
+                        <dd style={{ margin: 0 }}>
+                          <VerdictTag
+                            verdict={verdictOfSelected}
+                            style={{ fontSize: 11 }}
+                          />
+                        </dd>
+                      </>
+                    )}
+
+                    <dt style={{ color: 'var(--text-secondary, #6b7178)' }}>PV</dt>
+                    <dd style={{ margin: 0 }}>
+                      {selected.pvId ? 'Émis' : 'Aucun PV émis'}
+                    </dd>
+                  </dl>
+
+                  <div
+                    style={{
+                      fontSize: 11.5,
+                      color: 'var(--text-muted)',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    Rendu non capturé — relancer le calcul dans le logiciel pour le
+                    capturer.
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Pied — ANCRÉ EN BAS, jamais dans la zone défilante ci-dessus.
+              Absent tant que le document est en cours de chargement (comme
+              avant la refonte : pas d'action tant que l'état snapshot n'est
+              pas connu). */}
+            {!snapshotLoading && (
+              <div
+                data-testid="calc-detail-footer"
+                style={{
+                  flex: 'none',
+                  padding: '12px 20px 16px',
+                  borderTop: '1px solid var(--border-subtle)',
+                }}
+              >
                 {renderActionsBar()}
                 {renderSealWarning()}
                 {renderSealError()}
                 {renderPrintError()}
-
-                <div
-                  style={{
-                    marginTop: 16,
-                    fontSize: 10.5,
-                    color: 'var(--text-muted)',
-                    fontStyle: 'italic',
-                  }}
-                >
-                  {selected.pvId ? (
-                    <>
-                      L&apos;aperçu ci-dessus montre le rendu à l&apos;écran ; « Imprimer
-                      » affiche le document scellé (celui du PV), pas cet aperçu. Formules
-                      et calcul ont été appliqués côté serveur.
-                    </>
-                  ) : (
-                    <>
-                      L&apos;aperçu ci-dessus montre le rendu à l&apos;écran. Ce calcul
-                      n&apos;est pas encore scellé : seule l&apos;action « Sceller cette
-                      version » est proposée — l&apos;impression du document officiel ne
-                      sera possible qu&apos;une fois scellé. Formules et calcul sont
-                      appliqués côté serveur.
-                    </>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
-                <dl
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'auto 1fr',
-                    rowGap: 8,
-                    columnGap: 14,
-                    fontSize: 13,
-                    margin: '0 0 20px',
-                  }}
-                >
-                  <dt style={{ color: 'var(--text-secondary, #6b7178)' }}>Date</dt>
-                  <dd suppressHydrationWarning style={{ margin: 0 }}>
-                    {new Date(selected.createdAt).toLocaleString('fr-FR', {
-                      day: '2-digit',
-                      month: 'long',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </dd>
-
-                  <dt style={{ color: 'var(--text-secondary, #6b7178)' }}>Statut</dt>
-                  <dd style={{ margin: 0 }}>{STATUS_LABEL[selected.status]}</dd>
-
-                  {output && output.verdict !== 'NA' && (
-                    <>
-                      <dt style={{ color: 'var(--text-secondary, #6b7178)' }}>Verdict</dt>
-                      <dd style={{ margin: 0 }}>
-                        <span
-                          aria-label={`Verdict : ${output.verdict === 'PASS' ? 'CONFORME' : 'NON CONFORME'}`}
-                          style={{
-                            fontWeight: 700,
-                            color:
-                              output.verdict === 'PASS'
-                                ? 'var(--status-pass-tx)'
-                                : 'var(--status-fail-tx)',
-                          }}
-                        >
-                          {output.verdict === 'PASS' ? 'CONFORME' : 'NON CONFORME'}
-                        </span>
-                      </dd>
-                    </>
-                  )}
-
-                  <dt style={{ color: 'var(--text-secondary, #6b7178)' }}>PV</dt>
-                  <dd style={{ margin: 0 }}>
-                    {selected.pvId ? 'Émis' : 'Aucun PV émis'}
-                  </dd>
-                </dl>
-
-                <div
-                  style={{
-                    marginBottom: 16,
-                    fontSize: 11.5,
-                    color: 'var(--text-muted)',
-                    fontStyle: 'italic',
-                  }}
-                >
-                  Rendu non capturé — relancer le calcul dans le logiciel pour le
-                  capturer.
-                </div>
-
-                {renderActionsBar()}
-                {renderSealWarning()}
-                {renderSealError()}
-                {renderPrintError()}
-
-                <div
-                  style={{
-                    marginTop: 16,
-                    fontSize: 10.5,
-                    color: 'var(--text-muted)',
-                    fontStyle: 'italic',
-                  }}
-                >
-                  {selected.pvId
-                    ? 'Rendu non capturé pour ce PV — « Imprimer » affiche le document officiel scellé. Formules et calcul ont été appliqués côté serveur.'
-                    : 'Lecture seule. Le résultat se consulte dans le logiciel ; formules et calcul sont appliqués côté serveur.'}
-                </div>
-              </>
+                {renderConfidentialityNote(!!snapshot)}
+              </div>
             )}
           </div>
         )}

@@ -1,120 +1,55 @@
 /**
- * Tests — OverviewPage, cartes « Derniers calculs » (FX-10).
+ * Tests — ancienne route /overview (F-02 bis, maquette finale écran 2).
  *
- * Avant correctif : le backend réel ne persiste pas de `label` métier
- * (adapters.ts `adaptCalcResult`/`adaptPersistedCalcResult` retombent sur
- * `raw.engineId`), donc la carte affichait le slug brut backend
- * ("chaussee-burmister") au lieu du nom du logiciel. Après correctif : la
- * carte affiche le nom métier humanisé (`metaOf`), source unique
- * engine-labels.ts (partagée avec CalculsClient et PV & Livrables).
+ * DÉCISION TITULAIRE : « Vue d'ensemble » disparaît en tant qu'onglet — cf.
+ * ProjetLayoutClient (deux onglets : Calculs / PV scellés). Cette route ne
+ * doit PAS pour autant devenir un 404 : des liens et des signets existent.
+ * Non-régression exigée par le brief (DoD §9) : elle redirige vers l'onglet
+ * Calculs, sur le même patron que la racine /projets/:id (cf. ../../page.tsx,
+ * F-02).
  *
- * DoD §9 : given/when/then, zéro faux-vert.
- *
- * Patron d'interaction : react-dom/client + act (pas de @testing-library/react
- * dans ce dépôt — cf. PvListClient.test.tsx).
+ * L'ancien contenu de cette page (StatCards + derniers calculs/PV, FX-10) est
+ * retiré avec elle : ses seules informations réelles (compteurs) sont déjà
+ * portées par les pastilles d'onglet de ProjetLayoutClient — cf.
+ * ProjetLayoutClient.test.tsx.
  */
 
-import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockListCalcResults, mockListPvs, mockGetProjectCached } = vi.hoisted(() => ({
-  mockListCalcResults: vi.fn(),
-  mockListPvs: vi.fn(),
-  // P0-1 : les StatCards lisent désormais `calcCount`/`pvCount` sur le projet
-  // (même source que les pastilles d'onglet) au lieu de compter les listes.
-  mockGetProjectCached: vi.fn().mockResolvedValue({
-    id: 'proj-1',
-    orgId: 'org-1',
-    name: 'Projet de test',
-    domain: 'CH',
-    createdAt: '2026-07-17T12:00:00.000Z',
-    updatedAt: '2026-07-17T12:00:00.000Z',
-    createdBy: 'user-1',
-  }),
-}));
-
-vi.mock('@/lib/api/client', () => ({
-  listCalcResults: mockListCalcResults,
-  listPvs: mockListPvs,
-  getProjectCached: mockGetProjectCached,
-}));
+const mockRedirect = vi.hoisted(() => vi.fn());
+vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
 
 import OverviewPage from '../page';
 
-import type { CalcResult } from '@/lib/api/types';
-
-const CALC: CalcResult = {
-  id: 'calc_01',
-  projectId: 'proj_01',
-  orgId: 'org_01',
-  // Backend réel : engineId = registryId brut (pas un slug court).
-  engineId: 'chaussee-burmister',
-  // Reflète le repli backend réel adapters.ts (label = engineId, avant correctif
-  // c'était donc le slug affiché tel quel).
-  label: 'chaussee-burmister',
-  domain: 'CH',
-  status: 'DONE',
-  params: {},
-  output: null,
-  createdAt: '2026-07-05T09:00:00.000Z',
-  updatedAt: '2026-07-05T09:00:00.000Z',
-};
-
-let container: HTMLDivElement;
-let root: Root;
-
 beforeEach(() => {
-  container = document.createElement('div');
-  document.body.appendChild(container);
-  mockListCalcResults.mockReset();
-  mockListPvs.mockReset();
+  mockRedirect.mockReset();
+  // `redirect()` réel interrompt le rendu en lançant — on reproduit ce
+  // contrat pour vérifier qu'aucun code ne s'exécute après l'appel.
+  mockRedirect.mockImplementation(() => {
+    throw new Error('NEXT_REDIRECT');
+  });
 });
 
-afterEach(() => {
-  act(() => {
-    root?.unmount();
-  });
-  container.remove();
-});
+describe('/overview — non-régression : ne devient jamais un 404', () => {
+  it("given un lien ou signet vers l'ancienne route /overview, when la page est rendue, then elle redirige vers l'onglet Calculs du même projet", async () => {
+    await expect(
+      OverviewPage({
+        params: Promise.resolve({ orgSlug: 'starfire-recette', projetId: 'proj-1' }),
+      }),
+    ).rejects.toThrow('NEXT_REDIRECT');
 
-async function flush(rounds = 4) {
-  await act(async () => {
-    for (let i = 0; i < rounds; i += 1) {
-      await Promise.resolve();
-    }
-  });
-}
-
-async function renderOverview() {
-  await act(async () => {
-    root = createRoot(container);
-    root.render(
-      <OverviewPage
-        params={Promise.resolve({ orgSlug: 'be-routes-dakar', projetId: 'proj_01' })}
-      />,
+    expect(mockRedirect).toHaveBeenCalledWith(
+      '/app/starfire-recette/projets/proj-1/calculs',
     );
   });
-  await flush();
-}
 
-describe('OverviewPage — Derniers calculs (FX-10, nom métier humanisé)', () => {
-  it('given un calcul dont le label backend retombe sur le registryId brut, when la vue d’ensemble s’affiche, then la carte montre le nom métier humanisé, pas le slug', async () => {
-    mockListCalcResults.mockResolvedValue([CALC]);
-    mockListPvs.mockResolvedValue([]);
+  it('given un autre orgSlug/projetId, when la page est rendue, then la redirection cible bien CE projet (pas une route en dur)', async () => {
+    await expect(
+      OverviewPage({
+        params: Promise.resolve({ orgSlug: 'autre-org', projetId: 'proj-xyz' }),
+      }),
+    ).rejects.toThrow('NEXT_REDIRECT');
 
-    await renderOverview();
-
-    expect(container.textContent).toContain('ROADSENS — Chaussées');
-    expect(container.textContent).not.toContain('chaussee-burmister');
-  });
-
-  it('given un moteur inconnu, when la vue d’ensemble s’affiche, then repli défensif sur l’id brut (pas d’exception)', async () => {
-    mockListCalcResults.mockResolvedValue([{ ...CALC, engineId: 'moteur-inconnu' }]);
-    mockListPvs.mockResolvedValue([]);
-
-    await renderOverview();
-
-    expect(container.textContent).toContain('moteur-inconnu');
+    expect(mockRedirect).toHaveBeenCalledWith('/app/autre-org/projets/proj-xyz/calculs');
   });
 });

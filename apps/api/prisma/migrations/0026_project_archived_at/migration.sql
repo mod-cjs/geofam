@@ -1,0 +1,42 @@
+-- 0026 — DATE D'ARCHIVAGE D'UN PROJET (`archived_at`)
+--
+-- POURQUOI
+-- La vue « Archives » listait les projets archives sans savoir QUAND ils
+-- l'avaient ete. `updated_at` ne pouvait pas servir : il bouge a chaque
+-- renommage, donc il ne date pas le geste d'archivage — la liste affichait une
+-- date qui n'etait pas la bonne, et ne pouvait pas trier honnetement.
+--
+-- NULLABLE, ET C'EST LE CONTRAT : `archived_at IS NULL` = ce projet n'est pas
+-- archive. On ne fabrique aucune date pour un geste qui n'a pas eu lieu, et la
+-- restauration REMET la colonne a NULL (cf. ProjectsService.restore).
+--
+-- RETROACTIF, HONNETEMENT : les projets DEJA archives avant cette migration
+-- gardent `archived_at = NULL` — leur date d'archivage n'a jamais ete
+-- enregistree, l'inventer (avec now() ou updated_at) serait une donnee fausse.
+-- L'interface doit donc tolerer une date absente sur ces projets historiques.
+--
+-- MIGRATION ADDITIVE ET REJOUABLE (`IF NOT EXISTS`) : aucune colonne retiree,
+-- aucune donnee reecrite, aucun verrou long (ADD COLUMN nullable sans defaut =
+-- operation de catalogue seule sous PostgreSQL 11+). Rejouable sans effet de
+-- bord. Plan de rollback : down.sql (a jouer manuellement, cf. convention du
+-- depot — Prisma Migrate ne joue pas les « down »).
+--
+-- ISOLATION : `projects` est deja sous RLS FORCE + policy `tenant_isolation`
+-- (0001/0004, scope `org_id = app_current_org()`). Une colonne supplementaire
+-- n'ouvre aucun chemin de lecture nouveau : la policy porte sur la LIGNE, pas
+-- sur la liste des colonnes. Aucun GRANT a ajouter (les GRANT de 0001 sont au
+-- niveau TABLE, donc ils couvrent les colonnes futures — meme raisonnement
+-- qu'en 0022 pour `domain`).
+ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "archived_at" TIMESTAMP(3);
+
+-- Index de couverture de la vue « Archives » : `listArchived()` filtre par org
+-- (RLS) puis trie par archived_at DESC.
+--
+-- CHOIX ASSUME — index SIMPLE et non PARTIEL (`WHERE status = 'ARCHIVED'`), qui
+-- serait pourtant plus compact. Un index partiel n'est pas exprimable dans
+-- schema.prisma : il constituerait une DERIVE de schema, que le prochain
+-- `prisma migrate dev` proposerait de supprimer. Un index declare des deux cotes
+-- (SQL + schema.prisma) vaut mieux qu'un index optimal qu'un outil detruira. La
+-- table reste petite ; le gain du partiel serait marginal.
+CREATE INDEX IF NOT EXISTS "projects_org_id_archived_at_idx"
+  ON "projects" ("org_id", "archived_at" DESC);

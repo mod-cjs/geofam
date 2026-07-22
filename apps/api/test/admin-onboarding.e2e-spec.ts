@@ -208,6 +208,7 @@ describe('Onboarding SUPERADMIN (e2e)', () => {
   // --- 1) Flux nominal : SUPERADMIN cree user puis org -> OWNER ---------------
 
   it('SUPERADMIN cree un user puis une org : le user designe devient OWNER', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const access = await login(emailSuper());
 
@@ -257,6 +258,7 @@ describe('Onboarding SUPERADMIN (e2e)', () => {
   // --- 2) SENTINELLE : un NON-SUPERADMIN ne cree NI org NI user --------------
 
   it('SENTINELLE escalade : un OWNER (non-SUPERADMIN) -> 403 sur POST /admin/orgs', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const access = await login(emailOwnerB()); // OWNER de orgB, pas SUPERADMIN
     const before = await admin!.query<{ n: string }>(
@@ -283,6 +285,7 @@ describe('Onboarding SUPERADMIN (e2e)', () => {
   });
 
   it('SENTINELLE escalade : un OWNER (non-SUPERADMIN) -> 403 sur POST /admin/users', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const access = await login(emailOwnerB());
     const res = await request(server())
@@ -299,6 +302,7 @@ describe('Onboarding SUPERADMIN (e2e)', () => {
   // --- 3) owner inexistant -> 400 borne, aucune org creee --------------------
 
   it('POST /admin/orgs avec ownerUserId INEXISTANT -> 400 borne, aucune org creee', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const access = await login(emailSuper());
     const ghost = randomUUID(); // user qui n'existe pas
@@ -321,6 +325,7 @@ describe('Onboarding SUPERADMIN (e2e)', () => {
   // --- 4) email deja pris -> 409 borne (pas de fuite) ------------------------
 
   it('POST /admin/users avec un email DEJA pris -> 409 borne (message generique)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const access = await login(emailSuper());
     const res = await request(server())
@@ -341,6 +346,7 @@ describe('Onboarding SUPERADMIN (e2e)', () => {
   // --- 5) /auth/me : profil + memberships, sans fuite cross-org -------------
 
   it('GET /auth/me (OWNER de orgB) : renvoie SES memberships, jamais une autre org', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const access = await login(emailOwnerB());
     const res = await request(server())
@@ -361,6 +367,7 @@ describe('Onboarding SUPERADMIN (e2e)', () => {
   });
 
   it('GET /auth/me (SUPERADMIN sans org) : platformRole=SUPERADMIN, zero membership', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const access = await login(emailSuper());
     const res = await request(server())
@@ -378,6 +385,7 @@ describe('Onboarding SUPERADMIN (e2e)', () => {
   // --- 6) identite exigee sur les routes @NoTenant --------------------------
 
   it('routes @NoTenant exigent une identite : sans token -> 401', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const r1 = await request(server()).get('/auth/me');
     expect(r1.status).toBe(401);

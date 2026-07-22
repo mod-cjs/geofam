@@ -16,9 +16,19 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-import { createProject, renameProject, deleteProject, listProjects, getProject } from '../client';
-import { httpRenameProject, httpDeleteProject } from '../http-client';
 import type { PrismaProject } from '../adapters';
+import {
+  createProject,
+  renameProject,
+  deleteProject,
+  listProjects,
+  getProject,
+} from '../client';
+import {
+  httpRenameProject,
+  httpDeleteProject,
+  httpDeleteProjectPermanently,
+} from '../http-client';
 
 const ORG_ID = 'org_01';
 
@@ -37,7 +47,10 @@ function makeResponse(body: unknown, status = 200): Response {
 
 describe('renameProject (mock) — persistance réelle (fin du faux succès)', () => {
   it('given un projet existant, when renameProject, then le nouveau nom persiste au re-GET', async () => {
-    const created = await createProject(ORG_ID, { name: 'Avant renommage', domain: 'CH' });
+    const created = await createProject(ORG_ID, {
+      name: 'Avant renommage',
+      domain: 'CH',
+    });
 
     const renamed = await renameProject(ORG_ID, created.id, 'Après renommage');
     expect(renamed.name).toBe('Après renommage');
@@ -57,7 +70,9 @@ describe('renameProject (mock) — persistance réelle (fin du faux succès)', (
   });
 
   it('given un id de projet inconnu, when renameProject, then rejette 404 NOT_FOUND (chemin négatif)', async () => {
-    await expect(renameProject(ORG_ID, 'proj_inconnu_xyz', 'Peu importe')).rejects.toMatchObject({
+    await expect(
+      renameProject(ORG_ID, 'proj_inconnu_xyz', 'Peu importe'),
+    ).rejects.toMatchObject({
       statusCode: 404,
       reason: 'NOT_FOUND',
     });
@@ -157,7 +172,10 @@ describe('httpDeleteProject — contrat DELETE /projects/:id', () => {
     const mockFetch = vi
       .fn()
       .mockResolvedValueOnce(
-        makeResponse({ statusCode: 404, reason: 'NOT_FOUND', message: 'Projet introuvable' }, 404),
+        makeResponse(
+          { statusCode: 404, reason: 'NOT_FOUND', message: 'Projet introuvable' },
+          404,
+        ),
       );
     vi.stubGlobal('fetch', mockFetch);
 
@@ -165,6 +183,70 @@ describe('httpDeleteProject — contrat DELETE /projects/:id', () => {
       statusCode: 404,
       reason: 'NOT_FOUND',
     });
+
+    vi.unstubAllGlobals();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Vrai backend — httpDeleteProjectPermanently (BLOQUANT qa-challenger)
+//
+// Distinct de httpDeleteProject (archivage, réversible) : cette route est
+// IRRÉVERSIBLE. Sans ce bloc de contrat, une faute de chemin (/permanent →
+// /permanently), une perte de X-Org-Id, ou un retour à un fetch écrit à la
+// main resteraient invisibles en CI sur l'action la plus destructive du lot.
+// ---------------------------------------------------------------------------
+
+describe('httpDeleteProjectPermanently — contrat DELETE /projects/:id/permanent', () => {
+  it('given un projet, when httpDeleteProjectPermanently, then DELETE /projects/:id/permanent est appelé avec X-Org-Id et le projet supprimé est renvoyé', async () => {
+    const raw: PrismaProject = {
+      id: 'proj_01',
+      orgId: 'org_01',
+      name: 'Projet supprimé définitivement',
+      description: null,
+      domain: 'FD',
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-07-05T00:00:00Z',
+      createdById: 'usr_01',
+    };
+    const mockFetch = vi.fn().mockResolvedValueOnce(makeResponse(raw));
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await httpDeleteProjectPermanently('org_01', 'proj_01');
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, opts] = mockFetch.mock.calls[0];
+    // Ancré en fin de chaîne (pas `toContain`) : « /permanently » contient
+    // « /permanent » comme préfixe et laisserait passer ce mutant précis.
+    expect(url).toMatch(/\/projects\/proj_01\/permanent$/);
+    expect(opts.method).toBe('DELETE');
+    expect(opts.headers['X-Org-Id']).toBe('org_01');
+
+    expect(result.id).toBe('proj_01');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('given un projet portant des PV scellés — when httpDeleteProjectPermanently — then rejette 409 et le message du corps remonte tel quel dans ApiError.message', async () => {
+    const message =
+      'Ce projet porte au moins un PV scellé : suppression définitive impossible.';
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        makeResponse({ statusCode: 409, reason: 'SERVER_ERROR', message }, 409),
+      );
+    vi.stubGlobal('fetch', mockFetch);
+
+    // Sans ce test, un mutant qui avalerait `message` (ex. errorBody.message ??
+    // undefined mal câblé, ou un message générique en dur) laisserait la suite
+    // verte alors que ProjetsClient afficherait une erreur muette à l'utilisateur
+    // à la place de « ce projet porte des PV scellés → Archiver à la place ».
+    await expect(httpDeleteProjectPermanently('org_01', 'proj_01')).rejects.toMatchObject(
+      {
+        statusCode: 409,
+        message,
+      },
+    );
 
     vi.unstubAllGlobals();
   });

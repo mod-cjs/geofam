@@ -186,6 +186,18 @@ export interface OfficialPv {
   params: Record<string, unknown>;
   output: unknown;
   /**
+   * Verdict de conformité SCELLÉ par le serveur (`apps/api/src/pv/verdict.ts`
+   * resolveVerdict, colonne `official_pvs.verdict`, ADR 0012) — copie
+   * dénormalisée dans le périmètre du sceau HMAC, PAS une re-dérivation
+   * côté navigateur. Distinct de `NormalizedCalcOutput.verdict` (historique
+   * NON scellé), qui reste re-dérivé par duck-typing (`normalizeOutput`,
+   * fail-closed) faute de colonne serveur équivalente sur `CalcResult`.
+   * `undefined` seulement si le backend ne renvoie pas la colonne (défensif —
+   * ne devrait pas arriver, la colonne a un défaut DB non-null) : ne JAMAIS
+   * fabriquer de valeur dans ce cas, cf. `adaptOfficialPv`.
+   */
+  verdict?: 'PASS' | 'FAIL' | 'NA';
+  /**
    * Vérification du sceau recalculée serveur (GET /pvs, GET /pvs/:id). `undefined`
    * pour la forme plate d'émission (POST .../pv) : un PV qui vient d'être scellé
    * n'a pas encore été relu/vérifié — ne PAS l'afficher comme "invalide" à tort ;

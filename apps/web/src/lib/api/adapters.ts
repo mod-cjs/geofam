@@ -462,6 +462,21 @@ export function adaptPersistedCalcResult(
 // ---------------------------------------------------------------------------
 
 /**
+ * Mappe le verdict SCELLÉ serveur (`official_pvs.verdict`, ADR 0012 —
+ * CONFORME / NON_CONFORME / NON_APPLICABLE, cf. apps/api/src/pv/verdict.ts
+ * resolveVerdict) vers le type front `'PASS' | 'FAIL' | 'NA'`. FAIL-CLOSED :
+ * toute valeur inattendue (colonne absente, chaîne non reconnue) renvoie
+ * `undefined` plutôt que de fabriquer un verdict — l'appelant traite alors
+ * « pas de badge affiché », jamais un verdict inventé.
+ */
+function mapSealedVerdict(v: string | undefined): OfficialPv['verdict'] {
+  if (v === 'CONFORME') return 'PASS';
+  if (v === 'NON_CONFORME') return 'FAIL';
+  if (v === 'NON_APPLICABLE') return 'NA';
+  return undefined;
+}
+
+/**
  * Adapte un PV officiel vers le type front OfficialPv.
  *
  * Robuste aux DEUX formes de réponse backend :
@@ -532,6 +547,10 @@ export function adaptOfficialPv(
     // même si la whitelist serveur avait laissé passer un champ inattendu.
     // Sortie non reconnue → null (fail-closed).
     output: normalizeOutput(p.output),
+    // Verdict SCELLÉ côté serveur (ADR 0012) — PAS une re-dérivation de `output`
+    // (cf. `verdict.tsx` en-tête + normalizeOutput ci-dessus, utilisé pour
+    // l'historique NON scellé uniquement).
+    verdict: mapSealedVerdict(p.verdict),
     sealValid,
     // B1 (revue adverse) : 'html' seulement si le backend a effectivement scellé
     // un document client (calc_snapshots présent au moment de l'émission).

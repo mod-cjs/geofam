@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import type { Project, ProjectDomain } from '@prisma/client';
 
 // Import VALEUR (et non `import type`) : NestJS s'appuie sur la metadonnee de
@@ -256,7 +256,17 @@ export class ProjectsService {
     return this.prisma.withTenant(orgId, (tx) =>
       tx.project.findMany({
         where: { status: 'ARCHIVED' },
-        orderBy: { updatedAt: 'desc' },
+        // Tri sur la DATE D'ARCHIVAGE (0026), du plus recemment archive au plus
+        // ancien. `updatedAt` ne convenait pas : il bouge a chaque renommage,
+        // donc il ne date pas le geste — la liste triait sur autre chose que ce
+        // qu'elle affichait. `nulls: 'last'` : les projets archives AVANT 0026
+        // n'ont pas de date (elle n'a jamais ete enregistree) ; sans cette
+        // precision, Postgres remonterait ces NULL EN TETE sur un DESC. Repli sur
+        // updatedAt pour qu'ils gardent entre eux un ordre stable.
+        orderBy: [
+          { archivedAt: { sort: 'desc', nulls: 'last' } },
+          { updatedAt: 'desc' },
+        ],
       }),
     );
   }
@@ -284,7 +294,11 @@ export class ProjectsService {
         // `status: 'ARCHIVED'` en condition : restaurer un projet DEJA actif
         // n'a pas de sens et doit rester un 404, pas un succes silencieux.
         where: { id: projectId, status: 'ARCHIVED' },
-        data: { status: 'ACTIVE' },
+        // `archivedAt: null` : un projet redevenu actif ne conserve pas la trace
+        // d'un archivage annule — sinon la vue « Archives » daterait un geste qui
+        // n'a plus cours, et un re-archivage ulterieur serait indistinguable du
+        // premier. La date du DERNIER archivage fait foi.
+        data: { status: 'ACTIVE', archivedAt: null },
       });
       if (res.count === 0) return null;
       return tx.project.findFirst({ where: { id: projectId } });
@@ -308,10 +322,135 @@ export class ProjectsService {
     return this.prisma.withTenant(orgId, async (tx) => {
       const res = await tx.project.updateMany({
         where: { id: projectId, status: { not: 'ARCHIVED' } },
-        data: { status: 'ARCHIVED' },
+        // archivedAt = instant du geste (0026). La vue « Archives » ne pouvait ni
+        // dater ni trier sans lui : `updatedAt` bouge a chaque renommage. Pose ici
+        // et NULLE PART ailleurs — archive() est le seul chemin d'archivage.
+        data: { status: 'ARCHIVED', archivedAt: new Date() },
       });
       if (res.count === 0) return null;
       return tx.project.findFirst({ where: { id: projectId } });
+    });
+  }
+
+  /**
+   * SUPPRESSION DEFINITIVE (DELETE /projects/:id/permanent) — IRREVERSIBLE.
+   *
+   * POURQUOI ELLE EXISTE : la maquette validee distingue ARCHIVER (reversible,
+   * `archive()` ci-dessus) de SUPPRIMER DEFINITIVEMENT. Le second geste n'existait
+   * pas cote serveur : la corbeille ne pouvait jamais etre videe. Le statut du
+   * projet est INDIFFERENT (on supprime aussi bien un projet actif qu'un projet
+   * deja archive — c'est meme le cas d'usage principal).
+   *
+   * REFUS 409 SI UN PV SCELLE EXISTE (arbitrage tranche). Un official_pv n'a PAS
+   * de FK vivante vers projects : il survivrait a la suppression, donc rien ne
+   * casserait techniquement — mais il deviendrait un livrable ORPHELIN, dont le
+   * projet est introuvable. On promet l'integrite d'un PV scelle (DoD §5) : on
+   * n'orpheline jamais son projet. L'utilisateur archive a la place, et le message
+   * le lui dit. Ce refus est VRAI AUSSI SOUS CONCURRENCE depuis le verrou
+   * `FOR UPDATE` pose en tete de transaction (cf. corps de la methode) : sans lui,
+   * une emission de PV en vol s'inserait APRES le comptage et le COMMIT.
+   *
+   * MECANIQUE DE SUPPRESSION (choix documente) : les enfants sont supprimes
+   * EXPLICITEMENT dans la MEME transaction tenant, du plus profond au plus haut
+   * (calc_snapshots -> calc_results -> projects), plutot que de s'en remettre a la
+   * seule CASCADE Postgres. Raison : une CASCADE est executee par les triggers
+   * d'integrite referentielle, qui tournent avec les droits du proprietaire de
+   * table et NE SONT PAS soumis a la RLS. En supprimant explicitement sous
+   * `withTenant`, CHAQUE DELETE est filtre par la policy `tenant_isolation`
+   * (org_id = app_current_org()) : aucune ligne d'un autre bureau ne peut etre
+   * atteinte, meme si une FK etait un jour redefinie a tort. La CASCADE reste en
+   * place comme FILET (aucune cle orpheline possible si un enfant futur nous
+   * echappe), mais elle n'est plus la barriere d'isolation.
+   *
+   * LIMITE ASSUMEE DE LA PREUVE : de l'exterieur, suppression explicite et
+   * CASCADE produisent le MEME resultat observable (plus aucune ligne). Un e2e ne
+   * peut donc pas distinguer les deux — retirer les DELETE explicites ci-dessous
+   * laisse la suite e2e VERTE (mutants verifies). Le garde-fou de cette mecanique
+   * est l'unitaire `projects-permanent-delete.service.spec.ts`, qui verrouille
+   * l'ORDRE et la PRESENCE des suppressions ; ne pas le supprimer en croyant
+   * qu'il fait doublon avec l'e2e.
+   *
+   * LEDGER DE FACTURATION : on n'y touche PAS. Les lignes usage_ledger et la
+   * `consommation` de l'abonnement restent telles quelles — le quota deja
+   * consomme reste consomme. C'est voulu : un registre de facturation est
+   * append-only, il ne se reecrit jamais retroactivement, meme quand l'objet
+   * calcule disparait.
+   *
+   * @returns le projet tel qu'il etait juste avant destruction, ou `null` si
+   *   absent/hors tenant (RLS -> invisible) -> 404 tenant-safe par le controleur.
+   * @throws ConflictException si le projet porte au moins un PV scelle.
+   */
+  async deletePermanently(projectId: string): Promise<Project | null> {
+    const orgId = requireOrgId();
+    return this.prisma.withTenant(orgId, async (tx) => {
+      // VERROU EXCLUSIF SUR LE PROJET — TOUT PREMIER ORDRE de la transaction.
+      //
+      // Sans lui, le « refus dur » ci-dessous n'etait vrai qu'en sequentiel : en
+      // READ COMMITTED, une emission de PV concurrente pouvait avoir DEJA valide
+      // son projet (garde d'ecriture) sans avoir encore insere sa ligne — on
+      // comptait alors 0 PV, on supprimait, on commitait, et le PV s'inserait
+      // ensuite sur un projet disparu. official_pvs n'ayant AUCUNE FK vers
+      // projects (schema autoportant), la base ne rattrapait rien : le refus 409
+      // annoncait une integrite qu'il ne tenait pas sous concurrence.
+      //
+      // `FOR UPDATE` est INCOMPATIBLE avec le `FOR SHARE` que pose
+      // assertProjetEcrivable sur tous les chemins d'ecriture (calcul, capture,
+      // emission de PV) : une ecriture en vol fait ATTENDRE cette suppression
+      // jusqu'a son COMMIT, apres quoi le comptage ci-dessous voit le PV et
+      // refuse (409). Inversement, si la suppression passe la premiere,
+      // l'ecriture concurrente attend puis relit un projet disparu -> 404.
+      //
+      // ORDRE DES VERROUS (anti-interblocage) : le projet est verrouille AVANT
+      // tout enfant (calc_snapshots / calc_results, verrouilles plus bas par
+      // leurs DELETE) — et les chemins d'ecriture prennent EUX AUSSI le projet en
+      // premier. Aucune paire de transactions ne peut donc s'attendre en cycle.
+      //
+      // $queryRaw (et non $executeRaw) : l'ordre RAMENE des lignes et c'est leur
+      // PRESENCE qui distingue 404 / poursuite ; $executeRaw ne rend qu'un compte
+      // d'affectations (il ne sert que pour un ordre sans resultat, ex. fonction
+      // SQL `RETURNS void`). La RLS s'applique a ce SELECT verrouillant comme aux
+      // autres : un projet d'un AUTRE org reste INVISIBLE -> 0 ligne -> 404
+      // indistinguable d'un id inexistant (anti-enumeration). Aucun filtre de
+      // statut : on detruit aussi bien un projet actif qu'un projet archive.
+      const verrouille = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM projects WHERE id = ${projectId}::uuid FOR UPDATE
+      `;
+      if (verrouille.length === 0) return null;
+
+      // Lecture complete APRES le verrou (valeur de retour du controleur). La
+      // ligne est desormais figee : personne ne peut la modifier d'ici au COMMIT.
+      const project = await tx.project.findUnique({ where: { id: projectId } });
+      if (!project) return null;
+
+      // REFUS DUR : un seul PV scelle suffit a interdire la destruction. Le
+      // comptage est SOUS le verrou ci-dessus -> il ne peut plus etre double par
+      // une emission en vol (elle attend, ou elle a deja commite et on la voit).
+      const pvs = await tx.officialPv.count({ where: { projectId } });
+      if (pvs > 0) {
+        throw new ConflictException(
+          `Ce projet porte ${pvs} PV scellé${pvs > 1 ? 's' : ''} : la suppression définitive est refusée ` +
+            "pour ne jamais laisser un livrable scellé sans projet. Archivez-le à la place (l'archivage " +
+            'le retire des listes et reste réversible).',
+        );
+      }
+
+      // Enfants d'abord, du plus profond au plus haut — chaque DELETE sous RLS.
+      const calcs = await tx.calcResult.findMany({
+        where: { projectId },
+        select: { id: true },
+      });
+      if (calcs.length > 0) {
+        await tx.calcSnapshot.deleteMany({
+          where: { calcResultId: { in: calcs.map((c) => c.id) } },
+        });
+        await tx.calcResult.deleteMany({ where: { projectId } });
+      }
+
+      // deleteMany (et non delete) : sur une ligne devenue invisible entre-temps,
+      // il renvoie count=0 SANS lever (delete leverait P2025) -> null -> 404.
+      const res = await tx.project.deleteMany({ where: { id: projectId } });
+      if (res.count === 0) return null;
+      return project;
     });
   }
 }

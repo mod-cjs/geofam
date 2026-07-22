@@ -261,6 +261,112 @@ describe('PvListClient — Aperçu/Télécharger tentent le document scellé en 
   });
 });
 
+describe('PvListClient — verdict de conformité (maquette finale, écran 3)', () => {
+  // Contexte (correction titulaire) : le badge « Scellé » atteste
+  // l'INTÉGRITÉ, jamais la conformité — un PV peut être parfaitement scellé
+  // et rapporter NON CONFORME. Les deux informations doivent donc être
+  // affichées côte à côte, jamais fusionnées, et le badge Scellé ne doit
+  // JAMAIS emprunter le vert/rouge des verdicts (ADR 0008).
+  const PV_CONFORME: OfficialPv = { ...PV, output: { verdict: 'PASS' }, verdict: 'PASS' };
+  const PV_NON_CONFORME: OfficialPv = {
+    ...PV,
+    id: 'pv_02',
+    output: { verdict: 'FAIL' },
+    verdict: 'FAIL',
+  };
+  const PV_NON_APPLICABLE: OfficialPv = {
+    ...PV,
+    id: 'pv_03',
+    engineId: 'geoplaque',
+    output: { verdict: 'NA' },
+    verdict: 'NA',
+  };
+
+  it('given un PV rapportant CONFORME, when la liste s’affiche, then le verdict CONFORME et le badge Scellé apparaissent tous deux, distinctement', async () => {
+    mockListPvs.mockResolvedValue([PV_CONFORME]);
+
+    await renderPvList();
+
+    expect(container.textContent).toContain('CONFORME');
+    expect(container.textContent).toContain('Scellé');
+  });
+
+  it('given un PV rapportant NON CONFORME, when la liste s’affiche, then le verdict NON CONF. s’affiche ET le badge Scellé reste affiché normalement (jamais retiré, jamais recoloré en rouge)', async () => {
+    mockListPvs.mockResolvedValue([PV_NON_CONFORME]);
+
+    await renderPvList();
+
+    expect(container.textContent).toContain('NON CONF.');
+    const sealedBadge = Array.from(container.querySelectorAll('span')).find((s) =>
+      s.textContent?.includes('Scellé'),
+    );
+    expect(sealedBadge).toBeTruthy();
+    // Le badge Scellé ne doit JAMAIS utiliser les tokens de verdict (ADR 0008) :
+    // un PV scellé NON CONFORME n'est pas "en échec" au sens du scellement.
+    expect(sealedBadge!.style.cssText).not.toContain('--status-fail');
+    expect(sealedBadge!.style.cssText).not.toContain('--status-pass');
+  });
+
+  it('given un PV NON APPLICABLE (ex. radier — pas de notion de conformité), when la liste s’affiche, then le verdict neutre NON APPLIC. s’affiche (ni masqué, ni traité comme un échec)', async () => {
+    mockListPvs.mockResolvedValue([PV_NON_APPLICABLE]);
+
+    await renderPvList();
+
+    expect(container.textContent).toContain('NON APPLIC.');
+    // Neutre : ne doit utiliser NI le token pass NI le token fail.
+    const verdictBadge = Array.from(container.querySelectorAll('span')).find((s) =>
+      s.textContent?.includes('NON APPLIC.'),
+    );
+    expect(verdictBadge).toBeTruthy();
+    expect(verdictBadge!.style.cssText).not.toContain('--status-pass');
+    expect(verdictBadge!.style.cssText).not.toContain('--status-fail');
+  });
+
+  // BLOQUANT qa-challenger (verdict.tsx) : le badge d'un PV SCELLÉ doit suivre
+  // `pv.verdict` (copie du verdict SCELLÉ côté serveur, ADR 0012), PAS une
+  // re-dérivation de `pv.output` par duck-typing — les deux logiques sont
+  // indépendantes et PEUVENT diverger (ex. moteur non reconnu par la
+  // whitelist normalizeOutput). Fixture volontairement contradictoire pour
+  // prouver l'indépendance : sans cette divergence délibérée, un retour à
+  // `extractVerdict(pv.output)` resterait indétectable (les fixtures
+  // ci-dessus ont `output.verdict` et `pv.verdict` identiques par construction).
+  it('given un PV scellé dont pv.verdict et output.verdict DIVERGENT, when la liste s’affiche, then le badge suit pv.verdict (le sceau), pas output', async () => {
+    const PV_DIVERGENT: OfficialPv = {
+      ...PV,
+      id: 'pv_divergent',
+      // output re-dérivable en FAIL (duck-typing) — sceau CONFORME (verdict='PASS').
+      // Cas réel : ex. un correctif serveur post-scellement changerait la
+      // dérivation client sans re-sceller ; le sceau doit rester la seule
+      // vérité affichée pour un PV déjà émis.
+      output: { verdict: 'FAIL' },
+      verdict: 'PASS',
+    };
+    mockListPvs.mockResolvedValue([PV_DIVERGENT]);
+
+    await renderPvList();
+
+    expect(container.textContent).toContain('CONFORME');
+    expect(container.textContent).not.toContain('NON CONF.');
+  });
+
+  it('given un PV scellé sans verdict exploitable (colonne absente, cas défensif), when la liste s’affiche, then aucun badge de verdict n’est affiché (pas de verdict inventé)', async () => {
+    const PV_SANS_VERDICT: OfficialPv = {
+      ...PV,
+      id: 'pv_sans_verdict',
+      output: { verdict: 'PASS' },
+      verdict: undefined,
+    };
+    mockListPvs.mockResolvedValue([PV_SANS_VERDICT]);
+
+    await renderPvList();
+
+    expect(container.textContent).not.toContain('CONFORME');
+    expect(container.textContent).not.toContain('NON APPLIC.');
+    // Le badge Scellé, lui, reste affiché (l'intégrité est indépendante du verdict).
+    expect(container.textContent).toContain('Scellé');
+  });
+});
+
 describe('PvListClient — titre mnémonique (FX-10)', () => {
   it('given un PV scellé (engineId burmister) et le projet chargé, when la liste s’affiche, then le titre est "Note de calcul — {projet} · {logiciel}" (nom métier humanisé, pas le slug)', async () => {
     mockListPvs.mockResolvedValue([PV]);

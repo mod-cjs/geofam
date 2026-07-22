@@ -146,12 +146,17 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   afterAll(async () => {
     if (admin) {
       try {
-        await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
-        await admin.query(`DELETE FROM official_pvs WHERE org_id IN ($1,$2)`, [
-          orgA,
-          orgB,
-        ]);
-        await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        try {
+          await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+          await admin.query(
+            `DELETE FROM official_pvs WHERE org_id IN ($1,$2)`,
+            [orgA, orgB],
+          );
+        } finally {
+          // try/finally : un echec de DELETE ne doit JAMAIS laisser la base de
+          // recette avec son trigger d'integrite desactive.
+          await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        }
         await admin.query(`DELETE FROM pv_counters WHERE org_id IN ($1,$2)`, [
           orgA,
           orgB,
@@ -291,6 +296,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   // --- 1) CAPTURE -----------------------------------------------------------
 
   it('1) ENGINEER capture le document -> 201 {ok:true} + ligne calc_snapshots', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const calcId = await newCalc(token);
@@ -309,6 +315,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   });
 
   it('1bis) RE-CAPTURE d un meme calcul ECRASE (UPSERT, une seule ligne)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const calcId = await newCalc(token);
@@ -333,6 +340,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   // --- 2) GARDE §8 ----------------------------------------------------------
 
   it('2) GARDE §8 : capturer un HTML avec <script> -> 400 (aucune persistance)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const calcId = await newCalc(token);
@@ -349,6 +357,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   });
 
   it('2bis) GARDE §8 : capturer un HTML avec un marqueur moteur -> 400', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const calcId = await newCalc(token);
@@ -362,6 +371,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   // --- 3) ISOLATION CAPTURE -------------------------------------------------
 
   it('3) ISOLATION : userB ne peut PAS capturer le calcul de orgA (404)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const tokenA = await login(emailEng());
     const calcId = await newCalc(tokenA);
@@ -377,6 +387,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   // --- 4/5) SCELLEMENT + SERVICE --------------------------------------------
 
   it('4+5) capture -> emission scelle document.sha256 -> GET document = printHtml', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const calcId = await newCalc(token);
@@ -445,6 +456,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   // --- 6) ISOLATION LECTURE -------------------------------------------------
 
   it('6) ISOLATION : userB ne lit pas le document de orgA (404)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const calcId = await newCalc(token);
@@ -467,6 +479,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   //  (superuser + trigger d'immuabilite desactive) -> sha256(document_html) ne
   //  correspond plus a l'empreinte scellee -> 409. Sentinelle de la re-verif.
   it('7) TAMPER : document_html altere en base APRES scellement -> GET document 409', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const calcId = await newCalc(token);
@@ -482,12 +495,18 @@ describe('Scellement du document client — option-3 (e2e)', () => {
     expect(ok.status).toBe(200);
 
     // ALTERATION de la copie figee (superuser, official_pvs immuable -> trigger off).
-    await admin!.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
-    await admin!.query(
-      `UPDATE official_pvs SET document_html = document_html || '<!-- falsifie -->' WHERE id = $1`,
-      [pvId],
-    );
-    await admin!.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+    try {
+      await admin!.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+      await admin!.query(
+        `UPDATE official_pvs SET document_html = document_html || '<!-- falsifie -->' WHERE id = $1`,
+        [pvId],
+      );
+    } finally {
+      // try/finally : si l'UPDATE echoue, le trigger d'immuabilite d'official_pvs
+      // doit etre RETABLI quoi qu'il arrive — jamais de base de recette laissee
+      // sans sa protection.
+      await admin!.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+    }
 
     const tampered = await getDoc(token, orgA, projectA, pvId);
     expect(tampered.status).toBe(409);
@@ -501,6 +520,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   //  document ORIGINAL scelle (200), jamais 409. Sans B1 (service depuis le cache),
   //  ce test serait ROUGE (409). Mutation-check de la regenerabilite.
   it('7bis) REGENERABILITE : re-capture APRES emission -> GET document = document original (200)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const calcId = await newCalc(token);
@@ -534,6 +554,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   // --- 8) RETRO-COMPAT (PV sans capture) ------------------------------------
 
   it('8) RETRO-COMPAT : PV emis SANS capture -> pas de champ document -> GET document 404', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const calcId = await newCalc(token); // AUCUNE capture
@@ -563,6 +584,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   //  Seul GET .../document sert les octets. Sans le `omit` Prisma, ce test est
   //  ROUGE (documentHtml present dans le JSON).
   it('8bis) BANDE PASSANTE : GET /pvs et get-by-id n exposent PAS documentHtml mais exposent documentFormat', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const calcId = await newCalc(token);
@@ -604,6 +626,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   // --- 9) LECTURE DU SNAPSHOT AVANT SCELLEMENT (re-affichage UI) -------------
 
   it('9) GET snapshot APRES capture (calcul non scelle) -> 200 { displayHtml, printHtml }', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const calcId = await newCalc(token);
@@ -622,6 +645,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   });
 
   it('9bis) GET snapshot SANS capture -> 404 (l UI retombe sur les metadonnees)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const calcId = await newCalc(token); // AUCUNE capture
@@ -630,6 +654,7 @@ describe('Scellement du document client — option-3 (e2e)', () => {
   });
 
   it('9ter) ISOLATION : userB ne lit pas le snapshot du calcul de orgA (404)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const tokenA = await login(emailEng());
     const calcId = await newCalc(tokenA);

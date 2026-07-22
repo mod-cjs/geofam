@@ -101,7 +101,7 @@ describe('ProjetLayoutClient — pastilles de compteur', () => {
     expect(onglet('pv')?.textContent).toContain('4');
     // La pastille est décorative : sans aria-label, le compte serait perdu à l'oral.
     expect(onglet('calculs')?.getAttribute('aria-label')).toBe('Calculs (40)');
-    expect(onglet('pv')?.getAttribute('aria-label')).toBe('PV & Livrables (4)');
+    expect(onglet('pv')?.getAttribute('aria-label')).toBe('PV scellés (4)');
   });
 
   it('#2 GIVEN des compteurs INCONNUS (backend ancien) — WHEN rendu — THEN aucune pastille, aucun aria-label chiffré', async () => {
@@ -110,7 +110,7 @@ describe('ProjetLayoutClient — pastilles de compteur', () => {
     // Aucun chiffre ne doit apparaître : afficher « 0 » ferait lire
     // « projet vide » alors que la valeur n'est simplement pas connue.
     expect(onglet('calculs')?.textContent).toBe('Calculs');
-    expect(onglet('pv')?.textContent).toBe('PV & Livrables');
+    expect(onglet('pv')?.textContent).toBe('PV scellés');
     expect(onglet('calculs')?.getAttribute('aria-label')).toBeNull();
     expect(onglet('pv')?.getAttribute('aria-label')).toBeNull();
   });
@@ -122,7 +122,7 @@ describe('ProjetLayoutClient — pastilles de compteur', () => {
     // et effacerait une pastille pourtant légitime.
     expect(onglet('calculs')?.textContent).toContain('0');
     expect(onglet('calculs')?.getAttribute('aria-label')).toBe('Calculs (0)');
-    expect(onglet('pv')?.getAttribute('aria-label')).toBe('PV & Livrables (0)');
+    expect(onglet('pv')?.getAttribute('aria-label')).toBe('PV scellés (0)');
   });
 
   it('#4 SENTINELLE — WHEN rendu — THEN le layout n’appelle AUCUNE liste', async () => {
@@ -135,5 +135,18 @@ describe('ProjetLayoutClient — pastilles de compteur', () => {
     expect(mockListPvs).not.toHaveBeenCalled();
     // Une seule lecture, celle du projet (partagée via le cache).
     expect(mockGetProjectCached).toHaveBeenCalledTimes(1);
+  });
+
+  it('#5 GIVEN la maquette finale (deux onglets) — WHEN rendu — THEN « Vue d’ensemble » et « Informations » ont disparu, seuls Calculs et PV scellés restent', async () => {
+    await monter({ ...PROJET_BASE, calcCount: 40, pvCount: 4 });
+
+    const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
+    expect(tabs).toHaveLength(2);
+    expect(onglet('calculs')).not.toBeNull();
+    expect(onglet('pv')).not.toBeNull();
+    expect(onglet('overview')).toBeNull();
+    expect(onglet('infos')).toBeNull();
+    expect(container.textContent).not.toContain("Vue d'ensemble");
+    expect(container.textContent).not.toContain('Informations');
   });
 });

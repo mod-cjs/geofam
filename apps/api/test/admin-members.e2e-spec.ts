@@ -328,6 +328,7 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
   // --- 1) SUSPENSION IMMÉDIATE (le piège HAUTE) -----------------------------
 
   it('1) suspension immédiate : membre actif 200 -> PATCH false -> MÊME token 403', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -359,6 +360,7 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
   // --- 2) ISOLATION ---------------------------------------------------------
 
   it('2) isolation : membre de A ne voit pas B (403) ; provisioning dans A n affecte pas B', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -388,6 +390,7 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
   // --- 3) ANTI-LOCKOUT ------------------------------------------------------
 
   it('3) anti-lockout : suspendre le dernier OWNER actif -> 409', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const res = await setActive(orgA, ownerA, false);
@@ -403,6 +406,7 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
   // --- 4) OWNER INTERDIT PAR LA ROUTE ---------------------------------------
 
   it('4) OWNER interdit : POST …/members { role:"OWNER" } -> 400', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
     const res = await addMember(orgA, randomUUID(), 'OWNER');
@@ -412,6 +416,7 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
   // --- 5) QUOTA PARTAGÉ -----------------------------------------------------
 
   it('5) quota partagé : le membre émet un calcul -> quota de l org -1, tracé à son userId', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -448,6 +453,7 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
   // --- 6) RÉACTIVATION ------------------------------------------------------
 
   it('6) réactivation : PATCH false -> 403 ; PATCH true -> l accès revient (200)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -477,6 +483,7 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
   // suspendre un membre de A via le CHEMIN d'une autre org (orgB) ne le touche pas.
 
   it('7) isolation écriture : PATCH /orgs/{orgB}/members/{membreDeA} -> 404 ; ligne de A intacte', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -500,6 +507,7 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
   // membre d'une AUTRE org. ownerB est membre de B : GET des membres de A ne le liste jamais.
 
   it('8) isolation lecture : GET /orgs/{orgA}/members exclut un membre de B', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -513,6 +521,7 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
   // --- 9) RBAC : seul un SUPERADMIN gère les membres --------------------------
 
   it('9) RBAC : un non-SUPERADMIN (OWNER) sur les 3 routes -> 403', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const ownerToken = await login(emailOwnerA()); // OWNER de A, pas SUPERADMIN
 
@@ -535,6 +544,7 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
   //     ne touche QUE la ligne de l'org ciblée, via un membre présent dans A ET B. ----------
 
   it('10) isolation UPDATE : suspendre via orgB un membre de A ET B -> B basculé, A INTACT', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
 
@@ -561,6 +571,7 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
   //     DIRECT (contourne la barrière Zod de la route). --------------------------------------
 
   it('11) barrière DB : provision_member(...,OWNER) direct -> rejeté (P0001)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     await expect(
       admin!.query(

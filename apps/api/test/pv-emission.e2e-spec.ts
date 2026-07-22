@@ -185,12 +185,17 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
     if (admin) {
       try {
         // official_pvs immuable (trigger) : on desactive le temps du teardown.
-        await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
-        await admin.query(`DELETE FROM official_pvs WHERE org_id IN ($1,$2)`, [
-          orgA,
-          orgB,
-        ]);
-        await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        try {
+          await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+          await admin.query(
+            `DELETE FROM official_pvs WHERE org_id IN ($1,$2)`,
+            [orgA, orgB],
+          );
+        } finally {
+          // try/finally : un echec de DELETE ne doit JAMAIS laisser la base de
+          // recette avec son trigger d'immuabilite desactive.
+          await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        }
         await admin.query(`DELETE FROM pv_counters WHERE org_id IN ($1,$2)`, [
           orgA,
           orgB,
@@ -299,6 +304,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
   // --- 1) PERSISTANCE -------------------------------------------------------
 
   it('1) ENGINEER : POST calc/burmister -> 201 + calcResultId + enveloppe', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const res = await calc(token, orgA, projectA, 'burmister', burmisterInput);
@@ -314,6 +320,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
   // --- 2) ISOLATION ---------------------------------------------------------
 
   it('2) ISOLATION : userB ne voit ni le calcul ni le PV de orgA (404)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const tokenA = await login(emailEng());
     const created = await calc(
@@ -339,6 +346,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
   // --- 3) EMISSION + format numero ------------------------------------------
 
   it('3) EMISSION : pv_number au format PV-RDS-{slug}-{YYYY}-{NNNNNN} + sceau', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const created = await calc(
@@ -361,6 +369,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
   // --- 4) IDEMPOTENCE -------------------------------------------------------
 
   it('4) IDEMPOTENCE : re-emettre le meme calcul -> meme PV, aucun numero brule', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const created = await calc(
@@ -415,6 +424,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
   //  Attendu : les DEUX reponses 201, MEME pv.id ; le compteur avance d'EXACTEMENT
   //  1 (le numero alloue par la transaction perdante est « brule » = acceptable).
   it('4bis) IDEMPOTENCE CONCURRENTE : 2 emissions simultanees -> meme PV, +1 numero', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const created = await calc(
@@ -476,6 +486,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
   // Sentinelle DoD §9 : sans elle, supprimer la comparaison canonicalize resterait vert.
 
   it('4ter) INTEGRITE : output de calc_results ALTERE en base -> emission refusee (409)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const c = await calc(token, orgA, projectA, 'burmister', burmisterInput);
@@ -499,6 +510,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
   });
 
   it('4quater) INTEGRITE : un calcul LEGITIME (non altere) s emet normalement (pas de faux positif)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const c = await calc(token, orgA, projectA, 'burmister', burmisterInput);
@@ -516,6 +528,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
     // on scellerait un PV neuf affirmant une source incapable de reproduire le
     // calcul. La garde de source doit refuser INCONDITIONNELLEMENT (fail-closed) :
     // hash stocke != hash registre courant => 409 « relancez le calcul ».
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const c = await calc(token, orgA, projectA, 'burmister', burmisterInput);
@@ -543,6 +556,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
   // --- 5) IMMUABILITE -------------------------------------------------------
 
   it('5) IMMUABILITE : UPDATE direct d un official_pv -> refuse (trigger)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const created = await calc(
@@ -567,6 +581,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
   // --- 6) LECTURE + VERIF (true) --------------------------------------------
 
   it('6) GET /pvs/:id -> sealValid=true (sceau coherent)', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const created = await calc(
@@ -590,6 +605,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
   // --- 7) ALTERATION -> sealValid=false (mutation-check de la verif) ---------
 
   it('7) ALTERATION de input_canonical en base -> sealValid=FALSE', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const created = await calc(
@@ -609,12 +625,18 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
 
     // ALTERATION en base : on falsifie input_canonical (trigger desactive car
     // l'UPDATE est par ailleurs interdit). Le hash stocke ne correspond plus.
-    await admin!.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
-    await admin!.query(
-      `UPDATE official_pvs SET input_canonical = input_canonical || ' falsifie' WHERE id=$1`,
-      [pvId],
-    );
-    await admin!.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+    try {
+      await admin!.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+      await admin!.query(
+        `UPDATE official_pvs SET input_canonical = input_canonical || ' falsifie' WHERE id=$1`,
+        [pvId],
+      );
+    } finally {
+      // try/finally : si l'UPDATE echoue, le trigger d'immuabilite d'official_pvs
+      // doit etre RETABLI quoi qu'il arrive — jamais de base de recette laissee
+      // sans sa protection.
+      await admin!.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+    }
 
     const tampered = await getPv(token, orgA, projectA, pvId);
     expect(tampered.status).toBe(200);
@@ -624,6 +646,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
   // --- 8) LISTE -------------------------------------------------------------
 
   it('8) GET /pvs -> liste les PV du projet du tenant', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const res = await request(server())
@@ -641,6 +664,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
   // --- 9) ROLES -------------------------------------------------------------
 
   it('9) ROLES : VIEWER 403 sur calcul ; TECHNICIAN 201 calcul mais 403 emission', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     // VIEWER ne peut pas lancer de calcul (pas dans @Roles du calcul).
     const tokenView = await login(emailView());
@@ -672,6 +696,7 @@ describe('Pipeline PV — surface tenant (e2e)', () => {
   // --- 10) EQUIVALENCE ------------------------------------------------------
 
   it('10) EQUIVALENCE : output persiste == runBurmister(input) direct', async () => {
+    expect.hasAssertions();
     if (!ready()) return;
     const token = await login(emailEng());
     const created = await calc(

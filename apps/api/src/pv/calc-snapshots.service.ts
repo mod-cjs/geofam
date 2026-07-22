@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { requireOrgId } from '../tenant/tenant-context';
 
 import { assertInertHtml } from './html-guard';
+import { assertProjetEcrivable } from './project-write-guard';
 
 /**
  * CalcSnapshotsService — CAPTURE du document client (scellement option-3, 0023).
@@ -44,6 +45,12 @@ export class CalcSnapshotsService {
     assertInertHtml(args.printHtml, 'printHtml');
 
     await this.prisma.withTenant(orgId, async (tx) => {
+      // Le PROJET doit etre ECRIVABLE (present dans le tenant, non ARCHIVE) — la
+      // capture est une ECRITURE, et rien ne doit s'ecrire sur un projet que
+      // l'utilisateur croit supprime (revue adverse PR #120 : ce service ne
+      // controlait pas le projet du tout, seulement l'appartenance du calcul).
+      await assertProjetEcrivable(tx, args.projectId);
+
       // Le calcul doit exister DANS le tenant (RLS scope) ET appartenir au projet
       // de l'URL — meme controle que PvService.emitFromCalc (404 tenant-safe pour
       // un calcul d'un autre org OU d'un autre projet du meme org).

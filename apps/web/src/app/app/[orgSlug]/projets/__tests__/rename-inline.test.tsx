@@ -39,7 +39,11 @@ vi.mock('@/lib/api/client', () => ({
   restoreProject: vi.fn(),
   createProject: vi.fn(),
   deleteProject: vi.fn(),
+  deleteProjectPermanently: vi.fn(),
   renameProject: mockRenameProject,
+  // Rôle OWNER par défaut : ce fichier teste le renommage, pas le RBAC —
+  // un rôle permissif évite de masquer les boutons que ces tests exercent.
+  getStoredOrgs: () => [{ id: 'org-1', slug: 'starfire', role: 'OWNER' }],
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/lib/org-context', () => ({ useOrgId: () => 'org-1' }));

@@ -16,6 +16,7 @@ import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { requireOrgId } from '../tenant/tenant-context';
 
 import { findEngineDispatch, SUPPORTED_ENGINE_SLUGS } from './engine-dispatch';
+import { assertProjetEcrivable } from './project-write-guard';
 
 /** Resultat d'un calcul tenant persiste : enveloppe + id de la ligne stockee. */
 export interface PersistedCalcResult {
@@ -141,16 +142,12 @@ export class CalcResultsService {
     };
 
     const created = await this.prisma.withTenant(orgId, async (tx) => {
-      // Verifie l'existence du projet DANS le tenant (RLS scope deja la lecture).
-      const project = await tx.project.findUnique({
-        where: { id: args.projectId },
-        select: { id: true },
-      });
-      if (!project) {
-        throw new NotFoundException(
-          'Projet introuvable dans cette organisation.',
-        );
-      }
+      // Le projet doit exister DANS le tenant (RLS scope deja la lecture) ET ne pas
+      // etre ARCHIVE. Sans le filtre de statut, on BRULAIT DU QUOTA (reserveUnit +
+      // ledger APPEND-ONLY, donc irreversible) sur un projet que l'utilisateur croit
+      // supprime — et invisible dans toutes les listes. 404 tenant-safe et uniforme
+      // (cf. assertProjetEcrivable).
+      await assertProjetEcrivable(tx, args.projectId);
 
       // INSERT du calcul d'abord (on a son id pour tracer le ledger), puis
       // DECOMPTE ATOMIQUE (ADR 0011 §3) — TOUT dans CETTE transaction tenant :

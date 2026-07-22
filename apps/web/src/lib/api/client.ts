@@ -28,6 +28,7 @@ import {
   httpGetProject,
   httpRenameProject,
   httpDeleteProject,
+  httpDeleteProjectPermanently,
   httpListArchivedProjects,
   httpRestoreProject,
   httpListCalcResults,
@@ -384,6 +385,45 @@ export async function deleteProject(orgId: string, projectId: string): Promise<P
     throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Projet introuvable' };
   const [archived] = MOCK_PROJECTS.splice(idx, 1);
   return archived;
+}
+
+/**
+ * Supprime DÉFINITIVEMENT un projet — DELETE /projects/:projectId/permanent.
+ *
+ * Contrat serveur (posé par un autre agent en parallèle) :
+ *  - 200 avec le projet supprimé ;
+ *  - 409 si le projet porte au moins un PV scellé (message serveur exploitable) ;
+ *  - 404 tenant-safe sinon (absent / hors-tenant) ;
+ *  - rôles OWNER/ADMIN uniquement (RBAC réel côté serveur — pas ici).
+ *
+ * Irréversible, à la différence de `deleteProject` (archivage). Aucune UI
+ * optimiste : l'appelant attend la résolution avant de retirer la ligne.
+ */
+export async function deleteProjectPermanently(
+  orgId: string,
+  projectId: string,
+): Promise<Project> {
+  invalidateProjectCache(orgId, projectId);
+
+  if (_USE_REAL_BACKEND) return httpDeleteProjectPermanently(orgId, projectId);
+
+  await delay(400);
+  const idx = MOCK_PROJECTS.findIndex((x) => x.id === projectId);
+  if (idx === -1)
+    throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Projet introuvable' };
+  // Cohérent avec le contrat serveur : un PV scellé bloque la suppression
+  // définitive. Le mock n'a pas de notion de « scellé » distincte de MOCK_PVS —
+  // un projet y figurant est donc traité comme portant un PV scellé.
+  if (MOCK_PVS.some((v) => v.projectId === projectId)) {
+    throw {
+      statusCode: 409,
+      reason: 'SERVER_ERROR',
+      message:
+        'Ce projet porte au moins un PV scellé : suppression définitive impossible.',
+    };
+  }
+  const [removed] = MOCK_PROJECTS.splice(idx, 1);
+  return removed;
 }
 
 // ---------------------------------------------------------------------------
