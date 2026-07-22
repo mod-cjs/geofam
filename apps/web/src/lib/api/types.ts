@@ -88,6 +88,20 @@ export interface Project {
    */
   calcCount?: number;
   pvCount?: number;
+  /**
+   * Dernière activité RÉELLE (P0-3) : max(ligne projet, dernier calcul,
+   * dernier PV), calculée et triée côté serveur.
+   *
+   * Distincte d'`updatedAt`, qui ne bouge que si la ligne projet est écrite
+   * (création, renommage) — jamais quand on calcule ou qu'on scelle. C'est
+   * cette confusion qui classait un projet à 40 calculs derrière un projet à
+   * 2 calculs inactif, sous le libellé « Modifié récemment ».
+   *
+   * `lastActivityKind` qualifie la date pour que l'UI puisse écrire
+   * « PV scellé · il y a 2 jours » plutôt qu'une date muette.
+   */
+  lastActivityAt?: string;
+  lastActivityKind?: 'calcul' | 'pv' | 'projet';
 }
 
 export interface CreateProjectRequest {

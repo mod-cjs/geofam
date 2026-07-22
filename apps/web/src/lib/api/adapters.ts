@@ -144,6 +144,9 @@ export interface PrismaProject {
    */
   calcCount?: number;
   pvCount?: number;
+  /** P0-3 — dernière activité réelle, agrégée et triée côté serveur. */
+  lastActivityAt?: string;
+  lastActivityKind?: 'calcul' | 'pv' | 'projet';
   /**
    * Champ réel du backend : `createdById` (Prisma : created_by_id).
    * ⚠️ PAS `createdBy` — bug #8.
@@ -563,6 +566,10 @@ export function adaptProject(raw: PrismaProject): Project {
     // un `|| undefined` effacerait un compteur légitime à zéro.
     calcCount: raw.calcCount,
     pvCount: raw.pvCount,
+    // Même règle de propagation que les compteurs : tel quel, sans repli —
+    // l'absence signifie « backend antérieur », pas « aucune activité ».
+    lastActivityAt: raw.lastActivityAt,
+    lastActivityKind: raw.lastActivityKind,
   };
 }
 

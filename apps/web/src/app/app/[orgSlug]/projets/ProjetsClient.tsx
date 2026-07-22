@@ -19,6 +19,7 @@ import { useToast } from '@/components/ui/Toast';
 import { listProjects, createProject, deleteProject } from '@/lib/api/client';
 import type { Project, ProjectDomain } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
+import { libelleRelatif } from '@/lib/relative-day';
 
 type SortKey = 'date-desc' | 'name-asc';
 
@@ -26,15 +27,44 @@ type SortKey = 'date-desc' | 'name-asc';
  * Date relative calculée côté client uniquement (useEffect après montage).
  * Le SSR retourne null → texte vide, évitant le #418 causé par Date.now() au rendu.
  */
-function ClientRelativeDate({ iso }: { iso: string }) {
+function ClientRelativeDate({
+  iso,
+  kind,
+}: {
+  iso: string;
+  kind?: 'calcul' | 'pv' | 'projet';
+}) {
   const [label, setLabel] = useState<string | null>(null);
   useEffect(() => {
-    const diff = Date.now() - new Date(iso).getTime();
-    const d = Math.floor(diff / 86400000);
-    setLabel(d === 0 ? "aujourd'hui" : d === 1 ? 'hier' : `il y a ${d} j`);
+    // Jours CALENDAIRES : l'ancien calcul en tranches de 24 h glissantes
+    // affichait « aujourd'hui » pour un élément d'hier 23:00 consulté à 8:00.
+    setLabel(libelleRelatif(new Date(iso), new Date()));
   }, [iso]);
-  if (label === null) return null;
-  return <>{label}</>;
+
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+
+  // Date ABSOLUE en premier : sur des pièces quasi-probatoires on raisonne en
+  // dates, pas en « il y a ». Le relatif reste, en appoint.
+  const absolue = d.toLocaleString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const nature = kind === 'pv' ? 'PV scellé' : kind === 'calcul' ? 'calcul' : undefined;
+
+  return (
+    <span title={absolue}>
+      {absolue}
+      {(nature || label) && (
+        <span style={{ display: 'block', color: 'var(--text-muted)', fontSize: 11 }}>
+          {[nature, label].filter(Boolean).join(' · ')}
+        </span>
+      )}
+    </span>
+  );
 }
 
 interface ProjetsClientProps {
@@ -151,9 +181,12 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
     const sorted = [...filtered];
     if (sortKey === 'name-asc') {
       sorted.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-    } else {
-      sorted.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      return sorted;
     }
+    // Tri par activité : le SERVEUR fait foi (il seul connaît le dernier calcul
+    // et le dernier PV). Le front ne retrie plus — il y avait jusqu'ici deux
+    // vérités d'ordre, dont aucune ne reflétait l'activité réelle : le serveur
+    // triait sur createdAt, le front retriait sur updatedAt.
     return sorted;
   }, [projects, query, sortKey]);
 
@@ -319,7 +352,7 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
               color: 'var(--text-primary)',
             }}
           >
-            <option value="date-desc">Modifié récemment</option>
+            <option value="date-desc">Dernière activité</option>
             <option value="name-asc">Nom (A → Z)</option>
           </select>
         </div>
@@ -458,7 +491,9 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
           </div>
         }
       >
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', margin: 0 }}>
+        <p
+          style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)', margin: 0 }}
+        >
           Le projet « {projectToDelete?.name} » sera retiré de la liste des projets.
         </p>
         <p
@@ -585,7 +620,10 @@ function ProjectRow({
           textAlign: 'right',
         }}
       >
-        <ClientRelativeDate iso={project.updatedAt} />
+        <ClientRelativeDate
+          iso={project.lastActivityAt ?? project.updatedAt}
+          kind={project.lastActivityKind}
+        />
       </div>
 
       <button

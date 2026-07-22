@@ -15,9 +15,24 @@ import { requireOrgId } from '../tenant/tenant-context';
  * signifierait « pas encore charge », et afficher « 0 » a la place ferait lire
  * « projet vide » a tort. La distinction est le contrat.
  */
+/** Nature de la dernière activité — permet à l'UI de qualifier la date. */
+export type ActivityKind = 'calcul' | 'pv' | 'projet';
+
 export type ProjectWithCounts = Project & {
   calcCount: number;
   pvCount: number;
+  /**
+   * Date de la dernière activité RÉELLE : max(ligne projet, dernier calcul,
+   * dernier PV). Distincte de `updatedAt`, qui ne bouge que si la ligne
+   * `projects` est écrite (création, renommage) — jamais quand on calcule ou
+   * qu'on scelle. C'est cette confusion qui classait un projet à 40 calculs
+   * derrière un projet à 2 calculs inactif.
+   *
+   * JAMAIS null : un projet sans contenu retombe sur son propre `updatedAt`,
+   * sinon `ORDER BY ... DESC` remonterait les NULL en tête sous Postgres.
+   */
+  lastActivityAt: Date;
+  lastActivityKind: ActivityKind;
 };
 
 /**
@@ -53,28 +68,76 @@ export class ProjectsService {
       // le referencent). Voir archive().
       const projects = await tx.project.findMany({
         where: { status: { not: 'ARCHIVED' } },
+        // Tri PROVISOIRE : l'ordre final est celui de `lastActivityAt`, qui ne
+        // peut être calculé qu'après les agrégats ci-dessous (il dépend du
+        // dernier calcul et du dernier PV). Le tri définitif est appliqué en
+        // sortie — et c'est le serveur qui l'impose, pour qu'il n'existe plus
+        // deux vérités d'ordre (le front retriait ce que le serveur avait déjà
+        // trié, sur un champ encore différent).
         orderBy: { createdAt: 'desc' },
       });
 
-      const [calcs, pvs] = await Promise.all([
-        tx.calcResult.groupBy({ by: ['projectId'], _count: { _all: true } }),
-        tx.officialPv.groupBy({ by: ['projectId'], _count: { _all: true } }),
-      ]);
+      // Sequentiel et non Promise.all : deux agregats de quelques millisecondes
+      // ne justifient pas de paralleliser DANS une transaction interactive
+      // Prisma (patron deconseille — risque de P2028 « transaction already
+      // closed » sous contention, donc 500 sur la liste des projets).
+      const calcs = await tx.calcResult.groupBy({
+        by: ['projectId'],
+        _count: { _all: true },
+        _max: { createdAt: true },
+      });
+      const pvs = await tx.officialPv.groupBy({
+        by: ['projectId'],
+        _count: { _all: true },
+        _max: { sealedAt: true },
+      });
 
-      const parProjet = (
-        rows: { projectId: string; _count: { _all: number } }[],
-      ): Map<string, number> =>
-        new Map(rows.map((r) => [r.projectId, r._count._all]));
-      const nbCalcs = parProjet(calcs);
-      const nbPvs = parProjet(pvs);
+      const nbCalcs = new Map(calcs.map((r) => [r.projectId, r._count._all]));
+      const nbPvs = new Map(pvs.map((r) => [r.projectId, r._count._all]));
+      const dernierCalcul = new Map(
+        calcs.map((r) => [r.projectId, r._max?.createdAt ?? null]),
+      );
+      const dernierPv = new Map(
+        pvs.map((r) => [r.projectId, r._max?.sealedAt ?? null]),
+      );
 
       // `?? 0` et non `?? undefined` : un projet absent de l'agregat n'a
       // simplement aucun calcul — c'est une valeur CONNUE, pas une inconnue.
-      return projects.map((p) => ({
-        ...p,
-        calcCount: nbCalcs.get(p.id) ?? 0,
-        pvCount: nbPvs.get(p.id) ?? 0,
-      }));
+      return (
+        projects
+          .map((p) => {
+            const calc = dernierCalcul.get(p.id) ?? null;
+            const pv = dernierPv.get(p.id) ?? null;
+
+            // Repli sur updatedAt : jamais null (cf. commentaire du type).
+            let lastActivityAt: Date = p.updatedAt;
+            let lastActivityKind: ActivityKind = 'projet';
+            if (calc && calc.getTime() > lastActivityAt.getTime()) {
+              lastActivityAt = calc;
+              lastActivityKind = 'calcul';
+            }
+            // `>` strict : a egalite parfaite on garde le calcul, deterministe.
+            if (pv && pv.getTime() > lastActivityAt.getTime()) {
+              lastActivityAt = pv;
+              lastActivityKind = 'pv';
+            }
+
+            return {
+              ...p,
+              calcCount: nbCalcs.get(p.id) ?? 0,
+              pvCount: nbPvs.get(p.id) ?? 0,
+              lastActivityAt,
+              lastActivityKind,
+            };
+          })
+          // Tri DÉFINITIF, du plus récent au plus ancien. C'est ici que « Pont de
+          // Mbodiène » (40 calculs, actif la veille) repasse devant « test »
+          // (2 calculs, inactif) — l'inverse de l'ordre que produisait
+          // `updated_at`. Le front ne retrie plus : une seule vérité d'ordre.
+          .sort(
+            (a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime(),
+          )
+      );
     });
   }
 
@@ -115,15 +178,44 @@ export class ProjectsService {
       });
       if (!project) return null;
 
-      // Deux `count` (et non deux `findMany`) : c'est ce qui evite au shell du
-      // projet de telecharger 2,5 Mo de lignes pour afficher deux nombres. Le
+      // `aggregate` (et non `findMany`) : c'est ce qui evite au shell du projet
+      // de telecharger 2,5 Mo de lignes pour afficher deux nombres. Une seule
+      // requete par table ramene le compte ET la date la plus recente. Le
       // filtre projectId reste DANS le withTenant, donc double barriere : RLS
-      // (org) + predicat (projet).
-      const [calcCount, pvCount] = await Promise.all([
-        tx.calcResult.count({ where: { projectId } }),
-        tx.officialPv.count({ where: { projectId } }),
-      ]);
-      return { ...project, calcCount, pvCount };
+      // (org) + predicat (projet). Sequentiel : pas de Promise.all dans une
+      // transaction interactive Prisma (cf. list()).
+      const calc = await tx.calcResult.aggregate({
+        where: { projectId },
+        _count: { _all: true },
+        _max: { createdAt: true },
+      });
+      const pv = await tx.officialPv.aggregate({
+        where: { projectId },
+        _count: { _all: true },
+        _max: { sealedAt: true },
+      });
+
+      // Même règle que dans list() : repli sur updatedAt, jamais null.
+      let lastActivityAt: Date = project.updatedAt;
+      let lastActivityKind: ActivityKind = 'projet';
+      const dernierCalcul = calc._max?.createdAt ?? null;
+      const dernierPv = pv._max?.sealedAt ?? null;
+      if (dernierCalcul && dernierCalcul.getTime() > lastActivityAt.getTime()) {
+        lastActivityAt = dernierCalcul;
+        lastActivityKind = 'calcul';
+      }
+      if (dernierPv && dernierPv.getTime() > lastActivityAt.getTime()) {
+        lastActivityAt = dernierPv;
+        lastActivityKind = 'pv';
+      }
+
+      return {
+        ...project,
+        calcCount: calc._count._all,
+        pvCount: pv._count._all,
+        lastActivityAt,
+        lastActivityKind,
+      };
     });
   }
 

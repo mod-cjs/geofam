@@ -30,8 +30,9 @@ describe('ProjectsService.getById', () => {
     // P0-1 : la lecture detail porte desormais les compteurs de contenu
     // (calculs / PV), agreges par `count` et non par un findMany —
     // cf. projects-counts.service.spec.ts.
-    calcResult: { count: jest.Mock };
-    officialPv: { count: jest.Mock };
+    // P0-1/P0-3 : getById ramene compte ET date la plus recente via `aggregate`.
+    calcResult: { aggregate: jest.Mock };
+    officialPv: { aggregate: jest.Mock };
   };
   let prisma: { withTenant: jest.Mock };
   let service: ProjectsService;
@@ -43,8 +44,19 @@ describe('ProjectsService.getById', () => {
         findFirst: jest.fn(),
         updateMany: jest.fn(),
       },
-      calcResult: { count: jest.fn().mockResolvedValue(0) },
-      officialPv: { count: jest.fn().mockResolvedValue(0) },
+      calcResult: {
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({
+            _count: { _all: 0 },
+            _max: { createdAt: null },
+          }),
+      },
+      officialPv: {
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({ _count: { _all: 0 }, _max: { sealedAt: null } }),
+      },
     };
     prisma = {
       withTenant: jest.fn(
@@ -147,8 +159,9 @@ describe('ProjectsService.rename / archive', () => {
     // P0-1 : la lecture detail porte desormais les compteurs de contenu
     // (calculs / PV), agreges par `count` et non par un findMany —
     // cf. projects-counts.service.spec.ts.
-    calcResult: { count: jest.Mock };
-    officialPv: { count: jest.Mock };
+    // P0-1/P0-3 : getById ramene compte ET date la plus recente via `aggregate`.
+    calcResult: { aggregate: jest.Mock };
+    officialPv: { aggregate: jest.Mock };
   };
   let prisma: { withTenant: jest.Mock };
   let service: ProjectsService;
@@ -160,8 +173,19 @@ describe('ProjectsService.rename / archive', () => {
         findFirst: jest.fn(),
         updateMany: jest.fn(),
       },
-      calcResult: { count: jest.fn().mockResolvedValue(0) },
-      officialPv: { count: jest.fn().mockResolvedValue(0) },
+      calcResult: {
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({
+            _count: { _all: 0 },
+            _max: { createdAt: null },
+          }),
+      },
+      officialPv: {
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({ _count: { _all: 0 }, _max: { sealedAt: null } }),
+      },
     };
     prisma = {
       withTenant: jest.fn(
