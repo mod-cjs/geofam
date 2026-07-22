@@ -19,7 +19,14 @@ const ENGINE_ID_ALIAS: Record<string, string> = {
   'fondation-superficielle': 'terzaghi',
   'pressiometre-menard': 'pressiometre',
   'fondation-profonde-pieux': 'pieux',
+  // GEOPLAQUE = UN logiciel à 4 modes, persistés avec des registryId distincts.
+  // Les 4 mappent vers « radier » (le logiciel), sinon les 3 non-plaque
+  // échappaient à la chip GEOPLAQUE (compteur faux : 26+7+4 != 40) et
+  // s'affichaient avec leur registryId brut (« axi-plaque » à l'écran).
   'radier-plaque': 'radier',
+  'axi-plaque': 'radier',
+  'plane-strain': 'radier',
+  'radier-tri': 'radier',
   'labo-classification-gtr': 'labo',
   'fondation-terzaghi': 'terzaghi',
 };

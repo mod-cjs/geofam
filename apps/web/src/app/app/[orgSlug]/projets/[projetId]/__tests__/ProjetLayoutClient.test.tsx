@@ -149,4 +149,40 @@ describe('ProjetLayoutClient — pastilles de compteur', () => {
     expect(container.textContent).not.toContain("Vue d'ensemble");
     expect(container.textContent).not.toContain('Informations');
   });
+
+  describe('#6 position des onglets dans la bande (correction titulaire, maquette écran 2)', () => {
+    // Défaut signalé : les onglets étaient poussés à l'extrême droite de la
+    // bande, séparés du reste (nom + tag de domaine) par une grande zone vide
+    // et un séparateur vertical. Attendu (maquette) : les onglets suivent
+    // IMMÉDIATEMENT le groupe nom+tag, dans le même bloc groupé à gauche.
+    it("GIVEN la bande projet — WHEN rendue — THEN la nav des onglets est le second et DERNIER enfant direct de la bande, immédiatement après le groupe nom+tag (pas de séparateur ni d'élément intercalé)", async () => {
+      await monter({ ...PROJET_BASE, calcCount: 40, pvCount: 4 });
+
+      const bande = container.querySelector(
+        '[data-testid="projet-bande"]',
+      ) as HTMLElement;
+      expect(bande).not.toBeNull();
+
+      const enfants = Array.from(bande.children);
+      // Exactement deux groupes directs : [nom+tag] puis [nav des onglets] —
+      // aucun séparateur ni conteneur intermédiaire entre les deux.
+      expect(enfants).toHaveLength(2);
+      expect(enfants[1].querySelector('[role="tablist"]')).not.toBeNull();
+      expect(enfants[1].contains(onglet('calculs'))).toBe(true);
+    });
+
+    it("GIVEN la nav des onglets — WHEN rendue — THEN elle n'emploie AUCUNE marge automatique qui la pousserait loin du groupe nom+tag (jamais margin-left: auto)", async () => {
+      await monter({ ...PROJET_BASE, calcCount: 40, pvCount: 4 });
+
+      const bande = container.querySelector(
+        '[data-testid="projet-bande"]',
+      ) as HTMLElement;
+      const nav = bande.querySelector('nav') as HTMLElement;
+      expect(nav).not.toBeNull();
+      expect(nav.style.marginLeft).not.toBe('auto');
+      // La bande elle-même ne doit pas non plus écarter ses deux groupes
+      // (ex. justify-content: space-between reproduirait le même défaut).
+      expect(bande.style.justifyContent).not.toBe('space-between');
+    });
+  });
 });

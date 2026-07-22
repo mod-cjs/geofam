@@ -25,6 +25,18 @@ describe('slugOf — normalise le registryId backend vers le slug métier court'
     expect(slugOf('burmister')).toBe('burmister');
     expect(slugOf('moteur-inconnu')).toBe('moteur-inconnu');
   });
+
+  it('GIVEN les 4 modes GEOPLAQUE persistés — WHEN slugOf — THEN tous sous le slug « radier »', () => {
+    // GEOPLAQUE est UN logiciel à 4 modes, persistés avec des registryId
+    // distincts (vérifié sur la base de recette, projet Pont de Mbodiène) :
+    // radier-plaque, axi-plaque, plane-strain, radier-tri. Sans les 3 derniers
+    // alias, leurs calculs échappaient à la chip GEOPLAQUE (compteur 4 au lieu
+    // de 7 : 26 pieux + 7 terzaghi + 4 != 40) et s'affichaient avec leur id brut.
+    expect(slugOf('radier-plaque')).toBe('radier');
+    expect(slugOf('axi-plaque')).toBe('radier');
+    expect(slugOf('plane-strain')).toBe('radier');
+    expect(slugOf('radier-tri')).toBe('radier');
+  });
 });
 
 describe('metaOf — nom métier humanisé', () => {
@@ -35,6 +47,11 @@ describe('metaOf — nom métier humanisé', () => {
     );
     expect(metaOf('fondation-profonde-pieux').nom).toBe('CASAGRANDE — Pieux');
     expect(metaOf('radier-plaque').nom).toBe('GEOPLAQUE — Radier');
+    // Les 3 autres modes GEOPLAQUE affichent aussi le nom du logiciel, jamais
+    // leur registryId brut (« axi-plaque » à l'écran = défaut).
+    expect(metaOf('axi-plaque').nom).toBe('GEOPLAQUE — Radier');
+    expect(metaOf('plane-strain').nom).toBe('GEOPLAQUE — Radier');
+    expect(metaOf('radier-tri').nom).toBe('GEOPLAQUE — Radier');
     expect(metaOf('pressiometre-menard').nom).toBe('PressioPro — Pressiomètre');
     expect(metaOf('labo-classification-gtr').nom).toBe('FASTLAB — Laboratoire');
   });

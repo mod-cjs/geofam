@@ -367,26 +367,41 @@ describe('PvListClient — verdict de conformité (maquette finale, écran 3)', 
   });
 });
 
-describe('PvListClient — titre mnémonique (FX-10)', () => {
-  it('given un PV scellé (engineId burmister) et le projet chargé, when la liste s’affiche, then le titre est "Note de calcul — {projet} · {logiciel}" (nom métier humanisé, pas le slug)', async () => {
-    mockListPvs.mockResolvedValue([PV]);
-    mockGetProjectCached.mockResolvedValue({
-      name: 'Route Dakar-Thiès — dimensionnement',
-    });
+describe('PvListClient — titre mnémonique (FX-10, révisé maquette finale écran 3)', () => {
+  // Révision titulaire (21/07/2026, maquette finale) : le titre est le TYPE DE
+  // NOTE (ex. « Note de calcul — Fondation profonde »), plus jamais le nom du
+  // projet répété (déjà visible dans le fil d'Ariane au-dessus de l'onglet).
+  // `getProjectCached` n'est donc plus appelé par ce composant.
+  it('given un PV scellé (engineId pieux/CASAGRANDE), when la liste s’affiche, then le titre est "Note de calcul — Fondation profonde" (pas le nom du projet)', async () => {
+    const PV_PIEUX: OfficialPv = { ...PV, engineId: 'pieux' };
+    mockListPvs.mockResolvedValue([PV_PIEUX]);
 
     await renderPvList();
 
-    expect(mockGetProjectCached).toHaveBeenCalledWith('org_01', 'proj_01');
-    expect(container.textContent).toContain(
-      'Note de calcul — Route Dakar-Thiès — dimensionnement · ROADSENS — Chaussées',
-    );
-    // Plus jamais le slug brut affiché comme identifiant du logiciel.
-    expect(container.textContent).not.toContain('burmister ·');
+    expect(container.textContent).toContain('Note de calcul — Fondation profonde');
+    expect(mockGetProjectCached).not.toHaveBeenCalled();
+  });
+
+  it('given un PV scellé (engineId radier/GEOPLAQUE), when la liste s’affiche, then le titre est "Note de calcul — Radier sur sol élastique"', async () => {
+    const PV_RADIER: OfficialPv = { ...PV, engineId: 'radier' };
+    mockListPvs.mockResolvedValue([PV_RADIER]);
+
+    await renderPvList();
+
+    expect(container.textContent).toContain('Note de calcul — Radier sur sol élastique');
+  });
+
+  it('given un PV scellé (engineId terzaghi), when la liste s’affiche, then le titre est "Note de calcul — Fondation superficielle"', async () => {
+    const PV_TERZAGHI: OfficialPv = { ...PV, engineId: 'terzaghi' };
+    mockListPvs.mockResolvedValue([PV_TERZAGHI]);
+
+    await renderPvList();
+
+    expect(container.textContent).toContain('Note de calcul — Fondation superficielle');
   });
 
   it('given le numéro officiel PV-2026-0001, when la liste s’affiche, then il reste visible en référence secondaire (pas comme titre)', async () => {
     mockListPvs.mockResolvedValue([PV]);
-    mockGetProjectCached.mockResolvedValue({ name: 'Route Dakar-Thiès' });
 
     await renderPvList();
 
@@ -399,14 +414,13 @@ describe('PvListClient — titre mnémonique (FX-10)', () => {
     expect(heading?.textContent).toContain('Note de calcul —');
   });
 
-  it('given le nom du projet pas encore résolu (getProjectCached en attente), when la liste s’affiche, then le titre reste correct sans planter (repli sans le segment projet)', async () => {
-    mockListPvs.mockResolvedValue([PV]);
-    // Ne se résout jamais dans le temps du test → projectName reste null.
-    mockGetProjectCached.mockReturnValue(new Promise(() => {}));
+  it('given un engineId inconnu (moteur futur non mappé), when la liste s’affiche, then le titre retombe sur le nom métier générique sans planter', async () => {
+    const PV_INCONNU: OfficialPv = { ...PV, engineId: 'futur-moteur-inconnu' };
+    mockListPvs.mockResolvedValue([PV_INCONNU]);
 
     await renderPvList();
 
-    expect(container.textContent).toContain('Note de calcul — ROADSENS — Chaussées');
+    expect(container.textContent).toContain('Note de calcul —');
     expect(container.textContent).toContain(PV.number);
   });
 });

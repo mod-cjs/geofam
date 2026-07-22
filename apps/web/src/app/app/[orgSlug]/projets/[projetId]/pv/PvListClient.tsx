@@ -26,7 +26,7 @@
  */
 
 import { Lock, Download, ShieldCheck, AlertCircle, RefreshCw, Eye } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { VerdictTag } from '../verdict';
 
@@ -35,17 +35,12 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { Skeleton } from '@/components/ui/Skeleton.client';
 import { useToast } from '@/components/ui/Toast';
-import {
-  getProjectCached,
-  listPvs,
-  verifyPv,
-  downloadPvPdf,
-  getPvDocument,
-} from '@/lib/api/client';
+import { listPvs, verifyPv, downloadPvPdf, getPvDocument } from '@/lib/api/client';
 import type { OfficialPv, VerifyPvResponse } from '@/lib/api/types';
-import { metaOf } from '@/lib/engine-labels';
+import { metaOf, slugOf } from '@/lib/engine-labels';
 import { useOrgId } from '@/lib/org-context';
 import { printInertHtml } from '@/lib/print-inert-html';
+import { SOFTWARE_CATALOG } from '@/lib/software-catalog';
 
 // `getPvDocument` renvoie `null` sur 404 (absence légitime) mais REJETTE sur
 // 409/intégrité rompue (cf. http-client.ts). Ici, le repli PDF a son propre
@@ -79,6 +74,88 @@ function formatDate(iso: string): string {
     .replace(/[\u202F\u00A0]/g, ' '); // espace ICU déterministe (anti #418)
 }
 
+// Date compacte (maquette finale, écran 3) — DD/MM/AAAA HH:mm, utilisée dans la
+// méta mono de la ligne PV. Distincte de `formatDate` (phrase complète, modale
+// de vérification) : un format numérique dense tient sur une seule ligne.
+function formatDateCompact(iso: string): string {
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Africa/Dakar',
+  }).format(new Date(iso));
+}
+
+// Titre mnémonique (FX-10, révisé maquette finale 21/07/2026) — le TYPE DE
+// NOTE, jamais le nom du projet (déjà affiché dans le fil d'Ariane au-dessus
+// de l'onglet, cf. ProjetLayoutClient : le répéter ici cassait la compacité
+// ET faisait doublon). Curation manuelle : plus court que le `label` complet
+// de l'EngineDescriptor (ex. « Fondation profonde — pieux (NF P 94-262) »
+// devient « Fondation profonde »), aligné mot pour mot sur la maquette
+// validée. Moteur non mappé (futur) → repli sur `metaOf` (nom métier), jamais
+// une exception.
+const NOTE_TYPE_LABEL: Record<string, string> = {
+  burmister: 'Chaussée',
+  terzaghi: 'Fondation superficielle',
+  pieux: 'Fondation profonde',
+  radier: 'Radier sur sol élastique',
+  pressiometre: 'Essai pressiométrique',
+  labo: 'Classification GTR',
+};
+
+function pvTitle(pv: OfficialPv): string {
+  const slug = slugOf(pv.engineId);
+  const type = NOTE_TYPE_LABEL[slug] ?? metaOf(pv.engineId).nom;
+  return `Note de calcul — ${type}`;
+}
+
+// Nom court du logiciel pour la méta compacte (« CASAGRANDE », « GEOPLAQUE »…)
+// — source unique : SOFTWARE_CATALOG (déjà utilisé par la galerie des 6
+// logiciels), pas une nouvelle copie locale des noms de marque.
+function logicielNomFor(engineId: string): string {
+  const slug = slugOf(engineId);
+  return SOFTWARE_CATALOG.find((s) => s.engineId === slug)?.nom ?? metaOf(engineId).nom;
+}
+
+// ---------------------------------------------------------------------------
+// Tri interactif + pagination (P2 dégelé, maquette finale écran 3, 21/07/2026)
+// ---------------------------------------------------------------------------
+
+type PvSortKey = 'date' | 'numero';
+type SortDir = 'asc' | 'desc';
+
+/** Recliquer sur l'option déjà active bascule le sens ; sinon adopte le sens par défaut. */
+const PV_SORT_OPTIONS: ReadonlyArray<{
+  key: PvSortKey;
+  label: string;
+  defaultDir: SortDir;
+}> = [
+  { key: 'date', label: 'Date de scellement', defaultDir: 'desc' },
+  { key: 'numero', label: 'Numéro', defaultDir: 'asc' },
+];
+
+/** Nombre de PV affichés par page (pagination client, ~12/page). */
+const PV_PAGE_SIZE = 12;
+
+function comparerPvs(a: OfficialPv, b: OfficialPv, key: PvSortKey, dir: SortDir): number {
+  let cmp: number;
+  switch (key) {
+    case 'numero':
+      cmp = a.number.localeCompare(b.number, 'fr', {
+        numeric: true,
+        sensitivity: 'base',
+      });
+      break;
+    case 'date':
+    default:
+      cmp = new Date(a.sealedAt).getTime() - new Date(b.sealedAt).getTime();
+      break;
+  }
+  return dir === 'asc' ? cmp : -cmp;
+}
+
 interface PvListClientProps {
   orgSlug: string;
   projetId: string;
@@ -95,24 +172,12 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Nom du projet — pour le titre mnémonique des PV (FX-10). `getProjectCached`
-  // réutilise le fetch déjà fait par ProjetLayoutClient (bande projet) au lieu
-  // de dupliquer un appel GET /projects/:id.
-  const [projectName, setProjectName] = useState<string | null>(null);
-  useEffect(() => {
-    if (!orgId) return;
-    let cancelled = false;
-    getProjectCached(orgId, projetId)
-      .then((p) => {
-        if (!cancelled) setProjectName(p.name);
-      })
-      .catch(() => {
-        /* nom absent → repli sur le numéro de PV seul, cf. PvRow */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId, projetId]);
+  // Tri interactif + pagination client (P2 dégelé, maquette finale écran 3).
+  // Défaut = Date de scellement décroissante : identique à l'ordre initial
+  // servi par l'API, aucune surprise à l'ouverture.
+  const [sortKey, setSortKey] = useState<PvSortKey>('date');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Modale vérification intégrité
   const [verifyModal, setVerifyModal] = useState<{
@@ -156,6 +221,37 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
   useEffect(() => {
     loadPvs();
   }, [loadPvs]);
+
+  /** Reclique sur l'option déjà active → bascule le sens ; sinon adopte le sens par défaut. */
+  function toggleSort(option: (typeof PV_SORT_OPTIONS)[number]) {
+    if (sortKey === option.key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(option.key);
+      setSortDir(option.defaultDir);
+    }
+    // Changement de tri : on repart de la première page — sinon une page 2
+    // pourrait afficher un contenu incohérent avec le nouvel ordre.
+    setCurrentPage(1);
+  }
+
+  // Tri côté client (P2 dégelé) — la liste entière est déjà en mémoire
+  // (listPvs renvoie tout le projet) : trier ici ne contredit pas le serveur,
+  // dont l'ordre initial n'est qu'un défaut. Copie défensive : sort mute en place.
+  const sortedPvs = useMemo(
+    () => [...pvs].sort((a, b) => comparerPvs(a, b, sortKey, sortDir)),
+    [pvs, sortKey, sortDir],
+  );
+
+  // Pagination client (~12/page) — appliquée APRÈS le tri. Bornage défensif :
+  // si la page en mémoire dépasse le nouveau total, on affiche la dernière
+  // page valide plutôt qu'un panneau vide en silence.
+  const totalPages = Math.max(1, Math.ceil(sortedPvs.length / PV_PAGE_SIZE));
+  const pageActuelle = Math.min(currentPage, totalPages);
+  const pagedPvs = useMemo(
+    () => sortedPvs.slice((pageActuelle - 1) * PV_PAGE_SIZE, pageActuelle * PV_PAGE_SIZE),
+    [sortedPvs, pageActuelle],
+  );
 
   // Nettoyage de la blob URL si le composant est démonté pendant un aperçu
   useEffect(() => {
@@ -244,8 +340,12 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
     );
   }
 
+  // Largeur de contenu alignée sur la maquette : à 800 px, la ligne PV compacte
+  // comprimait la méta au point de masquer le logiciel et la date sous l'ellipse
+  // après le seul numéro. 1100 px laisse « numéro · logiciel · date » tenir sur
+  // une ligne à côté des badges et des trois actions, sans casser la compacité.
   return (
-    <div style={{ padding: 24, maxWidth: 800, margin: '0 auto', width: '100%' }}>
+    <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto', width: '100%' }}>
       <h2
         style={{
           fontSize: 'var(--text-lg)',
@@ -307,18 +407,77 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
         />
       )}
 
-      {/* Liste des PV */}
+      {/* Barre d'outils — tri interactif (P2 dégelé, maquette finale). Recherche,
+        filtres et livraison groupée restent P2 : rien n'est promis ici. */}
+      {!loading && !error && pvs.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 7,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ flex: 1 }} />
+          <div
+            role="group"
+            aria-label="Trier les PV"
+            style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}
+          >
+            {PV_SORT_OPTIONS.map((option) => {
+              const actif = sortKey === option.key;
+              const croissant = sortDir === 'asc';
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  aria-pressed={actif}
+                  aria-label={
+                    actif
+                      ? `Trier par ${option.label}, ordre ${croissant ? 'croissant' : 'décroissant'} — cliquer pour inverser`
+                      : `Trier par ${option.label}`
+                  }
+                  onClick={() => toggleSort(option)}
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    padding: '6px 10px',
+                    borderRadius: 999,
+                    border: `1px solid ${actif ? 'var(--border-focus)' : 'var(--border-subtle)'}`,
+                    background: actif
+                      ? 'var(--state-selected-bg)'
+                      : 'var(--surface-base)',
+                    color: actif ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    fontWeight: actif ? 600 : 400,
+                    whiteSpace: 'nowrap',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {option.label}
+                  {actif && (
+                    <span aria-hidden="true" style={{ marginLeft: 4 }}>
+                      {croissant ? '↑' : '↓'}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Liste des PV — page courante uniquement (pagination client, maquette
+        finale : lignes compactes sur une rangée, pas de grandes cartes). */}
       {!loading && !error && pvs.length > 0 && (
         <div
           role="list"
           aria-label="Liste des procès-verbaux scellés"
           style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
         >
-          {pvs.map((pv) => (
+          {pagedPvs.map((pv) => (
             <PvRow
               key={pv.id}
               pv={pv}
-              projectName={projectName}
               downloading={downloadingId === pv.id}
               previewing={previewingId === pv.id}
               onDownload={() => handleDownload(pv)}
@@ -326,6 +485,72 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
               onVerify={() => handleVerify(pv)}
             />
           ))}
+        </div>
+      )}
+
+      {/* Pagination client (~12/page) — masquée dès que tout tient sur une page. */}
+      {!loading && !error && pvs.length > 0 && totalPages > 1 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            marginTop: 20,
+          }}
+        >
+          <button
+            type="button"
+            aria-label="Page précédente"
+            disabled={pageActuelle <= 1}
+            onClick={() => setCurrentPage(Math.max(1, pageActuelle - 1))}
+            style={{
+              padding: '6px 12px',
+              minHeight: 32,
+              fontSize: 'var(--text-sm)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-base)',
+              background: 'var(--surface-base)',
+              color: pageActuelle <= 1 ? 'var(--text-muted)' : 'var(--text-primary)',
+              cursor: pageActuelle <= 1 ? 'not-allowed' : 'pointer',
+              opacity: pageActuelle <= 1 ? 0.5 : 1,
+            }}
+          >
+            Précédent
+          </button>
+          <span
+            role="status"
+            aria-live="polite"
+            style={{
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-secondary)',
+              fontFamily: 'var(--font-mono)',
+              minWidth: 100,
+              textAlign: 'center',
+            }}
+          >
+            Page {pageActuelle} sur {totalPages}
+          </span>
+          <button
+            type="button"
+            aria-label="Page suivante"
+            disabled={pageActuelle >= totalPages}
+            onClick={() => setCurrentPage(Math.min(totalPages, pageActuelle + 1))}
+            style={{
+              padding: '6px 12px',
+              minHeight: 32,
+              fontSize: 'var(--text-sm)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-base)',
+              background: 'var(--surface-base)',
+              color:
+                pageActuelle >= totalPages ? 'var(--text-muted)' : 'var(--text-primary)',
+              cursor: pageActuelle >= totalPages ? 'not-allowed' : 'pointer',
+              opacity: pageActuelle >= totalPages ? 0.5 : 1,
+            }}
+          >
+            Suivant
+          </button>
         </div>
       )}
 
@@ -540,21 +765,14 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Ligne PV
+// Ligne PV — maquette finale écran 3 (21/07/2026) : ligne COMPACTE sur une
+// rangée, PAS une grande carte. Le titre (type de note) et la méta
+// (numéro · logiciel · date) tiennent chacun sur une seule ligne, jamais de
+// numéro de PV coupé au milieu (bug rapporté sur le déployé).
 // ---------------------------------------------------------------------------
-
-// Titre mnémonique (FX-10) — le numéro officiel (immuable, scellé) n'est
-// jamais le titre : il reste affiché en référence secondaire dans PvRow.
-function pvTitle(pv: OfficialPv, projectName: string | null): string {
-  const nom = metaOf(pv.engineId).nom;
-  return projectName
-    ? `Note de calcul — ${projectName} · ${nom}`
-    : `Note de calcul — ${nom}`;
-}
 
 function PvRow({
   pv,
-  projectName,
   downloading,
   previewing,
   onDownload,
@@ -562,7 +780,6 @@ function PvRow({
   onVerify,
 }: {
   pv: OfficialPv;
-  projectName: string | null;
   downloading: boolean;
   previewing: boolean;
   onDownload: () => void;
@@ -584,9 +801,8 @@ function PvRow({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 16,
-        padding: '14px 16px',
-        flexWrap: 'wrap',
+        gap: 12,
+        padding: '11px 13px',
         // Surface PLATE, volontairement pas « verre » : le dégradé du verre
         // descend jusqu'à la couleur du fond, ce qui délave des lignes
         // répétées et leur fait perdre leur contour. Le verre est réservé au
@@ -604,8 +820,8 @@ function PvRow({
           le rouge restent réservés aux verdicts de conformité. */}
       <div
         style={{
-          width: 36,
-          height: 36,
+          width: 31,
+          height: 31,
           borderRadius: 'var(--radius-base)',
           background: 'var(--surface-nav)',
           display: 'flex',
@@ -615,19 +831,23 @@ function PvRow({
         }}
       >
         <Lock
-          size={16}
+          size={14}
           strokeWidth={1.5}
           aria-hidden="true"
           style={{ color: 'var(--text-on-nav)' }}
         />
       </div>
 
-      {/* Infos */}
+      {/* Infos — DEUX lignes maximum, chacune contrainte à un seul rang
+          (nowrap + ellipsis) : c'est ce qui empêche le numéro de PV de se
+          couper au milieu sur une ligne étroite. */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        {/* Titre mnémonique (FX-10) — projet + logiciel humanisé, jamais le
-            numéro officiel (immuable, scellé — cf. référence secondaire ci-dessous). */}
+        {/* Titre mnémonique — le TYPE DE NOTE (ex. « Fondation profonde »),
+            jamais le nom du projet (déjà dans le fil d'Ariane) ni le numéro
+            officiel (référence secondaire ci-dessous). */}
         <span
           style={{
+            display: 'block',
             fontSize: 'var(--text-sm)',
             fontWeight: 500,
             color: 'var(--text-primary)',
@@ -636,56 +856,25 @@ function PvRow({
             whiteSpace: 'nowrap',
           }}
         >
-          {pvTitle(pv, projectName)}
+          {pvTitle(pv)}
         </span>
-        {/* Référence secondaire — numéro officiel (puce + mono, discret) + auteur/date */}
+        {/* Méta compacte — numéro officiel · logiciel · date de scellement,
+            UN SEUL bloc mono sur une ligne (pas de « · » orphelin éclaté sur
+            plusieurs éléments). Le hash HMAC (non présent dans la maquette,
+            cf. commentaire ci-dessous) reste accessible en tooltip discret. */}
         <div
           style={{
-            fontSize: 'var(--text-xs)',
-            color: 'var(--text-secondary)',
-            marginTop: 2,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            flexWrap: 'wrap',
-          }}
-        >
-          <span
-            aria-hidden="true"
-            style={{
-              display: 'inline-block',
-              width: 4,
-              height: 4,
-              borderRadius: '50%',
-              background: 'var(--text-muted)',
-              flexShrink: 0,
-            }}
-          />
-          <span
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontVariantNumeric: 'tabular-nums',
-              color: 'var(--text-muted)',
-            }}
-          >
-            {pv.number}
-          </span>
-          <span>
-            · {pv.sealedBy} · {formatDate(pv.sealedAt)}
-          </span>
-        </div>
-        {/* Hash HMAC tronqué — 8 chars, visible mais sans légende explicative */}
-        <div
-          style={{
-            fontSize: 11,
             fontFamily: 'var(--font-mono)',
-            fontVariantNumeric: 'tabular-nums',
-            color: 'var(--text-muted)',
-            marginTop: 4,
+            fontSize: 10,
+            color: 'var(--text-secondary)',
+            marginTop: 3,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
-          title="Code d'intégrité HMAC (8 premiers caractères)"
+          title={`Code d'intégrité (HMAC tronqué) : ${pv.hmacTruncated}`}
         >
-          {pv.hmacTruncated}
+          {pv.number} · {logicielNomFor(pv.engineId)} · {formatDateCompact(pv.sealedAt)}
         </div>
       </div>
 

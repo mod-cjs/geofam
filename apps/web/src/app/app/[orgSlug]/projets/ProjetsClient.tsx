@@ -8,13 +8,20 @@
  *  - recherche par nom ET description, insensible casse/accents ;
  *  - compteurs Actifs/Archivés connus SANS ouvrir la vue Archivés ;
  *  - chips de domaine (effectif, cumulatif, désactivé à zéro — jamais masqué) ;
- *  - indicateur de tri non retriable côté client (le serveur fait foi) ;
  *  - menu d'actions par ligne (⋮) : Renommer / Archiver / Supprimer définitivement ;
  *  - colonne Contenu (N calculs / N PV) ;
  *  - suppression DÉFINITIVE, distincte de l'archivage (irréversible, confirmation forte) ;
  *  - affordances d'écriture gouvernées par le rôle courant (confort d'usage
  *    UNIQUEMENT — cf. RowActionsMenu et BoutonRestaurer plus bas : la seule
  *    barrière réelle reste le RBAC serveur).
+ *
+ * Ajouts 22/07/2026 — la liste entière est chargée côté client (`listProjects`
+ * renvoie tout l'org) : tri et pagination sont donc du traitement d'AFFICHAGE
+ * local, sans appel réseau supplémentaire. Ordre de la chaîne : recherche →
+ * domaine → tri → pagination.
+ *  - tri INTERACTIF (activité / nom / nombre de calculs), sens basculable ;
+ *  - pagination CLIENT (PAGE_SIZE par page), page remise à 1 à chaque
+ *    changement de recherche, de domaine ou de vue Actifs/Archivés.
  */
 
 import {
@@ -58,6 +65,45 @@ const DOMAIN_LABEL: Record<ProjectDomain, string> = {
   FD: 'Fondations',
   LB: 'Laboratoire',
 };
+
+/**
+ * Tri interactif (P1, 22/07/2026) — toute la liste étant déjà en mémoire, on
+ * trie côté client sans contredire le serveur (dont l'ordre n'est que le tri
+ * initial). Chaque option porte un sens par défaut ; recliquer sur l'option
+ * déjà active BASCULE le sens plutôt que de rester figé.
+ */
+type SortKey = 'activite' | 'nom' | 'calculs';
+type SortDir = 'asc' | 'desc';
+
+const SORT_OPTIONS: ReadonlyArray<{ key: SortKey; label: string; defaultDir: SortDir }> =
+  [
+    { key: 'activite', label: 'Dernière activité', defaultDir: 'desc' },
+    { key: 'nom', label: 'Nom', defaultDir: 'asc' },
+    { key: 'calculs', label: 'Calculs', defaultDir: 'desc' },
+  ];
+
+/** Nombre de projets affichés par page (pagination client, P1, 22/07/2026). */
+const PAGE_SIZE = 10;
+
+function comparerProjets(a: Project, b: Project, key: SortKey, dir: SortDir): number {
+  let cmp: number;
+  switch (key) {
+    case 'nom':
+      cmp = a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
+      break;
+    case 'calculs':
+      cmp = (a.calcCount ?? 0) - (b.calcCount ?? 0);
+      break;
+    case 'activite':
+    default: {
+      const ta = new Date(a.lastActivityAt ?? a.updatedAt).getTime();
+      const tb = new Date(b.lastActivityAt ?? b.updatedAt).getTime();
+      cmp = ta - tb;
+      break;
+    }
+  }
+  return dir === 'asc' ? cmp : -cmp;
+}
 
 /**
  * Rôles autorisés à ÉCRIRE (créer/renommer/archiver/restaurer), alignés sur le
@@ -173,6 +219,14 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
   const [selectedDomains, setSelectedDomains] = useState<Set<ProjectDomain>>(
     () => new Set(),
   );
+  // Tri interactif (P1) : défaut = dernière activité décroissante, identique
+  // à l'ordre initial servi par l'API — aucune surprise à l'ouverture.
+  const [sortKey, setSortKey] = useState<SortKey>('activite');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  // Pagination client (P1) — remise à 1 à chaque changement de recherche, de
+  // domaine ou de vue (cf. handlers ci-dessous), jamais au changement de tri
+  // seul (l'utilisateur reste sur la même « fenêtre » de résultats).
+  const [currentPage, setCurrentPage] = useState(1);
   // Vue « Archivés » (P0-8) : sans elle, un projet archivé serait introuvable —
   // la modale de suppression promettrait une réversibilité inaccessible.
   const [vue, setVue] = useState<'actifs' | 'archives'>('actifs');
@@ -392,8 +446,24 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
       else next.add(d);
       return next;
     });
+    // Changement de filtre : on repart de la première page (P1) — sinon une
+    // page 3 pourrait se retrouver vide après un filtrage qui réduit la liste.
+    setCurrentPage(1);
   }
 
+  /** Reclique sur l'option déjà active → bascule le sens ; sinon adopte le sens par défaut de l'option. */
+  function toggleSort(option: (typeof SORT_OPTIONS)[number]) {
+    if (sortKey === option.key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(option.key);
+      setSortDir(option.defaultDir);
+    }
+  }
+
+  // Filtrer → trier (l'ordre logique demandé). La pagination est appliquée
+  // séparément plus bas, APRÈS ce calcul — visibleProjects reste la liste
+  // complète filtrée+triée, utile pour les messages « aucun résultat ».
   const visibleProjects = useMemo(() => {
     const q = normaliser(query.trim());
     let list = projects;
@@ -406,11 +476,22 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
     if (selectedDomains.size > 0) {
       list = list.filter((p) => p.domain !== null && selectedDomains.has(p.domain));
     }
-    // Tri par activité : le SERVEUR fait foi (il seul connaît le dernier calcul
-    // et le dernier PV). Le front ne retrie JAMAIS — il y avait jusqu'ici deux
-    // vérités d'ordre, dont aucune ne reflétait l'activité réelle.
-    return list;
-  }, [projects, query, selectedDomains]);
+    // Tri INTERACTIF côté client (P1) : la liste entière étant déjà chargée,
+    // ceci ne contredit pas le serveur — dont l'ordre initial n'était qu'un
+    // défaut. Copie défensive : Array.prototype.sort mute en place.
+    return [...list].sort((a, b) => comparerProjets(a, b, sortKey, sortDir));
+  }, [projects, query, selectedDomains, sortKey, sortDir]);
+
+  // Pagination client (P1) — appliquée APRÈS recherche + domaine + tri.
+  const totalPages = Math.max(1, Math.ceil(visibleProjects.length / PAGE_SIZE));
+  // Bornage défensif : si la page en mémoire dépasse le nouveau total (liste
+  // réduite par un filtre), on affiche la dernière page valide plutôt qu'un
+  // panneau vide en silence.
+  const pageActuelle = Math.min(currentPage, totalPages);
+  const pagedProjects = useMemo(
+    () => visibleProjects.slice((pageActuelle - 1) * PAGE_SIZE, pageActuelle * PAGE_SIZE),
+    [visibleProjects, pageActuelle],
+  );
 
   return (
     <div style={{ padding: '32px 32px', maxWidth: 1100, margin: '0 auto' }}>
@@ -565,7 +646,11 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
               <input
                 type="search"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  // Changement de recherche : on repart de la première page (P1).
+                  setCurrentPage(1);
+                }}
                 placeholder="Filtrer par nom ou description"
                 aria-label="Filtrer les projets"
                 style={{
@@ -603,7 +688,11 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
                   key={v}
                   type="button"
                   aria-pressed={vue === v}
-                  onClick={() => setVue(v)}
+                  onClick={() => {
+                    setVue(v);
+                    // Changement de vue : on repart de la première page (P1).
+                    setCurrentPage(1);
+                  }}
                   style={{
                     padding: '7px 13px',
                     minHeight: 32,
@@ -661,27 +750,54 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
 
             <div style={{ flex: 1 }} />
 
-            {/* Indicateur de tri — NON interactif : le serveur trie déjà par
-              dernière activité décroissante ; un basculeur client ne pourrait
-              proposer que des ordres que le serveur sait rendre, et il n'y en
-              a qu'un aujourd'hui. Cf. incident passé : deux vérités d'ordre
-              (front/serveur), aucune ne reflétant l'activité réelle. */}
-            <span
-              role="status"
-              aria-label="Trié par dernière activité, décroissant"
-              style={{
-                fontSize: 'var(--text-xs)',
-                padding: '6px 10px',
-                borderRadius: 999,
-                border: '1px solid var(--border-focus)',
-                background: 'var(--state-selected-bg)',
-                color: 'var(--text-primary)',
-                fontWeight: 500,
-                whiteSpace: 'nowrap',
-              }}
+            {/* Tri INTERACTIF (P1, 22/07/2026) — toute la liste est déjà en
+              mémoire (listProjects renvoie tout l'org) : trier côté client ne
+              contredit pas le serveur, dont l'ordre initial n'est qu'un
+              défaut. Recliquer sur l'option active bascule le sens (↑/↓,
+              toujours visible en triple redondance : icône + libellé aria). */}
+            <div
+              role="group"
+              aria-label="Trier les projets"
+              style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}
             >
-              Dernière activité ↓
-            </span>
+              {SORT_OPTIONS.map((option) => {
+                const actif = sortKey === option.key;
+                const croissant = sortDir === 'asc';
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    aria-pressed={actif}
+                    aria-label={
+                      actif
+                        ? `Trier par ${option.label}, ordre ${croissant ? 'croissant' : 'décroissant'} — cliquer pour inverser`
+                        : `Trier par ${option.label}`
+                    }
+                    onClick={() => toggleSort(option)}
+                    style={{
+                      fontSize: 'var(--text-xs)',
+                      padding: '6px 10px',
+                      borderRadius: 999,
+                      border: `1px solid ${actif ? 'var(--border-focus)' : 'var(--border-subtle)'}`,
+                      background: actif
+                        ? 'var(--state-selected-bg)'
+                        : 'var(--surface-base)',
+                      color: actif ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      fontWeight: actif ? 600 : 400,
+                      whiteSpace: 'nowrap',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {option.label}
+                    {actif && (
+                      <span aria-hidden="true" style={{ marginLeft: 4 }}>
+                        {croissant ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -699,18 +815,19 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
           onCta={() => {
             setQuery('');
             setSelectedDomains(new Set());
+            setCurrentPage(1);
           }}
         />
       )}
 
-      {/* Liste des projets */}
+      {/* Liste des projets — page courante uniquement (pagination P1) */}
       {!loading && !error && visibleProjects.length > 0 && (
         <div
           role="list"
           aria-label="Liste des projets"
           style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
         >
-          {visibleProjects.map((project) => (
+          {pagedProjects.map((project) => (
             <ProjectRow
               key={project.id}
               project={project}
@@ -728,6 +845,73 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
               restauration={restaurationEnCours === project.id}
             />
           ))}
+        </div>
+      )}
+
+      {/* Pagination client (P1, 22/07/2026) — appliquée APRÈS recherche +
+        domaine + tri ; masquée dès que tout tient sur une page. */}
+      {!loading && !error && visibleProjects.length > 0 && totalPages > 1 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            marginTop: 20,
+          }}
+        >
+          <button
+            type="button"
+            aria-label="Page précédente"
+            disabled={pageActuelle <= 1}
+            onClick={() => setCurrentPage(Math.max(1, pageActuelle - 1))}
+            style={{
+              padding: '6px 12px',
+              minHeight: 32,
+              fontSize: 'var(--text-sm)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-base)',
+              background: 'var(--surface-base)',
+              color: pageActuelle <= 1 ? 'var(--text-muted)' : 'var(--text-primary)',
+              cursor: pageActuelle <= 1 ? 'not-allowed' : 'pointer',
+              opacity: pageActuelle <= 1 ? 0.5 : 1,
+            }}
+          >
+            Précédent
+          </button>
+          <span
+            role="status"
+            aria-live="polite"
+            style={{
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-secondary)',
+              fontFamily: 'var(--font-mono)',
+              minWidth: 100,
+              textAlign: 'center',
+            }}
+          >
+            Page {pageActuelle} sur {totalPages}
+          </span>
+          <button
+            type="button"
+            aria-label="Page suivante"
+            disabled={pageActuelle >= totalPages}
+            onClick={() => setCurrentPage(Math.min(totalPages, pageActuelle + 1))}
+            style={{
+              padding: '6px 12px',
+              minHeight: 32,
+              fontSize: 'var(--text-sm)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-base)',
+              background: 'var(--surface-base)',
+              color:
+                pageActuelle >= totalPages ? 'var(--text-muted)' : 'var(--text-primary)',
+              cursor: pageActuelle >= totalPages ? 'not-allowed' : 'pointer',
+              opacity: pageActuelle >= totalPages ? 0.5 : 1,
+            }}
+          >
+            Suivant
+          </button>
         </div>
       )}
 

@@ -710,3 +710,357 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Filtres par logiciel, recherche, pagination — écran 2 (maquette 21/07/2026,
+// P1 dégelé). Ordre attendu de la chaîne : filtrer (chips + recherche) ->
+// paginer. Chaque changement de filtre/recherche remet la page à 1 (DoD §9 —
+// piège identifié : un simple bornage `min(page, totalPages)` masquerait un
+// oubli de remise à 1 tant que le nouveau total de pages ne descend pas
+// EN-DESSOUS de la page courante — cf. test de remise à 1 ci-dessous, construit
+// pour distinguer les deux comportements).
+// ---------------------------------------------------------------------------
+
+function makeCalc(overrides: Partial<CalcResult> & { id: string }): CalcResult {
+  return { ...CALC, label: overrides.id, ...overrides };
+}
+
+/**
+ * Saisit une valeur dans un input contrôlé React en jsdom. Une simple
+ * assignation `input.value = ...` ne déclenche pas le onChange React (le
+ * tracker interne de React ne voit pas le changement) — même patron que
+ * `toolbar.test.tsx` (recherche projets, écran 1).
+ */
+function saisir(input: HTMLInputElement, valeur: string) {
+  const setter = Object.getOwnPropertyDescriptor(
+    window.HTMLInputElement.prototype,
+    'value',
+  )!.set!;
+  setter.call(input, valeur);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+describe('CalculsClient — filtres par logiciel (P1 dégelé)', () => {
+  const CALC_PIEUX_1 = makeCalc({
+    id: 'p1',
+    engineId: 'fondation-profonde-pieux',
+    pvId: 'pv_p1',
+  });
+  const CALC_PIEUX_2 = makeCalc({ id: 'p2', engineId: 'fondation-profonde-pieux' });
+  const CALC_TERZ_1 = makeCalc({
+    id: 't1',
+    engineId: 'fondation-terzaghi',
+    pvId: 'pv_t1',
+  });
+  const CALC_RADIER_1 = makeCalc({ id: 'r1', engineId: 'radier-plaque' });
+  const MIXTE = [CALC_PIEUX_1, CALC_PIEUX_2, CALC_TERZ_1, CALC_RADIER_1];
+
+  it("given des calculs de plusieurs logiciels, when rendu, then « Tous » porte l'effectif total et chaque logiciel présent porte son propre effectif — les logiciels ABSENTS restent affichés, désactivés (jamais masqués)", async () => {
+    mockListCalcResults.mockResolvedValue(MIXTE);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+
+    const chips = container.querySelectorAll(
+      '[role="group"][aria-label*="logiciel"] button',
+    );
+    const tous = Array.from(chips).find((b) => b.textContent?.startsWith('Tous'));
+    expect(tous?.textContent).toContain('4');
+    expect(tous?.getAttribute('aria-pressed')).toBe('true');
+
+    function chip(label: string): HTMLButtonElement {
+      return Array.from(chips).find((b) =>
+        b.textContent?.startsWith(label),
+      ) as HTMLButtonElement;
+    }
+
+    expect(chip('CASAGRANDE').textContent).toContain('2');
+    expect(chip('CASAGRANDE').disabled).toBe(false);
+    expect(chip('Terzaghi').textContent).toContain('1');
+    expect(chip('GEOPLAQUE').textContent).toContain('1');
+
+    // Absents de la liste chargée : affichés mais désactivés, pas masqués.
+    expect(chip('ROADSENS')).toBeTruthy();
+    expect(chip('ROADSENS').textContent).toContain('0');
+    expect(chip('ROADSENS').disabled).toBe(true);
+    expect(chip('PressioPro')).toBeTruthy();
+    expect(chip('PressioPro').textContent).toContain('0');
+    expect(chip('PressioPro').disabled).toBe(true);
+    expect(chip('FASTLAB').textContent).toContain('0');
+    expect(chip('FASTLAB').disabled).toBe(true);
+
+    // Non scellés : calc_02 (pieux) et r1 (radier) n'ont pas de pvId.
+    expect(chip('Non scellés').textContent).toContain('2');
+  });
+
+  it('given les chips de logiciel, when on clique CASAGRANDE, then seuls les calculs de ce logiciel restent listés, et « Tous » redevient cliquable pour revenir', async () => {
+    mockListCalcResults.mockResolvedValue(MIXTE);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+
+    const chips = () =>
+      Array.from(
+        container.querySelectorAll('[role="group"][aria-label*="logiciel"] button'),
+      ) as HTMLButtonElement[];
+    const casagrande = chips().find((b) => b.textContent?.startsWith('CASAGRANDE'))!;
+
+    await act(async () => {
+      casagrande.click();
+    });
+    await flush();
+
+    expect(container.querySelectorAll('li')).toHaveLength(2);
+    expect(casagrande.getAttribute('aria-pressed')).toBe('true');
+    const tousApres = chips().find((b) => b.textContent?.startsWith('Tous'))!;
+    expect(tousApres.getAttribute('aria-pressed')).toBe('false');
+
+    await act(async () => {
+      tousApres.click();
+    });
+    await flush();
+
+    expect(container.querySelectorAll('li')).toHaveLength(4);
+  });
+
+  it('given le chip « Non scellés », when cliqué, then seuls les calculs sans PV apparaissent', async () => {
+    mockListCalcResults.mockResolvedValue(MIXTE);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+
+    const nonScelles = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.startsWith('Non scellés'),
+    ) as HTMLButtonElement;
+
+    await act(async () => {
+      nonScelles.click();
+    });
+    await flush();
+
+    // Assertion scopée à la LISTE (pas au panneau de détail) : la sélection
+    // par défaut (premier calcul chargé, p1) survit au changement de filtre
+    // et reste affichée dans le panneau — ce n'est pas ce que ce test vérifie.
+    const liste = container.querySelector(
+      '[data-testid="calculs-list-scroll"]',
+    ) as HTMLElement;
+    expect(liste.querySelectorAll('li')).toHaveLength(2);
+    expect(liste.textContent).not.toContain('p1');
+    expect(liste.textContent).not.toContain('t1');
+  });
+
+  it('given un logiciel à effectif ZÉRO, when on clique dessus (bouton disabled), then rien ne se passe — le filtre reste sur « Tous »', async () => {
+    mockListCalcResults.mockResolvedValue(MIXTE);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+
+    const roadsens = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.startsWith('ROADSENS'),
+    ) as HTMLButtonElement;
+
+    await act(async () => {
+      roadsens.click();
+    });
+    await flush();
+
+    // disabled -> le clic natif n'a déclenché aucun handler ; la liste entière
+    // reste affichée (pas de filtrage sur un logiciel à 0 calcul).
+    expect(container.querySelectorAll('li')).toHaveLength(4);
+  });
+});
+
+describe('CalculsClient — recherche (insensible casse + accents)', () => {
+  const CALC_ETE = makeCalc({
+    id: 'semelle-ete',
+    engineId: 'fondation-terzaghi',
+    label: 'Semelle — campagne d’été',
+  });
+  const CALC_HIVER = makeCalc({
+    id: 'pieu-hiver',
+    engineId: 'fondation-profonde-pieux',
+    label: 'Pieu — campagne d’hiver',
+  });
+
+  it('given une recherche insensible à la casse et aux accents, when on tape « ete », then seul le calcul dont le libellé contient « été » reste affiché — en direct, sans validation', async () => {
+    mockListCalcResults.mockResolvedValue([CALC_ETE, CALC_HIVER]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+    expect(container.querySelectorAll('li')).toHaveLength(2);
+
+    const search = container.querySelector('input[type="search"]') as HTMLInputElement;
+    expect(search).toBeTruthy();
+
+    await act(async () => {
+      saisir(search, 'ete');
+    });
+    await flush();
+
+    expect(container.querySelectorAll('li')).toHaveLength(1);
+    expect(container.textContent).toContain('été');
+    expect(container.textContent).not.toContain('hiver');
+  });
+
+  it('given une recherche qui vise le nom du logiciel (pas le libellé), when on tape « casagrande », then les calculs CASAGRANDE ressortent', async () => {
+    mockListCalcResults.mockResolvedValue([
+      CALC_HIVER, // pieux -> CASAGRANDE
+      CALC_ETE, // terzaghi
+    ]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+
+    const search = container.querySelector('input[type="search"]') as HTMLInputElement;
+    await act(async () => {
+      saisir(search, 'CASAGRANDE');
+    });
+    await flush();
+
+    expect(container.querySelectorAll('li')).toHaveLength(1);
+    expect(container.textContent).toContain(CALC_HIVER.label);
+  });
+
+  it("given une recherche sans aucune correspondance, when tapée, then un message d'absence de résultat s'affiche (pas l'état vide « aucun calcul »)", async () => {
+    mockListCalcResults.mockResolvedValue([CALC_ETE]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+
+    const search = container.querySelector('input[type="search"]') as HTMLInputElement;
+    await act(async () => {
+      saisir(search, 'zzz-introuvable');
+    });
+    await flush();
+
+    expect(container.querySelectorAll('li')).toHaveLength(0);
+    expect(container.textContent).toContain('Aucun calcul ne correspond');
+  });
+});
+
+describe('CalculsClient — pagination client (~12/page)', () => {
+  const TREIZE_PIEUX: CalcResult[] = Array.from({ length: 13 }, (_, i) =>
+    makeCalc({
+      id: `pieu-${String(i).padStart(2, '0')}`,
+      engineId: 'fondation-profonde-pieux',
+    }),
+  );
+
+  it('given plus de 12 calculs, when rendu, then seuls les 12 premiers apparaissent et un indicateur de pagination affiche « Page 1 sur 2 », Précédent désactivé', async () => {
+    mockListCalcResults.mockResolvedValue(TREIZE_PIEUX);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+
+    expect(container.querySelectorAll('li')).toHaveLength(12);
+    const pageStatus = container.querySelector('[role="status"]');
+    expect(pageStatus?.textContent).toContain('1');
+    expect(pageStatus?.textContent).toContain('2');
+
+    const precedent = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Précédent'),
+    ) as HTMLButtonElement;
+    expect(precedent.disabled).toBe(true);
+  });
+
+  it('given la page 1, when on clique Suivant, then la page 2 affiche le calcul restant et Suivant devient désactivé', async () => {
+    mockListCalcResults.mockResolvedValue(TREIZE_PIEUX);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+
+    const suivant = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Suivant'),
+    ) as HTMLButtonElement;
+
+    await act(async () => {
+      suivant.click();
+    });
+    await flush();
+
+    expect(container.querySelectorAll('li')).toHaveLength(1);
+    expect(container.textContent).toContain('pieu-12');
+    expect(suivant.disabled).toBe(true);
+  });
+
+  it('given 12 calculs ou moins, when rendu, then AUCUN contrôle de pagination ne s’affiche', async () => {
+    mockListCalcResults.mockResolvedValue(TREIZE_PIEUX.slice(0, 3));
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(
+      Array.from(container.querySelectorAll('button')).some((b) =>
+        b.textContent?.includes('Suivant'),
+      ),
+    ).toBe(false);
+  });
+
+  it("given un changement de filtre alors qu'on est sur la page 2, when le filtre est appliqué, then la pagination REPART à la page 1 (pas un simple bornage qui laisserait la page 2)", async () => {
+    // 13 pieux + 1 terzaghi = 14 (page 1 = 12 pieux, page 2 = 1 pieux + 1 terzaghi).
+    const terzaghi = makeCalc({ id: 'terzaghi-seul', engineId: 'fondation-terzaghi' });
+    mockListCalcResults.mockResolvedValue([...TREIZE_PIEUX, terzaghi]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+
+    const suivant = () =>
+      Array.from(container.querySelectorAll('button')).find((b) =>
+        b.textContent?.includes('Suivant'),
+      ) as HTMLButtonElement;
+    await act(async () => {
+      suivant().click();
+    });
+    await flush();
+    // Sur la page 2 : le pieu restant + le calcul terzaghi.
+    expect(container.querySelectorAll('li')).toHaveLength(2);
+
+    const casagrande = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.startsWith('CASAGRANDE'),
+    ) as HTMLButtonElement;
+    await act(async () => {
+      casagrande.click();
+    });
+    await flush();
+
+    // Filtré sur CASAGRANDE : 13 pieux, 2 pages. Si la page n'était pas remise
+    // à 1, le bornage seul (min(2, 2)) laisserait la page 2 (1 seul résultat) :
+    // ce test échouerait alors avec 1 <li>, pas 12.
+    expect(container.querySelectorAll('li')).toHaveLength(12);
+    const pageStatus = container.querySelector('[role="status"]');
+    expect(pageStatus?.textContent).toContain('1');
+  });
+
+  it('given une sélection sur la page 1, when on change de page, then le panneau de détail conserve le calcul sélectionné (la sélection traverse la pagination)', async () => {
+    mockListCalcResults.mockResolvedValue(TREIZE_PIEUX);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+
+    // Sélectionne le dernier élément de la page 1 (pieu-11), différent du
+    // premier sélectionné par défaut (pieu-00).
+    const items = Array.from(container.querySelectorAll('li button'));
+    await act(async () => {
+      (items[11] as HTMLButtonElement).click();
+    });
+    await flush();
+
+    const heading = container.querySelector('section h2 + div') as HTMLElement;
+    expect(heading.textContent).toContain('pieu-11');
+
+    const suivant = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Suivant'),
+    ) as HTMLButtonElement;
+    await act(async () => {
+      suivant.click();
+    });
+    await flush();
+
+    // Toujours le même calcul dans le panneau, alors que pieu-11 n'est plus
+    // dans la liste visible (page 2 ne montre que pieu-12).
+    expect(container.querySelectorAll('li')).toHaveLength(1);
+    const headingApres = container.querySelector('section h2 + div') as HTMLElement;
+    expect(headingApres.textContent).toContain('pieu-11');
+  });
+});

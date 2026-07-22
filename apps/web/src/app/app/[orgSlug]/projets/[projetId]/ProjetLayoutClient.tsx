@@ -109,8 +109,15 @@ export default function ProjetLayoutClient({
         minHeight: 0,
       }}
     >
-      {/* Bande projet 44px */}
+      {/* Bande projet 44px — les onglets suivent IMMÉDIATEMENT le groupe
+          nom+tag (correction titulaire, maquette écran 2 : « le
+          positionnement des onglets n'est pas correct »). Avant correction,
+          un séparateur vertical isolait visuellement les deux groupes ; il
+          disparaît (la maquette n'en porte pas). Aucune marge automatique
+          n'est utilisée nulle part ici : c'est elle qui pousserait les
+          onglets loin du reste au lieu de les faire suivre normalement. */}
       <div
+        data-testid="projet-bande"
         style={{
           height: 44,
           background: 'var(--surface-base)',
@@ -118,7 +125,7 @@ export default function ProjetLayoutClient({
           display: 'flex',
           alignItems: 'center',
           padding: '0 24px',
-          gap: 16,
+          gap: 12,
           flexShrink: 0,
           overflow: 'hidden',
           position: 'sticky',
@@ -177,17 +184,9 @@ export default function ProjetLayoutClient({
           )}
         </div>
 
-        {/* Séparateur vertical */}
-        <div
-          style={{
-            width: 1,
-            height: 20,
-            background: 'var(--border-subtle)',
-            flexShrink: 0,
-          }}
-        />
-
-        {/* Onglets */}
+        {/* Onglets — second et DERNIER groupe de la bande, sans rien entre
+            les deux : c'est ce qui les fait suivre visuellement le nom+tag
+            plutôt que d'être perçus comme une zone à part. */}
         <nav
           aria-label="Onglets du projet"
           style={{

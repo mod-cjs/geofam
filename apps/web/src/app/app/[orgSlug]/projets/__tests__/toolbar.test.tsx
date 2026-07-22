@@ -1,9 +1,9 @@
 /**
- * P0 — barre d'outils de la liste des projets (écran 1, maquette validée
+ * P0/P1 — barre d'outils de la liste des projets (écran 1, maquette validée
  * 21/07/2026, lignes 229-239) : recherche, compteurs Actifs/Archivés connus
  * SANS ouvrir la vue, chips de domaine avec effectif (multi-sélection
  * cumulative, domaine à 0 affiché mais désactivé — jamais masqué en
- * silence), indicateur de tri non retriable côté client.
+ * silence), tri interactif.
  *
  * CONTRAT VERROUILLÉ (given/when/then)
  *  #1 le champ de recherche filtre par NOM et par DESCRIPTION, insensible à
@@ -12,15 +12,15 @@
  *     déclencher un second appel réseau au changement de vue ;
  *  #3 les chips de domaine portent l'effectif et sont cumulatifs ;
  *  #4 un domaine à effectif ZÉRO reste affiché, mais désactivé ;
- *  #5 l'indicateur de tri n'est PAS un bouton retriable côté client (le
- *     serveur fait foi sur l'ordre).
+ *  #5 le contrôle de tri (22/07/2026) est un VRAI bouton retriable côté
+ *     client, accessible (aria-pressed + aria-label), sens basculable.
  */
 
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-import { ORG_ID, ORG_SLUG, PROJETS_ACTIFS, PROJETS_ARCHIVES } from './fixtures';
+import { ORG_ID, ORG_SLUG, PROJETS_ACTIFS, PROJETS_ARCHIVES, projet } from './fixtures';
 
 const { mockListProjects, mockListArchived } = vi.hoisted(() => ({
   mockListProjects: vi.fn(),
@@ -135,6 +135,56 @@ describe('Liste des projets — barre d’outils', () => {
     expect(lignes[0]).toContain('Étude');
   });
 
+  it('#1d ANTI-RÉGRESSION (jeu de données réel de recette) GIVEN 3 projets « Démonstration — Chaussées/Fondations/Laboratoire » — WHEN on tape « fond » — THEN un seul projet reste', async () => {
+    const demo = [
+      projet({ id: 'd-ch', name: 'Démonstration — Chaussées', domain: 'CH' }),
+      projet({ id: 'd-fd', name: 'Démonstration — Fondations', domain: 'FD' }),
+      projet({ id: 'd-lb', name: 'Démonstration — Laboratoire', domain: 'LB' }),
+    ];
+    await monter(demo, []);
+    const input = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Filtrer les projets"]',
+    );
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        'value',
+      )!.set!;
+      setter.call(input, 'fond');
+      input!.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const lignes = texteLignes();
+    expect(lignes).toHaveLength(1);
+    expect(lignes[0]).toContain('Démonstration — Fondations');
+  });
+
+  it('#1e ANTI-RÉGRESSION GIVEN les mêmes 3 projets — WHEN on tape « démo » (avec accent) — THEN les 3 restent, et « demo » (sans accent) donne le même résultat', async () => {
+    const demo = [
+      projet({ id: 'd-ch', name: 'Démonstration — Chaussées', domain: 'CH' }),
+      projet({ id: 'd-fd', name: 'Démonstration — Fondations', domain: 'FD' }),
+      projet({ id: 'd-lb', name: 'Démonstration — Laboratoire', domain: 'LB' }),
+    ];
+    await monter(demo, []);
+    const input = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Filtrer les projets"]',
+    );
+    const taper = (valeur: string) =>
+      act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype,
+          'value',
+        )!.set!;
+        setter.call(input, valeur);
+        input!.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+
+    await taper('démo');
+    expect(texteLignes()).toHaveLength(3);
+
+    await taper('demo');
+    expect(texteLignes()).toHaveLength(3);
+  });
+
   it('#2 GIVEN le premier rendu — WHEN on bascule sur Archivés — THEN les compteurs sont déjà connus et AUCUN second appel réseau n’est déclenché', async () => {
     await monter();
     expect(mockListProjects).toHaveBeenCalledTimes(1);
@@ -189,15 +239,61 @@ describe('Liste des projets — barre d’outils', () => {
     expect(chipLb?.disabled).toBe(true);
   });
 
-  it('#5 GIVEN l’indicateur de tri — WHEN la liste s’affiche — THEN ce N’EST PAS un bouton retriable côté client', async () => {
+  it('#5a GIVEN la liste — WHEN elle s’affiche — THEN le tri est actif par défaut sur « Dernière activité », décroissant', async () => {
     await monter();
-    expect(container.textContent).toContain('Dernière activité');
-    const boutonTri = Array.from(container.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Dernière activité'),
+    const groupe = container.querySelector('[aria-label="Trier les projets"]');
+    expect(groupe).not.toBeNull();
+    const boutonActivite = Array.from(groupe?.querySelectorAll('button') ?? []).find(
+      (b) => b.textContent?.startsWith('Dernière activité'),
     );
-    // Aucun bouton cliquable ne doit porter ce libellé : un vrai basculeur ne
-    // pourrait proposer que des ordres que le serveur sait rendre, et le
-    // serveur ne rend QUE l'activité décroissante aujourd'hui.
-    expect(boutonTri).toBeUndefined();
+    expect(boutonActivite?.getAttribute('aria-pressed')).toBe('true');
+    expect(boutonActivite?.textContent).toContain('↓');
+  });
+
+  it('#5b GIVEN le tri par défaut — WHEN on clique « Nom » — THEN la liste est retriée par nom (A→Z par défaut)', async () => {
+    await monter();
+    const groupe = container.querySelector('[aria-label="Trier les projets"]');
+    const boutonNom = Array.from(groupe?.querySelectorAll('button') ?? []).find((b) =>
+      b.textContent?.startsWith('Nom'),
+    );
+    expect(boutonNom).not.toBeUndefined();
+
+    await act(async () => boutonNom?.click());
+
+    expect(boutonNom?.getAttribute('aria-pressed')).toBe('true');
+    expect(boutonNom?.textContent).toContain('↑');
+    // Ordre alphabétique attendu sur les 4 projets actifs de fixtures.ts
+    // (comparaison insensible casse/accents : « Étude » après « Essai brut »).
+    const lignes = texteLignes();
+    const ordreAttendu = ['Essai brut', 'Étude', 'Pont de Mbodiène', 'Route Dakar-Thiès'];
+    ordreAttendu.forEach((nom, i) => expect(lignes[i]).toContain(nom));
+  });
+
+  it('#5c GIVEN une option déjà active — WHEN on la reclique — THEN le sens du tri bascule', async () => {
+    await monter();
+    const groupe = container.querySelector('[aria-label="Trier les projets"]');
+    const boutonActivite = Array.from(groupe?.querySelectorAll('button') ?? []).find(
+      (b) => b.textContent?.startsWith('Dernière activité'),
+    );
+    expect(boutonActivite?.textContent).toContain('↓');
+
+    await act(async () => boutonActivite?.click());
+
+    expect(boutonActivite?.textContent).toContain('↑');
+    expect(boutonActivite?.getAttribute('aria-label')).toContain('croissant');
+  });
+
+  it('#5d GIVEN le tri par « Calculs » — WHEN il est activé — THEN l’ordre est décroissant par défaut (le plus de calculs d’abord)', async () => {
+    await monter();
+    const groupe = container.querySelector('[aria-label="Trier les projets"]');
+    const boutonCalculs = Array.from(groupe?.querySelectorAll('button') ?? []).find((b) =>
+      b.textContent?.startsWith('Calculs'),
+    );
+    await act(async () => boutonCalculs?.click());
+
+    expect(boutonCalculs?.textContent).toContain('↓');
+    const lignes = texteLignes();
+    // « Pont de Mbodiène » porte 40 calculs (le plus) : doit passer en tête.
+    expect(lignes[0]).toContain('Pont de Mbodiène');
   });
 });
