@@ -10,7 +10,7 @@ import { usePathname } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 
 import { DomainTag } from '@/components/ui/DomainTag';
-import { getProjectCached, listCalcResults, listPvs } from '@/lib/api/client';
+import { getProjectCached } from '@/lib/api/client';
 import type { Project } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 import { projectRef } from '@/lib/project-ref';
@@ -70,12 +70,6 @@ export default function ProjetLayoutClient({
   const pathname = usePathname();
   const orgId = useOrgId(orgSlug);
   const [project, setProject] = useState<Project | null>(null);
-  // `null` = pas encore connu : on n'affiche RIEN plutôt qu'un « 0 » qui
-  // ferait croire à un projet vide pendant le chargement (ou après un échec).
-  const [counts, setCounts] = useState<{ calculs: number | null; pv: number | null }>({
-    calculs: null,
-    pv: null,
-  });
   const tabs = buildTabs(orgSlug, projetId);
 
   useEffect(() => {
@@ -88,24 +82,16 @@ export default function ProjetLayoutClient({
       .catch(() => {});
   }, [orgId, projetId]);
 
-  useEffect(() => {
-    if (!orgId) return;
-    let annule = false;
-    // Compteurs d'onglets : chaque liste échoue indépendamment (allSettled) —
-    // un PV illisible ne doit pas effacer le compteur des calculs.
-    Promise.allSettled([listCalcResults(orgId, projetId), listPvs(orgId, projetId)]).then(
-      ([c, p]) => {
-        if (annule) return;
-        setCounts({
-          calculs: c.status === 'fulfilled' ? c.value.length : null,
-          pv: p.status === 'fulfilled' ? p.value.length : null,
-        });
-      },
-    );
-    return () => {
-      annule = true;
-    };
-  }, [orgId, projetId]);
+  // Les compteurs viennent du projet lui-même (`calcCount` / `pvCount`, servis
+  // par l'API). AUCUN appel de liste ici : la version précédente appelait
+  // `listCalcResults` + `listPvs` uniquement pour lire leur longueur, ce qui
+  // téléchargeait les lignes entières (`output` JSONB compris) — 2,5 Mo par
+  // ouverture de projet, la liste des calculs étant même récupérée deux fois.
+  // Règle : une liste ne sert jamais à compter.
+  const counts = {
+    calculs: project?.calcCount ?? null,
+    pv: project?.pvCount ?? null,
+  };
 
   function isTabActive(tab: Tab): boolean {
     return tab.pattern.test(pathname);

@@ -13,8 +13,8 @@ import { Badge } from '@/components/ui/Badge';
 import { DomainTag } from '@/components/ui/DomainTag';
 import type { Domain } from '@/components/ui/DomainTag';
 import { Skeleton } from '@/components/ui/Skeleton.client';
-import { listCalcResults, listPvs } from '@/lib/api/client';
-import type { CalcResult, OfficialPv } from '@/lib/api/types';
+import { getProjectCached, listCalcResults, listPvs } from '@/lib/api/client';
+import type { CalcResult, OfficialPv, Project } from '@/lib/api/types';
 import { metaOf } from '@/lib/engine-labels';
 import { useOrgId } from '@/lib/org-context';
 
@@ -44,6 +44,7 @@ export default function OverviewPage({ params: paramsPromise }: Props) {
   const orgId = useOrgId(orgSlug);
   const [calculs, setCalculs] = useState<CalcResult[]>([]);
   const [pvs, setPvs] = useState<OfficialPv[]>([]);
+  const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Étape 1 : extraire les paramètres de route depuis la Promise.
@@ -57,6 +58,11 @@ export default function OverviewPage({ params: paramsPromise }: Props) {
   // Étape 2 : charger les données une fois orgId résolu.
   useEffect(() => {
     if (!orgId || !projetId) return;
+    // getProjectCached : partagé avec la bande projet — les compteurs affichés
+    // ici viennent donc EXACTEMENT de la même source que les pastilles d'onglet.
+    getProjectCached(orgId, projetId)
+      .then(setProject)
+      .catch(() => {});
     Promise.all([listCalcResults(orgId, projetId), listPvs(orgId, projetId)]).then(
       ([c, v]) => {
         setCalculs(c);
@@ -79,8 +85,12 @@ export default function OverviewPage({ params: paramsPromise }: Props) {
     );
   }
 
-  const recentCalculs = calculs.slice(-3).reverse();
-  const recentPvs = pvs.slice(-3).reverse();
+  // L'API renvoie ces listes triées du plus RÉCENT au plus ancien
+  // (calc-results.service : orderBy createdAt desc ; pv.service : sealedAt desc).
+  // `slice(-3)` prenait donc la QUEUE — les trois plus ANCIENS — sous le libellé
+  // « Derniers … ». Le correctif est `slice(0, 3)`, sans `.reverse()`.
+  const recentCalculs = calculs.slice(0, 3);
+  const recentPvs = pvs.slice(0, 3);
 
   return (
     <div style={{ padding: 24, maxWidth: 800, margin: '0 auto', width: '100%' }}>
@@ -95,12 +105,16 @@ export default function OverviewPage({ params: paramsPromise }: Props) {
       >
         <StatCard
           label="Calculs"
-          value={calculs.length}
+          // Compteur servi par l'API (`calcCount`), PAS la longueur de la liste :
+          // c'est la même source que les pastilles d'onglet, donc les deux ne
+          // peuvent plus se contredire. Les listes ci-dessous restent chargées
+          // pour AFFICHER les derniers éléments — jamais pour les compter.
+          value={project?.calcCount ?? calculs.length}
           icon={<Calculator size={20} strokeWidth={1.5} aria-hidden="true" />}
         />
         <StatCard
           label="PV scellés"
-          value={pvs.length}
+          value={project?.pvCount ?? pvs.length}
           icon={<FileCheck2 size={20} strokeWidth={1.5} aria-hidden="true" />}
         />
       </div>

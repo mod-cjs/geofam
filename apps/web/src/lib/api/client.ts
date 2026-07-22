@@ -203,10 +203,25 @@ export async function getEntitlements(orgId: string): Promise<EntitlementsRespon
 // PROJECTS
 // ---------------------------------------------------------------------------
 
+/**
+ * Mock ISO-CONTRAT : le vrai backend renvoie `calcCount` / `pvCount` agrégés en
+ * base. Sans cela, les pastilles d'onglet DISPARAISSENT en mode mock (démos,
+ * dev sans API, tests) alors qu'elles s'affichent en réel — un mock qui ment
+ * sur le contrat est pire qu'un mock absent. On les dérive donc des jeux de
+ * données de mock, exactement comme le serveur les dérive de la base.
+ */
+function withMockCounts(p: Project): Project {
+  return {
+    ...p,
+    calcCount: MOCK_CALCULS.filter((c) => c.projectId === p.id).length,
+    pvCount: MOCK_PVS.filter((v) => v.projectId === p.id).length,
+  };
+}
+
 export async function listProjects(orgId: string): Promise<Project[]> {
   if (_USE_REAL_BACKEND) return httpListProjects(orgId);
   await delay(500);
-  return MOCK_PROJECTS.filter((p) => p.orgId === orgId);
+  return MOCK_PROJECTS.filter((p) => p.orgId === orgId).map(withMockCounts);
 }
 
 export async function createProject(
@@ -236,7 +251,7 @@ export async function getProject(_orgId: string, projectId: string): Promise<Pro
   await delay(300);
   const p = MOCK_PROJECTS.find((x) => x.id === projectId);
   if (!p) throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Projet introuvable' };
-  return p;
+  return withMockCounts(p);
 }
 
 // ---------------------------------------------------------------------------
@@ -256,6 +271,33 @@ const projectCacheInFlight = new Map<string, Promise<Project>>();
 
 function projectCacheKey(orgId: string, projectId: string): string {
   return `${orgId}:${projectId}`;
+}
+
+/**
+ * Purge CIBLÉE de l'entrée de cache d'un projet (P0-1, suite de revue adverse).
+ *
+ * Depuis que les compteurs (`calcCount` / `pvCount`) viennent du projet et non
+ * plus d'un appel de liste, ils héritent de ce cache. Sans purge, lancer un
+ * calcul laissait la pastille sur l'ancien compte pendant que l'onglet Calculs
+ * affichait déjà la nouvelle ligne — l'écran se contredisait, et l'écart durait
+ * toute la session.
+ *
+ * Purge CIBLÉE (clé `orgId:projectId`) et non `clear()` : vider tout le cache
+ * ferait recharger le tenant entier à chaque calcul, et purgerait des entrées
+ * appartenant à d'autres organisations.
+ */
+function invalidateProjectCache(orgId: string, projectId: string): void {
+  const key = projectCacheKey(orgId, projectId);
+  projectCache.delete(key);
+  projectCacheInFlight.delete(key);
+}
+
+/** Sondes de test — lecture seule, jamais utilisées par le code applicatif. */
+export function __projectCacheHas(orgId: string, projectId: string): boolean {
+  return projectCache.has(projectCacheKey(orgId, projectId));
+}
+export function __projectCacheSize(): number {
+  return projectCache.size;
 }
 
 export async function getProjectCached(
@@ -293,7 +335,7 @@ export async function renameProject(
   projectId: string,
   name: string,
 ): Promise<Project> {
-  projectCache.delete(projectCacheKey(orgId, projectId));
+  invalidateProjectCache(orgId, projectId);
   if (_USE_REAL_BACKEND) return httpRenameProject(orgId, projectId, name);
 
   await delay(400);
@@ -311,7 +353,7 @@ export async function renameProject(
  * Mock : retire l'entrée de MOCK_PROJECTS pour reproduire cette exclusion.
  */
 export async function deleteProject(orgId: string, projectId: string): Promise<Project> {
-  projectCache.delete(projectCacheKey(orgId, projectId));
+  invalidateProjectCache(orgId, projectId);
   if (_USE_REAL_BACKEND) return httpDeleteProject(orgId, projectId);
 
   await delay(400);
@@ -382,6 +424,9 @@ export async function runCalc(
   projectId: string,
   req: CalcRequest,
 ): Promise<CalcResult> {
+  // Un calcul de plus => `calcCount` du projet a changé : le cache doit tomber,
+  // sinon la pastille d'onglet reste sur l'ancien compte (cf. project-cache-invalidation).
+  invalidateProjectCache(orgId, projectId);
   if (_USE_REAL_BACKEND) return httpRunCalc(orgId, projectId, req);
 
   // Vérifier entitlements en défense
@@ -515,6 +560,8 @@ export async function emitPv(
   projectId: string,
   req: EmitPvRequest,
 ): Promise<OfficialPv> {
+  // Un PV de plus => `pvCount` du projet a changé : même raison qu'au-dessus.
+  invalidateProjectCache(orgId, projectId);
   if (_USE_REAL_BACKEND) return httpEmitPv(orgId, projectId, req);
 
   // Vérifier entitlements

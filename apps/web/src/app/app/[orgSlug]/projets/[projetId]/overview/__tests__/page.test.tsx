@@ -18,14 +18,26 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { mockListCalcResults, mockListPvs } = vi.hoisted(() => ({
+const { mockListCalcResults, mockListPvs, mockGetProjectCached } = vi.hoisted(() => ({
   mockListCalcResults: vi.fn(),
   mockListPvs: vi.fn(),
+  // P0-1 : les StatCards lisent désormais `calcCount`/`pvCount` sur le projet
+  // (même source que les pastilles d'onglet) au lieu de compter les listes.
+  mockGetProjectCached: vi.fn().mockResolvedValue({
+    id: 'proj-1',
+    orgId: 'org-1',
+    name: 'Projet de test',
+    domain: 'CH',
+    createdAt: '2026-07-17T12:00:00.000Z',
+    updatedAt: '2026-07-17T12:00:00.000Z',
+    createdBy: 'user-1',
+  }),
 }));
 
 vi.mock('@/lib/api/client', () => ({
   listCalcResults: mockListCalcResults,
   listPvs: mockListPvs,
+  getProjectCached: mockGetProjectCached,
 }));
 
 import OverviewPage from '../page';

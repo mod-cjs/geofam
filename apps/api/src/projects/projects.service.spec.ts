@@ -27,6 +27,11 @@ describe('ProjectsService.getById', () => {
       findFirst: jest.Mock;
       updateMany: jest.Mock;
     };
+    // P0-1 : la lecture detail porte desormais les compteurs de contenu
+    // (calculs / PV), agreges par `count` et non par un findMany —
+    // cf. projects-counts.service.spec.ts.
+    calcResult: { count: jest.Mock };
+    officialPv: { count: jest.Mock };
   };
   let prisma: { withTenant: jest.Mock };
   let service: ProjectsService;
@@ -38,6 +43,8 @@ describe('ProjectsService.getById', () => {
         findFirst: jest.fn(),
         updateMany: jest.fn(),
       },
+      calcResult: { count: jest.fn().mockResolvedValue(0) },
+      officialPv: { count: jest.fn().mockResolvedValue(0) },
     };
     prisma = {
       withTenant: jest.fn(
@@ -53,7 +60,11 @@ describe('ProjectsService.getById', () => {
     tx.project.findFirst.mockResolvedValue(project);
 
     const out = await withOrg(() => service.getById('proj-1'));
-    expect(out).toBe(project);
+    // P0-1 : la lecture detail ne renvoie plus la ligne BRUTE mais une copie
+    // enrichie des compteurs de contenu — d'ou toMatchObject et non toBe.
+    // Les champs de la ligne restent rendus a l'identique.
+    expect(out).toMatchObject({ id: 'proj-1', orgId: ORG_ID });
+    expect(out).toMatchObject({ calcCount: 0, pvCount: 0 });
     expect(prisma.withTenant).toHaveBeenCalledWith(
       ORG_ID,
       expect.any(Function),
@@ -133,6 +144,11 @@ describe('ProjectsService.rename / archive', () => {
       findFirst: jest.Mock;
       updateMany: jest.Mock;
     };
+    // P0-1 : la lecture detail porte desormais les compteurs de contenu
+    // (calculs / PV), agreges par `count` et non par un findMany —
+    // cf. projects-counts.service.spec.ts.
+    calcResult: { count: jest.Mock };
+    officialPv: { count: jest.Mock };
   };
   let prisma: { withTenant: jest.Mock };
   let service: ProjectsService;
@@ -144,6 +160,8 @@ describe('ProjectsService.rename / archive', () => {
         findFirst: jest.fn(),
         updateMany: jest.fn(),
       },
+      calcResult: { count: jest.fn().mockResolvedValue(0) },
+      officialPv: { count: jest.fn().mockResolvedValue(0) },
     };
     prisma = {
       withTenant: jest.fn(

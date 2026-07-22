@@ -138,6 +138,13 @@ export interface PrismaProject {
   createdAt: string;
   updatedAt: string;
   /**
+   * P0-1 — compteurs de contenu agrégés côté serveur. Optionnels : un backend
+   * antérieur (ou le mock) ne les renvoie pas, et l'UI doit alors n'afficher
+   * aucune pastille plutôt qu'un « 0 » trompeur.
+   */
+  calcCount?: number;
+  pvCount?: number;
+  /**
    * Champ réel du backend : `createdById` (Prisma : created_by_id).
    * ⚠️ PAS `createdBy` — bug #8.
    */
@@ -550,6 +557,12 @@ export function adaptProject(raw: PrismaProject): Project {
     updatedAt: raw.updatedAt,
     // #8 — le champ réel est `createdById` (Prisma: created_by_id), pas `createdBy`
     createdBy: raw.createdById,
+    // P0-1 — compteurs servis par l'API. Propagés TELS QUELS : `0` doit rester
+    // `0` (connu et vide) et l'absence rester `undefined` (pas encore connu).
+    // Un `?? 0` ici ferait afficher « projet vide » avant même le chargement ;
+    // un `|| undefined` effacerait un compteur légitime à zéro.
+    calcCount: raw.calcCount,
+    pvCount: raw.pvCount,
   };
 }
 

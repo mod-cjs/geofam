@@ -74,6 +74,20 @@ export interface Project {
   createdAt: string;
   updatedAt: string;
   createdBy: string;
+  /**
+   * Compteurs de contenu servis par l'API (P0-1).
+   *
+   * `undefined` = valeur PAS ENCORE CONNUE (réponse d'un backend plus ancien,
+   * ou mock) — l'UI n'affiche alors aucune pastille. `0` = valeur connue et
+   * nulle. Ne jamais confondre les deux : afficher « 0 » pour un inconnu ferait
+   * lire « projet vide » à tort.
+   *
+   * Ils existent pour que l'UI cesse de télécharger les listes complètes
+   * (`output` JSONB compris) juste pour en compter la longueur — ce qui coûtait
+   * 2,5 Mo à chaque ouverture de projet.
+   */
+  calcCount?: number;
+  pvCount?: number;
 }
 
 export interface CreateProjectRequest {
