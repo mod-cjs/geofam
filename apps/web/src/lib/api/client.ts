@@ -28,6 +28,8 @@ import {
   httpGetProject,
   httpRenameProject,
   httpDeleteProject,
+  httpListArchivedProjects,
+  httpRestoreProject,
   httpListCalcResults,
   httpGetCalcResult,
   httpRunCalc,
@@ -352,6 +354,26 @@ export async function renameProject(
  * le projet disparaît simplement des listes (GET /projects l'exclut).
  * Mock : retire l'entrée de MOCK_PROJECTS pour reproduire cette exclusion.
  */
+/** Projets archivés du tenant — sans cette lecture, un archivé est introuvable. */
+export async function listArchivedProjects(orgId: string): Promise<Project[]> {
+  if (_USE_REAL_BACKEND) return httpListArchivedProjects(orgId);
+  await delay(300);
+  return [];
+}
+
+/**
+ * Restaure un projet archivé (P0-8).
+ * Invalide le cache : le projet redevient visible en liste et en détail.
+ */
+export async function restoreProject(orgId: string, projectId: string): Promise<Project> {
+  invalidateProjectCache(orgId, projectId);
+  if (_USE_REAL_BACKEND) return httpRestoreProject(orgId, projectId);
+  await delay(400);
+  const p = MOCK_PROJECTS.find((x) => x.id === projectId);
+  if (!p) throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Projet introuvable' };
+  return withMockCounts(p);
+}
+
 export async function deleteProject(orgId: string, projectId: string): Promise<Project> {
   invalidateProjectCache(orgId, projectId);
   if (_USE_REAL_BACKEND) return httpDeleteProject(orgId, projectId);

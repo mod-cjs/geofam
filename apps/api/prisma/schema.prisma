@@ -123,14 +123,19 @@ model Project {
   id          String         @id @default(uuid()) @db.Uuid
   orgId       String         @map("org_id") @db.Uuid
   name        String
+  // P0-5 : la modale proposait ce champ depuis toujours, mais aucune colonne
+  // n'existait et zod le retirait -> la saisie disparaissait en silence.
+  // NULLABLE : les projets anterieurs n'en ont pas, et imposer une chaine vide
+  // inventerait une donnee.
+  description String?
   status      ProjectStatus  @default(DRAFT)
   // NULLABLE a dessein : les projets crees AVANT l'ajout de la colonne (0022) ont
   // un domaine INCONNU -> null, pas de defaut silencieusement faux. Un projet
   // domain=null reste selectionnable dans tous les logiciels (cote front).
   domain      ProjectDomain? @map("domain")
   createdById String         @map("created_by_id") @db.Uuid
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
 
   org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   calcs CalcResult[]
@@ -172,6 +177,8 @@ model CalcResult {
   @@unique([orgId, id]) // org-coherence de l'id local
   @@index([orgId])
   @@index([orgId, projectId])
+  // P0-6 : couvre « dernier calcul du projet » (agregat de P0-3) sans tri apres coup.
+  @@index([orgId, projectId, createdAt(sort: Desc)])
   @@map("calc_results")
 }
 
@@ -238,6 +245,10 @@ model OfficialPv {
   @@unique([orgId, pvNumber]) // numero unique par org
   @@unique([orgId, calcResultId]) // idempotence d'emission : 1 calcul -> 1 PV
   @@index([orgId])
+  // P0-6 : official_pvs n'avait QUE (org_id). Les agregats de P0-1/P0-3
+  // (compte des PV, date du dernier scellement) filtrent par project_id :
+  // sans cet index, chaque liste parcourait tout l'org.
+  @@index([orgId, projectId, sealedAt(sort: Desc)])
   @@map("official_pvs")
 }
 

@@ -25,6 +25,11 @@ const createProjectSchema = z.object({
   // domaine par defaut cote serveur (un defaut faux polluerait le filtrage des
   // logiciels). Seuls les projets LEGACY d'avant la colonne restent domain=null.
   domain: z.enum(['CH', 'FD', 'LB']),
+  // P0-5 : la modale proposait ce champ depuis toujours, mais il n'etait PAS
+  // dans ce schema — zod le retirait, et il n'existait aucune colonne. La
+  // saisie disparaissait donc en silence. Optionnel : un projet sans
+  // description reste parfaitement valide.
+  description: z.string().trim().max(2000).optional(),
 });
 type CreateProjectDto = z.infer<typeof createProjectSchema>;
 
@@ -62,6 +67,21 @@ export class ProjectsController {
   }
 
   /**
+   * GET /projects/archived — projets archives du tenant.
+   *
+   * Sans cette route, un projet archive est INTROUVABLE (list et getById
+   * l'excluent) : il fallait pouvoir le voir pour pouvoir le restaurer.
+   * Lecture : memes roles que la liste.
+   */
+  // ORDRE IMPORTANT : cette route doit precéder @Get(':projectId'), sinon Nest
+  // resout « archived » comme un :projectId et le pipe uuid renvoie 400.
+  @Get('archived/list')
+  @Roles('OWNER', 'ADMIN', 'ENGINEER', 'TECHNICIAN', 'VIEWER', 'SUPERADMIN')
+  listArchived(): Promise<Project[]> {
+    return this.projects.listArchived();
+  }
+
+  /**
    * GET /projects/:projectId — detail d'un projet du tenant courant.
    *
    * Lecture : tous les roles tenant (consultation), comme la liste. Isolation :
@@ -96,6 +116,7 @@ export class ProjectsController {
       name: body.name,
       domain: body.domain,
       createdById: req.auth!.userId,
+      description: body.description,
     });
   }
 
@@ -139,6 +160,31 @@ export class ProjectsController {
     @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
   ): Promise<Project> {
     const project = await this.projects.archive(projectId);
+    if (!project) {
+      throw new NotFoundException(
+        'Projet introuvable dans cette organisation.',
+      );
+    }
+    return project;
+  }
+
+  /**
+   * POST /projects/:projectId/restore — annule un archivage.
+   *
+   * Rend VRAIE la promesse affichee par la modale de suppression
+   * (« peut etre annulee ») : jusqu'ici aucun endpoint ne l'honorait, et un
+   * projet archive n'etait recuperable que par SQL manuel.
+   *
+   * Roles : identiques a l'archivage. Restaurer n'est pas plus sensible que
+   * supprimer — l'inverse serait absurde (on pourrait detruire sans pouvoir
+   * revenir). 404 tenant-safe si absent, hors-tenant ou deja actif.
+   */
+  @Post(':projectId/restore')
+  @Roles('OWNER', 'ADMIN', 'ENGINEER', 'SUPERADMIN')
+  async restore(
+    @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
+  ): Promise<Project> {
+    const project = await this.projects.restore(projectId);
     if (!project) {
       throw new NotFoundException(
         'Projet introuvable dans cette organisation.',

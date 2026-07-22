@@ -5,7 +5,15 @@
  * États : chargement · vide · filtre sans résultat · erreur · liste
  */
 
-import { Plus, FolderOpen, AlertCircle, RefreshCw, Search, Trash2 } from 'lucide-react';
+import {
+  Plus,
+  FolderOpen,
+  AlertCircle,
+  RefreshCw,
+  Search,
+  Trash2,
+  Pencil,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
@@ -16,7 +24,14 @@ import { Input, Select, Textarea } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { Skeleton } from '@/components/ui/Skeleton.client';
 import { useToast } from '@/components/ui/Toast';
-import { listProjects, createProject, deleteProject } from '@/lib/api/client';
+import {
+  listArchivedProjects,
+  restoreProject,
+  listProjects,
+  createProject,
+  deleteProject,
+  renameProject,
+} from '@/lib/api/client';
 import type { Project, ProjectDomain } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 import { libelleRelatif } from '@/lib/relative-day';
@@ -91,6 +106,13 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
   // Recherche / tri
   const [query, setQuery] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('date-desc');
+  // Vue « Archivés » (P0-8) : sans elle, un projet archivé serait introuvable —
+  // la modale de suppression promettrait une réversibilité inaccessible.
+  const [vue, setVue] = useState<'actifs' | 'archives'>('actifs');
+  const [restaurationEnCours, setRestaurationEnCours] = useState<string | null>(null);
+  // Renommage en ligne (P0-7) : l'action d'ecriture la plus FREQUENTE etait
+  // enterree au 4e onglet, pendant que la suppression avait deux acces directs.
+  const [renommage, setRenommage] = useState<string | null>(null);
 
   // Suppression (soft-delete)
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
@@ -112,18 +134,56 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
     setLoading(true);
     setError(null);
     try {
-      const data = await listProjects(orgId);
+      const data =
+        vue === 'archives'
+          ? await listArchivedProjects(orgId)
+          : await listProjects(orgId);
       setProjects(data);
     } catch {
       setError('Impossible de charger les projets. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }
-  }, [orgId]);
+  }, [orgId, vue]);
 
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  async function handleRename(projet: Project, nouveau: string) {
+    const nom = nouveau.trim();
+    setRenommage(null);
+    // Ni vide ni inchange : le backend refuserait le vide, et reecrire a
+    // l'identique est une ecriture inutile qui ferait bouger updatedAt.
+    if (!orgId || !nom || nom === projet.name) return;
+
+    try {
+      const maj = await renameProject(orgId, projet.id, nom);
+      // Mise a jour LOCALE : pas de rechargement complet de la liste.
+      setProjects((prev) => prev.map((p) => (p.id === projet.id ? maj : p)));
+      addToast({ type: 'success', message: `Projet renommé « ${maj.name} ».` });
+    } catch {
+      // AUCUNE UI optimiste : on n'a jamais affiche le nouveau nom, donc rien a
+      // annuler. L'ecran ne montre que ce qui est reellement persiste.
+      addToast({ type: 'error', message: 'Renommage impossible.' });
+    }
+  }
+
+  async function handleRestore(projet: Project) {
+    if (!orgId) return;
+    setRestaurationEnCours(projet.id);
+    try {
+      await restoreProject(orgId, projet.id);
+      // Le projet quitte la vue « Archivés » : on le retire localement plutôt
+      // que de tout recharger — le retour serveur fait déjà foi.
+      setProjects((prev) => prev.filter((p) => p.id !== projet.id));
+      addToast({ type: 'success', message: `« ${projet.name} » restauré.` });
+    } catch {
+      addToast({ type: 'error', message: 'Restauration impossible.' });
+    } finally {
+      setRestaurationEnCours(null);
+    }
+  }
 
   async function handleCreateProject(e: FormEvent) {
     e.preventDefault();
@@ -287,18 +347,30 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
       )}
 
       {/* État vide (aucun projet du tout) */}
-      {!loading && !error && projects.length === 0 && (
-        <EmptyState
-          variant="blank"
-          title="Aucun projet pour le moment"
-          description="Créez votre premier projet pour démarrer un calcul géotechnique ou routier."
-          ctaLabel="Nouveau projet"
-          onCta={() => setNewProjectOpen(true)}
-        />
-      )}
+      {!loading &&
+        !error &&
+        projects.length === 0 &&
+        // L'état vide dépend de la VUE : proposer « Créez votre premier
+        // projet » dans la vue Archivés serait un contresens (on n'y crée
+        // rien), et laisserait croire que l'archivage a perdu le projet.
+        (vue === 'archives' ? (
+          <EmptyState
+            variant="blank"
+            title="Aucun projet archivé"
+            description="Les projets que vous archivez apparaîtront ici, et resteront restaurables à tout moment."
+          />
+        ) : (
+          <EmptyState
+            variant="blank"
+            title="Aucun projet pour le moment"
+            description="Créez votre premier projet pour démarrer un calcul géotechnique ou routier."
+            ctaLabel="Nouveau projet"
+            onCta={() => setNewProjectOpen(true)}
+          />
+        ))}
 
       {/* Barre recherche + tri */}
-      {!loading && !error && projects.length > 0 && (
+      {!loading && !error && (
         <div
           style={{
             display: 'flex',
@@ -355,6 +427,43 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
             <option value="date-desc">Dernière activité</option>
             <option value="name-asc">Nom (A → Z)</option>
           </select>
+
+          {/* Bascule Actifs / Archivés (P0-8). Sans ce point d'entrée, un projet
+              archivé serait introuvable et la réversibilité promise par la
+              modale de suppression resterait inaccessible. Traitement NEUTRE :
+              ni verdict, ni accent de statut (ADR 0008). */}
+          <div
+            role="group"
+            aria-label="Filtrer par état"
+            style={{
+              display: 'inline-flex',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-lg)',
+              overflow: 'hidden',
+            }}
+          >
+            {(['actifs', 'archives'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={vue === v}
+                onClick={() => setVue(v)}
+                style={{
+                  padding: '7px 13px',
+                  minHeight: 32,
+                  fontSize: 'var(--text-sm)',
+                  border: 0,
+                  background:
+                    vue === v ? 'var(--state-selected-bg)' : 'var(--surface-base)',
+                  color: vue === v ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  fontWeight: vue === v ? 600 : 400,
+                  cursor: 'pointer',
+                }}
+              >
+                {v === 'actifs' ? 'Actifs' : 'Archivés'}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -382,6 +491,13 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
               project={project}
               onClick={() => router.push(`/app/${orgSlug}/projets/${project.id}`)}
               onDelete={() => setProjectToDelete(project)}
+              enRenommage={renommage === project.id}
+              onStartRename={() => setRenommage(project.id)}
+              onRename={(nom) => handleRename(project, nom)}
+              onCancelRename={() => setRenommage(null)}
+              archive={vue === 'archives'}
+              onRestore={() => handleRestore(project)}
+              restauration={restaurationEnCours === project.id}
             />
           ))}
         </div>
@@ -504,8 +620,8 @@ export default function ProjetsClient({ orgSlug }: ProjetsClientProps) {
           }}
         >
           Il s&apos;agit d&apos;un archivage : les calculs et PV scellés déjà émis restent
-          conservés et ne sont pas supprimés. Cette action peut être annulée par un
-          administrateur si besoin.
+          conservés et ne sont pas supprimés. Le projet reste listé dans la vue « Archivés
+          », d&apos;où vous pourrez le restaurer vous-même à tout moment.
         </p>
       </Modal>
     </div>
@@ -520,10 +636,26 @@ function ProjectRow({
   project,
   onClick,
   onDelete,
+  enRenommage = false,
+  onStartRename,
+  onRename,
+  onCancelRename,
+  archive = false,
+  onRestore,
+  restauration = false,
 }: {
   project: Project;
   onClick: () => void;
   onDelete: () => void;
+  /** Renommage en ligne (P0-7). */
+  enRenommage?: boolean;
+  onStartRename?: () => void;
+  onRename?: (nom: string) => void;
+  onCancelRename?: () => void;
+  /** Vue « Archivés » : la corbeille cède la place au bouton Restaurer. */
+  archive?: boolean;
+  onRestore?: () => void;
+  restauration?: boolean;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
 
@@ -541,9 +673,9 @@ function ProjectRow({
     <div
       ref={rowRef}
       role="listitem"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={handleKeyDown}
+      tabIndex={archive ? -1 : 0}
+      onClick={archive ? undefined : onClick}
+      onKeyDown={archive ? undefined : handleKeyDown}
       aria-label={`Projet ${project.name}`}
       style={{
         display: 'flex',
@@ -553,7 +685,7 @@ function ProjectRow({
         background: 'var(--surface-base)',
         borderRadius: 'var(--radius-lg)',
         boxShadow: 'var(--elevation-card)',
-        cursor: 'pointer',
+        cursor: archive ? 'default' : 'pointer',
         transition: `background var(--dur-fast) var(--ease-state)`,
         outline: 'none',
       }}
@@ -589,7 +721,57 @@ function ProjectRow({
             whiteSpace: 'nowrap',
           }}
         >
-          {project.name}
+          {enRenommage && onRename ? (
+            <input
+              autoFocus
+              defaultValue={project.name}
+              aria-label={`Renommer le projet ${project.name}`}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') onRename(e.currentTarget.value);
+                // Échap annule SANS écrire : une sortie sûre est obligatoire
+                // sur un champ qui s'ouvre au clic.
+                if (e.key === 'Escape') onCancelRename?.();
+              }}
+              onBlur={(e) => onRename(e.currentTarget.value)}
+              style={{
+                width: '100%',
+                font: 'inherit',
+                color: 'var(--text-primary)',
+                background: 'var(--surface-base)',
+                border: '1px solid var(--border-focus)',
+                borderRadius: 'var(--radius-base)',
+                padding: '2px 6px',
+              }}
+            />
+          ) : (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {project.name}
+              {onStartRename && !archive && (
+                <button
+                  type="button"
+                  aria-label={`Renommer le projet ${project.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onStartRename();
+                  }}
+                  style={{
+                    display: 'inline-grid',
+                    placeItems: 'center',
+                    width: 24,
+                    height: 24,
+                    border: 0,
+                    background: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Pencil size={13} strokeWidth={1.5} aria-hidden="true" />
+                </button>
+              )}
+            </span>
+          )}
         </div>
         {project.description && (
           <div
@@ -626,34 +808,87 @@ function ProjectRow({
         />
       </div>
 
-      <button
-        type="button"
-        aria-label={`Supprimer le projet ${project.name}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'none',
-          border: 'none',
-          borderRadius: 'var(--radius-base)',
-          padding: 6,
-          cursor: 'pointer',
-          color: 'var(--text-muted)',
-          flexShrink: 0,
-        }}
-        onMouseOver={(e) => {
-          (e.currentTarget as HTMLElement).style.color = 'var(--status-fail-tx)';
-        }}
-        onMouseOut={(e) => {
-          (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)';
-        }}
-      >
-        <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" />
-      </button>
+      {archive && onRestore ? (
+        <BoutonRestaurer
+          onRestore={onRestore}
+          enCours={restauration}
+          nom={project.name}
+        />
+      ) : (
+        <button
+          type="button"
+          aria-label={`Supprimer le projet ${project.name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'none',
+            border: 'none',
+            borderRadius: 'var(--radius-base)',
+            padding: 6,
+            cursor: 'pointer',
+            color: 'var(--text-muted)',
+            flexShrink: 0,
+          }}
+          onMouseOver={(e) => {
+            (e.currentTarget as HTMLElement).style.color = 'var(--status-fail-tx)';
+          }}
+          onMouseOut={(e) => {
+            (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)';
+          }}
+        >
+          <Trash2 size={16} strokeWidth={1.5} aria-hidden="true" />
+        </button>
+      )}
     </div>
+  );
+}
+
+/**
+ * Bouton de restauration (P0-8) — rend vraie la réversibilité promise par la
+ * modale de suppression. Traitement NEUTRE : restaurer n'est ni un verdict ni
+ * une action destructive (ADR 0008 — ni vert, ni rouge, ni accent de statut).
+ */
+function BoutonRestaurer({
+  onRestore,
+  enCours,
+  nom,
+}: {
+  onRestore: () => void;
+  enCours: boolean;
+  nom: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onRestore();
+      }}
+      disabled={enCours}
+      aria-label={`Restaurer le projet ${nom}`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 11px',
+        minHeight: 30,
+        fontSize: 'var(--text-sm)',
+        borderRadius: 'var(--radius-base)',
+        border: '1px solid var(--border-default)',
+        background: 'var(--surface-base)',
+        color: 'var(--text-primary)',
+        cursor: enCours ? 'progress' : 'pointer',
+        opacity: enCours ? 0.6 : 1,
+        flexShrink: 0,
+      }}
+    >
+      <RefreshCw size={14} strokeWidth={1.5} aria-hidden="true" />
+      {enCours ? 'Restauration…' : 'Restaurer'}
+    </button>
   );
 }

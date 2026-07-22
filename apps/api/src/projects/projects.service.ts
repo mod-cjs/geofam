@@ -145,6 +145,7 @@ export class ProjectsService {
     name: string;
     domain: ProjectDomain;
     createdById: string;
+    description?: string;
   }): Promise<Project> {
     const orgId = requireOrgId();
     return this.prisma.withTenant(orgId, (tx) =>
@@ -154,6 +155,9 @@ export class ProjectsService {
           name: input.name,
           domain: input.domain,
           createdById: input.createdById,
+          // `?? null` et non `?? ''` : absence de description et description
+          // vide sont deux choses differentes ; on n'invente pas une chaine.
+          description: input.description ?? null,
         },
       }),
     );
@@ -233,6 +237,54 @@ export class ProjectsService {
       const res = await tx.project.updateMany({
         where: { id: projectId, status: { not: 'ARCHIVED' } },
         data: { name },
+      });
+      if (res.count === 0) return null;
+      return tx.project.findFirst({ where: { id: projectId } });
+    });
+  }
+
+  /**
+   * Liste les projets ARCHIVES du tenant (GET /projects?archived=1).
+   *
+   * Sans cette lecture, un projet archive est INTROUVABLE : `list()` et
+   * `getById()` l'excluent tous deux. Il fallait donc pouvoir le voir pour
+   * pouvoir le restaurer — sinon la promesse de reversibilite reste lettre
+   * morte faute de point d'entree.
+   */
+  listArchived(): Promise<Project[]> {
+    const orgId = requireOrgId();
+    return this.prisma.withTenant(orgId, (tx) =>
+      tx.project.findMany({
+        where: { status: 'ARCHIVED' },
+        orderBy: { updatedAt: 'desc' },
+      }),
+    );
+  }
+
+  /**
+   * RESTAURE un projet archive (POST /projects/:id/restore) : ARCHIVED -> ACTIVE.
+   *
+   * POURQUOI CETTE METHODE EXISTE
+   * La modale de suppression affirmait « Cette action peut etre annulee par un
+   * administrateur si besoin » alors qu'AUCUN endpoint de restauration
+   * n'existait, qu'il n'y avait aucun endpoint admin sur les projets, et que
+   * toutes les lectures excluent ARCHIVED. Un projet archive etait donc
+   * irrecuperable sans SQL manuel : l'interface faisait AGIR l'utilisateur sur
+   * une garantie inexistante. C'est le defaut le plus grave du diagnostic.
+   *
+   * `updateMany` (et non `update`) : sur une ligne ABSENTE, HORS-TENANT (RLS
+   * invisible) ou DEJA ACTIVE, il renvoie count=0 SANS lever -> `null`, traduit
+   * en 404 tenant-safe par le controleur (« n'existe pas » et « pas chez vous »
+   * indistinguables). Idempotent par construction.
+   */
+  async restore(projectId: string): Promise<Project | null> {
+    const orgId = requireOrgId();
+    return this.prisma.withTenant(orgId, async (tx) => {
+      const res = await tx.project.updateMany({
+        // `status: 'ARCHIVED'` en condition : restaurer un projet DEJA actif
+        // n'a pas de sens et doit rester un 404, pas un succes silencieux.
+        where: { id: projectId, status: 'ARCHIVED' },
+        data: { status: 'ACTIVE' },
       });
       if (res.count === 0) return null;
       return tx.project.findFirst({ where: { id: projectId } });

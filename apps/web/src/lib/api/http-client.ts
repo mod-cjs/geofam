@@ -456,6 +456,28 @@ export async function httpRenameProject(
  * scellés du projet sont préservés côté serveur ; le projet disparaît
  * simplement des listes/lectures tenant (GET /projects l'exclut).
  */
+/** GET /projects/archived/list — projets archivés du tenant (P0-8). */
+export async function httpListArchivedProjects(orgId: string): Promise<Project[]> {
+  const raws = await apiFetch<PrismaProject[]>('/projects/archived/list', { orgId });
+  return adaptProjects(raws);
+}
+
+/**
+ * POST /projects/:id/restore — annule un archivage (P0-8).
+ * Rend vraie la promesse « cette action peut être annulée » affichée par la
+ * modale de suppression, qu'aucun endpoint n'honorait jusqu'ici.
+ */
+export async function httpRestoreProject(
+  orgId: string,
+  projectId: string,
+): Promise<Project> {
+  const raw = await apiFetch<PrismaProject>(`/projects/${projectId}/restore`, {
+    method: 'POST',
+    orgId,
+  });
+  return adaptProject(raw);
+}
+
 export async function httpDeleteProject(
   orgId: string,
   projectId: string,

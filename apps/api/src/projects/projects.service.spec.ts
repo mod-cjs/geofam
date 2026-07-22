@@ -45,12 +45,10 @@ describe('ProjectsService.getById', () => {
         updateMany: jest.fn(),
       },
       calcResult: {
-        aggregate: jest
-          .fn()
-          .mockResolvedValue({
-            _count: { _all: 0 },
-            _max: { createdAt: null },
-          }),
+        aggregate: jest.fn().mockResolvedValue({
+          _count: { _all: 0 },
+          _max: { createdAt: null },
+        }),
       },
       officialPv: {
         aggregate: jest
@@ -145,6 +143,9 @@ describe('ProjectsService.create — persiste le domaine metier', () => {
         name: 'Forage',
         domain: 'FD',
         createdById: 'user-1',
+        // P0-5 : `null` explicite et non `''` — absence de description et
+        // description vide sont deux choses differentes.
+        description: null,
       },
     });
   });
@@ -174,12 +175,10 @@ describe('ProjectsService.rename / archive', () => {
         updateMany: jest.fn(),
       },
       calcResult: {
-        aggregate: jest
-          .fn()
-          .mockResolvedValue({
-            _count: { _all: 0 },
-            _max: { createdAt: null },
-          }),
+        aggregate: jest.fn().mockResolvedValue({
+          _count: { _all: 0 },
+          _max: { createdAt: null },
+        }),
       },
       officialPv: {
         aggregate: jest

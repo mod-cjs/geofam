@@ -119,6 +119,31 @@ describe('Isolation multi-tenant RLS FORCE (projects + organizations + users)', 
       // joignables : en CI, l'une manquante = echec dur (pas de faux-vert).
       admin = await connectAs(ADMIN_URL, 'DATABASE_URL (seed/superuser)');
       app = await connectAs(APP_URL, 'RLS_TEST_DATABASE_URL (roadsen_app)');
+
+      // PRECONDITION DE SURETE (incident du 22/07) — la connexion d'assertions
+      // NE DOIT PAS etre superuser.
+      //
+      // APP_URL retombe silencieusement sur DATABASE_URL quand
+      // RLS_TEST_DATABASE_URL est absent. Or ce fichier execute des ecritures
+      // AVEUGLES et volontairement sans WHERE (« UPDATE projects SET name =
+      // 'pwn' »), dont l'innocuite repose ENTIEREMENT sur la RLS. Sous
+      // superuser, la RLS est bypassee : la meme requete renomme alors TOUS les
+      // projets de la base, tous tenants confondus. C'est exactement ce qui est
+      // arrive en lancant la suite avec le seul DATABASE_URL — les projets de
+      // recette ont ete ecrases.
+      //
+      // On echoue donc DUR plutot que de laisser une suite « d'isolation »
+      // devenir destructrice faute de la bonne connexion.
+      const who = await app.query<{ su: boolean; nom: string }>(
+        `SELECT usesuper AS su, current_user AS nom FROM pg_user WHERE usename = current_user`,
+      );
+      if (who.rows[0]?.su) {
+        throw new Error(
+          `Connexion d'assertions SUPERUSER (${who.rows[0]?.nom}) : la RLS serait bypassee et les ` +
+            `ecritures aveugles de ce fichier toucheraient TOUTE la base. ` +
+            `Positionnez RLS_TEST_DATABASE_URL sur le role applicatif (roadsen_app, NOBYPASSRLS).`,
+        );
+      }
     } catch (err) {
       connectError = err as Error;
       // En CI / avec URL : on NE masque PAS. L'echec remonte ici meme, ce qui
