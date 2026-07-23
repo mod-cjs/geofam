@@ -221,6 +221,121 @@ async function sceller() {
   await flush();
 }
 
+describe('CalculsClient — Exporter (JSON) : livrable « Exporter » de l’outil client', () => {
+  // L'outil client Terzaghi offre Calculer / Exporter / Imprimer. « Exporter »
+  // télécharge la SAISIE (état S) dans un JSON ré-importable. On porte ce
+  // livrable sur un calcul PERSISTÉ de l'historique : notre `params` EST cette
+  // forme S. Aucune sortie moteur exportée (DoD §8), aucun appel réseau.
+  const CALC_AVEC_ENTREES: CalcResult = {
+    ...CALC,
+    engineId: 'fondation-terzaghi',
+    params: {
+      projet: 'Bâtiment R+5 — exemple',
+      solCat: 'marnes',
+      forme: 'rect',
+      B: 6,
+      L: 10,
+      D: 4.5,
+      sondage: [{ z: 1.5, pl: 2.5, em: 8 }],
+    },
+  };
+
+  it('given un calcul sélectionné, when on clique « Exporter (JSON) », then un téléchargement se déclenche avec le fichier <logiciel>-<projet>.json et le contenu = les ENTRÉES', async () => {
+    mockListCalcResults.mockResolvedValue([CALC_AVEC_ENTREES]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    // Capture du Blob téléchargé + du nom de fichier, sans écrire de vrai fichier.
+    let capturedBlob: Blob | null = null;
+    let capturedName = '';
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn((b: Blob) => {
+      capturedBlob = b;
+      return 'blob:mock';
+    }) as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = vi.fn();
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        capturedName = this.download;
+      });
+
+    try {
+      await renderCalculs();
+      const btn = findButtonByText('Exporter (JSON)');
+      expect(btn).not.toBeUndefined();
+      await act(async () => btn!.click());
+
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      // Nom de fichier calqué sur l'outil : logiciel (terzaghi) + projet slugifié.
+      expect(capturedName).toBe('terzaghi-batiment-r-5-exemple.json');
+      // Contenu = les ENTRÉES exactes, rien d'autre (pas de sortie moteur).
+      expect(capturedBlob).not.toBeNull();
+      const text = await capturedBlob!.text();
+      expect(JSON.parse(text)).toEqual(CALC_AVEC_ENTREES.params);
+      expect(text).not.toContain('verdict'); // aucune sortie moteur
+    } finally {
+      clickSpy.mockRestore();
+      URL.createObjectURL = origCreate;
+      URL.revokeObjectURL = origRevoke;
+    }
+  });
+});
+
+describe('CalculsClient — Aperçu de la note avant scellement (filigrané, revue #6)', () => {
+  // L'outil client imprime la note à tout moment. On porte ce livrable de
+  // TRAVAIL, mais la revue #6 avait retiré l'impression pré-scellement (risque
+  // qu'un aperçu se fasse passer pour le PV). Réconciliation : autorisé, mais
+  // FILIGRANÉ « non scellé » — impossible à confondre avec le PV opposable.
+  it('given un calcul NON scellé avec document capturé, when on clique « Aperçu de la note », then le document est imprimé AVEC le filigrane « NON SCELLÉ » et le contenu d’origine', async () => {
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue({
+      displayHtml: '<p>Aperçu écran</p>',
+      printHtml:
+        '<!doctype html><html><head><title>Note</title></head><body><h1>Note de calcul</h1></body></html>',
+    });
+
+    await renderCalculs();
+    const btn = findButtonByText('Aperçu de la note');
+    expect(btn).not.toBeUndefined();
+    await act(async () => btn!.click());
+
+    expect(mockPrintInertHtml).toHaveBeenCalledTimes(1);
+    const printed = mockPrintInertHtml.mock.calls[0][0] as string;
+    // DEUX mécanismes vérifiés SÉPARÉMENT (esprit mutation, revue adverse) :
+    // ils portent le même mot « NON SCELLÉ », donc un unique `toContain` resterait
+    // vert si on retirait l'un des deux — or le filigrane TUILÉ est la seule marque
+    // par page à l'impression (le bandeau n'apparaît qu'en page 1).
+    // On cible l'ÉLÉMENT DE RENDU (attribut class du <div>), pas le sélecteur CSS :
+    // retirer un <div> tout en gardant sa règle `.__draft-…{}` supprimerait la
+    // marque à l'écran/impression SANS que le test ne rougisse (faux-vert attrapé).
+    //  1. le bandeau en tête (div dédié + texte complet)
+    expect(printed).toContain('class="__draft-banner"');
+    expect(printed).toContain('DOCUMENT DE TRAVAIL — NON SCELLÉ · non opposable');
+    //  2. le filigrane tuilé par page (div overlay + fond SVG répété) — la SEULE
+    //     marque par page à l'impression ; retirer ce div fait rougir CE test.
+    expect(printed).toContain('class="__draft-wm"');
+    expect(printed).toContain('data:image/svg+xml');
+    expect(printed).toContain('background-repeat:repeat');
+    // Document d'origine PRÉSERVÉ (on n'injecte que de la présentation).
+    expect(printed).toContain('<h1>Note de calcul</h1>');
+  });
+
+  it('given un calcul DÉJÀ scellé, when la barre d’actions est rendue, then « Aperçu de la note » N’EST PAS proposé (le scellé imprime son PV officiel, pas un aperçu)', async () => {
+    mockListCalcResults.mockResolvedValue([CALC_SEALED]);
+    mockGetCalcSnapshot.mockResolvedValue({
+      displayHtml: '<p>x</p>',
+      printHtml: '<html><body>y</body></html>',
+    });
+
+    await renderCalculs();
+    // Un calcul scellé propose « Voir le PV scellé » + « Imprimer » (le PV),
+    // jamais « Aperçu de la note » (qui est le brouillon non scellé).
+    expect(findButtonByText('Aperçu de la note')).toBeUndefined();
+    expect(findButtonByText('Voir le PV scellé')).not.toBeUndefined();
+  });
+});
+
 describe("CalculsClient — document de l'outil (option 3)", () => {
   it("given un calcul avec un document capturé (non scellé), when sélectionné, then l'aperçu s'affiche en iframe sandboxée en lecture seule avec la seule action Sceller (pas d'Imprimer, pas d'Ouvrir)", async () => {
     mockListCalcResults.mockResolvedValue([CALC]);

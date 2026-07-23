@@ -32,7 +32,7 @@
  * pagination client, cf. bloc de constantes/helpers ci-dessous.
  */
 
-import { Lock, Pencil, Printer, Search, Trash2 } from 'lucide-react';
+import { Download, Lock, Pencil, Printer, Search, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -64,6 +64,101 @@ import { SOFTWARE_CATALOG } from '@/lib/software-catalog';
 // vierge, sans l'état de ce calcul restauré).
 
 // Style commun de la barre d'actions (les deux panneaux).
+/**
+ * EXPORTER (JSON) — reproduit le bouton « Exporter » de l'outil client, qui
+ * télécharge la SAISIE (l'état `S` du formulaire) dans un fichier ré-importable
+ * via son bouton « Importer ». Notre `calc_results.input` EST cette forme `S`
+ * (le contrat valide directement l'état de l'outil), donc l'export d'un calcul
+ * PERSISTÉ produit un fichier que l'outil sait relire.
+ *
+ * Confidentialité (DoD §8) : on n'exporte QUE les ENTRÉES — aucune formule ni
+ * sortie moteur. Ce sont les données que l'ingénieur a lui-même saisies.
+ */
+function triggerJsonDownload(data: unknown, filename: string): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: 'application/json',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/** Nom de fichier calqué sur l'outil client : `<logiciel>-<projet>.json`. */
+function exportFilename(engineSlug: string, params: Record<string, unknown>): string {
+  const projet =
+    typeof params.projet === 'string' && params.projet.trim() ? params.projet : 'projet';
+  const slug = projet
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return `${engineSlug}-${slug || 'projet'}.json`;
+}
+
+/**
+ * FILIGRANE « document de travail » — pour l'APERÇU DE LA NOTE AVANT scellement.
+ *
+ * L'outil client imprime la note à tout moment (« Imprimer la note »). On porte
+ * ce livrable de TRAVAIL, mais la revue adverse #6 avait retiré l'impression
+ * pré-scellement au motif qu'un aperçu pourrait DIVERGER du document finalement
+ * scellé et se faire passer pour le PV. On réconcilie : l'aperçu est autorisé,
+ * mais filigrané de façon impossible à confondre avec le PV opposable — bandeau
+ * en tête + filigrane diagonal répété, y compris à l'impression.
+ *
+ * Le HTML est le `printHtml` capturé de l'outil (déjà inerte, `assertInertHtml`
+ * au moment de la capture) ; on n'y injecte que de la présentation.
+ */
+const DRAFT_WATERMARK_TEXT = 'DOCUMENT DE TRAVAIL — NON SCELLÉ · non opposable';
+
+// Tuile SVG « NON SCELLÉ » (data-URI) répétée en fond : contrairement à un texte
+// unique centré, un fond TUILÉ couvre TOUTE la hauteur du document, donc CHAQUE
+// page à l'impression (le bandeau, lui, n'apparaît qu'en page 1). C'est la seule
+// marque garantie par page.
+// Limite connue (dette tracée, revue adverse) : sous Firefox, un overlay
+// `position:fixed` peut n'être imprimé qu'UNE fois ; la robustesse multi-pages
+// tous navigateurs (motif de page via @page) est à durcir quand on généralisera
+// au-delà du pilote Terzaghi.
+const DRAFT_WM_TILE = encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="360" height="230">' +
+    '<text x="180" y="120" transform="rotate(-30 180 120)" ' +
+    'fill="rgba(122,74,18,0.13)" font-family="system-ui,sans-serif" ' +
+    'font-size="26" font-weight="700" text-anchor="middle">NON SCELLÉ</text></svg>',
+);
+
+function injectDraftWatermark(html: string): string {
+  const style =
+    '<style id="__draft_wm">' +
+    // Bandeau en tête (écran : sticky ; impression : page 1).
+    '.__draft-banner{position:sticky;top:0;z-index:99999;background:#7a4a12;' +
+    'color:#fff;font:600 12px/1.4 system-ui,sans-serif;text-align:center;' +
+    'padding:6px 10px;letter-spacing:.04em}' +
+    // Filigrane TUILÉ par page (overlay non cliquable, fond répété).
+    '.__draft-wm{position:fixed;inset:0;z-index:99998;pointer-events:none;' +
+    `background-image:url("data:image/svg+xml,${DRAFT_WM_TILE}");` +
+    'background-repeat:repeat;background-position:top left}' +
+    '@media print{.__draft-banner{position:static}}' +
+    '</style>';
+  const overlay =
+    '<div class="__draft-banner">' +
+    DRAFT_WATERMARK_TEXT +
+    '</div><div class="__draft-wm" aria-hidden="true"></div>';
+  let out = html;
+  out = /<\/head>/i.test(out)
+    ? out.replace(/<\/head>/i, () => style + '</head>')
+    : style + out;
+  out = /<body[^>]*>/i.test(out)
+    ? out.replace(/<body[^>]*>/i, (m) => m + overlay)
+    : overlay + out;
+  return out;
+}
+
 const ACTIONS_ROW_STYLE = {
   display: 'flex',
   flexWrap: 'wrap',
@@ -354,6 +449,28 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   //   intégrité NON vérifiable — fail-closed, on n'imprime RIEN et on le dit
   //   (jamais de repli silencieux sur un rendu dont on ne peut garantir
   //   l'authenticité).
+  // EXPORTER (JSON) du calcul sélectionné — livrable « Exporter » de l'outil,
+  // porté sur un calcul PERSISTÉ de l'historique. `params` = l'input persisté
+  // (forme `S` de l'outil), déjà présent sur chaque ligne (listForProject
+  // renvoie l'input). Aucun appel réseau, aucune sortie moteur.
+  function handleExportJson() {
+    if (!selected) return;
+    triggerJsonDownload(
+      selected.params,
+      exportFilename(slugOf(selected.engineId), selected.params),
+    );
+  }
+
+  // APERÇU DE LA NOTE avant scellement (livrable « Imprimer la note » de l'outil,
+  // version TRAVAIL) : imprime le document capturé, FILIGRANÉ « non scellé » pour
+  // qu'il ne se confonde jamais avec le PV opposable. Bouton présent seulement si
+  // un document a été capturé (snapshot) et que le calcul n'est PAS scellé (un
+  // calcul scellé imprime son PV officiel via handlePrint, pas un aperçu).
+  function handlePreviewNote() {
+    if (!snapshot) return;
+    printInertHtml(injectDraftWatermark(snapshot.printHtml));
+  }
+
   async function handlePrint() {
     if (!selected?.pvId || !orgId) return; // garde défensive (bouton absent sinon)
     setPrinting(true);
@@ -525,6 +642,20 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   //    → « Sceller cette version » seule (aucun document officiel à imprimer
   //    tant que ce n'est pas scellé).
   //  - non scellé, sans capture, moteur non pilote → texte informatif seul.
+  // « Exporter (JSON) » — livrable présent quel que soit l'état du calcul
+  // (scellé ou non) : les ENTRÉES d'un calcul persisté sont toujours
+  // exportables/ré-importables. Rendu dans chaque branche de la barre d'actions.
+  const exportButton = (
+    <Button
+      size="sm"
+      variant="secondary"
+      iconLeft={<Download size={14} strokeWidth={1.5} aria-hidden="true" />}
+      onClick={handleExportJson}
+    >
+      Exporter (JSON)
+    </Button>
+  );
+
   function renderActionsBar() {
     if (!selected) return null;
 
@@ -548,6 +679,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
           >
             Imprimer
           </Button>
+          {exportButton}
         </div>
       );
     }
@@ -563,12 +695,24 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
           >
             {sealButtonLabel}
           </Button>
+          {snapshot && (
+            <Button
+              size="sm"
+              variant="secondary"
+              iconLeft={<Printer size={14} strokeWidth={1.5} aria-hidden="true" />}
+              onClick={handlePreviewNote}
+            >
+              Aperçu de la note
+            </Button>
+          )}
+          {exportButton}
         </div>
       );
     }
 
     return (
       <div style={ACTIONS_ROW_STYLE}>
+        {exportButton}
         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
           Aucun PV émis — ouvrez le logiciel pour en générer un.
         </span>
