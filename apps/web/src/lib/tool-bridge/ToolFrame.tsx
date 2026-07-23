@@ -149,6 +149,13 @@ export function ToolFrame({
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
   const [state, setState] = useState<LoadState>('idle');
   const [error, setError] = useState<string | null>(null);
+  // PLEIN ÉCRAN (demande client) : l'outil est rogné par la coquille GEOFAM
+  // (barre latérale + en-tête). Le plein écran détache le conteneur en overlay
+  // couvrant tout le viewport. Overlay CSS (position:fixed) et NON l'API
+  // Fullscreen native : basculer une classe/style sur le MÊME élément ne
+  // remonte pas l'iframe — l'outil ne se recharge pas et la saisie en cours est
+  // préservée (un remount rechargerait le srcDoc et effacerait le formulaire).
+  const [fullscreen, setFullscreen] = useState(false);
   // Garde anti-course (audit adverse #9, BQ-2) : compteur monotone incrémenté
   // à CHAQUE calc:request reçu (y compris les rejets synchrones — no-project,
   // engineId hors allowlist — pour qu'une réponse async qui résoudrait après
@@ -554,15 +561,41 @@ export function ToolFrame({
   ]);
   // `saveCalcSnapshot` est un import de module (référence stable) — pas de dép.
 
+  // Échap sort du plein écran (attaché seulement quand il est actif). Sans
+  // `allow-same-origin`, un focus DANS l'iframe capte ses propres touches ;
+  // le listener au niveau `window` couvre le cas où le focus est côté hôte.
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFullscreen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [fullscreen]);
+
   return (
     <div
-      style={{
-        width: '100%',
-        height: '100%',
-        minHeight: 0,
-        display: 'flex',
-        flexDirection: 'column',
-      }}
+      data-testid="tool-frame-root"
+      style={
+        fullscreen
+          ? {
+              // Overlay plein viewport, AU-DESSUS de la coquille GEOFAM.
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1000,
+              background: 'var(--surface-canvas, #0b0e13)',
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+            }
+          : {
+              width: '100%',
+              height: '100%',
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+            }
+      }
     >
       {state === 'loading' && (
         <div
@@ -579,15 +612,76 @@ export function ToolFrame({
         </div>
       )}
       {state === 'ready' && srcDoc !== null && (
-        <iframe
-          ref={iframeRef}
-          title={`Outil ${toolId}`}
-          data-testid="tool-frame-iframe"
-          srcDoc={srcDoc}
-          // Pas de allow-same-origin : origine opaque, aucun accès cookies/JWT/DOM parent.
-          sandbox="allow-scripts allow-forms allow-modals allow-downloads"
-          style={{ width: '100%', flex: 1, border: 'none', minHeight: 0 }}
-        />
+        // Conteneur RELATIF : porte le bouton flottant sans changer le flux.
+        // L'iframe garde le MÊME nœud dans les deux modes -> jamais de remount
+        // (l'outil ne se recharge pas, la saisie en cours est préservée).
+        <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex' }}>
+          <button
+            type="button"
+            data-testid="tool-frame-fullscreen"
+            onClick={() => setFullscreen((v) => !v)}
+            aria-pressed={fullscreen}
+            aria-label={fullscreen ? 'Quitter le plein écran' : 'Afficher en plein écran'}
+            title={
+              fullscreen ? 'Quitter le plein écran (Échap)' : 'Afficher en plein écran'
+            }
+            style={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              zIndex: 2,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 32,
+              height: 32,
+              padding: 0,
+              borderRadius: 8,
+              border: '1px solid var(--border-subtle, #d9d3c2)',
+              background: 'var(--surface-base, #ffffff)',
+              color: 'var(--text-secondary, #55606a)',
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(0,0,0,.18)',
+            }}
+          >
+            {fullscreen ? (
+              // Icône « réduire » (flèches vers le centre).
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path d="M9 3v4a2 2 0 0 1-2 2H3M21 9h-4a2 2 0 0 1-2-2V3M3 15h4a2 2 0 0 1 2 2v4M15 21v-4a2 2 0 0 1 2-2h4" />
+              </svg>
+            ) : (
+              // Icône « agrandir » (flèches vers les coins).
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M16 21h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+              </svg>
+            )}
+          </button>
+          <iframe
+            ref={iframeRef}
+            title={`Outil ${toolId}`}
+            data-testid="tool-frame-iframe"
+            srcDoc={srcDoc}
+            // Pas de allow-same-origin : origine opaque, aucun accès cookies/JWT/DOM parent.
+            sandbox="allow-scripts allow-forms allow-modals allow-downloads"
+            style={{ width: '100%', flex: 1, border: 'none', minHeight: 0 }}
+          />
+        </div>
       )}
     </div>
   );

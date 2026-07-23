@@ -140,6 +140,54 @@ describe('ToolFrame — chargement du clone', () => {
   });
 });
 
+describe('ToolFrame — plein écran (demande client : le moteur rogné par la coquille)', () => {
+  const bouton = () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="tool-frame-fullscreen"]');
+  const racine = () =>
+    container.querySelector<HTMLElement>('[data-testid="tool-frame-root"]');
+
+  it('given l’outil chargé, when rendu, then un bouton plein écran est présent et la vue est ancrée (pas overlay)', async () => {
+    await renderFrame();
+    expect(bouton()).not.toBeNull();
+    // Hors plein écran : le conteneur suit le flux (jamais position:fixed).
+    expect(racine()?.style.position).not.toBe('fixed');
+  });
+
+  it('given un clic sur le bouton, when activé, then le conteneur passe en overlay plein écran (position:fixed, couvre le viewport)', async () => {
+    await renderFrame();
+    const iframeAvant = getIframe();
+    await act(async () => bouton()!.click());
+
+    const r = racine()!;
+    expect(r.style.position).toBe('fixed');
+    expect(r.style.inset).toBe('0px');
+    // L'IFRAME NE DOIT PAS ÊTRE REMONTÉE (sinon l'outil se recharge et la saisie
+    // en cours est perdue) : même nœud DOM avant/après la bascule.
+    expect(getIframe()).toBe(iframeAvant);
+  });
+
+  it('given le plein écran actif, when on presse Échap, then on en sort (retour à la vue ancrée)', async () => {
+    await renderFrame();
+    await act(async () => bouton()!.click());
+    expect(racine()?.style.position).toBe('fixed');
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    });
+    expect(racine()?.style.position).not.toBe('fixed');
+  });
+
+  it('given le plein écran actif, when on reclique le bouton, then on en sort (bascule)', async () => {
+    await renderFrame();
+    await act(async () => bouton()!.click());
+    expect(racine()?.style.position).toBe('fixed');
+    await act(async () => bouton()!.click());
+    expect(racine()?.style.position).not.toBe('fixed');
+  });
+});
+
 describe('ToolFrame — handshake ready→init', () => {
   it("given ready reçu depuis l'iframe, when traité, then init est renvoyé (SANS token) avec le contexte projet", async () => {
     await renderFrame();
