@@ -25,24 +25,28 @@ services:
 
     # Le serveur NestJS écoute sur le port fourni par Render ($PORT).
     # main.ts doit lire process.env.PORT (NestJS le fait via app.listen(process.env.PORT ?? 3001)).
-    startCommand: pnpm --filter @roadsen/api start:prod
-
-    # preDeployCommand : exécuté APRÈS le build, AVANT la bascule zéro-coupure.
-    # `prisma migrate deploy` applique les migrations EN ATTENTE de façon
-    # idempotente ; en cas d'échec le déploiement s'arrête AVANT la bascule —
-    # jamais de code livré sur une base au schéma incompatible.
     #
-    # POURQUOI CE BLOC EXISTE (incident) : sans lui, un déploiement livrait le
-    # nouveau code mais NE MIGRAIT PAS la base. Le code lisait alors une colonne
-    # absente (`projects.archived_at`, migration 0026) → 500 sur toute lecture
-    # de projet, tant qu'on ne migrait pas la base À LA MAIN. Cette ligne ferme
-    # cette faille : la migration fait désormais partie du déploiement.
+    # MIGRATION AU DÉMARRAGE — `prisma migrate deploy && start:prod` (une seule
+    # commande, `&&` : le serveur ne démarre QUE si la migration réussit).
     #
-    # PORTÉE : couvre les migrations additives (ALTER TABLE / CREATE INDEX). Une
-    # future migration créant un RÔLE (CREATE ROLE) peut échouer si l'utilisateur
-    # managé n'a pas CREATEROLE — cf. infra/recette/RUNBOOK.md ; à traiter au cas
-    # par cas, hors de ce correctif.
-    preDeployCommand: npm install -g pnpm@9.12.0 && pnpm --filter @roadsen/api exec prisma migrate deploy
+    # POURQUOI ICI ET PAS EN preDeployCommand (deux incidents 500) : le champ
+    # `preDeployCommand` de Render n'existe PAS sur le plan gratuit (tier de la
+    # recette). Sans lui, chaque déploiement livrait le nouveau code sans migrer
+    # la base → lecture d'une colonne absente (0026 `archived_at`, puis 0027
+    # `name`) → 500 sur toute lecture de projet/calcul/PV, jusqu'à migration
+    # MANUELLE. On replie donc la migration dans le startCommand, seul crochet
+    # disponible sur ce plan.
+    #
+    # PROPRIÉTÉS : `migrate deploy` est IDEMPOTENT (ne touche rien si aucune
+    # migration n'est en attente — coût quasi nul au boot). FAIL-CLOSED : si la
+    # migration échoue, `&&` empêche le serveur de démarrer → le health check
+    # échoue et Render ne bascule pas, plutôt que de servir du 500 sur un schéma
+    # incompatible. Instance unique sur ce plan → aucune course de migration.
+    #
+    # PORTÉE : migrations additives (ALTER TABLE / CREATE INDEX / GRANT / trigger).
+    # Une future migration créant un RÔLE peut échouer si l'utilisateur managé n'a
+    # pas CREATEROLE — cf. infra/recette/RUNBOOK.md, à traiter au cas par cas.
+    startCommand: pnpm --filter @roadsen/api exec prisma migrate deploy && pnpm --filter @roadsen/api start:prod
 
     healthCheckPath: /health
 

@@ -46,22 +46,34 @@ services:
       pnpm install --frozen-lockfile --prod=false &&
       pnpm exec turbo run build --filter=@roadsen/api...
 
-    # --- startCommand ---
-    # apps/api/package.json : "start:prod": "node dist/main"
-    # À CONFIRMER après §0 build-pkgs : node apps/api/dist/main.js doit exister.
-    startCommand: node apps/api/dist/main.js # À CONFIRMER (§0 build-pkgs)
+    # --- startCommand : MIGRATION AU DÉMARRAGE ---
+    # `prisma migrate deploy && node dist/main.js` (une commande, `&&`) : le
+    # serveur ne démarre QUE si la migration réussit.
+    #
+    # POURQUOI ICI ET PAS EN preDeployCommand (DEUX incidents 500) : le champ
+    # `preDeployCommand` de Render N'EXISTE PAS sur le plan GRATUIT, celui de
+    # cette recette. Le bloc preDeployCommand ci-dessous était donc IGNORÉ, et
+    # chaque déploiement livrait le nouveau code sans migrer la base → lecture
+    # d'une colonne absente (0026 `archived_at`, puis 0027 `name`) → 500 sur
+    # toute lecture de projet/calcul/PV, jusqu'à migration MANUELLE. Le seul
+    # crochet disponible sur ce plan est le startCommand : on y replie la migration.
+    #
+    # IDEMPOTENT (rien à faire si aucune migration en attente → coût quasi nul au
+    # boot) · FAIL-CLOSED (`&&` : migration en échec → serveur non démarré → health
+    # check KO → pas de bascule, plutôt que du 500 sur schéma incompatible) ·
+    # instance unique sur ce plan → aucune course de migration.
+    startCommand: corepack enable && corepack prepare pnpm@9.12.0 --activate && pnpm --filter @roadsen/api exec prisma migrate deploy && node apps/api/dist/main.js
 
     # Route de santé versionnée : @Version('1') → GET /v1/health → { status:'ok' }
     # @Public, non-tenant (HealthController). Render sonde cette URL après déploiement.
     healthCheckPath: /v1/health
 
-    # preDeployCommand : exécuté APRÈS le build, AVANT le swap zero-downtime.
-    # En cas d'échec la migration stoppe le déploiement → aucun traffic shift.
-    # prisma migrate deploy applique les migrations en attente de façon idempotente.
-    preDeployCommand: >-
-      corepack enable &&
-      corepack prepare pnpm@9.12.0 --activate &&
-      pnpm --filter @roadsen/api exec prisma migrate deploy
+    # NOTE : preDeployCommand VOLONTAIREMENT ABSENT — indisponible sur le plan
+    # gratuit (cf. startCommand ci-dessus, où la migration a été repliée). Le jour
+    # d'un passage à un plan payant, on POURRA extraire la migration du
+    # startCommand vers un preDeployCommand (bascule zéro-coupure plus propre) —
+    # mais tant que la recette est sur le plan gratuit, elle doit rester dans le
+    # startCommand.
 
     envVars:
       # DATABASE_URL : injectée automatiquement depuis la base déclarée ci-dessous.
