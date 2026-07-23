@@ -13,6 +13,8 @@
  * CalculsClient, ce qui laissait les autres écrans afficher le slug brut).
  */
 
+import { SOFTWARE_CATALOG } from './software-catalog';
+
 // registryId (persisté backend) → slug métier court (route logiciel + libellé).
 const ENGINE_ID_ALIAS: Record<string, string> = {
   'chaussee-burmister': 'burmister',
@@ -55,4 +57,17 @@ export function slugOf(engineId: string): string {
  */
 export function metaOf(engineId: string): { nom: string } {
   return ENGINE_META[slugOf(engineId)] ?? { nom: engineId };
+}
+
+/**
+ * Nom COURT du logiciel (« CASAGRANDE », « GEOPLAQUE »…) — source unique
+ * `SOFTWARE_CATALOG` (déjà utilisé par la galerie des 6 logiciels), pas une
+ * nouvelle copie locale des noms de marque. Distinct de `metaOf` (nom métier
+ * long, ex. « ROADSENS — Chaussées ») : utilisé pour le mnémonique
+ * `Logiciel · Projet · #n` (cf. `lib/calc-name.ts`) et la méta compacte des
+ * PV. Moteur non mappé (futur) → repli sur `metaOf` (jamais une exception).
+ */
+export function logicielCourtFor(engineId: string): string {
+  const slug = slugOf(engineId);
+  return SOFTWARE_CATALOG.find((s) => s.engineId === slug)?.nom ?? metaOf(engineId).nom;
 }

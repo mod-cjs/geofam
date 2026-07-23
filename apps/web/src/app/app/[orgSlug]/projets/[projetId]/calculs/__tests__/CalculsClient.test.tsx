@@ -11,10 +11,12 @@
  *    n'appelle JAMAIS emitPv en un clic silencieux — un avertissement explicite
  *    s'affiche d'abord, confirmation requise ; pour un moteur non pilote
  *    (capture pas encore câblée), aucun bouton Sceller n'est proposé ici.
- *  - FX-4 (revue adverse) : le titre affiché est le nom métier du logiciel
- *    (pas le slug technique), l'identifiant technique reste en sous-titre
- *    discret ; deux calculs du même moteur restent distinguables (date/heure
- *    complète + verdict).
+ *  - Nom mnémonique (décision titulaire 22/07/2026, remplace FX-4) : le titre
+ *    affiché est `Logiciel · Projet · #n` (ou le nom personnalisé, si
+ *    renommé) — le nom métier du logiciel et l'identifiant technique restent
+ *    en sous-titre discret ; deux calculs du même moteur restent distinguables
+ *    (numéro #n, date/heure complète + verdict) ; renommage inline (crayon) ;
+ *    suppression d'un calcul NON scellé ; recherche étendue au nom d'affichage.
  *  - Actions unifiées (revue titulaire) : « Ouvrir dans le logiciel » n'existe
  *    plus nulle part. Scellé → « Voir le PV scellé » (primaire) + « Imprimer »
  *    (secondaire, imprime le document scellé). Non scellé → « Sceller cette
@@ -37,6 +39,9 @@ const {
   mockGetCalcSnapshot,
   mockEmitPv,
   mockGetPvDocument,
+  mockGetProjectCached,
+  mockRenameCalcResult,
+  mockDeleteCalcResult,
   mockPrintInertHtml,
   mockPush,
 } = vi.hoisted(() => ({
@@ -44,6 +49,9 @@ const {
   mockGetCalcSnapshot: vi.fn(),
   mockEmitPv: vi.fn(),
   mockGetPvDocument: vi.fn(),
+  mockGetProjectCached: vi.fn(),
+  mockRenameCalcResult: vi.fn(),
+  mockDeleteCalcResult: vi.fn(),
   mockPrintInertHtml: vi.fn(),
   mockPush: vi.fn(),
 }));
@@ -55,8 +63,11 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/api/client', () => ({
   listCalcResults: mockListCalcResults,
   getCalcSnapshot: mockGetCalcSnapshot,
+  renameCalcResult: mockRenameCalcResult,
+  deleteCalcResult: mockDeleteCalcResult,
   emitPv: mockEmitPv,
   getPvDocument: mockGetPvDocument,
+  getProjectCached: mockGetProjectCached,
 }));
 
 vi.mock('@/lib/print-inert-html', () => ({
@@ -125,6 +136,16 @@ const PV: OfficialPv = {
   output: null,
 };
 
+// Nom de projet fixe (mnémonique, décision titulaire 22/07/2026) — un objet
+// minimal suffit : `displayNameOf` ne lit que `.name` sur la valeur résolue
+// par `getProjectCached`.
+const PROJECT = { name: 'RN2 — PK45' };
+
+/** Mnémonique attendu `Logiciel · Projet · #n` — helper de lisibilité des tests. */
+function mnemo(nomCourtLogiciel: string, seq: number): string {
+  return `${nomCourtLogiciel} · ${PROJECT.name} · #${seq}`;
+}
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -136,6 +157,10 @@ beforeEach(() => {
   mockPrintInertHtml.mockReset();
   mockGetCalcSnapshot.mockReset();
   mockEmitPv.mockReset();
+  mockGetProjectCached.mockReset();
+  mockRenameCalcResult.mockReset();
+  mockDeleteCalcResult.mockReset();
+  mockGetProjectCached.mockResolvedValue(PROJECT);
   mockPush.mockReset();
 });
 
@@ -170,6 +195,30 @@ function findButtonByText(text: string): HTMLButtonElement | undefined {
   return Array.from(container.querySelectorAll('button')).find((b) =>
     b.textContent?.includes(text),
   ) as HTMLButtonElement | undefined;
+}
+
+// Distinct de findButtonByText : « Sceller » (confirmation du dialogue de
+// nommage) est un SOUS-TEXTE de « Sceller cette version » (toujours visible
+// sous le dialogue, Modal n'étant pas un unmount de la page) — une recherche
+// par inclusion matcherait les deux boutons.
+function findButtonByExactText(text: string): HTMLButtonElement | undefined {
+  return Array.from(container.querySelectorAll('button')).find(
+    (b) => b.textContent?.trim() === text,
+  ) as HTMLButtonElement | undefined;
+}
+
+/** Ouvre le dialogue de nommage (clic « Sceller cette version ») puis confirme
+ * (clic « Sceller » dans la modale) — parcours complet désormais requis pour
+ * que emitPv soit appelé (décision titulaire 22/07/2026). */
+async function sceller() {
+  await act(async () => {
+    findButtonByText('Sceller cette version')!.click();
+  });
+  await flush();
+  await act(async () => {
+    findButtonByExactText('Sceller')!.click();
+  });
+  await flush();
 }
 
 describe("CalculsClient — document de l'outil (option 3)", () => {
@@ -226,7 +275,56 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
     expect(container.querySelector('dl')).not.toBeNull();
   });
 
-  it("given l'aperçu affiché, when on clique « Sceller cette version », then emitPv est appelé pour ce calcul et l'action devient « Voir le PV scellé » + « Imprimer »", async () => {
+  it("given l'aperçu affiché, when on clique « Sceller cette version », then un dialogue de nommage s'ouvre, PRÉ-REMPLI du nom d'affichage courant", async () => {
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue({
+      displayHtml: '<p>Résultat affiché</p>',
+      printHtml: '<html><body>Document imprimable</body></html>',
+    });
+
+    await renderCalculs();
+
+    const sealBtn = findButtonByText('Sceller cette version');
+    expect(sealBtn).toBeTruthy();
+    expect(mockEmitPv).not.toHaveBeenCalled();
+
+    await act(async () => {
+      sealBtn!.click();
+    });
+    await flush();
+
+    // emitPv n'est PAS encore appelé : seul le dialogue de nommage s'ouvre.
+    expect(mockEmitPv).not.toHaveBeenCalled();
+    const nameInput = container.querySelector(
+      '#pv-name-input',
+    ) as HTMLInputElement | null;
+    expect(nameInput).not.toBeNull();
+    expect(nameInput!.value).toBe(mnemo('ROADSENS', 1));
+  });
+
+  it("given le dialogue de nommage ouvert, when on valide « Sceller » sans modifier le nom, then emitPv est appelé avec le nom pré-rempli et l'action devient « Voir le PV scellé » + « Imprimer »", async () => {
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue({
+      displayHtml: '<p>Résultat affiché</p>',
+      printHtml: '<html><body>Document imprimable</body></html>',
+    });
+    mockEmitPv.mockResolvedValue(PV);
+
+    await renderCalculs();
+    await sceller();
+
+    expect(mockEmitPv).toHaveBeenCalledWith('org_01', 'proj_01', {
+      calcResultId: 'calc_01',
+      name: mnemo('ROADSENS', 1),
+    });
+    expect(findButtonByText('Voir le PV scellé')).toBeTruthy();
+    expect(findButtonByText('Imprimer')).toBeTruthy();
+    expect(findButtonByText('Sceller cette version')).toBeFalsy();
+    // Le dialogue de nommage s'est refermé après succès.
+    expect(container.querySelector('#pv-name-input')).toBeNull();
+  });
+
+  it('given le dialogue de nommage ouvert, when on ÉDITE le nom avant de valider, then emitPv reçoit le nom MODIFIÉ (pas le mnémonique pré-rempli)', async () => {
     mockListCalcResults.mockResolvedValue([CALC]);
     mockGetCalcSnapshot.mockResolvedValue({
       displayHtml: '<p>Résultat affiché</p>',
@@ -236,24 +334,56 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
 
     await renderCalculs();
 
-    const sealBtn = findButtonByText('Sceller cette version');
-    expect(sealBtn).toBeTruthy();
-
     await act(async () => {
-      sealBtn!.click();
+      findButtonByText('Sceller cette version')!.click();
+    });
+    await flush();
+
+    const nameInput = container.querySelector('#pv-name-input') as HTMLInputElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        'value',
+      )!.set!;
+      setter.call(nameInput, 'Structure S1 — étude finale');
+      nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      findButtonByExactText('Sceller')!.click();
     });
     await flush();
 
     expect(mockEmitPv).toHaveBeenCalledWith('org_01', 'proj_01', {
       calcResultId: 'calc_01',
+      name: 'Structure S1 — étude finale',
     });
-    expect(findButtonByText('Voir le PV scellé')).toBeTruthy();
-    expect(findButtonByText('Imprimer')).toBeTruthy();
-    expect(findButtonByText('Sceller cette version')).toBeFalsy();
-    expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 
-  it("given l'émission du PV échoue (ex. quota), when on clique « Sceller cette version », then un message d'erreur clair s'affiche et l'action reste disponible", async () => {
+  it("given le dialogue de nommage ouvert, when on clique « Annuler », then emitPv n'est jamais appelé et le dialogue se ferme", async () => {
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue({
+      displayHtml: '<p>Résultat affiché</p>',
+      printHtml: '<html><body>Document imprimable</body></html>',
+    });
+
+    await renderCalculs();
+
+    await act(async () => {
+      findButtonByText('Sceller cette version')!.click();
+    });
+    await flush();
+    expect(container.querySelector('#pv-name-input')).not.toBeNull();
+
+    await act(async () => {
+      findButtonByExactText('Annuler')!.click();
+    });
+    await flush();
+
+    expect(mockEmitPv).not.toHaveBeenCalled();
+    expect(container.querySelector('#pv-name-input')).toBeNull();
+  });
+
+  it("given l'émission du PV échoue (ex. quota), when on valide le dialogue de nommage, then un message d'erreur clair s'affiche DANS le dialogue et l'action reste disponible", async () => {
     mockListCalcResults.mockResolvedValue([CALC]);
     mockGetCalcSnapshot.mockResolvedValue({
       displayHtml: '<p>Résultat affiché</p>',
@@ -266,15 +396,12 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
     });
 
     await renderCalculs();
-
-    const sealBtn = findButtonByText('Sceller cette version');
-    await act(async () => {
-      sealBtn!.click();
-    });
-    await flush();
+    await sceller();
 
     const alert = container.querySelector('[role="alert"]');
     expect(alert?.textContent).toContain("Quota d'utilisation atteint");
+    // Le dialogue reste ouvert (échec) : le champ nom est toujours là.
+    expect(container.querySelector('#pv-name-input')).not.toBeNull();
     expect(findButtonByText('Sceller cette version')).toBeTruthy();
   });
 
@@ -322,7 +449,27 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
       expect(findButtonByText('Sceller cette version')).toBeTruthy();
     });
 
-    it("given l'avertissement affiché, when on clique « Confirmer le scellement sans document », then emitPv est appelé pour ce calcul", async () => {
+    it("given l'avertissement affiché, when on clique « Confirmer le scellement sans document », then le dialogue de nommage s'ouvre (emitPv toujours pas appelé)", async () => {
+      mockListCalcResults.mockResolvedValue([CALC]);
+      mockGetCalcSnapshot.mockResolvedValue(null);
+
+      await renderCalculs();
+
+      await act(async () => {
+        findButtonByText('Sceller cette version')!.click();
+      });
+      await flush();
+
+      await act(async () => {
+        findButtonByText('Confirmer le scellement sans document')!.click();
+      });
+      await flush();
+
+      expect(mockEmitPv).not.toHaveBeenCalled();
+      expect(container.querySelector('#pv-name-input')).not.toBeNull();
+    });
+
+    it('given le dialogue de nommage ouvert après confirmation M3, when on valide « Sceller », then emitPv est appelé pour ce calcul', async () => {
       mockListCalcResults.mockResolvedValue([CALC]);
       mockGetCalcSnapshot.mockResolvedValue(null);
       mockEmitPv.mockResolvedValue(PV);
@@ -339,8 +486,14 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
       });
       await flush();
 
+      await act(async () => {
+        findButtonByExactText('Sceller')!.click();
+      });
+      await flush();
+
       expect(mockEmitPv).toHaveBeenCalledWith('org_01', 'proj_01', {
         calcResultId: 'calc_01',
+        name: mnemo('ROADSENS', 1),
       });
     });
 
@@ -356,25 +509,38 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
     });
   });
 
-  describe('FX-4 (revue adverse) — titre = nom métier, deux calculs du même moteur distinguables', () => {
-    it("given un calcul, when affiché dans la liste et dans le panneau, then le TITRE est le nom métier du logiciel et l'identifiant technique reste un sous-titre discret", async () => {
+  describe('Nom mnémonique (décision titulaire 22/07/2026, remplace FX-4) — titre = Logiciel · Projet · #n, logiciel en sous-titre', () => {
+    it('given un calcul SANS nom personnalisé, when affiché, then la LISTE porte la forme compacte « Logiciel · #n » et le PANNEAU la forme complète « Logiciel · Projet · #n »', async () => {
       mockListCalcResults.mockResolvedValue([CALC]);
       mockGetCalcSnapshot.mockResolvedValue(null);
 
       await renderCalculs();
 
-      const item = container.querySelector('li button') as HTMLButtonElement;
-      // Titre = nom métier (pas le slug/libellé technique du calcul).
+      // COLONNE ÉTROITE — forme COMPACTE (décision titulaire 22/07/2026, prise
+      // après vérification dans l'application réelle : le nom complet y était
+      // tronqué à « ROADSENS · Route Dakar-T… » sur TOUTES les lignes, coupant
+      // le #n qui les distingue. Le nom du projet y est de toute façon redondant
+      // — on est déjà DANS ce projet.
+      // Sélection = direct child <button> du <li> (les boutons crayon/corbeille
+      // sont des SIBLINGS, pas des enfants imbriqués — cf. structure de la ligne).
+      const item = container.querySelector('li > button') as HTMLButtonElement;
+      expect(item.textContent).toContain('ROADSENS · #1');
+      expect(item.textContent).not.toContain(PROJECT.name);
+      // Sous-titre = nom métier du logiciel + libellé technique, toujours
+      // présents mais discrets (ne sont plus le titre).
       expect(item.textContent).toContain('ROADSENS — Chaussées');
-      // Sous-titre = libellé technique du calcul, toujours présent mais discret.
       expect(item.textContent).toContain(CALC.label);
 
+      // PANNEAU DE DÉTAIL (large) — forme COMPLÈTE, projet inclus.
       const heading = container.querySelector('h2') as HTMLHeadingElement;
-      expect(heading.textContent).toBe('ROADSENS — Chaussées');
+      expect(heading.textContent).toBe(mnemo('ROADSENS', 1));
+      expect(container.querySelector('section')?.textContent).toContain(
+        'ROADSENS — Chaussées',
+      );
       expect(container.querySelector('section')?.textContent).toContain(CALC.label);
     });
 
-    it('given deux calculs du même moteur, when listés, then ils restent distinguables (libellé technique et date/heure complète + verdict différents)', async () => {
+    it('given deux calculs du même moteur, when listés, then ils restent distinguables (numéro #n distinct, en plus du verdict et de l’horodatage)', async () => {
       mockListCalcResults.mockResolvedValue([CALC, CALC_2_MEME_MOTEUR]);
       mockGetCalcSnapshot.mockResolvedValue(null);
 
@@ -382,12 +548,27 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
 
       const items = Array.from(container.querySelectorAll('li'));
       expect(items).toHaveLength(2);
-      // Même titre (même moteur) mais contenu de la carte différent (verdict +
-      // horodatage), donc les deux boutons ne sont jamais identiques.
+      // C'EST LE DÉFAUT D'ORIGINE : sans le #n, ces deux lignes porteraient un
+      // libellé identique. Le rang doit rester VISIBLE en forme compacte — s'il
+      // était rogné par la troncature, le défaut réapparaîtrait à l'écran.
+      expect(container.textContent).toContain('ROADSENS · #1');
+      expect(container.textContent).toContain('ROADSENS · #2');
       const texts = items.map((li) => li.textContent);
       expect(texts[0]).not.toBe(texts[1]);
       expect(container.textContent).toContain('CONFORME');
       expect(container.textContent).toContain('NON CONF.');
+    });
+
+    it('given un calcul renommé (name personnalisé), when affiché, then le TITRE est ce nom personnalisé, PAS le mnémonique', async () => {
+      const CALC_RENOMME = { ...CALC, name: 'Structure S1 — variante retenue' };
+      mockListCalcResults.mockResolvedValue([CALC_RENOMME]);
+      mockGetCalcSnapshot.mockResolvedValue(null);
+
+      await renderCalculs();
+
+      const item = container.querySelector('li > button') as HTMLButtonElement;
+      expect(item.textContent).toContain('Structure S1 — variante retenue');
+      expect(item.textContent).not.toContain(mnemo('ROADSENS', 1));
     });
   });
 
@@ -712,6 +893,266 @@ describe("CalculsClient — document de l'outil (option 3)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Renommage en ligne d'un calcul (patron rename-inline des projets, P0-7)
+// ---------------------------------------------------------------------------
+
+describe('CalculsClient — renommage en ligne (patron rename-inline)', () => {
+  const champ = () =>
+    container.querySelector<HTMLInputElement>('input[aria-label^="Renommer le calcul"]');
+  const boutonRenommer = () =>
+    container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Renommer le calcul"]',
+    );
+
+  function saisir(input: HTMLInputElement, valeur: string) {
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value',
+    )!.set!;
+    setter.call(input, valeur);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  it('#1 GIVEN un calcul SANS nom personnalisé — WHEN on clique le crayon — THEN un champ pré-rempli du MNÉMONIQUE s’ouvre', async () => {
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    await renderCalculs();
+
+    expect(boutonRenommer()).not.toBeNull();
+    await act(async () => boutonRenommer()!.click());
+    expect(champ()?.value).toBe(mnemo('ROADSENS', 1));
+  });
+
+  it('#2 GIVEN un nouveau nom — WHEN on valide (Entrée) — THEN renameCalcResult est appelé et la liste se met à jour SANS rechargement complet', async () => {
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    mockRenameCalcResult.mockResolvedValue({ ...CALC, name: 'Structure S1 — finale' });
+    await renderCalculs();
+
+    await act(async () => boutonRenommer()!.click());
+    const input = champ()!;
+    await act(async () => saisir(input, 'Structure S1 — finale'));
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await flush();
+
+    expect(mockRenameCalcResult).toHaveBeenCalledWith(
+      'org_01',
+      'proj_01',
+      'calc_01',
+      'Structure S1 — finale',
+    );
+    expect(mockListCalcResults).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Structure S1 — finale');
+  });
+
+  it('#3 GIVEN une saisie VIDE — WHEN on valide — THEN renameCalcResult est appelé avec null (retour au mnémonique), PAS ignoré', async () => {
+    const CALC_RENOMME = { ...CALC, name: 'Nom personnalisé' };
+    mockListCalcResults.mockResolvedValue([CALC_RENOMME]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    mockRenameCalcResult.mockResolvedValue(CALC);
+    await renderCalculs();
+
+    await act(async () => boutonRenommer()!.click());
+    const input = champ()!;
+    await act(async () => saisir(input, '   '));
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await flush();
+
+    expect(mockRenameCalcResult).toHaveBeenCalledWith(
+      'org_01',
+      'proj_01',
+      'calc_01',
+      null,
+    );
+  });
+
+  it('#3bis GIVEN un calcul DÉJÀ au mnémonique (pas de nom personnalisé) — WHEN on valide une saisie VIDE — THEN AUCUN appel API (rien à réinitialiser)', async () => {
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    await renderCalculs();
+
+    await act(async () => boutonRenommer()!.click());
+    const input = champ()!;
+    await act(async () => saisir(input, ''));
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await flush();
+
+    expect(mockRenameCalcResult).not.toHaveBeenCalled();
+  });
+
+  it('#4 GIVEN un nom IDENTIQUE au nom personnalisé actuel — WHEN on valide — THEN AUCUN appel API', async () => {
+    const CALC_RENOMME = { ...CALC, name: 'Nom personnalisé' };
+    mockListCalcResults.mockResolvedValue([CALC_RENOMME]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    await renderCalculs();
+
+    await act(async () => boutonRenommer()!.click());
+    const input = champ()!;
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await flush();
+
+    expect(mockRenameCalcResult).not.toHaveBeenCalled();
+  });
+
+  it('#4bis GIVEN un calcul SANS nom — WHEN on ouvre le crayon et on valide sans rien modifier (Entrée) — THEN AUCUN appel API : le mnémonique ne se fige pas', async () => {
+    // LE DÉFAUT (revue adverse) : le champ est pré-rempli avec le MNÉMONIQUE.
+    // Valider sans modifier envoyait un PATCH qui le persistait comme nom
+    // personnalisé. Le nom devenait alors MENTEUR — il ne suivait plus ni le
+    // projet renommé ni le rang — et repassait en forme longue dans la colonne
+    // étroite, ramenant la troncature que ce lot venait de corriger.
+    mockListCalcResults.mockResolvedValue([CALC]); // name: null
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    await renderCalculs();
+
+    await act(async () => boutonRenommer()!.click());
+    const input = champ()!;
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await flush();
+
+    expect(mockRenameCalcResult).not.toHaveBeenCalled();
+  });
+
+  it('#4ter GIVEN un calcul SANS nom — WHEN on ouvre le crayon et on clique AILLEURS (blur) — THEN AUCUN appel API', async () => {
+    // Le blur est le geste le plus naturel pour abandonner une saisie : il ne
+    // doit pas écrire ce que l'utilisateur n'a pas tapé. Échap ne peut pas être
+    // le seul moyen d'annuler.
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    await renderCalculs();
+
+    await act(async () => boutonRenommer()!.click());
+    const input = champ()!;
+    await act(async () => {
+      input.dispatchEvent(new FocusEvent('blur', { bubbles: false }));
+    });
+    await flush();
+
+    expect(mockRenameCalcResult).not.toHaveBeenCalled();
+  });
+
+  it('#5 GIVEN un champ ouvert — WHEN Échap — THEN annulation SANS écriture', async () => {
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    await renderCalculs();
+
+    await act(async () => boutonRenommer()!.click());
+    const input = champ()!;
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+
+    expect(mockRenameCalcResult).not.toHaveBeenCalled();
+    expect(champ()).toBeNull();
+    expect(container.textContent).toContain(mnemo('ROADSENS', 1));
+  });
+
+  it('#6 GIVEN un échec serveur — WHEN on valide — THEN le nom affiché revient à l’ancien (pas d’UI optimiste menteuse)', async () => {
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    mockRenameCalcResult.mockRejectedValue(new Error('boom'));
+    await renderCalculs();
+
+    await act(async () => boutonRenommer()!.click());
+    const input = champ()!;
+    await act(async () => saisir(input, 'Ne doit pas rester'));
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    await flush();
+
+    expect(container.textContent).toContain(mnemo('ROADSENS', 1));
+    expect(container.textContent).not.toContain('Ne doit pas rester');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suppression d'un calcul NON scellé (menu de la ligne)
+// ---------------------------------------------------------------------------
+
+describe('CalculsClient — suppression d’un calcul non scellé', () => {
+  const boutonSupprimerListe = () =>
+    container.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Supprimer le calcul"]',
+    );
+  const boutonConfirmer = () =>
+    Array.from(document.body.querySelectorAll<HTMLButtonElement>('button')).find(
+      (b) => b.textContent?.trim() === 'Supprimer définitivement',
+    );
+
+  it('GIVEN un calcul NON scellé — WHEN affiché — THEN le bouton Supprimer est proposé sur la ligne', async () => {
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    await renderCalculs();
+
+    expect(boutonSupprimerListe()).not.toBeNull();
+  });
+
+  it("GIVEN un calcul portant un PV (scellé) — WHEN affiché — THEN AUCUN bouton Supprimer n'est proposé sur la ligne", async () => {
+    mockListCalcResults.mockResolvedValue([CALC_SEALED]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    await renderCalculs();
+
+    expect(boutonSupprimerListe()).toBeNull();
+  });
+
+  it('GIVEN le bouton Supprimer — WHEN cliqué — THEN une modale de confirmation IRRÉVERSIBLE s’ouvre, deleteCalcResult n’est pas encore appelé', async () => {
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    await renderCalculs();
+
+    await act(async () => boutonSupprimerListe()!.click());
+    await flush();
+
+    expect(document.body.textContent).toMatch(/irr[ée]versible/i);
+    expect(mockDeleteCalcResult).not.toHaveBeenCalled();
+  });
+
+  it('GIVEN la modale de confirmation — WHEN on confirme — THEN deleteCalcResult est appelé et le calcul disparaît de la liste', async () => {
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    mockDeleteCalcResult.mockResolvedValue(undefined);
+    await renderCalculs();
+
+    await act(async () => boutonSupprimerListe()!.click());
+    await flush();
+    await act(async () => boutonConfirmer()!.click());
+    await flush();
+
+    expect(mockDeleteCalcResult).toHaveBeenCalledWith('org_01', 'proj_01', 'calc_01');
+    expect(container.textContent).not.toContain(mnemo('ROADSENS', 1));
+  });
+
+  it('GIVEN un calcul portant malgré tout un PV côté serveur (409, concurrence) — WHEN on confirme — THEN un message exploitable s’affiche, le calcul reste dans la liste', async () => {
+    mockListCalcResults.mockResolvedValue([CALC]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    mockDeleteCalcResult.mockRejectedValue({
+      statusCode: 409,
+      reason: 'SERVER_ERROR',
+      message: 'Ce calcul porte un PV scellé, il ne peut pas être supprimé.',
+    });
+    await renderCalculs();
+
+    await act(async () => boutonSupprimerListe()!.click());
+    await flush();
+    await act(async () => boutonConfirmer()!.click());
+    await flush();
+
+    expect(document.body.textContent).toMatch(/PV scell/i);
+    expect(container.textContent).toContain(mnemo('ROADSENS', 1));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Filtres par logiciel, recherche, pagination — écran 2 (maquette 21/07/2026,
 // P1 dégelé). Ordre attendu de la chaîne : filtrer (chips + recherche) ->
 // paginer. Chaque changement de filtre/recherche remet la page à 1 (DoD §9 —
@@ -936,6 +1377,43 @@ describe('CalculsClient — recherche (insensible casse + accents)', () => {
     expect(container.querySelectorAll('li')).toHaveLength(0);
     expect(container.textContent).toContain('Aucun calcul ne correspond');
   });
+
+  it('given une recherche qui vise le NOM PERSONNALISÉ d’un calcul renommé, when tapée, then ce calcul ressort (recherche étendue au nom d’affichage)', async () => {
+    const CALC_RENOMME = makeCalc({
+      id: 'calc-renomme',
+      engineId: 'chaussee-burmister',
+      name: 'Variante définitive validée client',
+    });
+    mockListCalcResults.mockResolvedValue([CALC_ETE, CALC_RENOMME]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+    const search = container.querySelector('input[type="search"]') as HTMLInputElement;
+    await act(async () => {
+      saisir(search, 'définitive validée');
+    });
+    await flush();
+
+    expect(container.querySelectorAll('li')).toHaveLength(1);
+    expect(container.textContent).toContain('Variante définitive validée client');
+  });
+
+  it('given une recherche qui vise le MNÉMONIQUE calculé (nom de projet), when tapée, then le calcul SANS nom personnalisé ressort aussi', async () => {
+    mockListCalcResults.mockResolvedValue([CALC_ETE, CALC_HIVER]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+
+    await renderCalculs();
+    const search = container.querySelector('input[type="search"]') as HTMLInputElement;
+    await act(async () => {
+      // PROJECT.name = 'RN2 — PK45' : recherche sur un fragment du mnémonique.
+      saisir(search, 'PK45');
+    });
+    await flush();
+
+    // Les deux calculs (aucun n'a de nom personnalisé) partagent le même nom
+    // de projet dans leur mnémonique — les deux ressortent.
+    expect(container.querySelectorAll('li')).toHaveLength(2);
+  });
 });
 
 describe('CalculsClient — pagination client (~12/page)', () => {
@@ -1039,8 +1517,12 @@ describe('CalculsClient — pagination client (~12/page)', () => {
     await renderCalculs();
 
     // Sélectionne le dernier élément de la page 1 (pieu-11), différent du
-    // premier sélectionné par défaut (pieu-00).
-    const items = Array.from(container.querySelectorAll('li button'));
+    // premier sélectionné par défaut (pieu-00). Sélecteur d'enfant DIRECT
+    // (`li > button`) : les boutons crayon/corbeille de chaque ligne sont
+    // aussi des <button>, mais des SIBLINGS du bouton de sélection, jamais
+    // des enfants imbriqués — `li button` (descendant) les compterait aussi
+    // et décalerait l'index.
+    const items = Array.from(container.querySelectorAll('li > button'));
     await act(async () => {
       (items[11] as HTMLButtonElement).click();
     });

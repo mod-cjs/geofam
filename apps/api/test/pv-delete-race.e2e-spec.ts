@@ -111,6 +111,7 @@ describe('Course émission de PV × suppression définitive (e2e Postgres réel)
   const projB = randomUUID(); // scénario B : suppression en vol, puis émission
   const projD = randomUUID(); // scénario D : deux émissions concurrentes
   const projE = randomUUID(); // scénario E : archivage concurrent d'un scellement
+  const projF = randomUUID(); // scénario F : suppression de CALCUL concurrente
 
   const PASSWORD = 'Sup3r-Secret-RaceCondition!';
   const burmisterInput = BURMISTER_FIXTURES[0].input;
@@ -155,8 +156,9 @@ describe('Course émission de PV × suppression définitive (e2e Postgres réel)
         ($1,$2,'Race — A',$3,'ACTIVE',now()),
         ($4,$2,'Race — B',$3,'ACTIVE',now()),
         ($5,$2,'Race — D',$3,'ACTIVE',now()),
-        ($6,$2,'Race — E',$3,'ACTIVE',now())`,
-      [projA, org, owner, projB, projD, projE],
+        ($6,$2,'Race — E',$3,'ACTIVE',now()),
+        ($7,$2,'Race — F',$3,'ACTIVE',now())`,
+      [projA, org, owner, projB, projD, projE, projF],
     );
     await admin.query(
       `INSERT INTO subscriptions
@@ -561,6 +563,89 @@ describe('Course émission de PV × suppression définitive (e2e Postgres réel)
     expect(resEmission.status).toBeLessThan(300);
     expect(resArchivage.status).toBe(200);
     expect(await nbPvs(projE)).toBe(1);
+  });
+
+  // --- #F suppression de CALCUL en vol, émission concurrente -----------------
+
+  it('#F GIVEN une suppression de CALCUL en vol WHEN une émission de PV démarre sur ce calcul THEN rien n’est scellé sur un calcul détruit (404, aucun PV orphelin) — le PROJET, lui, survit', async () => {
+    // Différence essentielle avec #B : ici seul le CALCUL est supprimé, le projet
+    // reste ACTIF. Ce n'est donc PAS la garde projet (assertProjetEcrivable) qui
+    // produit le 404 — le projet passe la garde — mais la RELECTURE DU CALCUL
+    // après le verrou (calcEncorePresent, revue ingenieur-securite B1). Sans elle,
+    // l'émission scellait un PV numéroté et facturé dont le calc_result source
+    // n'existe plus (official_pvs n'a aucune FK vers calc_results).
+    expect.hasAssertions();
+    if (!ready()) return;
+    const t = await login();
+    const calcF = await creerCalcul(projF);
+
+    // Le bloqueur fige la ligne de calcul : la suppression de calcul ira jusqu'à
+    // son `DELETE FROM calc_results` (donc APRÈS avoir pris le FOR UPDATE projet
+    // et compté 0 PV) puis attendra.
+    await bloqueur!.query('BEGIN');
+    await bloqueur!.query(
+      `SELECT id FROM calc_results WHERE id = $1 FOR UPDATE`,
+      [calcF],
+    );
+
+    let suppressionFinie = false;
+    let emissionFinie = false;
+    let suppression: Promise<request.Response> | null = null;
+    let emission: Promise<request.Response> | null = null;
+    try {
+      suppression = request(server())
+        .delete(`/projects/${projF}/calc-results/${calcF}`)
+        .set(auth(t))
+        .then((r) => {
+          suppressionFinie = true;
+          return r;
+        });
+
+      // La suppression détient le FOR UPDATE projet et bloque sur le DELETE du
+      // calcul (verrouillé par le bloqueur).
+      await attendre(
+        'suppression de calcul bloquée sur DELETE calc_results',
+        async () => (await bloquees('%DELETE FROM%calc_results%')) >= 1,
+      );
+      expect(suppressionFinie).toBe(false);
+      const bloqueesAvant = await bloquees('%');
+
+      emission = request(server())
+        .post(`/projects/${projF}/calc-results/${calcF}/pv`)
+        .set(auth(t))
+        .then((r) => {
+          emissionFinie = true;
+          return r;
+        });
+
+      // L'émission lit le calcul (encore présent, le DELETE est bloqué), puis
+      // demande le FOR SHARE projet → elle BLOQUE (la suppression tient le
+      // FOR UPDATE). L'ordre « projet en premier des deux côtés » évite tout
+      // interblocage.
+      await attendre(
+        'émission bloquée à son tour sur le verrou projet',
+        async () => emissionFinie || (await bloquees('%')) > bloqueesAvant,
+      );
+    } finally {
+      // Relâche le verrou du bloqueur : la suppression finit son DELETE, commit,
+      // libère le projet ; l'émission obtient alors le FOR SHARE et relit le
+      // calcul — disparu → 404.
+      await bloqueur!.query('COMMIT');
+    }
+    const [resSuppression, resEmission] = await Promise.all([
+      suppression,
+      emission,
+    ]);
+
+    // La suppression était première, le calcul n'était pas scellé : elle aboutit.
+    expect(resSuppression.status).toBe(200);
+    // COEUR DU CAS : l'émission ne scelle RIEN sur un calcul détruit. C'est le
+    // calcEncorePresent (post-verrou) qui rend ce 404, pas la garde projet.
+    expect(resEmission.status).toBe(404);
+    expect(await nbPvs(projF)).toBe(0);
+    // Le projet, lui, EXISTE toujours (seul le calcul a été supprimé).
+    expect(await nbProjets(projF)).toBe(1);
+    expect(await nbPvsOrphelins(projF)).toBe(0);
   });
 
   // --- #D non-régression de performance : pas de sérialisation abusive -------

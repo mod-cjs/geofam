@@ -145,6 +145,15 @@ export interface CalcResult {
   params: Record<string, unknown>;
   output: unknown | null;
   /**
+   * Nom mnémonique du calcul (renommage client — cf. `lib/calc-name.ts`).
+   * `null`/`undefined` = aucun nom personnalisé : l'écran affiche le mnémonique
+   * calculé (`Logiciel · Projet · #n`). `undefined` couvre les backends/mocks
+   * antérieurs à ce champ ; traité EXACTEMENT comme `null` par `nomAffiche` —
+   * ni l'un ni l'autre ne porte de distinction "connu vide" ici (contrairement
+   * à `calcCount`), un nom de calcul n'ayant pas cette notion.
+   */
+  name?: string | null;
+  /**
    * Sortie serveur WHITELISTÉE BRUTE (telle que renvoyée par le moteur côté serveur,
    * projetée sur son contrat de sortie — barrière §8, ADR 0015 §4). Conservée À CÔTÉ
    * de `output` (métadonnée de conformité). Consommée UNIQUEMENT par les clones d'UI
@@ -164,6 +173,12 @@ export interface CalcRequest {
   engineId: string;
   label: string;
   params: Record<string, unknown>;
+}
+
+/** PATCH /projects/:projectId/calc-results/:calcResultId — renomme un calcul. */
+export interface RenameCalcResultRequest {
+  /** `null` = revenir au mnémonique calculé (efface le nom personnalisé). */
+  name: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,11 +227,27 @@ export interface OfficialPv {
    * un document fidèle dans ce cas (ni le mot « garantis » sur ce point).
    */
   documentFormat?: 'html' | null;
+  /**
+   * Étiquette du PV (renommage client — cf. `lib/calc-name.ts`). `null`/`undefined`
+   * = pas d'étiquette personnalisée : l'écran affiche le mnémonique calculé.
+   * Ne modifie JAMAIS le contenu scellé (HMAC) : c'est une métadonnée d'affichage
+   * hors périmètre du sceau, renommable via PATCH sans re-scellement.
+   */
+  name?: string | null;
 }
 
 export interface EmitPvRequest {
   calcResultId: string;
   note?: string;
+  /** Étiquette proposée à l'émission (pré-remplie par le nom d'affichage courant
+   * du calcul source, cf. CalculsClient). Devient `OfficialPv.name`. */
+  name?: string;
+}
+
+/** PATCH /projects/:projectId/pvs/:pvId — renomme l'étiquette d'un PV. */
+export interface RenamePvRequest {
+  /** `null` = revenir au mnémonique calculé. */
+  name: string | null;
 }
 
 export interface VerifyPvResponse {

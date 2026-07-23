@@ -174,6 +174,10 @@ model CalcResult {
   engineSourceHash String?  @map("engine_source_hash")
   input            Json     @db.JsonB
   output           Json     @db.JsonB
+  // Etiquette d'affichage MUTABLE (0027). NULLABLE : null = pas de nom
+  // personnalise, le front retombe sur un mnemonique calcule. N'entre dans
+  // aucun contenu scelle (le calcul est jetable ; le sceau vit sur official_pvs).
+  name             String?
   createdAt        DateTime @default(now()) @map("created_at")
 
   // FK COMPOSITE (orgId, projectId) -> projects(orgId, id) : un calcul ne reference
@@ -243,6 +247,12 @@ model OfficialPv {
   contentHash      String   @map("content_hash")
   hmac             String
   sealedAt         DateTime @map("sealed_at")
+  // ETIQUETTE D'AFFICHAGE MUTABLE, HORS SCEAU (0027). NULLABLE : null = pas de
+  // nom personnalise. CRITIQUE — `name` n'entre JAMAIS dans input_canonical ni
+  // dans le HMAC/content_hash : le renommer NE casse PAS le sceau. C'est la SEULE
+  // colonne modifiable d'un official_pv IMMUABLE (privilege UPDATE au niveau
+  // colonne + trigger qui n'autorise QUE `name`, cf. migration 0027).
+  name             String?
   // DOCUMENT CLIENT SCELLE (option-3, 0024) : copie IMMUABLE des octets du print_html
   // au scellement. NULL = PV sans capture (retro-compat -> fallback PDF). L'integrite
   // reste re-verifiable : sha256(document_html) doit egaler document.sha256 (scelle

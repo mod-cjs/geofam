@@ -108,6 +108,7 @@ function sealPv(input: unknown, output: unknown): OfficialPv {
     sealedAt: new Date(sealedAtIso),
     documentHtml: null,
     documentFormat: null,
+    name: null,
   };
 }
 

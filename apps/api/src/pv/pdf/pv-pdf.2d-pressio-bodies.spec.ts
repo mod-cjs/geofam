@@ -77,6 +77,7 @@ function makeSealedPv(
     sealedAt: new Date(sealedAtIso),
     documentHtml: null,
     documentFormat: null,
+    name: null,
   };
 }
 

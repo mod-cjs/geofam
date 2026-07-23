@@ -609,6 +609,7 @@ function camelizePv(row: Record<string, unknown>): OfficialPv {
     sealedAt: row.sealed_at as Date,
     documentHtml: (row.document_html as string | null) ?? null,
     documentFormat: (row.document_format as string | null) ?? null,
+    name: (row.name as string | null) ?? null,
   };
 }
 

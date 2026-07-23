@@ -79,6 +79,11 @@ beforeEach(() => {
   mockDownloadPvPdf.mockReset();
   mockGetPvDocument.mockReset();
   mockGetProjectCached.mockReset();
+  // Le nom mnémonique d'un PV (« Logiciel · Projet · #n ») a besoin du nom du
+  // PROJET : le composant appelle donc getProjectCached. Un mock sans valeur
+  // RÉSOLUE renvoie undefined -> `undefined.then` -> le composant ne monte pas
+  // (toute la suite rougit pour une raison sans rapport avec ce qu'elle teste).
+  mockGetProjectCached.mockResolvedValue({ name: 'Route Dakar-Thiès — dimensionnement' });
   URL.createObjectURL = vi.fn(() => 'blob:mock');
   URL.revokeObjectURL = vi.fn();
 });
@@ -136,14 +141,20 @@ describe('PvListClient — ligne compacte (maquette finale, écran 3)', () => {
     expect(metaNode!.style.textOverflow).toBe('ellipsis');
   });
 
-  it("given un PV, when la liste s'affiche, then le titre est le TYPE DE NOTE sur une ligne (pas le numéro, pas le projet répété)", async () => {
-    const pv = makePv({ engineId: 'radier' });
+  it("given un PV sans nom personnalisé, when la liste s'affiche, then le titre est le mnémonique « Logiciel · Projet · #n », sur UNE ligne", async () => {
+    // Décision titulaire 22/07/2026 : le titre n'est plus dérivé du seul moteur
+    // (deux PV du même logiciel étaient alors indiscernables), mais un
+    // mnémonique distinctif. La contrainte d'UNE ligne reste celle de la
+    // maquette : le titre ne doit jamais casser la compacité de la rangée.
+    const pv = makePv({ engineId: 'radier', name: null });
     mockListPvs.mockResolvedValue([pv]);
 
     await renderPvList();
 
     const title = container.querySelector('[role="listitem"] span') as HTMLSpanElement;
-    expect(title.textContent).toBe('Note de calcul — Radier sur sol élastique');
+    expect(title.textContent).toBe(
+      'GEOPLAQUE · Route Dakar-Thiès — dimensionnement · #1',
+    );
     expect(title.style.whiteSpace).toBe('nowrap');
     expect(title.style.overflow).toBe('hidden');
     expect(title.style.textOverflow).toBe('ellipsis');

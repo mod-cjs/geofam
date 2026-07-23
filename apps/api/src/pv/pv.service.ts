@@ -83,6 +83,10 @@ export class PvService {
     calcResultId: string;
     projectId: string;
     userId: string;
+    // ETIQUETTE D'AFFICHAGE optionnelle (0027) — stockee HORS SCEAU (cf. INSERT).
+    // N'entre NI dans le contenu canonique NI dans le HMAC : la renommer plus tard
+    // ne casse pas le sceau. Absente/`null` -> pas de nom personnalise.
+    name?: string | null;
   }): Promise<SealedPvRow> {
     const orgId = requireOrgId();
     const secret = this.signingSecret();
@@ -129,6 +133,30 @@ export class PvService {
         // consomme sur un refus. C'est aussi le PREMIER verrou de la transaction
         // (ordre anti-interblocage, cf. project-write-guard).
         const project = await assertProjetEcrivable(tx, args.projectId);
+
+        // RELECTURE DU CALCUL **APRES** LE VERROU (revue ingenieur-securite, B1).
+        // La lecture ci-dessus (l.108) precede le premier verrou : sous READ
+        // COMMITTED, une suppression de calcul concurrente (deleteUnsealed, qui
+        // prend le projet FOR UPDATE) pouvait commiter dans cet intervalle. On
+        // scellait alors un PV numerote et facture dont le calc_result source
+        // n'existait plus — et SANS sa capture (calc_snapshots supprime avec le
+        // calcul), donc un livrable different de celui qu'on aurait produit sans
+        // la course. `official_pvs` n'a aucune FK vers `calc_results` : la base ne
+        // l'aurait pas rattrape.
+        //
+        // Une fois le FOR SHARE tenu, plus aucune suppression ne peut s'intercaler
+        // (elle bloque sur le FOR UPDATE du projet). Cette relecture ferme donc la
+        // fenetre. On ne DEPLACE pas la lecture l.108 apres le verrou : elle porte
+        // le message 404 « calcul hors projet », distinct de la garde projet.
+        const calcEncorePresent = await tx.calcResult.findUnique({
+          where: { id: args.calcResultId },
+          select: { id: true },
+        });
+        if (!calcEncorePresent) {
+          throw new NotFoundException(
+            'Calcul introuvable dans ce projet/cette organisation.',
+          );
+        }
 
         // IDENTITE A SCELLER (org + emetteur) — lecture via fonction DEFINER.
         //
@@ -362,6 +390,11 @@ export class PvService {
             // egal a document.sha256 scelle (re-verifie au service du document).
             documentHtml: snapshot ? snapshot.printHtml : null,
             documentFormat: snapshot ? 'html' : null,
+            // ETIQUETTE D'AFFICHAGE (0027) — DELIBEREMENT HORS DU BLOC SCELLE
+            // ci-dessus (`content`/`canonical`/`contentHash`/`hmac`). Ce n'est PAS
+            // du contenu du PV : c'est un libelle mutable, renommable ensuite via
+            // PATCH sans re-sceller. `?? null` : absence de nom = null (jamais '').
+            name: args.name ?? null,
           },
           // B1-bis : on ECRIT document_html (data) mais on ne le RENVOIE pas (omit).
           omit: { documentHtml: true },
@@ -566,6 +599,47 @@ export class PvService {
       }),
     );
     return rows.map((pv) => ({ pv, sealValid: this.verify(pv, secret) }));
+  }
+
+  /**
+   * Renomme l'ETIQUETTE d'affichage d'un PV du tenant courant (PATCH pvs/:id).
+   *
+   * `name` est HORS SCEAU (0027) : il N'ENTRE PAS dans input_canonical ni dans le
+   * HMAC/content_hash. Le renommer NE re-scelle RIEN et NE modifie AUCUNE colonne
+   * scellee -> le sceau reste identique et re-verifiable (sealValid inchange). En
+   * base, la seule ecriture permise sur official_pvs (IMMUABLE) est cet UPDATE de
+   * la SEULE colonne `name` : privilege UPDATE au niveau colonne + trigger
+   * `official_pvs_seal_immutable_update` qui refuse tout UPDATE touchant une autre
+   * colonne (migration 0027). `null` revient a « pas de nom personnalise ».
+   *
+   * updateMany (et non update) : ligne ABSENTE / HORS-TENANT (RLS) / d'un AUTRE
+   * projet du meme org -> count=0 SANS lever -> `null`, traduit en 404 tenant-safe
+   * par le controleur. Le predicat `projectId` barre un PV d'un autre projet ; la
+   * RLS barre le cross-org. Renvoie le PV a jour (SANS document_html, B1-bis) +
+   * son verdict de sceau (re-verifie apres renommage : preuve que le sceau tient).
+   */
+  async rename(args: {
+    projectId: string;
+    pvId: string;
+    name: string | null;
+  }): Promise<OfficialPvView | null> {
+    const orgId = requireOrgId();
+    const secret = this.signingSecret();
+    const pv = await this.prisma.withTenant(orgId, async (tx) => {
+      const res = await tx.officialPv.updateMany({
+        where: { id: args.pvId, projectId: args.projectId },
+        data: { name: args.name },
+      });
+      if (res.count === 0) return null;
+      return tx.officialPv.findUnique({
+        where: { id: args.pvId },
+        omit: { documentHtml: true },
+      });
+    });
+    if (!pv) return null;
+    // Re-verification du sceau APRES renommage : name etant hors canonique, le
+    // sceau doit rester valide (verrouille par les tests « name hors sceau »).
+    return { pv, sealValid: this.verify(pv, secret) };
   }
 
   /**

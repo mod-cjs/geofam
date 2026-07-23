@@ -36,9 +36,12 @@ import {
   httpRunCalc,
   httpSaveCalcSnapshot,
   httpGetCalcSnapshot,
+  httpRenameCalcResult,
+  httpDeleteCalcResult,
   httpListPvs,
   httpGetPv,
   httpEmitPv,
+  httpRenamePv,
   httpVerifyPv,
   httpDownloadPvPdf,
   httpGetPvDocument,
@@ -594,6 +597,56 @@ export async function getCalcSnapshot(
   return null;
 }
 
+/**
+ * Renomme un calcul — PATCH /projects/:id/calc-results/:id côté backend.
+ * `name: null` = revenir au mnémonique calculé (efface le nom personnalisé).
+ * Mock : mute l'entrée MOCK_CALCULS en place (patron renameProject).
+ */
+export async function renameCalcResult(
+  orgId: string,
+  projectId: string,
+  calcResultId: string,
+  name: string | null,
+): Promise<CalcResult> {
+  if (_USE_REAL_BACKEND)
+    return httpRenameCalcResult(orgId, projectId, calcResultId, name);
+
+  await delay(300);
+  const c = MOCK_CALCULS.find((x) => x.id === calcResultId && x.projectId === projectId);
+  if (!c) throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Calcul introuvable' };
+  c.name = name;
+  return c;
+}
+
+/**
+ * Supprime DÉFINITIVEMENT un calcul NON scellé — DELETE /projects/:id/calc-results/:id.
+ * 409 si un PV existe pour ce calcul (contrat serveur, cf. httpDeleteCalcResult).
+ * Invalide le cache projet : `calcCount` change.
+ */
+export async function deleteCalcResult(
+  orgId: string,
+  projectId: string,
+  calcResultId: string,
+): Promise<void> {
+  invalidateProjectCache(orgId, projectId);
+  if (_USE_REAL_BACKEND) return httpDeleteCalcResult(orgId, projectId, calcResultId);
+
+  await delay(300);
+  const idx = MOCK_CALCULS.findIndex(
+    (x) => x.id === calcResultId && x.projectId === projectId,
+  );
+  if (idx === -1)
+    throw { statusCode: 404, reason: 'NOT_FOUND', message: 'Calcul introuvable' };
+  if (MOCK_CALCULS[idx].pvId) {
+    throw {
+      statusCode: 409,
+      reason: 'SERVER_ERROR',
+      message: 'Ce calcul porte un PV scellé : il ne peut pas être supprimé.',
+    };
+  }
+  MOCK_CALCULS.splice(idx, 1);
+}
+
 // ---------------------------------------------------------------------------
 // PV
 // ---------------------------------------------------------------------------
@@ -663,11 +716,35 @@ export async function emitPv(
     // Mock : la capture (saveCalcSnapshot) réussit toujours (no-op résolu) →
     // cohérent avec un documentFormat='html' pour la démo (bannière véridique).
     documentFormat: 'html',
+    // Étiquette proposée à l'émission (pré-remplie par CalculsClient avec le
+    // nom d'affichage courant du calcul) — `undefined` si non fournie (ancien
+    // appelant) → `null` (mnémonique calculé) plutôt qu'une chaîne vide.
+    name: req.name ?? null,
   };
   MOCK_PVS.push(newPv);
   // Lier le calcul au PV
   calc.pvId = newPv.id;
   return newPv;
+}
+
+/**
+ * Renomme l'ÉTIQUETTE d'un PV — PATCH /projects/:id/pvs/:id côté backend.
+ * N'affecte JAMAIS le contenu scellé (HMAC) : pas de re-scellement.
+ * Mock : mute l'entrée MOCK_PVS en place.
+ */
+export async function renamePv(
+  orgId: string,
+  projectId: string,
+  pvId: string,
+  name: string | null,
+): Promise<OfficialPv> {
+  if (_USE_REAL_BACKEND) return httpRenamePv(orgId, projectId, pvId, name);
+
+  await delay(300);
+  const pv = MOCK_PVS.find((p) => p.id === pvId && p.projectId === projectId);
+  if (!pv) throw { statusCode: 404, reason: 'NOT_FOUND', message: 'PV introuvable' };
+  pv.name = name;
+  return pv;
 }
 
 export async function verifyPv(

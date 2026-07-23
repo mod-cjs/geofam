@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Post, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  NotFoundException,
+  Param,
+  Patch,
+  Post,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { CalcResult } from '@prisma/client';
 import type { Response } from 'express';
@@ -30,6 +41,25 @@ const snapshotBody = z.object({
   printHtml: z.string().min(1).max(MAX_HTML_BYTES),
 });
 type SnapshotBody = z.infer<typeof snapshotBody>;
+
+// Renommage d'ETIQUETTE (calcul OU PV) : nom non vide <= 200, ou `null` pour
+// revenir au mnemonique calcule cote front. `.strict()` : cette route ne fait QUE
+// renommer -> aucun autre champ accepte (un `note`/`status` glisse -> 400).
+const renameLabelSchema = z
+  .object({ name: z.string().trim().min(1).max(200).nullable() })
+  .strict();
+type RenameLabelDto = z.infer<typeof renameLabelSchema>;
+
+// Corps d'EMISSION de PV : `name` OPTIONNEL (etiquette hors sceau). NON strict a
+// dessein -> les cles inconnues sont STRIPPEES (le client d'emission envoie aussi
+// un `note` sans effet cote serveur ; et les appelants historiques n'envoient
+// AUCUN corps). preprocess : un corps absent/`null` (ancien appelant sans body)
+// est traite comme `{}` -> `name` reste absent, jamais un 400 sur corps vide.
+const emitPvBody = z.preprocess(
+  (v) => (v == null ? {} : v),
+  z.object({ name: z.string().trim().min(1).max(200).optional() }),
+);
+type EmitPvBody = z.infer<typeof emitPvBody>;
 
 /**
  * PvController — surface TENANT du pipeline PV (#63, incr. B).
@@ -129,6 +159,73 @@ export class PvController {
   }
 
   /**
+   * PATCH /projects/:projectId/calc-results/:calcResultId — renomme l'ETIQUETTE
+   * d'affichage d'un calcul (body { name: string | null }). `null` revient au
+   * mnemonique calcule cote front. Ne touche QUE `name` (le contenu du calcul
+   * reste inchange).
+   *
+   * RBAC : mutation -> OWNER/ADMIN/ENGINEER (+SUPERADMIN), comme le renommage de
+   * projet. Un VIEWER/TECHNICIAN ne renomme pas. Isolation : withTenant (RLS) ;
+   * calcul d'un AUTRE org (ou d'un autre projet du meme org) -> service null ->
+   * 404 « introuvable » a l'identique d'un id inexistant (tenant-safe).
+   */
+  @Patch('calc-results/:calcResultId')
+  @Roles('OWNER', 'ADMIN', 'ENGINEER', 'SUPERADMIN')
+  @ApiOperation({
+    summary: 'Renomme l etiquette d affichage d un calc_result (hors contenu).',
+  })
+  async renameCalcResult(
+    @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
+    @Param('calcResultId', new ZodValidationPipe(uuidParam))
+    calcResultId: string,
+    @Body(new ZodValidationPipe(renameLabelSchema)) body: RenameLabelDto,
+  ): Promise<CalcResult> {
+    const calc = await this.calcResults.rename({
+      projectId,
+      calcResultId,
+      name: body.name,
+    });
+    if (!calc) {
+      throw new NotFoundException(
+        'Calcul introuvable dans ce projet/cette organisation.',
+      );
+    }
+    return calc;
+  }
+
+  /**
+   * DELETE /projects/:projectId/calc-results/:calcResultId — supprime un calcul
+   * NON scelle (et sa capture liee). 409 si un PV officiel existe pour ce calcul
+   * (on ne detruit pas la source d'un livrable scelle — message exploitable).
+   * 404 tenant-safe sinon (absent / hors tenant / autre projet). Le ledger de
+   * quota est append-only : la consommation deja enregistree n'est PAS rendue.
+   *
+   * RBAC : OWNER/ADMIN/ENGINEER (+SUPERADMIN), comme le renommage.
+   */
+  @Delete('calc-results/:calcResultId')
+  @Roles('OWNER', 'ADMIN', 'ENGINEER', 'SUPERADMIN')
+  @ApiOperation({
+    summary:
+      'Supprime un calc_result NON scelle (409 si un PV existe). Le quota consomme reste consomme.',
+  })
+  async deleteCalcResult(
+    @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
+    @Param('calcResultId', new ZodValidationPipe(uuidParam))
+    calcResultId: string,
+  ): Promise<CalcResult> {
+    const calc = await this.calcResults.deleteUnsealed({
+      projectId,
+      calcResultId,
+    });
+    if (!calc) {
+      throw new NotFoundException(
+        'Calcul introuvable dans ce projet/cette organisation.',
+      );
+    }
+    return calc;
+  }
+
+  /**
    * POST /projects/:projectId/calc-results/:calcResultId/snapshot — capture du
    * DOCUMENT que l'outil client produit A L'IMPRESSION (scellement option-3).
    *
@@ -201,12 +298,16 @@ export class PvController {
   emitPv(
     @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
     @Param('id', new ZodValidationPipe(uuidParam)) calcResultId: string,
+    @Body(new ZodValidationPipe(emitPvBody)) body: EmitPvBody,
     @Req() req: AuthedRequest,
   ): Promise<SealedPvRow> {
     return this.pv.emitFromCalc({
       calcResultId,
       projectId,
       userId: req.auth!.userId,
+      // ETIQUETTE optionnelle -> stockee HORS SCEAU (jamais dans la canonique/HMAC,
+      // cf. PvService.emitFromCalc). Absente -> `name` reste null.
+      name: body.name ?? null,
     });
   }
 
@@ -224,6 +325,40 @@ export class PvController {
     @Param('pvId', new ZodValidationPipe(uuidParam)) pvId: string,
   ): Promise<OfficialPvView> {
     return this.pv.getViewById({ projectId, pvId });
+  }
+
+  /**
+   * PATCH /projects/:projectId/pvs/:pvId — renomme l'ETIQUETTE d'affichage d'un
+   * PV (body { name: string | null }). `null` revient au mnemonique calcule.
+   *
+   * N'AFFECTE JAMAIS LE CONTENU SCELLE : `name` est hors canonique/HMAC
+   * (0027), aucun re-scellement, aucune touche au hmac/content_hash. La reponse
+   * porte `sealValid` re-verifie APRES renommage -> preuve que le sceau tient.
+   * RBAC : OWNER/ADMIN/ENGINEER (+SUPERADMIN), comme l'emission/le renommage de
+   * calcul. Isolation : withTenant (RLS) ; PV d'un AUTRE org (ou d'un autre
+   * projet du meme org) -> service null -> 404 tenant-safe.
+   *
+   * ORDRE DES ROUTES : PATCH distinct des GET `pvs/:pvId(/pdf|/document)` (methode
+   * differente) ; aucune collision. Regle du controleur tenue par prudence.
+   */
+  @Patch('pvs/:pvId')
+  @Roles('OWNER', 'ADMIN', 'ENGINEER', 'SUPERADMIN')
+  @ApiOperation({
+    summary:
+      'Renomme l etiquette d affichage d un PV (HORS sceau : hmac/canonique inchanges).',
+  })
+  async renamePv(
+    @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
+    @Param('pvId', new ZodValidationPipe(uuidParam)) pvId: string,
+    @Body(new ZodValidationPipe(renameLabelSchema)) body: RenameLabelDto,
+  ): Promise<OfficialPvView> {
+    const view = await this.pv.rename({ projectId, pvId, name: body.name });
+    if (!view) {
+      throw new NotFoundException(
+        'PV introuvable dans ce projet/cette organisation.',
+      );
+    }
+    return view;
   }
 
   /**

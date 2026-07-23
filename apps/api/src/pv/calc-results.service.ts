@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -252,6 +253,131 @@ export class CalcResultsService {
       );
     }
     return calc;
+  }
+
+  /**
+   * Renomme l'ETIQUETTE d'affichage d'un calcul du tenant courant (PATCH
+   * calc-results/:id). `name` = libelle MUTABLE ; `null` revient au mnemonique
+   * calcule cote front. Le calcul reste par ailleurs immuable dans son CONTENU
+   * (input/output/meta) : on ne touche QUE `name`.
+   *
+   * updateMany (et non update) : sur une ligne ABSENTE, HORS-TENANT (RLS
+   * invisible) ou d'un AUTRE projet du meme org, il renvoie count=0 SANS lever
+   * (update leverait P2025) -> `null`, traduit en 404 tenant-safe par le
+   * controleur (anti-enumeration : « n'existe pas » et « pas chez vous »
+   * indistinguables). Le predicat `projectId` barre un calcul d'un autre projet
+   * du meme org ; la RLS (withTenant) barre le cross-org. WITH CHECK cote base
+   * interdit tout deplacement d'org. Renvoie le calcul a jour (re-lu sous RLS).
+   */
+  async rename(args: {
+    projectId: string;
+    calcResultId: string;
+    name: string | null;
+  }): Promise<CalcResult | null> {
+    // PROJET ARCHIVE — DECISION EXPLICITE (revue ingenieur-securite, E1) : le
+    // renommage reste AUTORISE. Contrairement a la suppression (destructive) et
+    // a l'emission de PV (qui brule un numero et du quota), renommer ne modifie
+    // qu'une ETIQUETTE d'affichage : rien n'est detruit, aucun livrable ne bouge,
+    // et un projet archive est RESTAURABLE — pouvoir ranger ses libelles avant
+    // de restaurer est legitime. On n'appelle donc pas assertProjetEcrivable ici,
+    // et c'est voulu, pas un oubli.
+    const orgId = requireOrgId();
+    return this.prisma.withTenant(orgId, async (tx) => {
+      const res = await tx.calcResult.updateMany({
+        where: { id: args.calcResultId, projectId: args.projectId },
+        data: { name: args.name },
+      });
+      if (res.count === 0) return null;
+      return tx.calcResult.findUnique({ where: { id: args.calcResultId } });
+    });
+  }
+
+  /**
+   * Supprime un calcul NON scelle du tenant courant (DELETE calc-results/:id).
+   *
+   * REFUS 409 SI UN PV SCELLE EXISTE pour ce calcul : official_pvs est
+   * AUTOPORTANT (aucune FK vivante vers calc_results) donc rien ne casserait
+   * techniquement — mais la source d'un livrable scelle ne se detruit pas (on
+   * garde la tracabilite du calcul qui a produit le PV). L'utilisateur voit un
+   * message exploitable. 404 tenant-safe sinon (absent / hors tenant / autre
+   * projet, indistinguables).
+   *
+   * VERROU projet FOR UPDATE en TOUT PREMIER (meme raison que
+   * ProjectsService.deletePermanently) : il est INCOMPATIBLE avec le FOR SHARE
+   * que l'emission de PV pose sur le projet (assertProjetEcrivable). Une emission
+   * en vol sur ce projet fait donc ATTENDRE cette suppression, qui voit ensuite
+   * le PV -> 409 ; et si la suppression passe la premiere, l'emission reprend,
+   * relit un calcul disparu -> 404. Sans ce verrou, on pouvait compter 0 PV,
+   * supprimer le calcul, commiter, et laisser une emission concurrente inserer un
+   * PV scelle dont le calcul source n'existe plus. ORDRE DES VERROUS : projet
+   * d'abord, enfants (calc_snapshots -> calc_results) ensuite — memes regle
+   * anti-interblocage que deletePermanently.
+   *
+   * LEDGER DE FACTURATION : on n'y touche PAS. Les lignes usage_ledger et la
+   * `consommation` de l'abonnement restent telles quelles — le quota deja
+   * consomme reste consomme (registre append-only, jamais reecrit
+   * retroactivement, meme quand l'objet calcule disparait).
+   *
+   * @returns le calcul tel qu'il etait avant destruction, ou `null` (404).
+   * @throws ConflictException si un PV scelle existe pour ce calcul.
+   */
+  async deleteUnsealed(args: {
+    projectId: string;
+    calcResultId: string;
+  }): Promise<CalcResult | null> {
+    const orgId = requireOrgId();
+    return this.prisma.withTenant(orgId, async (tx) => {
+      // VERROU projet FOR UPDATE — PREMIER ordre de la transaction. RLS-scope : un
+      // projet d'un AUTRE org est INVISIBLE -> 0 ligne -> 404. $queryRaw car on a
+      // besoin de la PRESENCE de la ligne (pas d'un compte d'affectations).
+      //
+      // `status <> 'ARCHIVED'` (revue ingenieur-securite, E1) : supprimer est une
+      // ECRITURE, et un projet archive est « supprime » cote metier — invisible
+      // dans toutes les listes. Sans ce predicat, on detruisait des calculs dans
+      // un projet que l'interface presente comme supprime : exactement le defaut
+      // ferme en PR #120/#121, que ce nouveau point d'ecriture reintroduisait.
+      // Meme regle que project-write-guard ; ici en SQL brut car Prisma n'expose
+      // pas FOR UPDATE, mais le predicat de statut doit rester identique.
+      const verrou = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM projects
+         WHERE id = ${args.projectId}::uuid
+           AND status <> 'ARCHIVED'
+         FOR UPDATE
+      `;
+      if (verrou.length === 0) return null;
+
+      // Le calcul doit exister DANS ce projet/ce tenant (RLS scope la lecture).
+      const calc = await tx.calcResult.findUnique({
+        where: { id: args.calcResultId },
+      });
+      if (!calc || calc.projectId !== args.projectId) return null;
+
+      // REFUS DUR : un seul PV scelle interdit la destruction. Le comptage est
+      // SOUS le verrou projet -> aucune emission ne peut inserer un PV en vol
+      // sans avoir d'abord attendu (FOR SHARE incompatible).
+      const pvs = await tx.officialPv.count({
+        where: { calcResultId: args.calcResultId },
+      });
+      if (pvs > 0) {
+        throw new ConflictException(
+          'Ce calcul a été scellé en PV officiel : sa suppression est refusée ' +
+            "(on ne détruit pas la source d'un livrable scellé). Le calcul reste " +
+            'conservé tant que son PV existe.',
+        );
+      }
+
+      // Enfants d'abord (la capture liee), puis le calcul — chaque DELETE sous RLS.
+      // deleteMany (et non delete) : sur une ligne devenue invisible entre-temps,
+      // il renvoie count=0 SANS lever (delete leverait P2025) -> null -> 404.
+      await tx.calcSnapshot.deleteMany({
+        where: { calcResultId: args.calcResultId },
+      });
+      const res = await tx.calcResult.deleteMany({
+        where: { id: args.calcResultId, projectId: args.projectId },
+      });
+      if (res.count === 0) return null;
+      return calc;
+    });
   }
 }
 

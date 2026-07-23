@@ -367,41 +367,56 @@ describe('PvListClient — verdict de conformité (maquette finale, écran 3)', 
   });
 });
 
-describe('PvListClient — titre mnémonique (FX-10, révisé maquette finale écran 3)', () => {
-  // Révision titulaire (21/07/2026, maquette finale) : le titre est le TYPE DE
-  // NOTE (ex. « Note de calcul — Fondation profonde »), plus jamais le nom du
-  // projet répété (déjà visible dans le fil d'Ariane au-dessus de l'onglet).
-  // `getProjectCached` n'est donc plus appelé par ce composant.
-  it('given un PV scellé (engineId pieux/CASAGRANDE), when la liste s’affiche, then le titre est "Note de calcul — Fondation profonde" (pas le nom du projet)', async () => {
-    const PV_PIEUX: OfficialPv = { ...PV, engineId: 'pieux' };
+describe('PvListClient — nom du PV (décision titulaire 22/07/2026)', () => {
+  // LE DÉFAUT CORRIGÉ : « tous les PV ont le même nom ». Le titre était dérivé
+  // du seul moteur (« Note de calcul — {type} »), donc DEUX PV du même logiciel
+  // étaient indiscernables dans la liste. Il n'existait aucune colonne « nom ».
+  //
+  // SPEC RETENUE : nom personnalisé s'il existe, sinon un mnémonique
+  // « Logiciel · Projet · #n » — distinctif ET lisible sans ouvrir le PV.
+  // Le projet vient donc de getProjectCached (partagé, pas de GET redondant).
+  const NOM_PROJET = 'Route Dakar-Thiès — dimensionnement';
+
+  it('given un PV SANS nom personnalisé, when la liste s’affiche, then le mnémonique « Logiciel · Projet · #n »', async () => {
+    const PV_PIEUX: OfficialPv = { ...PV, engineId: 'pieux', name: null };
     mockListPvs.mockResolvedValue([PV_PIEUX]);
 
     await renderPvList();
 
-    expect(container.textContent).toContain('Note de calcul — Fondation profonde');
-    expect(mockGetProjectCached).not.toHaveBeenCalled();
+    expect(container.textContent).toContain(`CASAGRANDE · ${NOM_PROJET} · #1`);
   });
 
-  it('given un PV scellé (engineId radier/GEOPLAQUE), when la liste s’affiche, then le titre est "Note de calcul — Radier sur sol élastique"', async () => {
-    const PV_RADIER: OfficialPv = { ...PV, engineId: 'radier' };
-    mockListPvs.mockResolvedValue([PV_RADIER]);
+  it('given un PV AVEC un nom personnalisé, when la liste s’affiche, then c’est CE nom qui prime sur le mnémonique', async () => {
+    const PV_NOMME: OfficialPv = {
+      ...PV,
+      engineId: 'radier',
+      name: 'Radier P2 — variante nappe haute',
+    };
+    mockListPvs.mockResolvedValue([PV_NOMME]);
 
     await renderPvList();
 
-    expect(container.textContent).toContain('Note de calcul — Radier sur sol élastique');
+    expect(container.textContent).toContain('Radier P2 — variante nappe haute');
+    // Le mnémonique ne doit PAS s'afficher en plus : le nom choisi le remplace.
+    expect(container.textContent).not.toContain(`GEOPLAQUE · ${NOM_PROJET} · #1`);
   });
 
-  it('given un PV scellé (engineId terzaghi), when la liste s’affiche, then le titre est "Note de calcul — Fondation superficielle"', async () => {
-    const PV_TERZAGHI: OfficialPv = { ...PV, engineId: 'terzaghi' };
-    mockListPvs.mockResolvedValue([PV_TERZAGHI]);
+  it('given DEUX PV du même logiciel, when la liste s’affiche, then leurs noms DIFFÈRENT (le défaut d’origine)', async () => {
+    mockListPvs.mockResolvedValue([
+      { ...PV, id: 'pv-1', number: 'PV-2026-0001', engineId: 'terzaghi', name: null },
+      { ...PV, id: 'pv-2', number: 'PV-2026-0002', engineId: 'terzaghi', name: null },
+    ]);
 
     await renderPvList();
 
-    expect(container.textContent).toContain('Note de calcul — Fondation superficielle');
+    // Sans le rang #n, les deux lignes porteraient un libellé identique —
+    // exactement ce que le titulaire a signalé.
+    expect(container.textContent).toContain(`Terzaghi · ${NOM_PROJET} · #1`);
+    expect(container.textContent).toContain(`Terzaghi · ${NOM_PROJET} · #2`);
   });
 
-  it('given le numéro officiel PV-2026-0001, when la liste s’affiche, then il reste visible en référence secondaire (pas comme titre)', async () => {
-    mockListPvs.mockResolvedValue([PV]);
+  it('given le numéro officiel, when la liste s’affiche, then il reste visible en référence secondaire (jamais comme titre)', async () => {
+    mockListPvs.mockResolvedValue([{ ...PV, name: null }]);
 
     await renderPvList();
 
@@ -411,16 +426,19 @@ describe('PvListClient — titre mnémonique (FX-10, révisé maquette finale é
       '[role="listitem"] span',
     ) as HTMLSpanElement | null;
     expect(heading?.textContent).not.toBe(PV.number);
-    expect(heading?.textContent).toContain('Note de calcul —');
   });
 
-  it('given un engineId inconnu (moteur futur non mappé), when la liste s’affiche, then le titre retombe sur le nom métier générique sans planter', async () => {
-    const PV_INCONNU: OfficialPv = { ...PV, engineId: 'futur-moteur-inconnu' };
+  it('given un engineId inconnu (moteur futur non mappé), when la liste s’affiche, then aucun plantage et le numéro reste lisible', async () => {
+    const PV_INCONNU: OfficialPv = {
+      ...PV,
+      engineId: 'futur-moteur-inconnu',
+      name: null,
+    };
     mockListPvs.mockResolvedValue([PV_INCONNU]);
 
     await renderPvList();
 
-    expect(container.textContent).toContain('Note de calcul —');
     expect(container.textContent).toContain(PV.number);
+    expect(container.textContent).toContain(NOM_PROJET);
   });
 });

@@ -32,7 +32,7 @@
  * pagination client, cf. bloc de constantes/helpers ci-dessous.
  */
 
-import { Lock, Printer, Search } from 'lucide-react';
+import { Lock, Pencil, Printer, Search, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -41,14 +41,20 @@ import { extractVerdict, VerdictTag } from '../verdict';
 
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Input } from '@/components/ui/Field';
+import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import {
   listCalcResults,
   getCalcSnapshot,
+  renameCalcResult,
+  deleteCalcResult,
   emitPv,
   getPvDocument,
+  getProjectCached,
 } from '@/lib/api/client';
 import type { CalcResult, CalcSnapshot, NormalizedCalcOutput } from '@/lib/api/types';
+import { nomAffiche, nomAfficheCompact, seqParCreation } from '@/lib/calc-name';
 import { slugOf, metaOf } from '@/lib/engine-labels';
 import { useOrgId } from '@/lib/org-context';
 import { printInertHtml } from '@/lib/print-inert-html';
@@ -123,6 +129,40 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // Nom mnémonique (décision titulaire 22/07/2026) — nécessite le nom du
+  // PROJET courant (contexte pas encore disponible dans ce composant, cf.
+  // lib/calc-name.ts). `getProjectCached` est déjà partagé avec
+  // ProjetLayoutClient/PvListClient (pas de GET redondant).
+  const [projectName, setProjectName] = useState<string | null>(null);
+  useEffect(() => {
+    if (orgId === null) return;
+    let cancelled = false;
+    getProjectCached(orgId, projetId)
+      .then((p) => {
+        if (!cancelled) setProjectName(p.name);
+      })
+      .catch(() => {
+        /* repli silencieux : le mnémonique s'affiche alors sans nom de projet */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, projetId]);
+
+  // Renommage en ligne (P0-7 patron, appliqué aux calculs) : le crayon ouvre
+  // un champ pré-rempli du nom d'affichage COURANT (mnémonique ou personnalisé).
+  const [renommage, setRenommage] = useState<string | null>(null);
+
+  // Suppression d'un calcul NON scellé — irréversible, confirmation forte.
+  const [calcToDelete, setCalcToDelete] = useState<CalcResult | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Dialogue de nommage AVANT émission du PV (décision titulaire 22/07/2026) :
+  // pré-rempli avec le nom d'affichage courant du calcul source, éditable.
+  const [sealNameOpen, setSealNameOpen] = useState(false);
+  const [sealNameValue, setSealNameValue] = useState('');
 
   // Filtres par logiciel + recherche + pagination (P1 dégelé) — la sélection
   // (`selectedId`) vit à part et survit à tout changement de filtre/page :
@@ -218,6 +258,28 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   }, [calculs]);
   const unsealedCount = useMemo(() => calculs.filter((c) => !c.pvId).length, [calculs]);
 
+  // Position #n (mnémonique) — TOUJOURS calculée sur `calculs` en ENTIER,
+  // jamais sur la liste filtrée/paginée : le numéro d'un calcul ne doit pas se
+  // déplacer selon le filtre ou la page affichés (cf. lib/calc-name.ts).
+  const seqById = useMemo(() => seqParCreation(calculs, (c) => c.createdAt), [calculs]);
+
+  // Nom COMPLET « Logiciel · Projet · #n » — pour les endroits larges (en-tête
+  // du panneau de détail, modales, valeur pré-remplie à l'émission du PV).
+  const displayNameOf = useCallback(
+    (c: CalcResult) => nomAffiche(c, projectName ?? '', seqById.get(c.id) ?? 0),
+    [projectName, seqById],
+  );
+
+  // Nom COMPACT « Logiciel · #n » — pour la COLONNE ÉTROITE de la liste
+  // (décision titulaire 22/07/2026). Vérifié dans l'app réelle : le nom complet
+  // y était tronqué à « ROADSENS · Route Dakar-T… » sur toutes les lignes, ce
+  // qui coupait le #n — la seule partie qui les distingue. Le nom du projet est
+  // de toute façon redondant ici : on est déjà DANS ce projet.
+  const shortNameOf = useCallback(
+    (c: CalcResult) => nomAfficheCompact(c, seqById.get(c.id) ?? 0),
+    [seqById],
+  );
+
   // Filtrer (chip logiciel) PUIS rechercher — ordre demandé par la maquette.
   const filteredBySoftware = useMemo(() => {
     if (softwareFilter === 'all') return calculs;
@@ -229,10 +291,13 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     const q = normaliser(query.trim());
     if (!q) return filteredBySoftware;
     return filteredBySoftware.filter((c) => {
-      const hay = normaliser(`${metaOf(c.engineId).nom} ${c.label}`);
+      // Recherche étendue au NOM d'affichage (mnémonique ou personnalisé) — un
+      // calcul renommé doit rester trouvable par ce nom, pas seulement par le
+      // logiciel/libellé technique.
+      const hay = normaliser(`${metaOf(c.engineId).nom} ${c.label} ${displayNameOf(c)}`);
       return hay.includes(q);
     });
-  }, [filteredBySoftware, query]);
+  }, [filteredBySoftware, query, displayNameOf]);
 
   // Pagination — appliquée APRÈS filtre + recherche. Bornage défensif : si la
   // page en mémoire dépasse le nouveau total, on retombe sur la dernière page
@@ -310,16 +375,23 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     }
   }
 
-  async function handleSeal() {
+  /**
+   * Émet le PV. `name` est TOUJOURS envoyé (pré-rempli par le dialogue de
+   * nommage, cf. `openSealNameDialog` / Modal ci-dessous) — décision titulaire
+   * 22/07/2026 : proposer un nom éditable AVANT scellement plutôt qu'imposer
+   * silencieusement le mnémonique.
+   */
+  async function handleSeal(name?: string) {
     if (!selected || !orgId) return;
     setSealing(true);
     setSealError(null);
     try {
-      const pv = await emitPv(orgId, projetId, { calcResultId: selected.id });
+      const pv = await emitPv(orgId, projetId, { calcResultId: selected.id, name });
       setCalculs((prev) =>
         prev.map((c) => (c.id === selected.id ? { ...c, pvId: pv.id } : c)),
       );
       setSealConfirmOpen(false);
+      setSealNameOpen(false);
       addToast({
         type: 'success',
         message: `PV ${pv.number} scellé.`,
@@ -335,19 +407,108 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     }
   }
 
-  // M3 : avec document capturé → scellement direct (comportement inchangé).
+  /** Ouvre le dialogue de nommage, pré-rempli avec le nom d'affichage COURANT
+   * du calcul source (mnémonique ou déjà renommé) — cf. nomAffiche. */
+  function openSealNameDialog() {
+    if (!selected) return;
+    setSealNameValue(displayNameOf(selected));
+    setSealNameOpen(true);
+  }
+
+  // M3 : avec document capturé → dialogue de nommage direct (comportement
+  // inchangé pour le fond, cf. avant ce lot, où l'émission était directe).
   // Sans document (roadsens) → 1er clic affiche l'avertissement + demande
-  // confirmation explicite ; seul le 2e clic (« Confirmer… ») appelle emitPv.
+  // confirmation explicite ; seul le 2e clic (« Confirmer… ») ouvre le
+  // dialogue de nommage (l'émission proprement dite n'a lieu qu'à sa validation).
   function handleSealClick() {
-    if (snapshot) {
-      handleSeal();
-      return;
-    }
-    if (!sealConfirmOpen) {
+    if (!snapshot && !sealConfirmOpen) {
       setSealConfirmOpen(true);
       return;
     }
-    handleSeal();
+    openSealNameDialog();
+  }
+
+  /**
+   * Renommage en ligne d'un calcul (patron rename-inline des projets, P0-7).
+   * Une saisie VIDE renvoie explicitement `null` (retour au mnémonique) — à la
+   * différence du renommage projet, où le vide est un no-op (un projet n'a pas
+   * de mnémonique de repli). Une saisie IDENTIQUE au nom personnalisé actuel
+   * (pas au mnémonique affiché) n'appelle pas non plus l'API.
+   */
+  async function handleRenameCalc(c: CalcResult, nouveau: string) {
+    setRenommage(null);
+    if (!orgId) return;
+    const nomActuel = c.name ?? null;
+    const valeur = nouveau.trim();
+
+    // Le champ est PRÉ-REMPLI avec le nom d'affichage courant — donc, sur un
+    // calcul sans nom, avec le MNÉMONIQUE lui-même. Valider sans rien modifier
+    // (Entrée, ou simplement cliquer ailleurs) ne doit PAS figer ce mnémonique
+    // en nom personnalisé : il deviendrait menteur (il ne suivrait plus le
+    // projet renommé ni le rang) et repasserait en forme longue dans la colonne
+    // étroite, ramenant la troncature que la forme compacte corrige.
+    // « Saisie identique au mnémonique » vaut donc « pas de nom personnalisé ».
+    const mnemoniqueCourant = nomAffiche(
+      { name: null, engineId: c.engineId },
+      projectName ?? '',
+      seqById.get(c.id) ?? 0,
+    );
+
+    if (valeur === '' || valeur === mnemoniqueCourant) {
+      if (nomActuel === null) return; // déjà au mnémonique, rien à changer
+      try {
+        const maj = await renameCalcResult(orgId, projetId, c.id, null);
+        setCalculs((prev) => prev.map((x) => (x.id === c.id ? maj : x)));
+        addToast({ type: 'success', message: 'Nom réinitialisé au mnémonique.' });
+      } catch {
+        addToast({ type: 'error', message: 'Renommage impossible.' });
+      }
+      return;
+    }
+
+    if (valeur === nomActuel) return; // inchangé
+
+    try {
+      const maj = await renameCalcResult(orgId, projetId, c.id, valeur);
+      setCalculs((prev) => prev.map((x) => (x.id === c.id ? maj : x)));
+      addToast({ type: 'success', message: `Calcul renommé « ${maj.name} ».` });
+    } catch {
+      addToast({ type: 'error', message: 'Renommage impossible.' });
+    }
+  }
+
+  /**
+   * Suppression DÉFINITIVE d'un calcul NON scellé (bouton absent sinon, cf.
+   * rendu de la ligne plus bas). 409 (un PV existe malgré tout, ex. concurrence)
+   * → message exploitable, la modale reste ouverte plutôt que de fermer en
+   * silence sur un refus serveur.
+   */
+  async function handleDeleteCalc() {
+    if (!calcToDelete || !orgId) return;
+    setDeleting(true);
+    setDeleteError(null);
+    const cible = calcToDelete;
+    try {
+      await deleteCalcResult(orgId, projetId, cible.id);
+      setCalculs((prev) => prev.filter((c) => c.id !== cible.id));
+      setSelectedId((cur) => (cur === cible.id ? null : cur));
+      addToast({ type: 'success', message: 'Calcul supprimé.' });
+      setCalcToDelete(null);
+    } catch (err: unknown) {
+      const statusCode = (err as { statusCode?: number } | undefined)?.statusCode;
+      const message = (err as { message?: string } | undefined)?.message;
+      if (statusCode === 409) {
+        setDeleteError(
+          message ?? 'Ce calcul porte un PV scellé, il ne peut pas être supprimé.',
+        );
+      } else if (statusCode === 404) {
+        setDeleteError(message ?? 'Calcul introuvable — peut-être déjà supprimé.');
+      } else {
+        addToast({ type: 'error', message: 'Erreur lors de la suppression du calcul.' });
+      }
+    } finally {
+      setDeleting(false);
+    }
   }
 
   const sealButtonLabel =
@@ -442,18 +603,6 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
             Annuler
           </Button>
         </div>
-      </div>
-    );
-  }
-
-  function renderSealError() {
-    if (!sealError) return null;
-    return (
-      <div
-        role="alert"
-        style={{ marginTop: 10, fontSize: 12, color: 'var(--status-fail-tx)' }}
-      >
-        {sealError}
       </div>
     );
   }
@@ -791,82 +940,189 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                 {paginatedCalculs.map((c) => {
                   const active = c.id === selectedId;
                   const verdict = extractVerdict(c.output);
+                  // Colonne étroite -> forme COMPACTE « Logiciel · #n » : le nom
+                  // complet y était tronqué sur toutes les lignes, coupant le #n
+                  // qui les distingue. Le nom COMPLET reste dans l'en-tête du
+                  // panneau de détail et dans le champ de renommage (ci-dessous).
+                  const displayName = shortNameOf(c);
+                  const enRenommage = renommage === c.id;
                   return (
-                    <li key={c.id}>
-                      <button
-                        onClick={() => setSelectedId(c.id)}
-                        aria-current={active ? 'true' : undefined}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          cursor: 'pointer',
-                          fontFamily: 'inherit',
-                          background: active ? 'var(--surface-base)' : 'transparent',
-                          border: `1px solid ${active ? 'var(--border-default)' : 'var(--border-subtle)'}`,
-                          borderRadius: 10,
-                          padding: '10px 12px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          {/* FX-4 : le titre est le nom métier du logiciel (identique
-                            pour tous les calculs d'un même moteur) — la date/heure
-                            complète et le verdict, affichés ci-dessous, sont ce qui
-                            distingue deux calculs entre eux. */}
-                          <span
+                    <li
+                      key={c.id}
+                      style={{ display: 'flex', alignItems: 'stretch', gap: 4 }}
+                    >
+                      {enRenommage ? (
+                        // Renommage en ligne (patron rename-inline des projets) : un
+                        // <input> ne peut pas vivre DANS le <button> de sélection
+                        // (nesting HTML invalide) — il le REMPLACE le temps de la
+                        // saisie, plutôt que de le contenir.
+                        <div style={{ flex: 1, padding: '10px 12px' }}>
+                          <input
+                            autoFocus
+                            // Nom COMPLET à la saisie (pas la forme compacte de
+                            // la liste) : le client doit voir et pouvoir garder
+                            // ce qu'il renomme réellement, pas un raccourci
+                            // d'affichage qui deviendrait le nom persisté.
+                            defaultValue={displayNameOf(c)}
+                            aria-label={`Renommer le calcul ${displayName}`}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              e.stopPropagation();
+                              if (e.key === 'Enter')
+                                handleRenameCalc(c, e.currentTarget.value);
+                              // Échap annule SANS écrire.
+                              if (e.key === 'Escape') setRenommage(null);
+                            }}
+                            onBlur={(e) => handleRenameCalc(c, e.currentTarget.value)}
                             style={{
+                              width: '100%',
+                              font: 'inherit',
                               fontSize: 13,
-                              fontWeight: 600,
-                              color: 'var(--text-primary, #16212e)',
+                              color: 'var(--text-primary)',
+                              background: 'var(--surface-base)',
+                              border: '1px solid var(--border-focus)',
+                              borderRadius: 8,
+                              padding: '6px 8px',
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setSelectedId(c.id)}
+                          aria-current={active ? 'true' : undefined}
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                            background: active ? 'var(--surface-base)' : 'transparent',
+                            border: `1px solid ${active ? 'var(--border-default)' : 'var(--border-subtle)'}`,
+                            borderRadius: 10,
+                            padding: '10px 12px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {/* Titre = nom d'affichage (mnémonique ou renommé) — le
+                              nom du logiciel, identique pour tous les calculs d'un
+                              même moteur, descend en méta (ligne suivante). */}
+                            <span
+                              title={displayName}
+                              style={{
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color: 'var(--text-primary, #16212e)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {displayName}
+                            </span>
+                            {/* Trois verdicts, pas deux — NON APPLICABLE (moteur
+                              d'extraction/classification, ex. GEOPLAQUE/radier)
+                              n'est PAS masqué : c'est une information réelle,
+                              pas un échec, cf. verdict.tsx (ADR 0008 neutre). */}
+                            {verdict && (
+                              <VerdictTag
+                                verdict={verdict}
+                                compact
+                                style={{ marginLeft: 'auto' }}
+                              />
+                            )}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: 'var(--text-secondary, #6b7178)',
+                              marginTop: 2,
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap',
                             }}
+                            title={c.label}
                           >
-                            {metaOf(c.engineId).nom}
-                          </span>
-                          {/* Trois verdicts, pas deux — NON APPLICABLE (moteur
-                            d'extraction/classification, ex. GEOPLAQUE/radier)
-                            n'est PAS masqué : c'est une information réelle,
-                            pas un échec, cf. verdict.tsx (ADR 0008 neutre). */}
-                          {verdict && (
-                            <VerdictTag
-                              verdict={verdict}
-                              compact
-                              style={{ marginLeft: 'auto' }}
-                            />
+                            {metaOf(c.engineId).nom} · {c.label}
+                            {c.pvId ? ' · PV émis' : ''}
+                          </div>
+                          <div
+                            suppressHydrationWarning
+                            style={{
+                              fontSize: 10.5,
+                              color: 'var(--text-muted)',
+                              marginTop: 1,
+                            }}
+                          >
+                            {new Date(c.createdAt).toLocaleString('fr-FR', {
+                              day: '2-digit',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                            })}
+                          </div>
+                        </button>
+                      )}
+                      {!enRenommage && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 2,
+                            flexShrink: 0,
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <button
+                            type="button"
+                            aria-label={`Renommer le calcul ${displayName}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRenommage(c.id);
+                            }}
+                            style={{
+                              display: 'inline-grid',
+                              placeItems: 'center',
+                              width: 24,
+                              height: 24,
+                              border: 0,
+                              background: 'none',
+                              color: 'var(--text-muted)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Pencil size={12} strokeWidth={1.5} aria-hidden="true" />
+                          </button>
+                          {/* Supprimer — UNIQUEMENT pour un calcul NON scellé (pvId
+                            absent) : un calcul portant un PV n'a pas cette action,
+                            plutôt que de la proposer désactivée sans explication
+                            visible ici (la raison est de toute façon évidente : le
+                            calcul affiche déjà « · PV émis » juste au-dessus). */}
+                          {!c.pvId && (
+                            <button
+                              type="button"
+                              aria-label={`Supprimer le calcul ${displayName}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteError(null);
+                                setCalcToDelete(c);
+                              }}
+                              style={{
+                                display: 'inline-grid',
+                                placeItems: 'center',
+                                width: 24,
+                                height: 24,
+                                border: 0,
+                                background: 'none',
+                                color: 'var(--text-muted)',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <Trash2 size={12} strokeWidth={1.5} aria-hidden="true" />
+                            </button>
                           )}
                         </div>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: 'var(--text-secondary, #6b7178)',
-                            marginTop: 2,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                          title={c.label}
-                        >
-                          {c.label}
-                          {c.pvId ? ' · PV émis' : ''}
-                        </div>
-                        <div
-                          suppressHydrationWarning
-                          style={{
-                            fontSize: 10.5,
-                            color: 'var(--text-muted)',
-                            marginTop: 1,
-                          }}
-                        >
-                          {new Date(c.createdAt).toLocaleString('fr-FR', {
-                            day: '2-digit',
-                            month: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                          })}
-                        </div>
-                      </button>
+                      )}
                     </li>
                   );
                 })}
@@ -939,10 +1195,10 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                       color: 'var(--text-primary, #16212e)',
                     }}
                   >
-                    {metaOf(selected.engineId).nom}
+                    {displayNameOf(selected)}
                   </h2>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary, #6b7178)' }}>
-                    {selected.label}
+                    {metaOf(selected.engineId).nom} · {selected.label}
                   </div>
                 </div>
                 {/* Verdict TOUJOURS visible dans l'en-tête, que le document soit
@@ -1085,7 +1341,6 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
                 >
                   {renderActionsBar()}
                   {renderSealWarning()}
-                  {renderSealError()}
                   {renderPrintError()}
                   {renderConfidentialityNote(!!snapshot)}
                 </div>
@@ -1094,6 +1349,107 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
           )}
         </section>
       </div>
+
+      {/* Dialogue de nommage AVANT émission du PV (décision titulaire
+          22/07/2026) — pré-rempli avec le nom d'affichage courant du calcul
+          source (nomAffiche), éditable. L'appel emitPv n'a lieu qu'à la
+          validation de cette modale (jamais au clic sur « Sceller cette
+          version » lui-même). */}
+      <Modal
+        open={sealNameOpen}
+        onClose={() => {
+          if (!sealing) setSealNameOpen(false);
+        }}
+        title="Nommer le PV avant scellement"
+        size="sm"
+        error={sealError ?? undefined}
+        footer={
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={() => setSealNameOpen(false)}
+              disabled={sealing}
+            >
+              Annuler
+            </Button>
+            <Button
+              variant="action"
+              size="md"
+              loading={sealing}
+              onClick={() => handleSeal(sealNameValue.trim() || undefined)}
+            >
+              Sceller
+            </Button>
+          </div>
+        }
+      >
+        <Input
+          id="pv-name-input"
+          label="Nom du PV"
+          value={sealNameValue}
+          onChange={(e) => setSealNameValue(e.target.value)}
+          autoFocus
+        />
+      </Modal>
+
+      {/* Suppression DÉFINITIVE d'un calcul NON scellé (menu de la ligne) —
+          irréversible : confirmation forte, pas d'UI optimiste. */}
+      <Modal
+        open={calcToDelete !== null}
+        onClose={() => {
+          if (!deleting) {
+            setCalcToDelete(null);
+            setDeleteError(null);
+          }
+        }}
+        title="Supprimer ce calcul ?"
+        size="sm"
+        footer={
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={() => {
+                setCalcToDelete(null);
+                setDeleteError(null);
+              }}
+              disabled={deleting}
+            >
+              Annuler
+            </Button>
+            <Button
+              variant="danger"
+              size="md"
+              loading={deleting}
+              onClick={handleDeleteCalc}
+            >
+              Supprimer définitivement
+            </Button>
+          </div>
+        }
+      >
+        <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: 0 }}>
+          Le calcul « {calcToDelete && displayNameOf(calcToDelete)} » sera supprimé
+          définitivement. Cette action est irréversible.
+        </p>
+        {deleteError && (
+          <div
+            role="alert"
+            style={{
+              marginTop: 12,
+              padding: '10px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--border-default)',
+              background: 'var(--surface-raised)',
+              color: 'var(--text-primary)',
+              fontSize: 13,
+            }}
+          >
+            {deleteError}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

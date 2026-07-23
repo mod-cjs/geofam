@@ -51,6 +51,10 @@ import type {
   OrgClaim,
   AccessClaims,
 } from './types';
+// RenameCalcResultRequest/RenamePvRequest ne sont pas repris ici : les
+// fonctions ci-dessous prennent directement `name: string | null` (patron
+// httpRenameProject) — ce sont des alias de body, pas des types séparés utiles
+// à l'appelant.
 
 // ---------------------------------------------------------------------------
 // Config
@@ -605,6 +609,45 @@ export async function httpGetCalcSnapshot(
   }
 }
 
+/**
+ * PATCH /projects/:projectId/calc-results/:calcResultId — renomme un calcul
+ * (patron httpRenameProject). `name: null` = revenir au mnémonique calculé.
+ * 404 tenant-safe (propagé tel quel par apiFetch).
+ */
+export async function httpRenameCalcResult(
+  orgId: string,
+  projectId: string,
+  calcResultId: string,
+  name: string | null,
+): Promise<CalcResult> {
+  const raw = await apiFetch<PrismaCalcResult>(
+    `/projects/${projectId}/calc-results/${calcResultId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+      orgId,
+    },
+  );
+  return adaptCalcResult(raw);
+}
+
+/**
+ * DELETE /projects/:projectId/calc-results/:calcResultId — supprime un calcul
+ * NON scellé. 409 si un PV existe pour ce calcul (message serveur exploitable,
+ * propagé tel quel dans `ApiError.message`, cf. httpDeleteProjectPermanently).
+ * 404 tenant-safe.
+ */
+export async function httpDeleteCalcResult(
+  orgId: string,
+  projectId: string,
+  calcResultId: string,
+): Promise<void> {
+  await apiFetch<void>(`/projects/${projectId}/calc-results/${calcResultId}`, {
+    method: 'DELETE',
+    orgId,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // PV
 // ---------------------------------------------------------------------------
@@ -641,13 +684,32 @@ export async function httpEmitPv(
     `/projects/${projectId}/calc-results/${req.calcResultId}/pv`,
     {
       method: 'POST',
-      body: JSON.stringify({ note: req.note }),
+      body: JSON.stringify({ note: req.note, name: req.name }),
       orgId,
     },
   );
   // Invalider le cache entitlements : un PV peut consommer du quota
   invalidateEntCache(orgId);
   return adaptOfficialPv(raw as unknown as PrismaOfficialPv);
+}
+
+/**
+ * PATCH /projects/:projectId/pvs/:pvId — renomme l'ÉTIQUETTE d'un PV. N'affecte
+ * jamais le contenu scellé (HMAC) : c'est une métadonnée hors périmètre du
+ * sceau, jamais un re-scellement. `name: null` = revenir au mnémonique calculé.
+ */
+export async function httpRenamePv(
+  orgId: string,
+  projectId: string,
+  pvId: string,
+  name: string | null,
+): Promise<OfficialPv> {
+  const raw = await apiFetch<PrismaOfficialPv>(`/projects/${projectId}/pvs/${pvId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+    orgId,
+  });
+  return adaptOfficialPv(raw);
 }
 
 export async function httpVerifyPv(

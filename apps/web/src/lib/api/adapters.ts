@@ -60,6 +60,8 @@ export interface PrismaCalcResult {
   pvId?: string | null;
   createdAt: string;
   updatedAt?: string;
+  /** Nom mnémonique — `null`/absent = mnémonique calculé côté front. */
+  name?: string | null;
 }
 
 /**
@@ -110,6 +112,8 @@ export interface PrismaOfficialPvCore {
    * moment de l'émission (B1, revue adverse — bannière véridique cf. page logiciel).
    */
   documentFormat?: string | null;
+  /** Étiquette du PV — `null`/absent = mnémonique calculé côté front. */
+  name?: string | null;
 }
 
 /**
@@ -403,6 +407,9 @@ export function adaptCalcResult(raw: PrismaCalcResult): CalcResult {
     pvId: raw.pvId ?? undefined,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt ?? raw.createdAt,
+    // `undefined`/`null` traités identiquement par nomAffiche — propagé tel
+    // quel (jamais de chaîne vide fabriquée).
+    name: raw.name ?? null,
   };
 }
 
@@ -454,6 +461,8 @@ export function adaptPersistedCalcResult(
     pvId: undefined,
     createdAt: now,
     updatedAt: now,
+    // Calcul tout juste créé : jamais de nom personnalisé à ce stade.
+    name: null,
   };
 }
 
@@ -555,6 +564,8 @@ export function adaptOfficialPv(
     // B1 (revue adverse) : 'html' seulement si le backend a effectivement scellé
     // un document client (calc_snapshots présent au moment de l'émission).
     documentFormat: p.documentFormat === 'html' ? 'html' : null,
+    // Étiquette du PV — `undefined`/`null` traités identiquement par nomAffiche.
+    name: p.name ?? null,
   };
 }
 

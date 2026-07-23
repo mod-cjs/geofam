@@ -257,16 +257,26 @@ describe('Coeur d integrite du PV scelle (calc_results + official_pvs)', () => {
       try {
         // official_pvs est IMMUABLE meme pour le superuser via le trigger DML :
         // on DESACTIVE le trigger le temps du teardown (DDL, droit du superuser).
+        //
+        // TRANSACTION (revue ingenieur-securite, M1) : DISABLE/DELETE/ENABLE dans
+        // un SEUL BEGIN...COMMIT. Le DDL `ALTER TABLE ... DISABLE TRIGGER` est
+        // transactionnel sous PostgreSQL : un SIGKILL / timeout de worker Jest / CI
+        // interrompu entre DISABLE et ENABLE provoque un ROLLBACK -> le trigger
+        // reste ACTIF. Un simple try/finally ne couvre PAS une mort du process
+        // entre les deux ordres, ce qui laissait la base cible durablement sans
+        // barriere d'immuabilite, silencieusement.
+        await admin.query('BEGIN');
         try {
           await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
           await admin.query(
             `DELETE FROM official_pvs WHERE org_id IN ($1,$2)`,
             [orgA, orgB],
           );
-        } finally {
-          // try/finally : un echec de DELETE ne doit JAMAIS laisser la base de
-          // recette avec son trigger d'immuabilite desactive.
           await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+          await admin.query('COMMIT');
+        } catch (e) {
+          await admin.query('ROLLBACK');
+          throw e;
         }
         await admin.query(`DELETE FROM pv_counters WHERE org_id IN ($1,$2)`, [
           orgA,
@@ -379,15 +389,31 @@ describe('Coeur d integrite du PV scelle (calc_results + official_pvs)', () => {
   //  ROUGE (l'UPDATE/DELETE sous l'owner aboutirait alors).
 
   guarded(
-    '5) official_pvs : runtime (roadsen_app) n a NI UPDATE NI DELETE (privilege)',
+    '5) official_pvs : runtime (roadsen_app) n a d UPDATE que sur name, et aucun DELETE (privilege)',
     async () => {
+      // MIGRATION 0027 : roadsen_app a recu GRANT UPDATE("name") — l'etiquette
+      // d'affichage est renommable. TOUT le reste reste revoque. On prouve les
+      // deux faces du privilege colonne, plus l'absence de DELETE.
       await app!.query(`SET app.current_org = '${orgA}'`);
+
+      // 5b) UPDATE mêlant name ET une colonne scellee -> le GRANT colonne ne fuit
+      // pas : refus AVANT meme le trigger (permission denied sur science_status).
+      await expect(
+        app!.query(
+          `UPDATE official_pvs SET name = 'x', science_status = 'signed' WHERE id = $1`,
+          [pvA],
+        ),
+      ).rejects.toThrow(/permission denied/i);
+
+      // UPDATE d'une colonne scellee seule -> toujours refuse.
       await expect(
         app!.query(
           `UPDATE official_pvs SET science_status = 'signed' WHERE id = $1`,
           [pvA],
         ),
       ).rejects.toThrow(/permission denied/i);
+
+      // DELETE -> toujours refuse (aucun privilege).
       await expect(
         app!.query(`DELETE FROM official_pvs WHERE id = $1`, [pvA]),
       ).rejects.toThrow(/permission denied/i);
@@ -395,21 +421,58 @@ describe('Coeur d integrite du PV scelle (calc_results + official_pvs)', () => {
   );
 
   guarded(
-    '6) official_pvs : trigger refuse UPDATE/DELETE meme avec le privilege',
+    '5a) official_pvs : runtime (roadsen_app) PEUT renommer l etiquette name (controle positif du GRANT colonne)',
+    async () => {
+      await app!.query(`SET app.current_org = '${orgA}'`);
+      await app!.query(
+        `UPDATE official_pvs SET name = 'Etiquette test' WHERE id = $1`,
+        [pvA],
+      );
+      const { rows } = await app!.query<{ name: string }>(
+        `SELECT name FROM official_pvs WHERE id = $1`,
+        [pvA],
+      );
+      expect(rows[0]?.name).toBe('Etiquette test');
+    },
+  );
+
+  guarded(
+    '6) official_pvs : trigger refuse DELETE et tout UPDATE d une colonne scellee, meme avec le privilege',
     async () => {
       // Connexion admin = proprietaire/superuser : il A le privilege UPDATE/DELETE.
-      // Le trigger d'immuabilite (TRIGGER USER, actif) doit malgre tout REFUSER.
-      // (Le superuser ne contourne PAS un trigger ; seul DISABLE TRIGGER le fait,
-      //  ce qu'on reserve au teardown.)
+      // Le trigger d'immuabilite (TRIGGER USER, actif) doit malgre tout REFUSER
+      // toute mutation autre que `name`. (Le superuser ne contourne PAS un
+      // trigger ; seul DISABLE TRIGGER le fait, reserve au teardown.)
+
+      // 6a) LE CAS QUI PROUVE LE PREDICAT `- 'name'` : un UPDATE qui touche name
+      // ET une colonne scellee doit etre REFUSE. Sans le retrait de `name` des
+      // DEUX cotes de la comparaison, ce cas passerait a tort — c'est la seule
+      // assertion qui rougit si le predicat est mal ecrit.
+      await expect(
+        admin!.query(
+          `UPDATE official_pvs SET name = 'x', science_status = 'signed' WHERE id = $1`,
+          [pvA],
+        ),
+      ).rejects.toThrow(/IMMUABLE/i);
+
+      // Colonne scellee seule -> refus.
       await expect(
         admin!.query(
           `UPDATE official_pvs SET science_status = 'signed' WHERE id = $1`,
           [pvA],
         ),
       ).rejects.toThrow(/IMMUABLE/i);
+
+      // 6b) DELETE -> refus (inchange).
       await expect(
         admin!.query(`DELETE FROM official_pvs WHERE id = $1`, [pvA]),
       ).rejects.toThrow(/IMMUABLE/i);
+
+      // Controle positif : le trigger LAISSE passer un UPDATE name-only (owner).
+      await admin!.query(
+        `UPDATE official_pvs SET name = 'ok-owner' WHERE id = $1`,
+        [pvA],
+      );
     },
   );
 

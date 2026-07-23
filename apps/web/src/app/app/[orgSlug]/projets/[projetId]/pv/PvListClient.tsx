@@ -23,9 +23,26 @@
  * `fetchPvDocumentOrNull` reste une anomalie réelle : elle n'est pas masquée
  * dans `CalculsClient`, qui n'a pas ce filet PDF indépendant et refuse
  * d'imprimer sur 409 (fail-closed).
+ *
+ * Titre + recherche (décision titulaire, 22/07/2026 — RE-RÉVISE FX-10) : le
+ * titre redevient un nom mnémonique `pv.name ?? Logiciel · Projet · #n` (cf.
+ * `lib/calc-name.ts`), renommable en ligne (même patron que les projets/
+ * calculs). `getProjectCached` est donc À NOUVEAU appelé ici (le nom du projet
+ * entre dans le mnémonique) — la révision FX-10 du 21/07 qui l'avait retiré ne
+ * tient plus. Une barre de recherche (absente jusqu'ici) filtre par nom,
+ * numéro et logiciel.
  */
 
-import { Lock, Download, ShieldCheck, AlertCircle, RefreshCw, Eye } from 'lucide-react';
+import {
+  Lock,
+  Download,
+  ShieldCheck,
+  AlertCircle,
+  RefreshCw,
+  Eye,
+  Pencil,
+  Search,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { VerdictTag } from '../verdict';
@@ -35,12 +52,19 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { Skeleton } from '@/components/ui/Skeleton.client';
 import { useToast } from '@/components/ui/Toast';
-import { listPvs, verifyPv, downloadPvPdf, getPvDocument } from '@/lib/api/client';
+import {
+  listPvs,
+  verifyPv,
+  downloadPvPdf,
+  getPvDocument,
+  getProjectCached,
+  renamePv,
+} from '@/lib/api/client';
 import type { OfficialPv, VerifyPvResponse } from '@/lib/api/types';
-import { metaOf, slugOf } from '@/lib/engine-labels';
+import { nomAffiche, seqParCreation } from '@/lib/calc-name';
+import { logicielCourtFor } from '@/lib/engine-labels';
 import { useOrgId } from '@/lib/org-context';
 import { printInertHtml } from '@/lib/print-inert-html';
-import { SOFTWARE_CATALOG } from '@/lib/software-catalog';
 
 // `getPvDocument` renvoie `null` sur 404 (absence légitime) mais REJETTE sur
 // 409/intégrité rompue (cf. http-client.ts). Ici, le repli PDF a son propre
@@ -88,35 +112,10 @@ function formatDateCompact(iso: string): string {
   }).format(new Date(iso));
 }
 
-// Titre mnémonique (FX-10, révisé maquette finale 21/07/2026) — le TYPE DE
-// NOTE, jamais le nom du projet (déjà affiché dans le fil d'Ariane au-dessus
-// de l'onglet, cf. ProjetLayoutClient : le répéter ici cassait la compacité
-// ET faisait doublon). Curation manuelle : plus court que le `label` complet
-// de l'EngineDescriptor (ex. « Fondation profonde — pieux (NF P 94-262) »
-// devient « Fondation profonde »), aligné mot pour mot sur la maquette
-// validée. Moteur non mappé (futur) → repli sur `metaOf` (nom métier), jamais
-// une exception.
-const NOTE_TYPE_LABEL: Record<string, string> = {
-  burmister: 'Chaussée',
-  terzaghi: 'Fondation superficielle',
-  pieux: 'Fondation profonde',
-  radier: 'Radier sur sol élastique',
-  pressiometre: 'Essai pressiométrique',
-  labo: 'Classification GTR',
-};
-
-function pvTitle(pv: OfficialPv): string {
-  const slug = slugOf(pv.engineId);
-  const type = NOTE_TYPE_LABEL[slug] ?? metaOf(pv.engineId).nom;
-  return `Note de calcul — ${type}`;
-}
-
-// Nom court du logiciel pour la méta compacte (« CASAGRANDE », « GEOPLAQUE »…)
-// — source unique : SOFTWARE_CATALOG (déjà utilisé par la galerie des 6
-// logiciels), pas une nouvelle copie locale des noms de marque.
-function logicielNomFor(engineId: string): string {
-  const slug = slugOf(engineId);
-  return SOFTWARE_CATALOG.find((s) => s.engineId === slug)?.nom ?? metaOf(engineId).nom;
+/** Normalise une chaîne pour une comparaison insensible à la casse ET aux
+ * accents (même règle que la recherche projets/calculs). */
+function normaliser(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +170,33 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
   const [pvs, setPvs] = useState<OfficialPv[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Nom mnémonique (décision titulaire 22/07/2026, re-révise FX-10) — nécessite
+  // le nom du PROJET courant. `getProjectCached` : déjà partagé avec
+  // ProjetLayoutClient/CalculsClient, pas de GET redondant.
+  const [projectName, setProjectName] = useState<string | null>(null);
+  useEffect(() => {
+    if (orgId === null) return;
+    let cancelled = false;
+    getProjectCached(orgId, projetId)
+      .then((p) => {
+        if (!cancelled) setProjectName(p.name);
+      })
+      .catch(() => {
+        /* repli silencieux : le mnémonique s'affiche alors sans nom de projet */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, projetId]);
+
+  // Renommage en ligne de l'ÉTIQUETTE d'un PV (même patron que les projets/
+  // calculs) — n'affecte JAMAIS le contenu scellé (HMAC).
+  const [renommage, setRenommage] = useState<string | null>(null);
+
+  // Recherche (barre absente jusqu'ici — demandée par le titulaire) : filtre
+  // par nom, numéro et logiciel, insensible casse+accents.
+  const [query, setQuery] = useState('');
 
   // Tri interactif + pagination client (P2 dégelé, maquette finale écran 3).
   // Défaut = Date de scellement décroissante : identique à l'ordre initial
@@ -235,12 +261,36 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
     setCurrentPage(1);
   }
 
+  // Position #n (mnémonique) — TOUJOURS calculée sur `pvs` en ENTIER, jamais
+  // sur la liste filtrée/paginée (cf. lib/calc-name.ts). Un PV n'a pas de
+  // `createdAt` propre : `sealedAt` en tient lieu (sa date de « création »).
+  const seqById = useMemo(() => seqParCreation(pvs, (p) => p.sealedAt), [pvs]);
+
+  const displayNameOf = useCallback(
+    (pv: OfficialPv) => nomAffiche(pv, projectName ?? '', seqById.get(pv.id) ?? 0),
+    [projectName, seqById],
+  );
+
+  // Recherche — nom d'affichage (mnémonique ou personnalisé), numéro officiel
+  // ET nom court du logiciel, insensible casse+accents. Appliquée AVANT le
+  // tri (le tri ne porte que sur ce qui reste affichable).
+  const filteredPvs = useMemo(() => {
+    const q = normaliser(query.trim());
+    if (!q) return pvs;
+    return pvs.filter((pv) => {
+      const hay = normaliser(
+        `${displayNameOf(pv)} ${pv.number} ${logicielCourtFor(pv.engineId)}`,
+      );
+      return hay.includes(q);
+    });
+  }, [pvs, query, displayNameOf]);
+
   // Tri côté client (P2 dégelé) — la liste entière est déjà en mémoire
   // (listPvs renvoie tout le projet) : trier ici ne contredit pas le serveur,
   // dont l'ordre initial n'est qu'un défaut. Copie défensive : sort mute en place.
   const sortedPvs = useMemo(
-    () => [...pvs].sort((a, b) => comparerPvs(a, b, sortKey, sortDir)),
-    [pvs, sortKey, sortDir],
+    () => [...filteredPvs].sort((a, b) => comparerPvs(a, b, sortKey, sortDir)),
+    [filteredPvs, sortKey, sortDir],
   );
 
   // Pagination client (~12/page) — appliquée APRÈS le tri. Bornage défensif :
@@ -253,12 +303,67 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
     [sortedPvs, pageActuelle],
   );
 
+  function handleQueryChange(next: string) {
+    setQuery(next);
+    // Changement de recherche : on repart de la première page (patron chips
+    // logiciel/domaine des écrans 1/2) — sinon une page 2 pourrait afficher un
+    // contenu incohérent avec le nouveau filtre.
+    setCurrentPage(1);
+  }
+
   // Nettoyage de la blob URL si le composant est démonté pendant un aperçu
   useEffect(() => {
     return () => {
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     };
   }, []);
+
+  /**
+   * Renommage en ligne de l'ÉTIQUETTE d'un PV (patron rename-inline des
+   * projets/calculs). N'affecte JAMAIS le contenu scellé : PATCH `name`
+   * uniquement, pas un re-scellement. Une saisie VIDE renvoie explicitement
+   * `null` (retour au mnémonique) ; inchangée par rapport au nom personnalisé
+   * ACTUEL (pas au mnémonique affiché) → aucun appel API.
+   */
+  async function handleRenamePv(pv: OfficialPv, nouveau: string) {
+    setRenommage(null);
+    if (!orgId) return;
+    const nomActuel = pv.name ?? null;
+    const valeur = nouveau.trim();
+
+    // Même garde que pour les calculs : le champ est PRÉ-REMPLI avec le nom
+    // d'affichage courant, donc avec le MNÉMONIQUE sur un PV sans nom. Valider
+    // sans rien modifier (Entrée, ou simplement cliquer ailleurs) ne doit pas
+    // le figer en nom personnalisé — il cesserait de suivre le projet et le
+    // rang, sur un objet par ailleurs immuable.
+    const mnemoniqueCourant = nomAffiche(
+      { name: null, engineId: pv.engineId },
+      projectName ?? '',
+      seqById.get(pv.id) ?? 0,
+    );
+
+    if (valeur === '' || valeur === mnemoniqueCourant) {
+      if (nomActuel === null) return; // déjà au mnémonique, rien à changer
+      try {
+        const maj = await renamePv(orgId, projetId, pv.id, null);
+        setPvs((prev) => prev.map((p) => (p.id === pv.id ? maj : p)));
+        addToast({ type: 'success', message: 'Nom réinitialisé au mnémonique.' });
+      } catch {
+        addToast({ type: 'error', message: 'Renommage impossible.' });
+      }
+      return;
+    }
+
+    if (valeur === nomActuel) return; // inchangé
+
+    try {
+      const maj = await renamePv(orgId, projetId, pv.id, valeur);
+      setPvs((prev) => prev.map((p) => (p.id === pv.id ? maj : p)));
+      addToast({ type: 'success', message: `PV renommé « ${maj.name} ».` });
+    } catch {
+      addToast({ type: 'error', message: 'Renommage impossible.' });
+    }
+  }
 
   async function handleVerify(pv: OfficialPv) {
     setVerifyModal({ pvId: pv.id, number: pv.number });
@@ -407,10 +512,12 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
         />
       )}
 
-      {/* Barre d'outils — tri interactif (P2 dégelé, maquette finale). Recherche,
-        filtres et livraison groupée restent P2 : rien n'est promis ici. */}
+      {/* Barre d'outils — recherche (nom/numéro/logiciel) + tri interactif
+        (P2 dégelé, maquette finale). Filtres et livraison groupée restent
+        P2 : rien n'est promis ici. */}
       {!loading && !error && pvs.length > 0 && (
         <div
+          className="tools"
           style={{
             display: 'flex',
             gap: 7,
@@ -419,7 +526,37 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
             marginBottom: 12,
           }}
         >
-          <div style={{ flex: 1 }} />
+          <div style={{ position: 'relative', flex: '1 1 200px', minWidth: 180 }}>
+            <Search
+              size={13}
+              strokeWidth={1.5}
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                left: 9,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--text-muted)',
+                pointerEvents: 'none',
+              }}
+            />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => handleQueryChange(e.target.value)}
+              placeholder="Rechercher un PV (nom, numéro, logiciel)"
+              aria-label="Rechercher parmi les PV"
+              style={{
+                width: '100%',
+                padding: '6px 10px 6px 28px',
+                fontSize: 12,
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 8,
+                background: 'var(--surface-base)',
+                color: 'var(--text-primary)',
+              }}
+            />
+          </div>
           <div
             role="group"
             aria-label="Trier les PV"
@@ -466,9 +603,23 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
         </div>
       )}
 
+      {/* Recherche sans correspondance — DISTINCT de « Aucun PV émis »
+        ci-dessus (qui répond à zéro PV dans le projet). */}
+      {!loading && !error && pvs.length > 0 && filteredPvs.length === 0 && (
+        <div
+          style={{
+            fontSize: 12.5,
+            color: 'var(--text-secondary)',
+            padding: '12px 4px',
+          }}
+        >
+          Aucun PV ne correspond à ces critères.
+        </div>
+      )}
+
       {/* Liste des PV — page courante uniquement (pagination client, maquette
         finale : lignes compactes sur une rangée, pas de grandes cartes). */}
-      {!loading && !error && pvs.length > 0 && (
+      {!loading && !error && filteredPvs.length > 0 && (
         <div
           role="list"
           aria-label="Liste des procès-verbaux scellés"
@@ -478,18 +629,23 @@ export default function PvListClient({ orgSlug, projetId }: PvListClientProps) {
             <PvRow
               key={pv.id}
               pv={pv}
+              displayName={displayNameOf(pv)}
+              enRenommage={renommage === pv.id}
               downloading={downloadingId === pv.id}
               previewing={previewingId === pv.id}
               onDownload={() => handleDownload(pv)}
               onPreview={() => handlePreview(pv)}
               onVerify={() => handleVerify(pv)}
+              onStartRename={() => setRenommage(pv.id)}
+              onRename={(nom) => handleRenamePv(pv, nom)}
+              onCancelRename={() => setRenommage(null)}
             />
           ))}
         </div>
       )}
 
       {/* Pagination client (~12/page) — masquée dès que tout tient sur une page. */}
-      {!loading && !error && pvs.length > 0 && totalPages > 1 && (
+      {!loading && !error && filteredPvs.length > 0 && totalPages > 1 && (
         <div
           style={{
             display: 'flex',
@@ -773,18 +929,29 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 
 function PvRow({
   pv,
+  displayName,
+  enRenommage,
   downloading,
   previewing,
   onDownload,
   onPreview,
   onVerify,
+  onStartRename,
+  onRename,
+  onCancelRename,
 }: {
   pv: OfficialPv;
+  /** Nom d'affichage courant (mnémonique ou personnalisé) — calculé par le parent. */
+  displayName: string;
+  enRenommage: boolean;
   downloading: boolean;
   previewing: boolean;
   onDownload: () => void;
   onPreview: () => void;
   onVerify: () => void;
+  onStartRename: () => void;
+  onRename: (nom: string) => void;
+  onCancelRename: () => void;
 }) {
   // Verdict de conformité — DISTINCT du scellement (cf. badge « Scellé »
   // ci-dessous), jamais fusionné (maquette finale, écran 3). Un PV est déjà
@@ -842,22 +1009,72 @@ function PvRow({
           (nowrap + ellipsis) : c'est ce qui empêche le numéro de PV de se
           couper au milieu sur une ligne étroite. */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        {/* Titre mnémonique — le TYPE DE NOTE (ex. « Fondation profonde »),
-            jamais le nom du projet (déjà dans le fil d'Ariane) ni le numéro
-            officiel (référence secondaire ci-dessous). */}
-        <span
-          style={{
-            display: 'block',
-            fontSize: 'var(--text-sm)',
-            fontWeight: 500,
-            color: 'var(--text-primary)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {pvTitle(pv)}
-        </span>
+        {/* Titre = nom d'affichage (mnémonique `Logiciel · Projet · #n` ou
+            renommé) — décision titulaire 22/07/2026, re-révise FX-10 (qui
+            portait le TYPE DE NOTE). Renommage en ligne via le crayon, même
+            patron que les projets/calculs : n'affecte JAMAIS le contenu
+            scellé, c'est une étiquette (PATCH `name`), pas un re-scellement. */}
+        {enRenommage ? (
+          <input
+            autoFocus
+            defaultValue={displayName}
+            aria-label={`Renommer le PV ${displayName}`}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') onRename(e.currentTarget.value);
+              // Échap annule SANS écrire.
+              if (e.key === 'Escape') onCancelRename();
+            }}
+            onBlur={(e) => onRename(e.currentTarget.value)}
+            style={{
+              width: '100%',
+              font: 'inherit',
+              fontSize: 'var(--text-sm)',
+              color: 'var(--text-primary)',
+              background: 'var(--surface-base)',
+              border: '1px solid var(--border-focus)',
+              borderRadius: 6,
+              padding: '3px 6px',
+            }}
+          />
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span
+              style={{
+                display: 'block',
+                minWidth: 0,
+                fontSize: 'var(--text-sm)',
+                fontWeight: 500,
+                color: 'var(--text-primary)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={displayName}
+            >
+              {displayName}
+            </span>
+            <button
+              type="button"
+              aria-label={`Renommer le PV ${displayName}`}
+              onClick={onStartRename}
+              style={{
+                display: 'inline-grid',
+                placeItems: 'center',
+                width: 20,
+                height: 20,
+                flexShrink: 0,
+                border: 0,
+                background: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+              }}
+            >
+              <Pencil size={11} strokeWidth={1.5} aria-hidden="true" />
+            </button>
+          </div>
+        )}
         {/* Méta compacte — numéro officiel · logiciel · date de scellement,
             UN SEUL bloc mono sur une ligne (pas de « · » orphelin éclaté sur
             plusieurs éléments). Le hash HMAC (non présent dans la maquette,
@@ -874,7 +1091,7 @@ function PvRow({
           }}
           title={`Code d'intégrité (HMAC tronqué) : ${pv.hmacTruncated}`}
         >
-          {pv.number} · {logicielNomFor(pv.engineId)} · {formatDateCompact(pv.sealedAt)}
+          {pv.number} · {logicielCourtFor(pv.engineId)} · {formatDateCompact(pv.sealedAt)}
         </div>
       </div>
 

@@ -103,6 +103,7 @@ function makeChausseePv(
     sealedAt: new Date(sealedAtIso),
     documentHtml: null,
     documentFormat: null,
+    name: null,
   };
 }
 
@@ -139,6 +140,7 @@ function makeFallbackPv(): OfficialPv {
     sealedAt: new Date(sealedAtIso),
     documentHtml: null,
     documentFormat: null,
+    name: null,
   };
 }
 

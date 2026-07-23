@@ -69,6 +69,7 @@ function makeSealedPv(input: SealableValue, output: SealableValue): OfficialPv {
     sealedAt: new Date(sealedAtIso),
     documentHtml: null,
     documentFormat: null,
+    name: null,
   };
 }
 
