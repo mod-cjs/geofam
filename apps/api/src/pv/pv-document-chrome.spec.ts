@@ -100,7 +100,20 @@ describe('wrapSealedDocumentWithPvChrome', () => {
       'Ne constitue pas une signature électronique qualifiée',
     );
     expect(out).toContain('loi 2008-08');
-    expect(out).toContain("Vérification d'intégrité en ligne — Phase 2");
+    // « Phase 2 » (jargon de roadmap interne) RETIRÉ du livrable client : le
+    // lecteur du BE ne sait pas ce que « Phase 2 » désigne, et cela lit comme un
+    // produit inachevé. Le document garde ce qui est VRAI (empreinte SHA-256,
+    // sceau HMAC, « toute modification rompt le sceau ») sans promesse datée.
+    expect(out).not.toContain('Phase 2');
+    expect(out).not.toContain("Vérification d'intégrité en ligne");
+    // À la place, une phrase HONNÊTE (validée fiscal-juridique) qui dit COMMENT
+    // l'intégrité se vérifie réellement : auprès de l'émetteur, pas par un
+    // recalcul autonome du hash imprimé (que le modèle de menace du sceau
+    // interdit de suggérer — un faussaire recalcule le hash). Déplace le locus
+    // de vérification vers l'émetteur sans promettre de portail public.
+    expect(out).toContain(
+      "L'intégrité se vérifie auprès de l'émetteur, par recoupement avec l'exemplaire scellé conservé.",
+    );
   });
 
   it('given verdict NON_CONFORME, when enrobe, then pastille « NON CONFORME » (rouge)', () => {

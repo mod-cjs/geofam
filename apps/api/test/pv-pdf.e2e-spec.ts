@@ -524,17 +524,32 @@ describe('PDF du PV — surface tenant (e2e)', () => {
     const { pvId } = await emitPvInA();
     const res = await downloadPdf(token, pvId);
     const raw = await extractPdfText(res.body as Buffer);
-    const text = raw.toLowerCase();
+    // NORMALISATION DES ESPACES : pdf-parse insère un saut de ligne là où le
+    // texte SE REPLIE physiquement dans le PDF. Une phrase de la note peut donc
+    // être coupée en plein milieu (ex. « signature électronique\nqualifiée »),
+    // ce qui casse une recherche de sous-chaîne alors que le CONTENU est correct
+    // (le repli est un détail de mise en page, pas de wording). On aplatit tout
+    // enchaînement d'espaces/sauts de ligne en une espace simple avant de
+    // chercher les phrases. Constaté après allongement de la note d'intégrité
+    // (ajout de la mention « vérification auprès de l'émetteur »).
+    const flat = raw.replace(/\s+/g, ' ');
+    const text = flat.toLowerCase();
     // anti-fuite science.
     expect(text.includes('unsigned')).toBe(false);
     expect(text.includes('science')).toBe(false);
     expect(text.includes('@science')).toBe(false);
     // WORDING HONNÊTE (validé fiscal-juridique) sur les OCTETS RÉELS : note de
     // portée présente, termes à valeur probatoire BANNIS.
-    expect(raw.includes('Ne vaut pas signature électronique qualifiée')).toBe(
+    expect(flat.includes('Ne vaut pas signature électronique qualifiée')).toBe(
       true,
     );
-    expect(raw.includes('ingénieur signataire')).toBe(true);
+    expect(flat.includes('ingénieur signataire')).toBe(true);
+    // La phrase de vérification ajoutée doit elle aussi figurer sur les octets réels.
+    expect(
+      flat.includes(
+        'L’intégrité se vérifie auprès de l’émetteur, par recoupement du document avec l’exemplaire scellé qu’il conserve.',
+      ),
+    ).toBe(true);
     for (const banned of [
       'fait foi',
       'valeur probante',

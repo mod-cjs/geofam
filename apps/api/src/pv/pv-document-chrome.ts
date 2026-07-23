@@ -182,7 +182,6 @@ const PV_CHROME_CSS = `
 .pvx-foot .pvx-sign{display:flex;justify-content:space-between;align-items:flex-end;margin-top:16px;gap:20px;flex-wrap:wrap}
 .pvx-foot .pvx-who{font-size:.78rem}
 .pvx-foot .pvx-who .n{font-weight:640;color:#1a2733}
-.pvx-foot .pvx-ref{font-family:ui-monospace,Menlo,monospace;font-size:.68rem;color:#5f7183}
 @media (max-width:640px){.pvx-grid{grid-template-columns:repeat(2,1fr)}.pvx-band .pvx-top{flex-direction:column}}
 `.trim();
 
@@ -250,11 +249,21 @@ function buildFoot(meta: PvChromeMeta): string {
     "Document scellé pour contrôle d'intégrité (SHA-256 / HMAC, horodatage serveur). " +
     '<b>Ne constitue pas une signature électronique qualifiée</b> au sens de la loi 2008-08. ' +
     "Aide au calcul — la responsabilité de l'étude reste à l'ingénieur signataire. " +
-    'Toute modification du document rompt le sceau et se détecte.' +
+    'Toute modification du document rompt le sceau et se détecte. ' +
+    // Précise le LOCUS de vérification (revue fiscal-juridique) : le lecteur ne
+    // peut pas revérifier seul (le HMAC exige le secret serveur, et recouper le
+    // SHA-256 imprimé ne prouve rien face à un faussaire qui le recalcule). La
+    // vérification se fait AUPRÈS DE L'ÉMETTEUR, qui conserve l'exemplaire scellé.
+    "L'intégrité se vérifie auprès de l'émetteur, par recoupement avec l'exemplaire scellé conservé." +
     '</p>' +
+    // Pas de mention « Phase 2 » (jargon de roadmap interne, illisible pour le
+    // client final) ni de promesse de vérification en ligne indisponible : la
+    // portée réelle du sceau est déjà décrite ci-dessus (empreinte SHA-256,
+    // HMAC, horodatage) et dans la note légale (« toute modification rompt le
+    // sceau et se détecte »). On ne sur-promet pas une revérification par un
+    // tiers que le document seul ne permet pas (cf. modèle de menace du sceau).
     '<div class="pvx-sign">' +
     `<div class="pvx-who">Émis par <span class="n">${emitter.html}</span> · ${org.html}</div>` +
-    '<div class="pvx-ref">Vérification d\'intégrité en ligne — Phase 2</div>' +
     '</div>' +
     '</div>'
   );

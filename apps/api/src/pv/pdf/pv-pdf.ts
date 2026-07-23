@@ -1673,7 +1673,7 @@ function buildIdentityCards(sealed: SealedContent): Content {
       // MAJEUR-1 (audit) : libellé DESCRIPTIF, sans verdict ni jargon. « Intégrité
       // vérifiée » serait une AUTO-ATTESTATION trompeuse (un PDF exporté puis
       // modifié l'afficherait quand même) ; « Recalculé serveur » = jargon interne.
-      // La vraie portée d'intégrité est décrite dans le bloc scellement (+ Phase 2).
+      // La vraie portée d'intégrité est décrite dans le bloc scellement.
       card('Statut', ['Scellé (empreinte SHA-256 / HMAC)']),
     ],
   ];
@@ -1895,7 +1895,11 @@ function buildSealBlock(
     unbreakable: true, // ne JAMAIS couper le bloc de scellement entre 2 pages
     margin: [0, 18, 0, 0],
     table: {
-      widths: ['*', 'auto'],
+      // Une seule colonne : la 2e cellule (« Vérification en ligne — Phase 2 »,
+      // façade d'un QR jamais branché) est retirée. « Phase 2 » est du jargon de
+      // roadmap interne sur un livrable client, et le document ne permet pas la
+      // revérification indépendante qu'il laissait entendre.
+      widths: ['*'],
       body: [
         [
           {
@@ -1977,7 +1981,9 @@ function buildSealBlock(
                 text:
                   'Document scellé pour contrôle d’intégrité (SHA-256 / HMAC, ' +
                   'horodatage serveur), permettant de détecter toute modification ' +
-                  'ultérieure. Aide au calcul — la responsabilité de l’étude reste ' +
+                  'ultérieure. L’intégrité se vérifie auprès de l’émetteur, par ' +
+                  'recoupement du document avec l’exemplaire scellé qu’il conserve. ' +
+                  'Aide au calcul — la responsabilité de l’étude reste ' +
                   'à l’ingénieur signataire. Ne vaut pas signature électronique ' +
                   'qualifiée (loi 2008-08).',
                 fontSize: 7,
@@ -1987,27 +1993,6 @@ function buildSealBlock(
               },
             ],
             margin: [12, 12, 12, 12],
-          },
-          // #71 : QR vide RETIRÉ (façade « cassée ») -> simple texte grisé. Le QR
-          // réel de vérification en ligne arrive en Phase 2.
-          {
-            stack: [
-              {
-                text: 'Vérification en ligne :',
-                fontSize: 8,
-                color: COLORS.muted,
-                alignment: 'right',
-              },
-              {
-                text: 'disponible en Phase 2',
-                fontSize: 8,
-                italics: true,
-                color: COLORS.muted2,
-                alignment: 'right',
-                margin: [0, 2, 0, 0],
-              },
-            ],
-            margin: [12, 14, 12, 12],
           },
         ],
       ],

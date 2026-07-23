@@ -642,10 +642,23 @@ describe('#71 — détails de présentation (objet, ingénieur, QR, autres param
     expect(text.toLowerCase().includes('épreuve')).toBe(false);
   });
 
-  it('QR vide RETIRÉ -> texte « Vérification en ligne : disponible en Phase 2 »', () => {
+  it('la mention « Vérification en ligne — Phase 2 » (jargon roadmap) est ABSENTE du PDF livré, remplacée par la vérification auprès de l’émetteur', () => {
+    // Retiré du livrable client : « Phase 2 » ne parle qu'à nous. Le PDF garde la
+    // note d'intégrité honnête (SHA-256 / HMAC, détection d'altération) sans
+    // promettre une vérification en ligne datée qui n'existe pas encore.
     const text = collectPvPdfText(makeChausseePv());
-    expect(text).toContain('Vérification en ligne');
-    expect(text).toContain('disponible en Phase 2');
+    // AUTO-ANCRAGE (revue adverse) : une assertion POSITIVE prouve que le PDF est
+    // bien généré et complet — sinon les `.not.toContain` passeraient trivialement
+    // sur une sortie vide.
+    expect(text).toContain('Document scellé pour contrôle d’intégrité');
+    expect(text).not.toContain('Phase 2');
+    expect(text).not.toContain('Vérification en ligne');
+    // La phrase de remplacement (validée fiscal-juridique) : dit COMMENT
+    // l'intégrité se vérifie, sans suggérer un recalcul autonome du hash.
+    // Apostrophe typographique (’), cohérente avec le reste du texte PDF.
+    expect(text).toContain(
+      'L’intégrité se vérifie auprès de l’émetteur, par recoupement du document avec l’exemplaire scellé qu’il conserve.',
+    );
   });
 
   it('FAIL-CLOSED (B-1/M-1) : un champ NON mappé n’est JAMAIS rendu (whitelist)', () => {
