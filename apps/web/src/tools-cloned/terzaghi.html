@@ -715,6 +715,12 @@ if(typeof document!=='undefined'){
   window.__geofamBridge={
     calc:function(params){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:ENGINE_ID,label:(params&&params.projet)||null,params:params}}); }); },
     emitPv:function(calcResultId){ post({v:1,type:"pv:request",payload:{calcResultId:calcResultId}}); },
+    /* snapshot:capture (option 3 « sceller le document imprime ») : remonte a l hote le HTML
+       rendu (affichage + document imprimable auto-contenu). Sens iframe->hote SEUL,
+       fire-and-forget. Contenu = la note deja rendue (grandeurs whitelistees serveur) + coupe
+       SVG, jamais de science (le calcul est excise). L hote le scelle sur SON dernier
+       calcResultId. Identique au patron roadsens (BURMISTER_BRIDGE_AND_SHIM). */
+    snapshot:function(displayHtml,printHtml){ post({v:1,type:"snapshot:capture",payload:{displayHtml:String(displayHtml||""),printHtml:String(printHtml||"")}}); },
     context:function(){ return ctx; }
   };
   /* input:dirty (correctif PV BQ-1) : signale a l hote que l ecran a change apres un calcul
@@ -835,6 +841,93 @@ function renderCalcError(R, err){
   var pane=$('tab-verifs'); if(pane) pane.innerHTML='<div class="warnbox" style="border-left-color:var(--bad);background:var(--bad-bg)"><strong>Calcul indisponible</strong><br>'+escH(msg+reason)+'</div>';
   var nv=$('noteView'); if(nv) nv.innerHTML='<p>'+escH(msg)+'</p>';
   try{ var coupe=drawCoupe(R); var np=$('notePrint'); if(np) np.innerHTML=coupeFigure(coupe); }catch(e){}
+}
+
+/* ---- CAPTURE DU DOCUMENT (option 3 « sceller le document imprime ») ----
+   Serialise DEUX chaines HTML auto-contenues APRES un calcul reussi (noteView + notePrint
+   deja peuples par recalc -> buildNote/coupeFigure). DETERMINISTE : meme sortie serveur =
+   meme note rendue = meme HTML capture (aucune horloge, aucun hasard, aucun ordre DOM
+   instable). §8 : ne contient QUE des valeurs deja affichees (grandeurs whitelistees
+   serveur — p_le etoile, q_ce, k_p, k_c, h_r, D_e, i_delta, q_net, tassements… ADR 0015)
+   + coupe SVG ; les
+   <script> sont retires, aucun gestionnaire inline ne subsiste et aucune fonction de calcul
+   n existe dans le clone (excisee). Patron identique a roadsens (__roadsensCaptureSnapshot). */
+/* Clone un noeud et le rend INERTE : retire tout <script> et <button> descendant, tout
+   attribut gestionnaire inline on…= (sur le noeud et ses descendants) ET toute URI
+   javascript: — conformement a assertInertHtml (apps/api/src/pv/html-guard.ts). Renvoie
+   son outerHTML (ou "" si absent). La note Terzaghi et la coupe SVG sont du CONTENU
+   statique (buildNote/drawCoupe ne posent aucun handler), ce nettoyage est une garde §8. */
+function __terzaghiCloneClean(el){
+  if(!el) return "";
+  var c=el.cloneNode(true);
+  var kill=c.querySelectorAll?c.querySelectorAll("script,button"):[];
+  for(var j=0;j<kill.length;j++){ if(kill[j].parentNode) kill[j].parentNode.removeChild(kill[j]); }
+  var all=c.querySelectorAll?c.querySelectorAll("*"):[];
+  var nodes=[c]; for(var a=0;a<all.length;a++){ nodes.push(all[a]); }
+  for(var n=0;n<nodes.length;n++){
+    var nd=nodes[n]; if(!nd.attributes) continue;
+    for(var k=nd.attributes.length-1;k>=0;k--){
+      var att=nd.attributes[k], an=att.name||"", av=att.value||"";
+      if(an.length>=2 && an.slice(0,2).toLowerCase()==="on"){ nd.removeAttribute(an); continue; }
+      if(/^\s*javascript:/i.test(av)) nd.removeAttribute(an);
+    }
+  }
+  return c.outerHTML||"";
+}
+/* Agrege TOUT le CSS de l outil (les .note/.coupe-print… sont stylees par des classes
+   globales + var(--…)) dans une chaine reutilisable. */
+function __terzaghiCollectStyles(){
+  var styles="";
+  var sl=document.querySelectorAll("style");
+  for(var i=0;i<sl.length;i++){ styles += (sl[i].textContent||"") + "\n"; }
+  return styles;
+}
+/* Document IMPRIMABLE auto-contenu = #notePrint (coupe SVG + note, deja assemble par
+   recalc : coupeFigure(coupeSvg)+note), avec TOUT le CSS de l outil inline. Les regles de
+   la coupe (.coupe-print…) vivent dans @media print : on les PROMEUT a l ecran pour que le
+   document reste CONSULTABLE (apercu de la note) tout en restant fidele a l impression
+   (les regles @media print d origine sont conservees telles quelles). */
+function __terzaghiSerializePrintable(){
+  var styles=__terzaghiCollectStyles();
+  styles += "\n#notePrint{display:block !important}\n"
+    + ".coupe-print{margin:0 0 16px;break-inside:avoid}\n"
+    + ".coupe-print-title{font-weight:600;font-size:12px;margin-bottom:6px;color:#232E33}\n"
+    + ".coupe-print svg{display:block;width:100%;max-width:540px;height:auto;margin:0 auto}\n"
+    + ".coupe-print .legend{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:6px;font-size:10px}\n";
+  var np=__terzaghiCloneClean(document.getElementById("notePrint"));
+  return "<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\">"
+    + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+    + "<title>Terzaghi \u2014 Note de v\u00e9rification (NF P 94-261)</title>"
+    + "<style>" + styles + "</style></head><body>"
+    + np
+    + "</body></html>";
+}
+/* APERCU auto-contenu de la note consultable (#noteView, l onglet « Note de calcul »),
+   pour l iframe du panneau de detail. Meme patron : CSS agrege + enveloppe <!doctype>
+   (sans quoi l outerHTML nu de #noteView perd ses styles — var(--…) non definies dans l
+   iframe sandbox de l onglet Calculs). BORNE a la note (pas de coupe) : c est le
+   displayHtml. */
+function __terzaghiSerializeDisplay(){
+  var styles=__terzaghiCollectStyles();
+  styles += "\n#noteView{display:block !important}\n";
+  var nv=__terzaghiCloneClean(document.getElementById("noteView"));
+  return "<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\">"
+    + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+    + "<title>Terzaghi \u2014 Aper\u00e7u de la note</title>"
+    + "<style>" + styles + "</style></head><body>"
+    + nv
+    + "</body></html>";
+}
+/* Emet snapshot:capture APRES le rendu (jamais avant). displayHtml = note consultable
+   (#noteView, stylee) ; printHtml = document imprimable auto-contenu (#notePrint = coupe
+   + note). Garde : ne fait rien si le pont n expose pas snapshot. */
+function __terzaghiCaptureSnapshot(){
+  try{
+    if(!window.__geofamBridge || typeof window.__geofamBridge.snapshot!=="function") return;
+    var displayHtml=__terzaghiSerializeDisplay();
+    var printHtml=__terzaghiSerializePrintable();
+    window.__geofamBridge.snapshot(displayHtml, printHtml);
+  }catch(e){}
 }
 /* =================== FIN BRIDGE + MAPPING =================== */
 
@@ -1838,6 +1931,17 @@ async function recalc(){
   var nv=$('noteView'); if(nv) nv.innerHTML=note;
   var np=$('notePrint'); if(np) np.innerHTML=coupeFigure(coupeSvg)+note;
   validateInputs();
+  /* GARDE §5 — ERREUR EN BANDE : runTerzaghi renvoie TOUJOURS ok:true et encode les
+     erreurs de saisie dans output.erreur (mappe en R.err). resp.ok=true ne suffit donc
+     PAS : sur une erreur en bande, la note rendue se reduit au message d erreur. On NE
+     capture (et donc on NE scelle) JAMAIS un document d erreur — meme garde que le patron
+     burmister (if(out.erreur){ renderCalcError(...); return; } AVANT la capture). La note
+     d erreur reste AFFICHEE (rendu ci-dessus) ; seule la capture/scellement est bloquee. */
+  if(R.err || (resp.output && resp.output.erreur)){ return; }
+  /* Option 3 : sceller le DOCUMENT que l outil vient de rendre (noteView + notePrint),
+     APRES le rendu et UNIQUEMENT sur calcul reussi (ni erreur hors bande, filtree plus
+     haut, ni erreur en bande, filtree par la garde ci-dessus). */
+  __terzaghiCaptureSnapshot();
 }
 function coupeFigure(svg){
   if(!svg) return '';

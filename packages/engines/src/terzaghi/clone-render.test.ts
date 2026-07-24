@@ -19,6 +19,7 @@
  *
  * Skip BRUYANT si le clone (ou la reference gelee, comparaison ligne 4) est absent.
  */
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,6 +35,44 @@ import { runTerzaghi } from './index.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 // packages/engines/src/terzaghi -> 05-Plateforme (4 niveaux).
 const CLONE_PATH = resolve(HERE, '../../../../apps/web/src/tools-cloned/terzaghi.html');
+const REPO = resolve(HERE, '../../../..');
+
+/** Passe un HTML dans la VRAIE garde §8 serveur (assertInertHtml, apps/api/src/pv/
+ *  html-guard.ts) via le runner scripts/assert-inert-run.mts — jamais une copie des
+ *  regles. Renvoie { ok:true } si inerte et sans marqueur moteur. */
+function guardInert(html: string): { ok: boolean; error?: string } {
+  const raw = execFileSync('npx', ['tsx', 'scripts/assert-inert-run.mts'], {
+    input: html,
+    cwd: REPO,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  return JSON.parse(raw) as { ok: boolean; error?: string };
+}
+
+/** Charge le CLONE et MOCKE le pont AVEC un capteur `snapshot` : collecte les
+ *  { displayHtml, printHtml } emis par __terzaghiCaptureSnapshot en fin de recalc. */
+async function renderCloneCapturing(
+  input: unknown,
+  output: unknown,
+): Promise<{ dom: JSDOM; caps: { displayHtml: string; printHtml: string }[] }> {
+  const html = readFileSync(CLONE_PATH, 'utf8');
+  const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
+  const caps: { displayHtml: string; printHtml: string }[] = [];
+  (dom.window as unknown as Record<string, unknown>).__geofamBridge = {
+    calc: () => Promise.resolve({ ok: true, calcResultId: 'test-cr-1', output }),
+    emitPv: () => undefined,
+    snapshot: (displayHtml: string, printHtml: string) => {
+      caps.push({
+        displayHtml: String(displayHtml || ''),
+        printHtml: String(printHtml || ''),
+      });
+    },
+    context: () => ({}),
+  };
+  await driveWithFixture(dom, input);
+  return { dom, caps };
+}
 
 /** Injecte le fixture via l'import JSON natif de l'outil (fileImport) puis attend la
  * fin du recalc (le clone est async ; la reference est synchrone mais FileReader l'est). */
@@ -278,5 +317,145 @@ d('terzaghi — fidelite du clone excise (mapping serveur -> renderers conserves
     expect(note).toContain('Synthèse');
 
     dom.window.close();
+  });
+
+  // ======================================================================
+  // CAPTURE OPTION-3 (snapshot:capture) — le pont Terzaghi doit sceller le
+  // DOCUMENT rendu (note + coupe) APRES un calcul reussi, comme roadsens.
+  // ZERO FAUX-VERT : si le cablage (snapshot / __terzaghiCaptureSnapshot / appel
+  // en fin de recalc) est retire, `caps` reste vide -> ce test DEVIENT ROUGE.
+  // ======================================================================
+  it('given un calcul reussi, when recalc se termine, then le pont emet snapshot:capture (display + print) — capture NON vide', async () => {
+    const fx = TERZAGHI_FIXTURES.find((f) => f.id === 'nominal-pressio-rect');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const env = runTerzaghi(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+
+    const { dom, caps } = await renderCloneCapturing(fx.input, env.output);
+
+    // La capture DOIT avoir ete emise (preuve du cablage ; sentinelle anti-regression).
+    expect(
+      caps.length,
+      'AUCUNE capture snapshot:capture emise par le pont Terzaghi',
+    ).toBe(1);
+    const cap = caps[0];
+    if (!cap) throw new Error('capture absente');
+    const { displayHtml, printHtml } = cap;
+
+    // printHtml = document imprimable auto-contenu (#notePrint = coupe + note).
+    expect(printHtml.length, 'printHtml capture vide').toBeGreaterThan(2000);
+    expect(printHtml, 'printHtml non auto-contenu (pas de <!doctype>)').toContain(
+      '<!doctype html>',
+    );
+    expect(printHtml, 'CSS de l outil non inline dans printHtml').toContain('<style>');
+    expect(printHtml, 'note absente du printHtml').toContain('note de calcul');
+    // La FIGURE de coupe (element, pas la seule regle CSS .coupe-print) est presente.
+    expect(printHtml, 'figure de coupe absente du printHtml').toContain(
+      '<figure class="coupe-print',
+    );
+    expect(printHtml, 'SVG de coupe absent du printHtml').toMatch(/<svg/i);
+
+    // displayHtml = aperçu de la note consultable (#noteView), SANS la figure de coupe.
+    expect(displayHtml.length, 'displayHtml capture vide').toBeGreaterThan(500);
+    expect(displayHtml, 'displayHtml non auto-contenu').toContain('<!doctype html>');
+    expect(displayHtml, 'note absente du displayHtml').toContain('note de calcul');
+    // On cible l ELEMENT figure : la regle CSS .coupe-print reste inline (styles agreges),
+    // mais AUCUNE figure de coupe ne doit apparaitre dans le corps de l apercu de la note.
+    expect(
+      displayHtml,
+      'la figure de coupe ne doit PAS etre dans l apercu de la note',
+    ).not.toContain('<figure class="coupe-print');
+
+    dom.window.close();
+  });
+
+  it('given le displayHtml et le printHtml REELLEMENT captures, when passes dans la VRAIE garde §8 (assertInertHtml), then ils sont ACCEPTES (inertes, sans handler ni marqueur moteur)', async () => {
+    const fx = TERZAGHI_FIXTURES.find((f) => f.id === 'nominal-pressio-rect');
+    if (!fx) return;
+    const env = runTerzaghi(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+
+    const { dom, caps } = await renderCloneCapturing(fx.input, env.output);
+    expect(caps.length, 'capture non emise -> rien a verifier (echec dur)').toBe(1);
+    const cap = caps[0];
+    if (!cap) throw new Error('capture absente');
+    const { displayHtml, printHtml } = cap;
+
+    // Ceinture verte : aucune balise active brute (le clone est excise, mais on verrouille).
+    expect(/<script\b/i.test(printHtml), 'printHtml contient <script>').toBe(false);
+    expect(/<script\b/i.test(displayHtml), 'displayHtml contient <script>').toBe(false);
+
+    // Garde §8 sur le contenu REEL via la VRAIE fonction serveur (jamais une copie).
+    const gp = guardInert(printHtml);
+    expect(
+      gp.ok,
+      `garde §8 REFUSE le printHtml Terzaghi reel — motif : ${gp.error ?? ''}`,
+    ).toBe(true);
+    const gd = guardInert(displayHtml);
+    expect(
+      gd.ok,
+      `garde §8 REFUSE le displayHtml Terzaghi reel — motif : ${gd.error ?? ''}`,
+    ).toBe(true);
+
+    dom.window.close();
+  });
+
+  it('GARDE §5 : sur une ERREUR EN BANDE (ok:true + output.erreur), AUCUNE capture n est emise (on ne scelle pas un document d erreur)', async () => {
+    // runTerzaghi renvoie TOUJOURS ok:true et encode les erreurs de saisie dans
+    // output.erreur (ici B=0 -> « La largeur B doit être strictement positive »). Le
+    // clone doit AFFICHER la note d erreur MAIS ne PAS capturer/sceller ce document.
+    const fx = TERZAGHI_FIXTURES.find((f) => f.id === 'hors-domaine-B-nul');
+    expect(fx, 'fixture d erreur en bande absente').toBeDefined();
+    if (!fx) return;
+    const env = runTerzaghi(fx.input);
+    // Contrat verrouille : ok:true + erreur EN BANDE (sinon la preuve serait vide).
+    expect(
+      env.ok,
+      'runTerzaghi devrait renvoyer ok:true meme en erreur (erreur en bande)',
+    ).toBe(true);
+    if (!env.ok) return;
+    expect(
+      (env.output as { erreur?: string }).erreur,
+      'la fixture ne produit pas d erreur en bande — preuve inoperante',
+    ).toBeTruthy();
+
+    const { dom, caps } = await renderCloneCapturing(fx.input, env.output);
+    // AUCUNE capture : un document d erreur ne doit jamais etre scelle (§5).
+    expect(
+      caps.length,
+      'un document d ERREUR a ete capture/scelle (garde §5 absente)',
+    ).toBe(0);
+    // Contre-preuve : la note d erreur EST bien affichee (le chemin d erreur a ete pris,
+    // la capture n a pas ete court-circuitee « en amont » du rendu).
+    const note = dom.window.document.getElementById('noteView')?.innerHTML ?? '';
+    const verifs = dom.window.document.getElementById('tab-verifs')?.innerHTML ?? '';
+    expect(note + verifs, 'la note d erreur n a pas ete rendue').toContain('B doit être');
+
+    dom.window.close();
+  });
+
+  it('DETERMINISME : deux captures pour la MEME sortie serveur sont IDENTIQUES (haut hachable/scellable)', async () => {
+    const fx = TERZAGHI_FIXTURES.find((f) => f.id === 'nominal-pressio-rect');
+    if (!fx) return;
+    const env = runTerzaghi(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+
+    const a = await renderCloneCapturing(fx.input, env.output);
+    const b = await renderCloneCapturing(fx.input, env.output);
+    expect(a.caps.length).toBe(1);
+    expect(b.caps.length).toBe(1);
+    const capA = a.caps[0];
+    const capB = b.caps[0];
+    if (!capA || !capB) throw new Error('capture absente');
+    // Meme entree -> meme note rendue -> meme HTML capture (aucune horloge, aucun alea).
+    expect(capB.printHtml, 'printHtml non deterministe').toBe(capA.printHtml);
+    expect(capB.displayHtml, 'displayHtml non deterministe').toBe(capA.displayHtml);
+
+    a.dom.window.close();
+    b.dom.window.close();
   });
 });
