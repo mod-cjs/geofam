@@ -46,6 +46,8 @@ vi.mock('@/lib/api/client', () => ({
 // Stub — la boucle de bridge (ready/init/calc/store/pv) est testée dans
 // lib/tool-bridge/__tests__/ToolFrame.test.tsx. Ici on vérifie seulement le
 // câblage : props reçues + remontée de calcResultId au shell.
+// Stub — trois déclencheurs (M3, revue adverse) pour reproduire les transitions
+// réelles awaiting→capturing→confirmed/failed remontées par ToolFrame.onSnapshotStatus.
 vi.mock('@/lib/tool-bridge/ToolFrame', () => ({
   ToolFrame: (props: {
     toolId: string;
@@ -56,14 +58,38 @@ vi.mock('@/lib/tool-bridge/ToolFrame', () => ({
     projectLabel: string;
     accessToken: string | null;
     onCalcResultId?: (id: string | null) => void;
+    onSnapshotStatus?: (event: { calcResultId: string; status: string }) => void;
   }) => (
     <div data-testid="tool-frame-stub" data-props={JSON.stringify(props)}>
       <button
         type="button"
         data-testid="simulate-calc-done"
-        onClick={() => props.onCalcResultId?.('calc_42')}
+        onClick={() => {
+          props.onCalcResultId?.('calc_42');
+          // ToolFrame réel émet TOUJOURS 'awaiting' juste après calc:response
+          // (avant même que snapshot:capture n'arrive) — cf. ToolFrame.tsx.
+          props.onSnapshotStatus?.({ calcResultId: 'calc_42', status: 'awaiting' });
+        }}
       >
         Simuler calcul terminé
+      </button>
+      <button
+        type="button"
+        data-testid="simulate-capture-confirmed"
+        onClick={() =>
+          props.onSnapshotStatus?.({ calcResultId: 'calc_42', status: 'confirmed' })
+        }
+      >
+        Simuler capture confirmée
+      </button>
+      <button
+        type="button"
+        data-testid="simulate-capture-failed"
+        onClick={() =>
+          props.onSnapshotStatus?.({ calcResultId: 'calc_42', status: 'failed' })
+        }
+      >
+        Simuler capture en échec
       </button>
     </div>
   ),
@@ -200,18 +226,74 @@ describe('Page Terzaghi — shell GEOFAM', () => {
     expect(btn.disabled).toBe(true);
   });
 
-  it('given ToolFrame remonte un calcResultId, when le calcul est "terminé", then le bouton PV s\'active', async () => {
+  // M3 (revue adverse, backport patron roadsens) : le bouton PV ne s'active PAS sur
+  // le seul calcResultId — il attend la CONFIRMATION de capture (onSnapshotStatus).
+  // Ferme la course « calc:response » vs « POST snapshot best-effort en vol » : un clic
+  // rapide ne doit jamais sceller un PV SANS la note capturée (livrable de ce lot).
+  it('given ToolFrame remonte un calcResultId SANS capture confirmée, when le calcul est "terminé", then le bouton PV reste DÉSACTIVÉ (en attente de la capture)', async () => {
     await renderPage();
-    const simulate = container.querySelector(
-      '[data-testid="simulate-calc-done"]',
-    ) as HTMLButtonElement;
     await act(async () => {
-      simulate.click();
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    const btn = container.querySelector(
+      '[data-testid="btn-emettre-pv"]',
+    ) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toMatch(/Capture du document/);
+  });
+
+  it("given un calcul terminé, when la capture du document est CONFIRMÉE, then le bouton PV s'active", async () => {
+    await renderPage();
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed"]',
+        ) as HTMLButtonElement
+      ).click();
     });
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',
     ) as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
+    expect(btn.textContent).toMatch(/Émettre le PV scellé/);
+  });
+
+  it('given une capture en ÉCHEC, when on clique « Émettre le PV », then aucun scellement direct — avertissement puis confirmation requise (jamais de PV sans document en un clic)', async () => {
+    await renderPage();
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-failed"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    const btn = container.querySelector(
+      '[data-testid="btn-emettre-pv"]',
+    ) as HTMLButtonElement;
+    // 'failed' est RÉSOLU (captureReady) → bouton actif, mais 1er clic = avertissement.
+    expect(btn.disabled).toBe(false);
+    await act(async () => {
+      btn.click();
+    });
+    expect(mockEmitPv).not.toHaveBeenCalled();
+    const warning = container.querySelector('[data-testid="capture-failed-warning"]');
+    expect(warning).not.toBeNull();
+    expect(warning!.textContent).toMatch(/n.a pas pu être capturé/);
+    expect(
+      container.querySelector('[data-testid="btn-emettre-pv"]')!.textContent,
+    ).toMatch(/Confirmer l.émission sans document/);
   });
 
   it('given un calcul terminé, when "Émettre le PV" cliqué et emitPv résout, then le PV scellé est affiché', async () => {
@@ -229,11 +311,17 @@ describe('Page Terzaghi — shell GEOFAM', () => {
       output: null,
     });
     await renderPage();
-    const simulate = container.querySelector(
-      '[data-testid="simulate-calc-done"]',
-    ) as HTMLButtonElement;
     await act(async () => {
-      simulate.click();
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed"]',
+        ) as HTMLButtonElement
+      ).click();
     });
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',
@@ -252,11 +340,17 @@ describe('Page Terzaghi — shell GEOFAM', () => {
   it('given emitPv échoue, when "Émettre le PV" cliqué, then un message d\'erreur explicite est affiché', async () => {
     mockEmitPv.mockRejectedValue({ message: 'Quota épuisé.' });
     await renderPage();
-    const simulate = container.querySelector(
-      '[data-testid="simulate-calc-done"]',
-    ) as HTMLButtonElement;
     await act(async () => {
-      simulate.click();
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed"]',
+        ) as HTMLButtonElement
+      ).click();
     });
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',

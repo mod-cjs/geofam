@@ -69,10 +69,13 @@ const FUITES_INTERDITES = [
   'sext',
   'stateN',
   'winkState',
-  // diag interne non whiteliste (loadPairs.edges/perLoad = topologie de charges).
+  // Détail interne du graphe de charges NON whitelisté. NB (task « détails calculs ») :
+  // la TABLE COMPLETE des couples est désormais EXPOSÉE sous le champ propre `loadPairs`
+  // (positions SAISIES + β/Δs/L scalaires, décision titulaire + expert) — `loadPairs`
+  // n'est donc plus interdit. Restent SERVEUR : `edges` (forme brute avec indices internes
+  // i/j 0-based), `perLoad` (agrégat par charge), et la topologie inter-plaques.
   'edges',
   'perLoad',
-  'loadPairs',
   'interPair',
   'interEnds',
   'interDiffEnds',
@@ -190,11 +193,12 @@ describe('radier — contrat de sortie (whitelist stricte, anti-fuite)', () => {
       collectKeys(env.output, keys);
       const fuites = AT_KEYS.filter((k) => keys.has(k));
       expect(fuites, `localisation maillage exposee sur ${fx.id}`).toEqual([]);
-      // Les SEULES cles x/y admises sont sous worstLoadPair.p1/p2 (coords de charges
-      // saisies). On verifie qu'aucune cle x/y n'apparait HORS de worstLoadPair.
-      const sansLoadPair = { ...env.output, worstLoadPair: null };
+      // Les SEULES cles x/y admises sont des coords de charges SAISIES : sous
+      // worstLoadPair.p1/p2 ET sous chaque entree de la table loadPairs (p1/p2). On
+      // verifie qu'aucune cle x/y n'apparait AILLEURS (aucune localisation de nœud).
+      const sansPaires = { ...env.output, worstLoadPair: null, loadPairs: undefined };
       const k2 = new Set<string>();
-      collectKeys(sansLoadPair, k2);
+      collectKeys(sansPaires, k2);
       expect([...k2].filter((k) => k === 'x' || k === 'y')).toEqual([]);
     }
   });
@@ -244,6 +248,51 @@ describe('radier — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     expect(Number.isFinite(wp.beta)).toBe(true);
     // Seuls les champs d'ingenierie + coords de charges : pas de mesh/loc nodal.
     expect(Object.keys(wp).sort()).toEqual(['L', 'beta', 'ds', 'ki', 'kj', 'p1', 'p2']);
+  });
+
+  // --- TASK « détails calculs » : la TABLE COMPLETE des couples est EXPOSÉE ----------
+  // Fidélité à la note client (printReport liste `d.loadPairs.edges` en entier), §8
+  // tranché (positions saisies + β/Δs/L scalaires). Sentinelle : ROUGE si on ré-abrège
+  // à `worstLoadPair` seul (perte de fidélité) OU si un champ interne (i/j/perLoad) fuit.
+  it('cas MULTI-charges : loadPairs expose la TABLE COMPLETE des couples (forme sûre, pire couple inclus, triée par β↓)', () => {
+    const fx = RADIER_FIXTURES.find((f) => f.id === 'carre-quatre-poteaux');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const env = runRadier(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    const table = env.output.loadPairs;
+    // Anti-vacuité : 4 poteaux -> plusieurs couples voisins (pas seulement le pire).
+    expect(table, 'table des couples absente').toBeDefined();
+    if (!table) return;
+    expect(table.length, 'table des couples ne contient pas plusieurs couples').toBeGreaterThan(1);
+    // Chaque entrée = STRICTEMENT la forme sûre (aucun i/j interne, aucun perLoad).
+    for (const e of table) {
+      expect(Object.keys(e).sort()).toEqual(['L', 'beta', 'ds', 'ki', 'kj', 'p1', 'p2']);
+      expect(Number.isFinite(e.beta) && Number.isFinite(e.ds) && Number.isFinite(e.L)).toBe(
+        true,
+      );
+      expect(Number.isInteger(e.ki) && Number.isInteger(e.kj)).toBe(true);
+    }
+    // Triée par β décroissant (déterministe) et cohérente avec worstLoadPair.
+    for (let i = 1; i < table.length; i++) {
+      expect(table[i - 1]!.beta).toBeGreaterThanOrEqual(table[i]!.beta);
+    }
+    const wp = env.output.worstLoadPair;
+    expect(wp).not.toBeNull();
+    if (wp) expect(table[0]!.beta).toBeCloseTo(wp.beta, 12);
+  });
+
+  it('cas MONO/ZÉRO charge ponctuelle : loadPairs est ABSENTE (pas de couple)', () => {
+    const fx = RADIER_FIXTURES.find((f) => f.id === 'carre-charge-centree');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const env = runRadier(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+    // < 2 charges ponctuelles -> aucune paire -> champ optionnel OMIS (fail-closed).
+    expect(env.output.loadPairs).toBeUndefined();
+    expect(env.output.worstLoadPair).toBeNull();
   });
 
   it("champDeflexion : heatmap d'affichage 48x48 DECOUPLEE du maillage, remplie, sans cle nodale", () => {

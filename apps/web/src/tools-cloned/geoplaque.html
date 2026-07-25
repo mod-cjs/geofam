@@ -1287,72 +1287,14 @@ document.getElementById('m-import').onclick=()=>{ importMode='coords'; fileinp.v
 document.getElementById('m-print').onclick=printReport;
 
 function printReport(){
-  var R=state.results;
-  var esc=function(s){ return String(s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];}); };
-  var num=function(v,dd){ dd=(dd==null?2:dd); return (v==null||!isFinite(v))?"—":(+v).toFixed(dd); };
   var P=state.project||{title:"",client:"",ref:"",author:""};
-  var fig=""; try{ fig=cv.toDataURL("image/png"); }catch(e){}
-  var rafts=state.rafts.map(function(rf,i){ var xs=rf.pts.map(function(p){return p.x;}),ys=rf.pts.map(function(p){return p.y;});
-    var bb=num(Math.min.apply(null,xs))+" – "+num(Math.max.apply(null,xs))+" × "+num(Math.min.apply(null,ys))+" – "+num(Math.max.apply(null,ys));
-    return "<tr><td>R"+(i+1)+"</td><td>"+rf.pts.length+" sommets</td><td>"+bb+"</td><td>"+(rf.E/1000).toFixed(0)+" MPa</td><td>"+rf.nu+"</td><td>"+num(rf.e)+" m</td></tr>"; }).join("");
-  var pl=state.pointLoads.map(function(p,i){ return "<tr><td>P"+(i+1)+"</td><td>"+num(p.x)+" ; "+num(p.y)+"</td><td>"+num(p.Fz,0)+" kN</td><td>"+num(p.Mx,0)+" / "+num(p.My,0)+" kN·m</td></tr>"; }).join("");
-  var ll=state.lineLoads.map(function(l,i){ return "<tr><td>L"+(i+1)+"</td><td>"+num(l.x1)+";"+num(l.y1)+" → "+num(l.x2)+";"+num(l.y2)+"</td><td>"+num(l.q,0)+" kN/ml</td></tr>"; }).join("");
-  var al=state.areaLoads.map(function(a,i){ return "<tr><td>A"+(i+1)+"</td><td>"+num(a.x1)+";"+num(a.y1)+" → "+num(a.x2)+";"+num(a.y2)+"</td><td>"+num(a.q,0)+" kPa</td><td>"+(a.on==="soil"?"sol (ext.)":"plaque")+"</td></tr>"; }).join("");
-  var spr=state.pointSprings.map(function(s,i){ return "<tr><td>K"+(i+1)+"</td><td>"+num(s.x)+" ; "+num(s.y)+"</td><td>"+num(s.k,0)+" kN/m</td></tr>"; }).join("");
-  var lspr=state.lineSprings.map(function(l,i){ return "<tr><td>KL"+(i+1)+"</td><td>"+num(l.x1)+";"+num(l.y1)+" → "+num(l.x2)+";"+num(l.y2)+"</td><td>"+num(l.k,0)+" kN/m/m</td></tr>"; }).join("");
-  var ly=state.layers.map(function(c,i){ return "<tr><td>"+esc(c.name||("Couche "+(i+1)))+"</td><td>"+num(c.zBase,1)+" m</td><td>"+(c.E/1000).toFixed(0)+" MPa</td><td>"+c.nu+"</td></tr>"; }).join("");
-  var resHtml='<p style="color:#a33">Aucun calcul effectué — lance le calcul avant d\u2019imprimer pour inclure les résultats.</p>';
-  if(R && R.diag){ var d=R.diag; var wmaxmm=d.wMax*1000, diffmm=d.diff*1000;
-    var verdict=function(l){ return {ok:'<b style="color:#1a7f37">CONFORME</b>',warn:'<b style="color:#b07a12">ATTENTION</b>',bad:'<b style="color:#b3261e">DÉPASSEMENT</b>'}[l]; };
-    var decol=document.getElementById("opt-decol").checked;
-    resHtml=""
-    +"<h2>Vérifications — Eurocode 7, annexe H</h2>"
-    +'<table class="chk">'
-    +"<tr><th>Critère</th><th>Valeur</th><th>Repère</th><th>Verdict</th></tr>"
-    +"<tr><td>Tassement total max</td><td>"+wmaxmm.toFixed(1)+" mm</td><td>≈ 50 mm</td><td>"+verdict(lvlSettle(wmaxmm))+"</td></tr>"
-    +"<tr><td>Tassement différentiel</td><td>"+diffmm.toFixed(1)+" mm</td><td>≈ 20 mm</td><td>"+verdict(lvlDiff(diffmm))+"</td></tr>"
-    +"<tr><td>Distorsion angulaire β (rotation relative)</td><td>"+ratio1(d.betaGov)+" ("+d.betaGov.toExponential(1)+" rad)</td><td>ELS 1/500 · ELU 1/150</td><td>"+verdict(lvlBeta(d.betaGov))+"</td></tr>"
-    +"<tr><td>Inclinaison d\u2019ensemble ϖ (basculement)</td><td>"+ratio1(d.tiltMax)+"</td><td>visible ≈ 1/500</td><td>"+verdict(d.tiltMax<=1/500?"ok":d.tiltMax<=1/150?"warn":"bad")+"</td></tr>"
-    +(d.nRafts>1?"<tr><td>Distorsion entre plaques</td><td>"+ratio1(d.interBeta)+" · Δs "+(d.interDiff*1000).toFixed(1)+" mm</td><td>ELS 1/500</td><td>"+verdict(lvlBeta(d.interBeta))+"</td></tr>":"")
-    +(d.loadPairs&&d.loadPairs.worst?"<tr><td>Distorsion entre charges (max) — P"+d.loadPairs.worst.ki+"↔P"+d.loadPairs.worst.kj+"</td><td>"+ratio1(d.loadPairs.worst.beta)+" · Δs "+(d.loadPairs.worst.ds*1000).toFixed(1)+" mm / "+d.loadPairs.worst.L.toFixed(2)+" m</td><td>ELS 1/500 · ELU 1/150</td><td>"+verdict(lvlBeta(d.loadPairs.worst.beta))+"</td></tr>":"")
-    +"</table>"
-    +"<h2>Synthèse des résultats</h2>"
-    +'<table class="syn">'
-    +(d.nRafts>1?"<tr><td>Plaques modélisées</td><td>"+d.nRafts+"</td></tr>":"")
-    +"<tr><td>Tassement max / min</td><td>"+wmaxmm.toFixed(1)+" / "+(d.wMin*1000).toFixed(1)+" mm</td></tr>"
-    +"<tr><td>Tassement différentiel</td><td>"+diffmm.toFixed(1)+" mm</td></tr>"
-    +"<tr><td>Rotation θx max</td><td>"+d.txMax.toExponential(2)+" rad ("+ratio1(d.txMax)+")</td></tr>"
-    +"<tr><td>Rotation θy max</td><td>"+d.tyMax.toExponential(2)+" rad ("+ratio1(d.tyMax)+")</td></tr>"
-    +"<tr><td>Pente locale max |∇w|</td><td>"+d.slopeMax.toExponential(2)+" rad ("+ratio1(d.slopeMax)+")</td></tr>"
-    +"<tr><td>Réaction du sol p (min / max)</td><td>"+num(R.pMin,1)+" / "+num(R.pMax,1)+" kPa</td></tr>"
-    +"<tr><td>Moment |Mx| / |My| max</td><td>"+(R.mxMax).toFixed(1)+" / "+(R.myMax).toFixed(1)+" kN·m/ml</td></tr>"
-    +"<tr><td>Moment de torsion |Mxy| max</td><td>"+(R.mxyMax).toFixed(1)+" kN·m/ml</td></tr>"
-    +"<tr><td>Charge verticale appliquée Σ</td><td>"+(R.totalLoad).toFixed(0)+" kN</td></tr>"
-    +"<tr><td>Réaction du sol Σ</td><td>"+(R.sumReact).toFixed(0)+" kN</td></tr>"
-    +(R.winkOn?"<tr><td>Réaction lit de Winkler Σ</td><td>"+(R.sumWink).toFixed(0)+" kN</td></tr>":"")
-    +(R.sprOn?"<tr><td>Réaction ressorts additionnels Σ</td><td>"+(R.sumSpr).toFixed(0)+" kN · "+R.nSpr+" ponctuel(s)"+(R.nLine?(" + "+R.nLine+" linéique(s)"):"")+"</td></tr>":"")
-    +(decol&&R.decolNodes!=null?"<tr><td>Décollement</td><td>"+R.decolNodes+" nœud(s) décollé(s)</td></tr>":"")
-    +(R.foundOn?"<tr><td>Cote d\u2019assise (fondation en profondeur)</td><td>D = "+(R.foundD).toFixed(2)+" m</td></tr>":"")
-    +(R.dipOn?"<tr><td>Stratigraphie non horizontale (§2.3.1)</td><td>pendage ∂/∂x = "+(R.dipX).toFixed(3)+" · ∂/∂y = "+(R.dipY).toFixed(3)+" m/m</td></tr>":"")
-    +(R.recOn?"<tr><td>Recompression (fond de fouille)</td><td>σv0 = "+(R.sigV0).toFixed(0)+" kPa · k = E_ur/E0 = "+(R.kRec).toFixed(2)+"</td></tr>":"")
-    +"</table>";
-  }
+  var esc=function(s){ return String(s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];}); };
+  var fig=__geoplaqueRenderFieldSvg();
   var win=window.open("","_blank");
   if(!win){ toast("Autorise les fenêtres pop-up pour imprimer",3800,"err"); return; }
   win.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>'+(P.title?esc(P.title)+" — ":"")+'Note de calcul — GEOPLAQUE</title>'
-    +'<style>@page{margin:16mm}body{font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#111;font-size:12px;line-height:1.5;max-width:900px;margin:0 auto;padding:10px}h1{font-size:18px;margin:0 0 2px}h2{font-size:13px;border-bottom:1px solid #ccc;padding-bottom:3px;margin:18px 0 8px}table{border-collapse:collapse;width:100%;margin:6px 0}th,td{border:1px solid #ccc;padding:4px 7px;text-align:left;font-size:11px}th{background:#f2f2f2}.meta{color:#555;font-size:11px}img{max-width:100%;border:1px solid #ddd;border-radius:4px;margin:6px 0}.note{font-size:10.5px;color:#555;margin-top:10px}</style></head><body>'
-    +"<h1>Note de calcul — GEOPLAQUE</h1>"
-    +'<p class="meta">'+(P.title?"Projet : "+esc(P.title)+" · ":"")+(P.client?"Client : "+esc(P.client)+" · ":"")+(P.ref?"Affaire : "+esc(P.ref)+" · ":"")+(P.author?"Auteur : "+esc(P.author):"")+"</p>"
-    +(fig?'<img src="'+fig+'" alt="Modèle">':"")
-    +(rafts?"<h2>Plaques (radiers)</h2><table><tr><th>#</th><th>Sommets</th><th>Emprise X × Y (m)</th><th>E</th><th>ν</th><th>e</th></tr>"+rafts+"</table>":"")
-    +(pl?"<h2>Charges ponctuelles</h2><table><tr><th>#</th><th>X ; Y</th><th>Fz</th><th>Mx / My</th></tr>"+pl+"</table>":"")
-    +(ll?"<h2>Charges linéiques</h2><table><tr><th>#</th><th>Segment</th><th>q</th></tr>"+ll+"</table>":"")
-    +(al?"<h2>Charges réparties</h2><table><tr><th>#</th><th>Emprise</th><th>q</th><th>Appliquée sur</th></tr>"+al+"</table>":"")
-    +(spr?"<h2>Ressorts ponctuels</h2><table><tr><th>#</th><th>X ; Y</th><th>k</th></tr>"+spr+"</table>":"")
-    +(lspr?"<h2>Ressorts linéiques</h2><table><tr><th>#</th><th>Segment</th><th>k</th></tr>"+lspr+"</table>":"")
-    +"<h2>Profil de sol</h2><table><tr><th>Couche</th><th>Base z</th><th>E</th><th>ν</th></tr>"+ly+"</table>"
-    +resHtml
-    +'<p class="note">Calcul et cartographie exécutés côté serveur (méthode éléments finis confidentielle). Localisations de nœuds et détail complet des paires de charges non reportés (grandeurs de méthode). Le PV scellé émis depuis la plateforme fait référence.</p>'
+    +__geoplaqueReportStyle()+"</head><body>"
+    +__geoplaqueBuildReportBody(fig)
     +"</body></html>");
   win.document.close();
 }
@@ -1647,6 +1589,10 @@ async function doSolve(){
   switchPane("results"); refreshResults();
   toast("Calcul terminé",3000,"ok");
   try{ draw(); }catch(e){}
+  /* Option 3 : sceller le DOCUMENT que l outil vient de rendre (note printReport + figure
+     heatmap), APRES le rendu et UNIQUEMENT sur calcul reussi (les chemins d erreur —
+     plausibilite, pont indisponible, resp !ok, out.erreur — sont sortis AVANT, garde §5). */
+  try{ __geoplaqueCaptureSnapshot(); }catch(e){}
 }
 
 /* colormap (jet-like) value in [0,1] → rgb */
@@ -1872,6 +1818,13 @@ window.addEventListener('load',init);
   window.__geofamBridge={
     calc:function(engineId, params){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:engineId,label:(params&&params.projet)||null,params:params}}); }); },
     emitPv:function(calcResultId){ post({v:1,type:"pv:request",payload:{calcResultId:calcResultId}}); },
+    /* snapshot:capture (option 3 « sceller le document imprime ») : remonte a l hote le HTML
+       de la note (apercu + document imprimable auto-contenu). Sens iframe->hote SEUL,
+       fire-and-forget. Contenu = la NOTE printReport (grandeurs whitelistees serveur) + table
+       complete des couples + FIGURE = heatmap 48x48 design-sure (JAMAIS cv.toDataURL brut ni
+       localisation *At), jamais de science. L hote le scelle sur SON dernier calcResultId.
+       Patron identique a roadsens/terzaghi (snapshot fire-and-forget). */
+    snapshot:function(displayHtml,printHtml){ post({v:1,type:"snapshot:capture",payload:{displayHtml:String(displayHtml||""),printHtml:String(printHtml||"")}}); },
     context:function(){ return ctx; }
   };
   /* input:dirty (correctif PV BQ-1) : signale a l hote que l ecran a change apres un calcul
@@ -1942,6 +1895,15 @@ function buildRadierInput(opts){
    localisation *At). Les grilles `champs`/`champDeflexion` alimentent la carto. */
 function mapRadierOutput(out, opts){
   var wp=out.worstLoadPair||null;
+  /* TABLE COMPLETE des couples (task « détails calculs ») : la note client liste TOUS
+     les couples voisins (d.loadPairs.edges). Le serveur expose desormais cette table
+     whitelistee (out.loadPairs — positions SAISIES + beta/ds/L scalaires, §8 tranche).
+     On la remappe VERBATIM sur la forme attendue par printReport (edges[]). Aucun indice
+     interne i/j ni perLoad (le serveur ne les emet pas). Les localisations *At restent
+     NULL (masquees, exception §8 #54 — cf. drawCritical / EC7 sans « en (x,y) »). */
+  var edges=(Array.isArray(out.loadPairs)?out.loadPairs:[]).map(function(e){
+    return { ki:e.ki, kj:e.kj, L:_gn(e.L), ds:_gn(e.ds), beta:_gn(e.beta), p1:e.p1||null, p2:e.p2||null }; });
+  var worst = wp ? { beta:_gn(wp.beta), ds:_gn(wp.ds), L:_gn(wp.L), ki:wp.ki, kj:wp.kj, p1:wp.p1||null, p2:wp.p2||null } : (edges[0]||null);
   var diag={
     wMax:_gn(out.wMax), wMin:_gn(out.wMin), diff:_gn(out.diff),
     slopeMax:_gn(out.slopeMax), tiltMax:_gn(out.tiltMax),
@@ -1949,7 +1911,7 @@ function mapRadierOutput(out, opts){
     betaGov:_gn(out.betaGov), nRafts:(out.nRafts|0),
     txMax:_gn(out.txMax), tyMax:_gn(out.tyMax),
     wMaxAt:null, wMinAt:null, betaGovAt:null, interEnds:null,
-    loadPairs: wp ? { worst:{ beta:_gn(wp.beta), ds:_gn(wp.ds), L:_gn(wp.L), ki:wp.ki, kj:wp.kj, p1:wp.p1||null, p2:wp.p2||null }, edges:[], n:0 } : null
+    loadPairs: (worst||edges.length) ? { worst:worst, edges:edges, n:edges.length } : null
   };
   var warnings=Array.isArray(out.warnings)?out.warnings.slice():[];
   var overCap=warnings.some(function(w){ return /poinçonnement|capacité de l'interface/i.test(w); });
@@ -1986,6 +1948,192 @@ function renderNeedModel(){
 function renderCalcErrorMain(msg){
   var b=document.getElementById("resbody");
   if(b) b.innerHTML='<div class="empty" style="color:var(--err)"><b>Calcul indisponible.</b><br>'+_esc(msg)+'</div>';
+}
+
+/* ---- FIGURE DESIGN-SURE (substitution §8 de cv.toDataURL) ----
+   Rend la HEATMAP 48x48 du champ de deflexion (grille SERVEUR, DECOUPLEE du maillage) en
+   SVG INLINE (cellules colorees), a TAILLE FIXE (deterministe). On NE capture PAS cv (le
+   canvas live porte geometrie + marqueurs + contours a la resolution d affichage = indice
+   de discretisation) : on peint UNIQUEMENT le champ (grille 48x48), aucune ligne d element,
+   aucun nœud, aucune valeur nodale, aucune connectivite.
+   NB (arbitrage §8) : la piste « PNG data-URI » (toDataURL) est INCOMPATIBLE avec la garde
+   de scellement assertInertHtml (apps/api/src/pv/html-guard.ts) qui REJETTE toute URI
+   « data: » -> le document scelle serait refuse. On rend donc la figure en SVG inline (meme
+   patron sealable que la coupe terzaghi), design-sur et serialisable en chaine. Renvoie ""
+   si pas de grille — la note reste capturable sans figure. */
+function __geoplaqueRenderFieldSvg(){
+  try{
+    var R=state.results; if(!R) return "";
+    var g=(R.champs&&R.champs.deflexion)||R.champDeflexion||null;
+    if(!g||!g.vals||!g.vals.length) return "";
+    var cols=g.cols, rows=g.rows;
+    var W=520, spanX=Math.abs(g.x1-g.x0)||1, spanY=Math.abs(g.y1-g.y0)||1;
+    var H=Math.max(120,Math.min(760,Math.round(W*spanY/spanX)))+18;
+    var plotH=H-18;
+    var mn=isFinite(g.vMin)?g.vMin:0, mx=isFinite(g.vMax)?g.vMax:mn+1, rng=(mx-mn)||1;
+    var cw=W/cols, ch=plotH/rows;
+    var s='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:520px;height:auto;background:#fff">';
+    for(var j=0;j<rows;j++){ for(var i=0;i<cols;i++){ var v=g.vals[(rows-1-j)*cols+i]; if(v==null) continue;
+      var t=(v-mn)/rng; if(t<0)t=0; if(t>1)t=1; var rgb=turbo(t);
+      s+='<rect x="'+(i*cw).toFixed(2)+'" y="'+(j*ch).toFixed(2)+'" width="'+(cw+0.5).toFixed(2)+'" height="'+(ch+0.5).toFixed(2)+'" fill="rgb('+rgb[0]+','+rgb[1]+','+rgb[2]+')"/>';
+    } }
+    s+='<text x="'+(W/2).toFixed(0)+'" y="'+(H-4)+'" text-anchor="middle" font-family="system-ui,sans-serif" font-size="9" fill="#666">tassement — bleu '+(mn*1000).toFixed(1)+' mm → rouge '+(mx*1000).toFixed(1)+' mm · grille 48×48 découplée du maillage</text>';
+    s+="</svg>"; return s;
+  }catch(e){ return ""; }
+}
+
+/* Style de la note — REPRIS de la source client GEOPLAQUE_V10 (fidélité) : mêmes classes
+   (header/.logo/.sub/.projbar/.grid2/.syn/.chk/.fig/.note/.meta). Bouton d impression
+   (.pbtn) retiré (aucun bouton dans la note ; garde §8 inertie). .fig cible le SVG. */
+function __geoplaqueReportStyle(){
+  return '<style>@page{margin:16mm}body{font-family:\'Segoe UI\',Arial,sans-serif;color:#1a1d21;font-size:12px;line-height:1.45;max-width:900px;margin:0 auto;padding:10px}header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #d2902f;padding-bottom:8px;margin-bottom:14px}.logo{font-size:22px;font-weight:800;letter-spacing:.5px}.logo b{color:#d2902f}.sub{color:#666;font-size:11px}h2{font-size:13px;border-bottom:1px solid #ccc;padding-bottom:3px;margin:18px 0 8px;color:#333;text-transform:uppercase;letter-spacing:.4px}table{width:100%;border-collapse:collapse;margin-bottom:8px;font-size:11px}th,td{border:1px solid #ddd;padding:4px 7px;text-align:left}th{background:#f2f2f2;font-weight:600}table.syn td:first-child{width:46%;color:#555}table.chk th:last-child,table.chk td:last-child{text-align:center;white-space:nowrap}.fig{text-align:center;margin:6px 0 14px}.fig svg{max-width:100%;height:auto}.fig figcaption{font-size:10px;color:#666;margin-top:4px}.note{font-size:10px;color:#777;margin-top:16px;border-top:1px solid #eee;padding-top:8px;line-height:1.5}.meta{font-size:10.5px;color:#555;text-align:right}.projbar{margin:0 0 14px;padding:11px 14px;background:#faf7f1;border:1px solid #e7dcc8;border-left:3px solid #d2902f;border-radius:5px}.projbar .ptitle{font-size:16px;font-weight:700;color:#1a1d21}.projbar .pmeta{font-size:11px;color:#555;margin-top:3px}.grid2{display:flex;gap:14px}.grid2>div{flex:1}</style>';
+}
+
+/* CORPS de la note (SOURCE UNIQUE : printReport ET la capture option-3 le reutilisent —
+   le document SCELLE == le document IMPRIME, §5/§8). `fig` = figure heatmap SVG INLINE (ou
+   ""). §8 : localisations *At OMISES (task a — masquees ; les VALEURS wMax/diff/betaGov
+   restent, sans « en (x,y) »), N/iters/plastNodes OMIS (methode EF). Task c : la TABLE
+   COMPLETE des couples voisins (d.loadPairs.edges) est REPORTEE (positions saisies + β/Δs/L).
+   POINT D EXTENSION (unmask ulterieur) : le jour ou STARFIRE co-valide la re-exposition des
+   localisations *At (arrondies/decorrelees du pas), les alimenter cote SERVEUR (whitelist
+   RadierOutputSchema : wMaxAt/wMinAt/betaGovAt), les mapper dans mapRadierOutput (diag.*At
+   au lieu de null) et rajouter « — en (x, y) » sur les 3 lignes EC7 concernees ici. TANT QUE
+   non co-valide : NE PAS exposer (nœuds de maillage). */
+function __geoplaqueBuildReportBody(fig){
+  var R=state.results;
+  var esc=function(s){ return String(s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];}); };
+  var num=function(v,dd){ dd=(dd==null?2:dd); return (v==null||!isFinite(v))?"—":(+v).toFixed(dd); };
+  var P=state.project||{title:"",client:"",ref:"",author:""};
+  var gv=function(id){ var el=document.getElementById(id); return el?el.value:''; };
+  var gc=function(id){ var el=document.getElementById(id); return el?!!el.checked:false; };
+  /* opts SAISIS (relus du DOM comme la source client printReport l.1374) — echo de saisie,
+     §8-safe. SEULE OMISSION : le PAS DE MAILLAGE (opts.mesh) n est PAS affiche (pas de
+     discretisation EF ; masque, comme les *At / N / nœuds — a arbitrer pour re-exposition). */
+  var _excD=parseFloat(gv("opt-exc-d"))||0, _excG=parseFloat(gv("opt-exc-g"))||0;
+  var opts={ decol:gc("opt-decol"), qLim:parseFloat(gv("opt-qlim"))||0,
+    sigV0:_excD*_excG, kRec:parseFloat(gv("opt-exc-k"))||1, foundD:_excD,
+    kWink:parseFloat(gv("opt-wink"))||0, winkDecol:gc("opt-wink-decol"), pLimWink:parseFloat(gv("opt-wink-plim"))||0,
+    ffG0:parseFloat(gv("opt-ff-g0"))||0, ffGx:parseFloat(gv("opt-ff-gx"))||0, ffGy:parseFloat(gv("opt-ff-gy"))||0,
+    dipX:parseFloat(gv("opt-dip-x"))||0, dipY:parseFloat(gv("opt-dip-y"))||0 };
+  var rafts=state.rafts.map(function(rf,i){ var xs=rf.pts.map(function(p){return p.x;}),ys=rf.pts.map(function(p){return p.y;});
+    var bb=num(Math.min.apply(null,xs))+" – "+num(Math.max.apply(null,xs))+" × "+num(Math.min.apply(null,ys))+" – "+num(Math.max.apply(null,ys));
+    return "<tr><td>R"+(i+1)+"</td><td>"+rf.pts.length+" sommets</td><td>"+bb+"</td><td>"+(rf.E/1000).toFixed(0)+" MPa</td><td>"+rf.nu+"</td><td>"+num(rf.e)+" m</td></tr>"; }).join("");
+  var pl=state.pointLoads.map(function(p,i){ return "<tr><td>P"+(i+1)+"</td><td>"+num(p.x)+" ; "+num(p.y)+"</td><td>"+num(p.Fz,0)+" kN</td><td>"+num(p.Mx,0)+" / "+num(p.My,0)+" kN·m</td></tr>"; }).join("");
+  var ll=state.lineLoads.map(function(l,i){ return "<tr><td>L"+(i+1)+"</td><td>"+num(l.x1)+";"+num(l.y1)+" → "+num(l.x2)+";"+num(l.y2)+"</td><td>"+num(l.q,0)+" kN/ml</td></tr>"; }).join("");
+  var al=state.areaLoads.map(function(a,i){ return "<tr><td>A"+(i+1)+"</td><td>"+num(a.x1)+";"+num(a.y1)+" → "+num(a.x2)+";"+num(a.y2)+"</td><td>"+num(a.q,0)+" kPa</td><td>"+(a.on==="soil"?"sol (ext.)":"plaque")+"</td></tr>"; }).join("");
+  var spr=state.pointSprings.map(function(s,i){ return "<tr><td>K"+(i+1)+"</td><td>"+num(s.x)+" ; "+num(s.y)+"</td><td>"+num(s.k,0)+" kN/m</td></tr>"; }).join("");
+  var lspr=state.lineSprings.map(function(l,i){ return "<tr><td>KL"+(i+1)+"</td><td>"+num(l.x1)+";"+num(l.y1)+" → "+num(l.x2)+";"+num(l.y2)+"</td><td>"+num(l.k,0)+" kN/m/m</td></tr>"; }).join("");
+  var ly=state.layers.map(function(c,i){ return "<tr><td>"+esc(c.name||("Couche "+(i+1)))+"</td><td>"+num(c.zBase,1)+" m</td><td>"+(c.E/1000).toFixed(0)+" MPa</td><td>"+c.nu+"</td></tr>"; }).join("");
+  var resHtml='<p style="color:#a33">Aucun calcul effectué — lance le calcul avant d\u2019imprimer pour inclure les résultats.</p>';
+  if(R && R.diag){ var d=R.diag; var wmaxmm=d.wMax*1000, diffmm=d.diff*1000;
+    var verdict=function(l){ return {ok:'<b style="color:#1a7f37">CONFORME</b>',warn:'<b style="color:#b07a12">ATTENTION</b>',bad:'<b style="color:#b3261e">DÉPASSEMENT</b>'}[l]; };
+    var pairsTable="";
+    var lp=d.loadPairs;
+    if(lp && lp.edges && lp.edges.length){
+      pairsTable=""
+      +"<h2>Tassement différentiel entre charges voisines</h2>"
+      +'<table class="chk"><tr><th>Couple</th><th>Position 1 (m)</th><th>Position 2 (m)</th><th>Δs (mm)</th><th>L (m)</th><th>β</th><th>EC7</th></tr>'
+      +lp.edges.map(function(e){ return "<tr><td>P"+e.ki+" ↔ P"+e.kj+"</td><td>"+num(e.p1?e.p1.x:null)+" ; "+num(e.p1?e.p1.y:null)+"</td><td>"+num(e.p2?e.p2.x:null)+" ; "+num(e.p2?e.p2.y:null)+"</td><td>"+(e.ds*1000).toFixed(1)+"</td><td>"+e.L.toFixed(2)+"</td><td>"+ratio1(e.beta)+"</td><td>"+verdict(lvlBeta(e.beta))+"</td></tr>"; }).join("")
+      +"</table>";
+    }
+    /* EC7 : §8 — les localisations *At (« — en (x,y) » / « entre (x,y) et (x,y) ») sont OMISES
+       (nœuds de maillage, exception #54) ; les VALEURS restent. Synthèse : « Nœuds de calcul »
+       (R.N), « itération(s) » (iters) et « nœud(s) plastifié(s) » (plastNodes) OMIS (méthode EF). */
+    resHtml=""
+    +"<h2>Vérifications — Eurocode 7, annexe H</h2>"
+    +'<table class="chk">'
+    +"<tr><th>Critère</th><th>Valeur</th><th>Repère</th><th>Verdict</th></tr>"
+    +"<tr><td>Tassement total max</td><td>"+wmaxmm.toFixed(1)+" mm</td><td>≈ 50 mm</td><td>"+verdict(lvlSettle(wmaxmm))+"</td></tr>"
+    +"<tr><td>Tassement différentiel</td><td>"+diffmm.toFixed(1)+" mm</td><td>≈ 20 mm</td><td>"+verdict(lvlDiff(diffmm))+"</td></tr>"
+    +"<tr><td>Distorsion angulaire β (rotation relative)</td><td>"+ratio1(d.betaGov)+" ("+d.betaGov.toExponential(1)+" rad)</td><td>ELS 1/500 · ELU 1/150</td><td>"+verdict(lvlBeta(d.betaGov))+"</td></tr>"
+    +"<tr><td>Inclinaison d\u2019ensemble ϖ (basculement)</td><td>"+ratio1(d.tiltMax)+"</td><td>visible ≈ 1/500</td><td>"+verdict(d.tiltMax<=1/500?"ok":d.tiltMax<=1/150?"warn":"bad")+"</td></tr>"
+    +(d.nRafts>1?"<tr><td>Distorsion entre plaques</td><td>"+ratio1(d.interBeta)+" · Δs "+(d.interDiff*1000).toFixed(1)+" mm</td><td>ELS 1/500</td><td>"+verdict(lvlBeta(d.interBeta))+"</td></tr>":"")
+    +(d.loadPairs&&d.loadPairs.worst?"<tr><td>Distorsion entre charges (max) — P"+d.loadPairs.worst.ki+"↔P"+d.loadPairs.worst.kj+"</td><td>"+ratio1(d.loadPairs.worst.beta)+" · Δs "+(d.loadPairs.worst.ds*1000).toFixed(1)+" mm / "+d.loadPairs.worst.L.toFixed(2)+" m</td><td>ELS 1/500 · ELU 1/150</td><td>"+verdict(lvlBeta(d.loadPairs.worst.beta))+"</td></tr>":"")
+    +"</table>"
+    +pairsTable
+    +"<h2>Synthèse des résultats</h2>"
+    +'<table class="syn">'
+    +"<tr><td>Tassement max / min</td><td>"+wmaxmm.toFixed(1)+" / "+(d.wMin*1000).toFixed(1)+" mm</td></tr>"
+    +"<tr><td>Tassement différentiel</td><td>"+diffmm.toFixed(1)+" mm</td></tr>"
+    +"<tr><td>Rotation θx max</td><td>"+d.txMax.toExponential(2)+" rad ("+ratio1(d.txMax)+")</td></tr>"
+    +"<tr><td>Rotation θy max</td><td>"+d.tyMax.toExponential(2)+" rad ("+ratio1(d.tyMax)+")</td></tr>"
+    +"<tr><td>Pente locale max |∇w|</td><td>"+d.slopeMax.toExponential(2)+" rad ("+ratio1(d.slopeMax)+")</td></tr>"
+    +"<tr><td>Réaction du sol p (min / max)</td><td>"+num(R.pMin,1)+" / "+num(R.pMax,1)+" kPa</td></tr>"
+    +"<tr><td>Moment |Mx| / |My| max</td><td>"+(R.mxMax).toFixed(1)+" / "+(R.myMax).toFixed(1)+" kN·m/ml</td></tr>"
+    +"<tr><td>Moment de torsion |Mxy| max</td><td>"+(R.mxyMax).toFixed(1)+" kN·m/ml</td></tr>"
+    +"<tr><td>Charge verticale appliquée Σ</td><td>"+(R.totalLoad).toFixed(0)+" kN</td></tr>"
+    +"<tr><td>Réaction du sol Σ</td><td>"+(R.sumReact).toFixed(0)+" kN</td></tr>"
+    +(R.winkOn?"<tr><td>Réaction lit de Winkler Σ</td><td>"+(R.sumWink).toFixed(0)+" kN</td></tr>":"")
+    +(R.sprOn?"<tr><td>Réaction ressorts additionnels Σ</td><td>"+(R.sumSpr).toFixed(0)+" kN · "+R.nSpr+" ponctuel(s)"+(R.nLine?(" + "+R.nLine+" linéique(s)"):"")+"</td></tr>":"")
+    +((R.winkOn||R.sprOn)?"<tr><td>Σ résistances (équilibre)</td><td>"+(R.sumReact+(R.sumWink||0)+(R.sumSpr||0)).toFixed(0)+" kN ("+(R.totalLoad?(((R.totalLoad-(R.sumReact+(R.sumWink||0)+(R.sumSpr||0)))/R.totalLoad*100>=0)?'+':'')+((R.totalLoad-(R.sumReact+(R.sumWink||0)+(R.sumSpr||0)))/R.totalLoad*100).toFixed(2):'0')+" %)</td></tr>":"")
+    +(opts.decol&&R.decolNodes!=null?"<tr><td>Décollement</td><td>"+R.decolNodes+" nœud(s) décollé(s)</td></tr>":"")
+    +(R.foundOn?"<tr><td>Cote d\u2019assise (fondation en profondeur)</td><td>D = "+(R.foundD).toFixed(2)+" m</td></tr>":"")
+    +(R.dipOn?"<tr><td>Stratigraphie non horizontale (§2.3.1)</td><td>pendage ∂/∂x = "+(R.dipX).toFixed(3)+" · ∂/∂y = "+(R.dipY).toFixed(3)+" m/m</td></tr>":"")
+    +(R.recOn?"<tr><td>Recompression (fond de fouille)</td><td>σv0 = "+(R.sigV0).toFixed(0)+" kPa · k = E_ur/E0 = "+(R.kRec).toFixed(2)+"</td></tr>":"")
+    +"</table>";
+  }
+  /* PARAMETRES DE CALCUL — repris de la source client (l.1442). §8 : les rangs « Modèle de
+     plaque » (Kirchhoff ACM) et « Modèle de sol » (Steinbrenner + Boussinesq) sont des NOMS
+     DE METHODE deja publics (repris dans la note d hypotheses ci-dessous, cote client comme
+     clone) -> CONSERVES. Le rang « Pas de maillage » (discretisation EF) est OMIS (fail-closed,
+     a arbitrer). Tous les autres rangs = OPTIONS SAISIES (echo de saisie). */
+  var params='<h2>Paramètres de calcul</h2><table class="syn">'
+    +"<tr><td>Modèle de plaque</td><td>Éléments finis Kirchhoff ACM (12 DDL)</td></tr>"
+    +"<tr><td>Modèle de sol</td><td>Élastique linéaire — Steinbrenner + superposition de Boussinesq, substratum rigide</td></tr>"
+    +"<tr><td>Décollement (sans traction)</td><td>"+(opts.decol?"activé":"désactivé (contact plein)")+"</td></tr>"
+    +"<tr><td>Plastification de l\u2019interface</td><td>"+(opts.qLim>0?("q_lim = "+opts.qLim.toFixed(0)+" kPa"):"désactivée")+"</td></tr>"
+    +"<tr><td>Appuis répartis (Winkler, §2.2.7)</td><td>"+(opts.kWink>0?("k_w = "+opts.kWink.toFixed(0)+" kN/m³ — en parallèle du sol"+(opts.winkDecol?" · compression seule":"")+(opts.pLimWink>0?(" · plastif. "+opts.pLimWink.toFixed(0)+" kPa"):"")):"désactivés")+"</td></tr>"
+    +"<tr><td>Ressorts ponctuels (§2.2.7)</td><td>"+(state.pointSprings.length?(state.pointSprings.length+" ressort(s) — en parallèle du sol"):"aucun")+"</td></tr>"
+    +"<tr><td>Ressorts linéiques (§2.2.7)</td><td>"+(state.lineSprings.length?(state.lineSprings.length+" ligne(s) — raideur répartie en parallèle du sol"):"aucun")+"</td></tr>"
+    +"<tr><td>Mouvement de sol en champ libre (§2.3.5)</td><td>"+((opts.ffG0||opts.ffGx||opts.ffGy)?("g₀ = "+(opts.ffG0||0).toFixed(1)+" mm · ∂g/∂x = "+(opts.ffGx||0).toFixed(2)+" · ∂g/∂y = "+(opts.ffGy||0).toFixed(2)+" mm/m"):"aucun")+"</td></tr>"
+    +"<tr><td>Stratigraphie non horizontale (§2.3.1)</td><td>"+((opts.dipX||opts.dipY)?("pendage ∂/∂x = "+(opts.dipX||0).toFixed(3)+" · ∂/∂y = "+(opts.dipY||0).toFixed(3)+" m/m"):"couches horizontales")+"</td></tr>"
+    +"<tr><td>Recompression (fond de fouille)</td><td>"+((opts.sigV0>0&&opts.kRec>1)?("σv0 = "+opts.sigV0.toFixed(0)+" kPa · k = "+opts.kRec.toFixed(2)):"désactivée")+"</td></tr>"
+    +"<tr><td>Niveau d\u2019assise</td><td>"+(opts.foundD>0?("cote d\u2019assise D = "+opts.foundD.toFixed(2)+" m"+((opts.sigV0>0&&opts.kRec>1)?", recompression prise en compte":"")):"fondation supposée en surface (z = 0)")+"</td></tr>"
+    +"</table>";
+  var projbar=(P.title||P.client||P.ref||P.author)?('<div class="projbar">'
+    +(P.title?'<div class="ptitle">'+esc(P.title)+"</div>":"")
+    +((P.client||P.ref||P.author)?'<div class="pmeta">'+[P.client?"Client : "+esc(P.client):"",P.ref?"Affaire / N° : "+esc(P.ref):"",P.author?"Auteur : "+esc(P.author):""].filter(Boolean).join("&nbsp;&nbsp;·&nbsp;&nbsp;")+"</div>":"")
+    +"</div>"):"";
+  /* En-tete SANS DATE (determinisme du scellement : new Date() de la source client la rendrait
+     non byte-stable ; on rebatit la note cote clone, on peut donc l omettre — a la difference
+     de terzaghi qui capture le DOM live. Documente comme deviation §deterministe). */
+  return "<header><div><div class=\"logo\"><b>GEO</b>PLAQUE</div><div class=\"sub\">plaques sur sol multicouche élastique</div></div>"
+    +'<div class="meta">Note de calcul</div></header>'
+    +projbar
+    +"<h2>Modèle — fondations</h2><table><tr><th>Élément</th><th>Géométrie</th><th>Emprise X × Y (m)</th><th>E</th><th>ν</th><th>Épaisseur</th></tr>"+(rafts||"<tr><td colspan=6>—</td></tr>")+"</table>"
+    +'<div class="grid2"><div>'
+    +"<h2>Charges ponctuelles</h2><table><tr><th>#</th><th>Position (m)</th><th>Fz</th><th>Mx / My</th></tr>"+(pl||"<tr><td colspan=4>aucune</td></tr>")+"</table>"
+    +"<h2>Charges linéiques</h2><table><tr><th>#</th><th>Tracé (m)</th><th>q</th></tr>"+(ll||"<tr><td colspan=3>aucune</td></tr>")+"</table>"
+    +(state.pointSprings.length?"<h2>Ressorts ponctuels (§2.2.7)</h2><table><tr><th>#</th><th>Position (m)</th><th>Raideur k</th></tr>"+spr+"</table>":"")
+    +(state.lineSprings.length?"<h2>Ressorts linéiques (§2.2.7)</h2><table><tr><th>#</th><th>Tracé (m)</th><th>Raideur k</th></tr>"+lspr+"</table>":"")
+    +"</div><div>"
+    +"<h2>Charges réparties</h2><table><tr><th>#</th><th>Emprise (m)</th><th>q</th><th>Sur</th></tr>"+(al||"<tr><td colspan=4>aucune</td></tr>")+"</table>"
+    +"<h2>Profil de sol</h2><table><tr><th>Couche</th><th>Z base</th><th>E</th><th>ν</th></tr>"+(ly||"<tr><td colspan=4>—</td></tr>")+"</table>"
+    +"</div></div>"
+    +params
+    +(fig?'<h2>Vue du modèle / cartographie</h2><div class="fig">'+fig+'<figcaption>Cartographie du champ de déflexion — grille 48×48 découplée du maillage (calcul EF confidentiel côté serveur)</figcaption></div>':"")
+    +resHtml
+    +'<div class="note"><b>Hypothèses et limites.</b> θx = ∂w/∂y, θy = −∂w/∂x. La distorsion angulaire β est la pente résiduelle après retrait du plan moyen (basculement) de chaque fondation ; l\u2019inclinaison ϖ est ce basculement. Théorie des plaques minces de Kirchhoff (cisaillement transversal négligé). Sol élastique linéaire multicouche par la méthode de Steinbrenner ; '+(opts.foundD>0?("fondation à la cote d\u2019assise D = "+opts.foundD.toFixed(2)+" m"):"fondation supposée posée en surface")+' — la recompression d\u2019un fond de fouille peut être prise en compte (k = E_ur/E₀), mais pour le sol vierge la pression nette n\u2019est pas retranchée et le facteur de profondeur (réduction d\u2019encastrement type Fox) n\u2019est pas appliqué. Un seuil de plastification de l\u2019interface q_lim peut plafonner la réaction et signaler un poinçonnement local ; la portance globale du sol (ELU) reste à vérifier séparément. Les appuis additionnels agissent en parallèle du continuum élastique. Les valeurs limites EC7 (annexe H) sont indicatives et à confronter au type de structure portée. Localisations de nœuds et détail de maillage non reportés (grandeurs de méthode) ; calcul et cartographie exécutés côté serveur. Le PV scellé émis depuis la plateforme fait référence. Outil de pré-dimensionnement — résultats à valider par une étude géotechnique.</div>';
+}
+
+/* Document IMPRIMABLE auto-contenu = note + figure heatmap, CSS inline. */
+function __geoplaqueSerializePrintable(){
+  var fig=__geoplaqueRenderFieldSvg();
+  var P=state.project||{}; var t=(P.title?_esc(P.title)+" — ":"")+"Note de calcul — GEOPLAQUE";
+  return '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'+t+"</title>"+__geoplaqueReportStyle()+"</head><body>"+__geoplaqueBuildReportBody(fig)+"</body></html>";
+}
+/* APERCU auto-contenu (meme corps ; le panneau Calculs l affiche en iframe sandbox). */
+function __geoplaqueSerializeDisplay(){
+  var fig=__geoplaqueRenderFieldSvg();
+  return '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>GEOPLAQUE — Aperçu de la note</title>'+__geoplaqueReportStyle()+"</head><body>"+__geoplaqueBuildReportBody(fig)+"</body></html>";
+}
+/* Emet snapshot:capture APRES le rendu (jamais avant), sur calcul REUSSI (garde §5 dans
+   doSolve). Ne fait rien si le pont n expose pas snapshot. */
+function __geoplaqueCaptureSnapshot(){
+  try{
+    if(!window.__geofamBridge || typeof window.__geofamBridge.snapshot!=="function") return;
+    window.__geofamBridge.snapshot(__geoplaqueSerializeDisplay(), __geoplaqueSerializePrintable());
+  }catch(e){}
 }
 /* =================== FIN BRIDGE + MAPPING =================== */
 

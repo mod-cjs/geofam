@@ -500,17 +500,23 @@ function shapeOutput(
   // nœud) -> exposables. On ne reprend QUE les champs d'ingenierie de l'arete.
   const lp = (diag.loadPairs ?? null) as Record<string, unknown> | null;
   const worst = (lp?.worst ?? null) as Record<string, unknown> | null;
-  const worstLoadPair = worst
-    ? {
-        beta: fin(worst.beta) ? worst.beta : 0,
-        ds: fin(worst.ds) ? worst.ds : 0,
-        L: fin(worst.L) ? worst.L : 0,
-        ki: fin(worst.ki) ? worst.ki : 0,
-        kj: fin(worst.kj) ? worst.kj : 0,
-        p1: loc(worst.p1),
-        p2: loc(worst.p2),
-      }
-    : null;
+  const pairFrom = (e: Record<string, unknown>) => ({
+    beta: fin(e.beta) ? (e.beta as number) : 0,
+    ds: fin(e.ds) ? (e.ds as number) : 0,
+    L: fin(e.L) ? (e.L as number) : 0,
+    ki: fin(e.ki) ? (e.ki as number) : 0,
+    kj: fin(e.kj) ? (e.kj as number) : 0,
+    p1: loc(e.p1),
+    p2: loc(e.p2),
+  });
+  const worstLoadPair = worst ? pairFrom(worst) : null;
+  // TABLE COMPLETE (task « détails calculs ») : on reprend TOUTES les aretes voisines
+  // (deja triees par beta decroissant cote moteur), en ne gardant QUE les champs
+  // d'ingenierie + positions SAISIES (pairFrom ecarte les indices internes i/j, perLoad,
+  // toute topologie de maillage). §8 tranche (titulaire + expert) : positions = saisie,
+  // beta/ds/L = scalaires -> benin. Absente si < 2 charges (edges vide).
+  const rawEdges = Array.isArray(lp?.edges) ? (lp?.edges as Record<string, unknown>[]) : [];
+  const loadPairs = rawEdges.length > 0 ? rawEdges.map(pairFrom) : undefined;
 
   // NB : on NE lit MEME PAS diag.wMaxAt / diag.tiltAt / diag.betaGovAt : ces
   // localisations derivees du maillage ne franchissent jamais la projection.
@@ -535,6 +541,8 @@ function shapeOutput(
     txMax: fin(diag.txMax) ? diag.txMax : 0,
     tyMax: fin(diag.tyMax) ? diag.tyMax : 0,
     worstLoadPair,
+    // Table complete des couples voisins (fidelite note client) ; omise si < 2 charges.
+    ...(loadPairs ? { loadPairs } : {}),
     // Heatmap RE-ECHANTILLONNEE (decouplee du maillage) — le motif, pas la methode.
     ...(hm ? { champDeflexion: hm } : {}),
     // Cartes ETENDUES etiquetees (tous les champs cartographies par l'outil client).

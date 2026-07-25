@@ -49,8 +49,13 @@ vi.mock('@/lib/api/client', () => ({
 // engineAllowlist) est testée dans lib/tool-bridge/__tests__/ToolFrame.test.tsx.
 // Ici on vérifie seulement le câblage : props reçues (dont engineAllowlist) +
 // remontée de calcResultId au shell, quel que soit le mode déclarant.
-vi.mock('@/lib/tool-bridge/ToolFrame', () => ({
-  ToolFrame: (props: {
+// Stub multi-engine — chaque mode a son calcResultId. Comme le vrai ToolFrame, un
+// « calcul terminé » émet onCalcResultId PUIS onSnapshotStatus('awaiting') ; la capture
+// se résout ensuite ('confirmed'/'failed'). M3 (revue adverse) : le bouton PV attend
+// cette résolution, quel que soit le mode d'origine.
+vi.mock('@/lib/tool-bridge/ToolFrame', () => {
+  type SnapEvt = { calcResultId: string; status: string };
+  const ToolFrame = (props: {
     toolId: string;
     engineId: string;
     engineAllowlist?: string[];
@@ -60,25 +65,48 @@ vi.mock('@/lib/tool-bridge/ToolFrame', () => ({
     projectLabel: string;
     accessToken: string | null;
     onCalcResultId?: (id: string | null) => void;
+    onSnapshotStatus?: (event: SnapEvt) => void;
   }) => (
     <div data-testid="tool-frame-stub" data-props={JSON.stringify(props)}>
-      <button
-        type="button"
-        data-testid="simulate-calc-radier"
-        onClick={() => props.onCalcResultId?.('calc_radier')}
-      >
-        Simuler calcul radier terminé
-      </button>
-      <button
-        type="button"
-        data-testid="simulate-calc-tri-raft"
-        onClick={() => props.onCalcResultId?.('calc_tri_raft')}
-      >
-        Simuler calcul tri-raft terminé
-      </button>
+      {(['radier', 'tri-raft'] as const).map((mode) => {
+        const id = `calc_${mode.replace('-', '_')}`;
+        return (
+          <div key={mode}>
+            <button
+              type="button"
+              data-testid={`simulate-calc-${mode}`}
+              onClick={() => {
+                props.onCalcResultId?.(id);
+                props.onSnapshotStatus?.({ calcResultId: id, status: 'awaiting' });
+              }}
+            >
+              Simuler calcul {mode} terminé
+            </button>
+            <button
+              type="button"
+              data-testid={`simulate-confirm-${mode}`}
+              onClick={() =>
+                props.onSnapshotStatus?.({ calcResultId: id, status: 'confirmed' })
+              }
+            >
+              Simuler capture confirmée {mode}
+            </button>
+            <button
+              type="button"
+              data-testid={`simulate-failed-${mode}`}
+              onClick={() =>
+                props.onSnapshotStatus?.({ calcResultId: id, status: 'failed' })
+              }
+            >
+              Simuler capture en échec {mode}
+            </button>
+          </div>
+        );
+      })}
     </div>
-  ),
-}));
+  );
+  return { ToolFrame };
+});
 
 import GeoplaquePage from '../page';
 
@@ -212,25 +240,62 @@ describe('Page GEOPLAQUE — shell GEOFAM', () => {
     expect(btn.disabled).toBe(true);
   });
 
+  // M3 (backport patron roadsens) : le bouton PV attend la CONFIRMATION de capture —
+  // pas le seul calcResultId — pour ne jamais sceller un PV sans la note capturée. La
+  // course est fermée QUEL QUE SOIT le mode GEOPLAQUE qui a produit le calcul.
   it.each([
-    ['radier', 'simulate-calc-radier', 'calc_radier'],
-    ['tri-raft', 'simulate-calc-tri-raft', 'calc_tri_raft'],
+    ['radier', 'simulate-calc-radier', 'simulate-confirm-radier'],
+    ['tri-raft', 'simulate-calc-tri-raft', 'simulate-confirm-tri-raft'],
   ])(
-    'given ToolFrame remonte un calcResultId produit par le mode %s, when le calcul est "terminé", then le bouton PV s\'active (quel que soit le mode GEOPLAQUE d\'origine)',
-    async (_mode, testid) => {
+    'given un calcResultId produit par le mode %s SANS capture confirmée, then le bouton PV reste DÉSACTIVÉ ; il s\'active une fois la capture CONFIRMÉE',
+    async (_mode, calcId, confirmId) => {
       await renderPage();
-      const simulate = container.querySelector(
-        `[data-testid="${testid}"]`,
-      ) as HTMLButtonElement;
       await act(async () => {
-        simulate.click();
+        (container.querySelector(`[data-testid="${calcId}"]`) as HTMLButtonElement).click();
       });
-      const btn = container.querySelector(
-        '[data-testid="btn-emettre-pv"]',
-      ) as HTMLButtonElement;
-      expect(btn.disabled).toBe(false);
+      const btn = () =>
+        container.querySelector('[data-testid="btn-emettre-pv"]') as HTMLButtonElement;
+      // Capture encore en vol (awaiting) → bouton grisé.
+      expect(btn().disabled).toBe(true);
+      expect(btn().textContent).toMatch(/Capture du document/);
+      await act(async () => {
+        (
+          container.querySelector(`[data-testid="${confirmId}"]`) as HTMLButtonElement
+        ).click();
+      });
+      // Capture confirmée → bouton actif.
+      expect(btn().disabled).toBe(false);
+      expect(btn().textContent).toMatch(/Émettre le PV scellé/);
     },
   );
+
+  it('given une capture en ÉCHEC (mode radier), when on clique « Émettre le PV », then avertissement puis confirmation requise (jamais de PV sans document en un clic)', async () => {
+    await renderPage();
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-calc-radier"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-failed-radier"]') as HTMLButtonElement
+      ).click();
+    });
+    const btn = container.querySelector(
+      '[data-testid="btn-emettre-pv"]',
+    ) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    await act(async () => {
+      btn.click();
+    });
+    expect(mockEmitPv).not.toHaveBeenCalled();
+    const warning = container.querySelector('[data-testid="capture-failed-warning"]');
+    expect(warning).not.toBeNull();
+    expect(warning!.textContent).toMatch(/n.a pas pu être capturé/);
+    expect(
+      container.querySelector('[data-testid="btn-emettre-pv"]')!.textContent,
+    ).toMatch(/Confirmer l.émission sans document/);
+  });
 
   it('given un calcul terminé (mode tri-raft), when "Émettre le PV" cliqué et emitPv résout, then le PV scellé est affiché', async () => {
     mockEmitPv.mockResolvedValue({
@@ -247,11 +312,15 @@ describe('Page GEOPLAQUE — shell GEOFAM', () => {
       output: null,
     });
     await renderPage();
-    const simulate = container.querySelector(
-      '[data-testid="simulate-calc-tri-raft"]',
-    ) as HTMLButtonElement;
     await act(async () => {
-      simulate.click();
+      (
+        container.querySelector('[data-testid="simulate-calc-tri-raft"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-confirm-tri-raft"]') as HTMLButtonElement
+      ).click();
     });
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',
@@ -270,11 +339,15 @@ describe('Page GEOPLAQUE — shell GEOFAM', () => {
   it('given emitPv échoue, when "Émettre le PV" cliqué, then un message d\'erreur explicite est affiché', async () => {
     mockEmitPv.mockRejectedValue({ message: 'Quota épuisé.' });
     await renderPage();
-    const simulate = container.querySelector(
-      '[data-testid="simulate-calc-radier"]',
-    ) as HTMLButtonElement;
     await act(async () => {
-      simulate.click();
+      (
+        container.querySelector('[data-testid="simulate-calc-radier"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-confirm-radier"]') as HTMLButtonElement
+      ).click();
     });
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',

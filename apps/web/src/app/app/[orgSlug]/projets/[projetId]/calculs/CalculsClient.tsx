@@ -103,6 +103,59 @@ function exportFilename(engineSlug: string, params: Record<string, unknown>): st
 }
 
 /**
+ * EXPORT « format client GEOPLAQUE » — reproduit EXACTEMENT le fichier
+ * `geoplaque-projet.json` que le bouton « Exporter .json » de l'outil client produit
+ * (ré-ouvrable tel quel via « Ouvrir .json »).
+ *
+ * Le fichier client est un export de PROJET (état de l'éditeur), pas d'un calcul isolé :
+ * `{ project, rafts, pointLoads, lineLoads, areaLoads, pointSprings, lineSprings, layers }`.
+ * Notre `params` persisté (mode radier principal) est le `RadierInputSchema` (même forme
+ * pour les charges/ressorts) — il suffit d'un EMBALLAGE + de deux réconciliations §8-safe :
+ *  1. bloc `project` rempli depuis notre projet (title = nom du projet ; client/ref/author
+ *     au mieux, vides sinon) ;
+ *  2. module d'Young E remis en **kPa** (l'outil client stocke E en kPa ; notre contrat le
+ *     porte en MPa car le pont divise par 1000 à la frontière) → ×1000 sur rafts ET layers.
+ * `opts` (options de calcul) et `projet` (écho) sont retirés : absents du format client.
+ *
+ * Confidentialité (DoD §8) : ENTRÉES uniquement (géométrie/charges/sol SAISIES) — aucune
+ * sortie ni formule moteur. Renvoie `null` si `params` n'a pas la forme du MODÈLE complet
+ * (ex. calcul en mode 2D plane-strain/axi/tri, dont l'`input` ne porte pas rafts+layers) :
+ * l'appelant retombe alors sur l'export brut de la saisie.
+ */
+function buildGeoplaqueExport(
+  params: Record<string, unknown>,
+  projectName: string,
+): Record<string, unknown> | null {
+  const rafts = Array.isArray(params.rafts) ? params.rafts : null;
+  const layers = Array.isArray(params.layers) ? params.layers : null;
+  if (!rafts || !layers) return null; // mode 2D ou saisie incomplète → export brut
+  const toKPa = (e: unknown): unknown =>
+    typeof e === 'number' && Number.isFinite(e) ? e * 1000 : e;
+  const echoProjet = typeof params.projet === 'string' ? params.projet.trim() : '';
+  return {
+    project: {
+      title: echoProjet || projectName || '',
+      client: '',
+      ref: '',
+      author: '',
+    },
+    rafts: rafts.map((r) => {
+      const rf = r as Record<string, unknown>;
+      return { pts: rf.pts, E: toKPa(rf.E), nu: rf.nu, e: rf.e };
+    }),
+    pointLoads: Array.isArray(params.pointLoads) ? params.pointLoads : [],
+    lineLoads: Array.isArray(params.lineLoads) ? params.lineLoads : [],
+    areaLoads: Array.isArray(params.areaLoads) ? params.areaLoads : [],
+    pointSprings: Array.isArray(params.pointSprings) ? params.pointSprings : [],
+    lineSprings: Array.isArray(params.lineSprings) ? params.lineSprings : [],
+    layers: layers.map((l) => {
+      const ly = l as Record<string, unknown>;
+      return { name: ly.name, zBase: ly.zBase, E: toKPa(ly.E), nu: ly.nu };
+    }),
+  };
+}
+
+/**
  * FILIGRANE « document de travail » — pour l'APERÇU DE LA NOTE AVANT scellement.
  *
  * L'outil client imprime la note à tout moment (« Imprimer la note »). On porte
@@ -455,10 +508,18 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   // renvoie l'input). Aucun appel réseau, aucune sortie moteur.
   function handleExportJson() {
     if (!selected) return;
-    triggerJsonDownload(
-      selected.params,
-      exportFilename(slugOf(selected.engineId), selected.params),
-    );
+    const slug = slugOf(selected.engineId);
+    // GEOPLAQUE : format client EXACT (geoplaque-projet.json, ré-ouvrable dans l'outil
+    // via « Ouvrir .json ») — bloc `project` rempli, E remis en kPa. Repli sur l'export
+    // brut si ce n'est pas le modèle complet (mode 2D) — cf. buildGeoplaqueExport.
+    if (slug === 'radier') {
+      const env = buildGeoplaqueExport(selected.params, projectName ?? '');
+      if (env) {
+        triggerJsonDownload(env, 'geoplaque-projet.json');
+        return;
+      }
+    }
+    triggerJsonDownload(selected.params, exportFilename(slug, selected.params));
   }
 
   // APERÇU DE LA NOTE avant scellement (livrable « Imprimer la note » de l'outil,

@@ -46,7 +46,7 @@ import { matchesDomain } from '@/lib/api/project-domain';
 import type { EntitlementsResponse, OfficialPv, Project } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 import { evaluateGate, isQuotaLow } from '@/lib/subscription-gate';
-import { ToolFrame } from '@/lib/tool-bridge/ToolFrame';
+import { ToolFrame, type SnapshotStatusEvent } from '@/lib/tool-bridge/ToolFrame';
 
 const TOOL_ID = 'geoplaque';
 // Gate d'abonnement — les 4 modes internes du clone (radier/plane-strain/axi/
@@ -85,6 +85,14 @@ export default function GeoplaquePage() {
   const [emittingPv, setEmittingPv] = useState(false);
   const [pvResult, setPvResult] = useState<OfficialPv | null>(null);
   const [pvError, setPvError] = useState<string | null>(null);
+  // M3 (revue adverse, chemin primaire) : statut de capture du document pour le
+  // DERNIER calcResultId connu (cf. ToolFrame.onSnapshotStatus). `null` ou
+  // 'awaiting'/'capturing' = on ATTEND encore — le bouton ne s'active pas (sinon un
+  // clic rapide scellerait un PV SANS la note option-3 de ce lot).
+  const [snapshotStatus, setSnapshotStatus] = useState<SnapshotStatusEvent | null>(null);
+  // Avertissement AVANT d'émettre un PV sans document capturé (capture 'failed') —
+  // même patron que roadsens/CalculsClient : 1er clic = avertissement, 2e = confirmation.
+  const [emitConfirmOpen, setEmitConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!orgId) return;
@@ -104,7 +112,29 @@ export default function GeoplaquePage() {
     setCalcResultId(null);
     setPvResult(null);
     setPvError(null);
+    setSnapshotStatus(null);
+    setEmitConfirmOpen(false);
   }, [projectId]);
+
+  // Miroir de `onCalcResultId` : un NOUVEAU calcul remet la confirmation
+  // « émission-sans-document » à zéro (jamais de confirmation héritée).
+  const handleCalcResultId = useCallback((id: string | null) => {
+    setCalcResultId(id);
+    setEmitConfirmOpen(false);
+  }, []);
+
+  const handleSnapshotStatus = useCallback((event: SnapshotStatusEvent) => {
+    setSnapshotStatus(event);
+  }, []);
+
+  // Statut de capture APPLICABLE au calcul COURANT uniquement (garde anti-staleness :
+  // un événement pour un calcResultId différent est ignoré → `captureStatus` retombe
+  // à `null`, donc au repli « en attente », jamais à un faux 'confirmed' hérité).
+  const captureStatus =
+    snapshotStatus && snapshotStatus.calcResultId === calcResultId
+      ? snapshotStatus.status
+      : null;
+  const captureReady = captureStatus === 'confirmed' || captureStatus === 'failed';
 
   const handleEmitPv = useCallback(async () => {
     if (!calcResultId || !orgId || !projectId) return;
@@ -113,6 +143,7 @@ export default function GeoplaquePage() {
     try {
       const pv = await emitPv(orgId, projectId, { calcResultId });
       setPvResult(pv);
+      setEmitConfirmOpen(false);
     } catch (err: unknown) {
       setPvError(
         (err as { message?: string })?.message ?? "Erreur lors de l'émission du PV.",
@@ -122,10 +153,23 @@ export default function GeoplaquePage() {
     }
   }, [calcResultId, orgId, projectId]);
 
+  // M3 : capture 'confirmed' → émission directe. Capture 'failed' → 1er clic affiche
+  // l'avertissement, seul le 2e clic (« Confirmer… ») appelle emitPv. Tant que la
+  // capture n'est ni confirmée ni en échec (en cours), le bouton est désactivé.
+  const handleEmitClick = useCallback(() => {
+    if (captureStatus === 'failed' && !emitConfirmOpen) {
+      setEmitConfirmOpen(true);
+      return;
+    }
+    handleEmitPv();
+  }, [captureStatus, emitConfirmOpen, handleEmitPv]);
+
   const handleNouveauCalcul = useCallback(() => {
     setCalcResultId(null);
     setPvResult(null);
     setPvError(null);
+    setSnapshotStatus(null);
+    setEmitConfirmOpen(false);
   }, []);
 
   if (!mounted) {
@@ -141,7 +185,24 @@ export default function GeoplaquePage() {
   const gate = evaluateGate(ent, ENGINE_ID);
   const project = projects.find((p) => p.id === projectId);
   const quotaLow = ent ? isQuotaLow(ent) : false;
-  const canEmitPv = !!calcResultId && !emittingPv && !pvResult;
+  // M3 (revue adverse) : n'active JAMAIS le scellement tant que la capture du document
+  // n'est pas résolue (confirmée OU en échec confirmé) — ferme la course « calcul
+  // terminé » (calc:response) vs « POST snapshot best-effort encore en vol ».
+  const canEmitPv = !!calcResultId && !emittingPv && !pvResult && captureReady;
+  const emitLabel = emittingPv
+    ? 'Émission…'
+    : !calcResultId
+      ? 'Émettre le PV scellé'
+      : !captureReady
+        ? 'Capture du document…'
+        : captureStatus === 'failed' && emitConfirmOpen
+          ? "Confirmer l'émission sans document"
+          : 'Émettre le PV scellé';
+  const emitTitle = !calcResultId
+    ? 'Lancez un calcul dans l’outil avant d’émettre le PV'
+    : !captureReady
+      ? 'Capture du document en cours — patientez quelques secondes.'
+      : undefined;
 
   return (
     <div
@@ -209,14 +270,10 @@ export default function GeoplaquePage() {
           <button
             type="button"
             data-testid="btn-emettre-pv"
-            onClick={handleEmitPv}
+            onClick={handleEmitClick}
             disabled={!canEmitPv}
             aria-busy={emittingPv}
-            title={
-              !calcResultId
-                ? 'Lancez un calcul dans l’outil avant d’émettre le PV'
-                : undefined
-            }
+            title={emitTitle}
             style={{
               background: canEmitPv ? ACCENT : '#c3b8cf',
               color: '#fff',
@@ -228,10 +285,50 @@ export default function GeoplaquePage() {
               cursor: canEmitPv ? 'pointer' : 'not-allowed',
             }}
           >
-            {emittingPv ? 'Émission…' : 'Émettre le PV scellé'}
+            {emitLabel}
           </button>
         </div>
       </div>
+
+      {/* M3 (revue adverse) : capture définitivement en échec pour ce calcul —
+          avertissement explicite AVANT tout scellement sans document (même patron
+          que roadsens/CalculsClient). */}
+      {captureStatus === 'failed' && emitConfirmOpen && !pvResult && (
+        <div
+          role="alert"
+          data-testid="capture-failed-warning"
+          style={{
+            background: 'var(--status-warn-bg)',
+            border: '1px solid var(--warn-line, var(--status-warn-tx))',
+            color: 'var(--status-warn-tx)',
+            borderRadius: 12,
+            padding: '11px 15px',
+            marginBottom: 14,
+          }}
+        >
+          Le document de l&apos;outil n&apos;a pas pu être capturé pour ce calcul — le PV
+          sera émis au format standard, pas le document de l&apos;outil. Relancez le
+          calcul pour retenter la capture.
+          <div style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => setEmitConfirmOpen(false)}
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--warn-line, var(--status-warn-tx))',
+                color: 'var(--status-warn-tx)',
+                borderRadius: 8,
+                padding: '5px 12px',
+                fontSize: 12.5,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
 
       {!gate.allowed && (
         <div
@@ -331,7 +428,8 @@ export default function GeoplaquePage() {
           projectId={projectId || null}
           projectLabel={project?.name ?? ''}
           accessToken={getStoredToken()}
-          onCalcResultId={setCalcResultId}
+          onCalcResultId={handleCalcResultId}
+          onSnapshotStatus={handleSnapshotStatus}
         />
       </div>
     </div>

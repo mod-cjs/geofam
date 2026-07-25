@@ -149,8 +149,10 @@ if has 'tools-cloned/|scripts/clone-tool\.mjs|print-inert-html|clone-render\.tes
     fi
   else
     run "verify:print (Chromium — pas de pages vierges)" $PNPM verify:print
-    run "équivalence note (#notePrint clone == référence, §8)" \
-      $PNPM --filter @roadsen/engines test src/terzaghi/clone-render.test.ts src/terzaghi/warnings-leak.test.ts
+    run "équivalence note (clone == référence, §8) — terzaghi + geoplaque" \
+      $PNPM --filter @roadsen/engines test \
+        src/terzaghi/clone-render.test.ts src/terzaghi/warnings-leak.test.ts \
+        src/radier/clone-render.test.ts src/radier/contract.test.ts src/radier/warnings-leak.test.ts
   fi
 fi
 

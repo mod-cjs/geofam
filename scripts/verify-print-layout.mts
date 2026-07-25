@@ -25,6 +25,7 @@
  * Lancement : `pnpm verify:print`.
  */
 /* eslint-disable no-console -- script de vérification CLI : la sortie console EST le livrable. */
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,6 +35,8 @@ import { chromium, type Browser, type Page } from '@playwright/test';
 import { wrapSealedDocumentWithPvChrome } from '../apps/api/src/pv/pv-document-chrome.js';
 import { runBurmister } from '../packages/engines/src/burmister/index.js';
 import { BURMISTER_FIXTURES } from '../packages/engines/src/burmister/test-fixtures.js';
+import { runRadier } from '../packages/engines/src/radier/index.js';
+import { RADIER_FIXTURES } from '../packages/engines/src/radier/test-fixtures.js';
 import { runTerzaghi } from '../packages/engines/src/terzaghi/index.js';
 import { TERZAGHI_FIXTURES } from '../packages/engines/src/terzaghi/test-fixtures.js';
 
@@ -94,6 +97,19 @@ async function capturePrintHtml(
   await page.removeAllListeners();
   if (!captured) throw new Error(`aucun printHtml capturé pour ${cloneRel}`);
   return captured;
+}
+
+/** Pipe un HTML dans la VRAIE garde §8 serveur (assertInertHtml) via le runner
+ *  scripts/assert-inert-run.mts — jamais une copie des règles. Sur les octets RÉELS
+ *  capturés en Chromium (SVG réellement rendu), pas une reproduction jsdom. */
+function guardInert(html: string): { ok: boolean; error?: string } {
+  const raw = execFileSync('npx', ['tsx', 'scripts/assert-inert-run.mts'], {
+    input: html,
+    cwd: REPO,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  return JSON.parse(raw) as { ok: boolean; error?: string };
 }
 
 const results: string[] = [];
@@ -188,6 +204,76 @@ async function main(): Promise<void> {
     console.log('bandeau pvx-band       :', J(w_band), '(largeur px)');
     assert(w_note.noteW >= 600 && w_note.pages <= 8, `PV enrobé : note pleine largeur, pas d'explosion de pages ${J(w_note)}`);
     assert(w_band.noteW >= 600, `cartouche pvx-band non effondré (grille intacte) ${J(w_band)}`);
+
+    // ---------------- GEOPLAQUE (note printReport option-3 — radier, mode principal) ----------------
+    // La note client `printReport` est TOUJOURS bâtie sur `state.results` (mode RADIER
+    // principal) : les 3 modes 2D (plane-strain/axi/tri) rendent leur propre panneau et ne
+    // FEED PAS printReport -> UNE seule note scellable (radier). On prouve donc ici la note
+    // radier : pleine largeur A4, pas de pages blanches, FIGURE (SVG heatmap) présente, table
+    // des couples présente, AUCUNE URI data: (figure sealable), AUCUNE localisation *At.
+    const gfx = RADIER_FIXTURES.find((f) => f.id === 'carre-quatre-poteaux')!;
+    const genv = runRadier(gfx.input);
+    if (!genv.ok) throw new Error('runRadier a échoué');
+    const gPage = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+    const gRafts = gfx.input.rafts.map((r, i) => ({
+      id: i + 1,
+      pts: r.pts,
+      E: r.E * 1000,
+      nu: r.nu,
+      e: r.e,
+    }));
+    const gLayers = gfx.input.layers.map((l) => ({
+      name: l.name ?? 'Couche',
+      zBase: l.zBase,
+      E: l.E * 1000,
+      nu: l.nu,
+    }));
+    const gDrive =
+      `(function(){state.rafts=${J(gRafts)};state.pointLoads=${J(gfx.input.pointLoads ?? [])};` +
+      `state.lineLoads=[];state.areaLoads=[];state.pointSprings=[];state.lineSprings=[];` +
+      `state.layers=${J(gLayers)};doSolve();})()`;
+    const gReady = `(function(){var r=(document.getElementById('resbody')||{}).innerHTML||'';return r.indexOf('EC7 annexe H')>=0&&r.indexOf('Calcul en cours')<0;})()`;
+    const gPrint = await capturePrintHtml(
+      gPage,
+      'apps/web/src/tools-cloned/geoplaque.html',
+      genv.output,
+      gDrive,
+      gReady,
+    );
+
+    const g_new = await measure(gPage, gPrint, 'new', 'table.chk');
+    const g_body = await measure(gPage, gPrint, 'new', 'body');
+    await gPage.close();
+
+    console.log('\n=== GEOPLAQUE (note radier — table.chk / body, pages A4) ===');
+    console.log('geoplaque + helper APRÈS (210mm) table :', J(g_new));
+    console.log('geoplaque + helper APRÈS (210mm) body  :', J(g_body));
+    assert(
+      g_new.noteW >= 500 && g_body.pages <= 10,
+      `GEOPLAQUE : note pleine largeur A4, pages denses ${J(g_new)} ${J(g_body)}`,
+    );
+    // FIGURE présente = SVG inline (design-sûr, sealable) — jamais une URI data: brute.
+    assert(/<svg/i.test(gPrint), 'GEOPLAQUE : figure SVG absente de la note');
+    assert(
+      !/src\s*=\s*["']?\s*data:/i.test(gPrint),
+      'GEOPLAQUE : figure canvas brute (URI data:) — non sealable',
+    );
+    // Fidélité (task c) + §8 (task a) : table des couples présente, aucune localisation *At.
+    assert(
+      gPrint.includes('Tassement différentiel entre charges voisines'),
+      'GEOPLAQUE : table complète des couples absente (fidélité task c)',
+    );
+    assert(
+      !/—\s*en\s*\(/.test(gPrint),
+      'GEOPLAQUE : localisation *At exposée (masquage §8 rompu)',
+    );
+    // §8 sur OCTETS RÉELS (Chromium, SVG réellement rendu) : la note scellée passe la
+    // VRAIE garde serveur assertInertHtml — complémentaire du test jsdom (bytes réels).
+    const gGuard = guardInert(gPrint);
+    assert(
+      gGuard.ok,
+      `GEOPLAQUE : garde §8 REFUSE le printHtml réel (Chromium) — motif : ${gGuard.error ?? ''}`,
+    );
 
     console.log('\n=== SYNTHÈSE ASSERTIONS ===');
     results.forEach((r) => console.log('  ' + r));

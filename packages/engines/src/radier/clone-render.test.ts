@@ -27,12 +27,15 @@
  * jsdom n'implemente pas le canvas 2D : on le STUB (le clone est defensif — bakeField
  * calcule quand meme R.grid/fmin/fmax). Skip BRUYANT si le clone est absent.
  */
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { describe, expect, it } from 'vitest';
+
+import { radierSourceAvailable, radierSourcePath } from './equivalence-harness.js';
 
 import { runAxi } from '../axi/index.js';
 import { AXI_FIXTURES } from '../axi/test-fixtures.js';
@@ -48,6 +51,7 @@ import { runRadier } from './index.js';
 const HERE = dirname(fileURLToPath(import.meta.url));
 // packages/engines/src/radier -> 05-Plateforme (4 niveaux).
 const CLONE_PATH = resolve(HERE, '../../../../apps/web/src/tools-cloned/geoplaque.html');
+const REPO = resolve(HERE, '../../../..');
 
 type Win = {
   document: Document;
@@ -57,6 +61,18 @@ type Win = {
   __geofamBridge?: unknown;
   close?: () => void;
 };
+
+/** Passe un HTML dans la VRAIE garde §8 serveur (assertInertHtml) via le runner
+ *  scripts/assert-inert-run.mts — jamais une copie des regles. */
+function guardInert(html: string): { ok: boolean; error?: string } {
+  const raw = execFileSync('npx', ['tsx', 'scripts/assert-inert-run.mts'], {
+    input: html,
+    cwd: REPO,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  return JSON.parse(raw) as { ok: boolean; error?: string };
+}
 
 /** Stub minimal du contexte 2D (jsdom n'a pas de canvas) — le clone reste defensif. */
 function stubCanvas(w: Record<string, unknown>): void {
@@ -136,6 +152,64 @@ function setRadierState(
       `state.lineSprings=${JSON.stringify(input.lineSprings ?? [])};` +
       `state.layers=${JSON.stringify(layers)};`,
   );
+}
+
+type Cap = { displayHtml: string; printHtml: string };
+/** Boote le clone, installe un pont AVEC capteur `snapshot`, peuple `state` puis lance
+ *  doSolve() — collecte les captures emises par __geoplaqueCaptureSnapshot en fin de solve. */
+async function bootRadierCapturing(
+  input: (typeof RADIER_FIXTURES)[number]['input'],
+  output: unknown,
+): Promise<{ win: Win; caps: Cap[] }> {
+  const { win } = await bootClone();
+  const caps: Cap[] = [];
+  win.__geofamBridge = {
+    calc: () => Promise.resolve({ ok: true, calcResultId: 'cr-cap', output }),
+    emitPv: () => undefined,
+    snapshot: (displayHtml: string, printHtml: string) =>
+      caps.push({
+        displayHtml: String(displayHtml || ''),
+        printHtml: String(printHtml || ''),
+      }),
+    context: () => ({}),
+  };
+  setRadierState(win, input);
+  await (win.eval('doSolve()') as Promise<unknown>);
+  await new Promise((r) => setTimeout(r, 20));
+  return { win, caps };
+}
+
+/** Rend la note printReport de la REFERENCE client gelee : boote la source (canvas +
+ *  window.open stubbes), peuple state, doSolve() SYNCHRONE (le moteur local calcule), puis
+ *  printReport() -> capture le HTML ecrit dans la fenetre d impression. */
+function renderReferenceNote(input: (typeof RADIER_FIXTURES)[number]['input']): string {
+  const html = readFileSync(radierSourcePath(), 'utf8');
+  let written = '';
+  const dom = new JSDOM(html, {
+    runScripts: 'dangerously',
+    pretendToBeVisual: true,
+    beforeParse(w) {
+      stubCanvas(w as unknown as Record<string, unknown>);
+      // window.open stub : capte le document.write de printReport (impression client).
+      (w as unknown as { open: unknown }).open = () => ({
+        document: {
+          write: (h: string) => {
+            written += h;
+          },
+          close: () => undefined,
+        },
+        focus: () => undefined,
+        print: () => undefined,
+      });
+    },
+  });
+  const win = dom.window as unknown as Win;
+  win.dispatchEvent(new win.Event('load'));
+  setRadierState(win, input);
+  win.eval('doSolve()'); // SYNCHRONE dans la reference (moteur local)
+  win.eval('printReport()');
+  win.close?.();
+  return written;
 }
 
 const hasClone = existsSync(CLONE_PATH);
@@ -447,6 +521,316 @@ d(
       expect(calls).toBe(0);
       const resbody = win.document.getElementById('resbody')?.innerHTML ?? '';
       expect(resbody).toMatch(/Dessine au moins une plaque/);
+      win.close?.();
+    });
+
+    // ======================================================================
+    // CAPTURE OPTION-3 (snapshot:capture) — le pont geoplaque scelle le DOCUMENT
+    // (note printReport + figure heatmap) APRES un calcul RADIER reussi. ZERO
+    // FAUX-VERT : si le cablage (snapshot / __geoplaqueCaptureSnapshot / appel en
+    // fin de doSolve) est retire, `caps` reste vide -> ces tests DEVIENNENT ROUGES.
+    // ======================================================================
+    it('given un calcul RADIER reussi, when doSolve se termine, then le pont emet snapshot:capture (display + print) — NON vide', async () => {
+      const fx =
+        RADIER_FIXTURES.find((f) => (f.input.pointLoads?.length ?? 0) >= 2) ??
+        RADIER_FIXTURES[0];
+      if (!fx) return;
+      const env = runRadier(fx.input);
+      expect(env.ok).toBe(true);
+      if (!env.ok) return;
+
+      const { win, caps } = await bootRadierCapturing(fx.input, env.output);
+      expect(caps.length, 'AUCUNE capture emise par le pont geoplaque').toBe(1);
+      const cap = caps[0];
+      if (!cap) throw new Error('capture absente');
+
+      // printHtml = document imprimable auto-contenu (note + figure).
+      expect(cap.printHtml.length, 'printHtml vide').toBeGreaterThan(2000);
+      expect(cap.printHtml, 'printHtml non auto-contenu').toContain('<!doctype html>');
+      expect(cap.printHtml, 'CSS non inline').toContain('<style>');
+      expect(cap.printHtml, 'titre de note absent').toContain('Note de calcul — GEOPLAQUE');
+      expect(cap.printHtml, 'section EC7 absente').toContain(
+        'Vérifications — Eurocode 7, annexe H',
+      );
+      expect(cap.printHtml, 'synthèse absente').toContain('Synthèse des résultats');
+      // displayHtml = apercu auto-contenu (MÊME corps que le printHtml : en-tête GEOPLAQUE
+      // + EC7 + synthèse ; seul le <title> diffère — « Aperçu de la note »).
+      expect(cap.displayHtml.length, 'displayHtml vide').toBeGreaterThan(2000);
+      expect(cap.displayHtml, 'displayHtml non auto-contenu').toContain('<!doctype html>');
+      expect(cap.displayHtml, 'en-tête GEOPLAQUE absente de l apercu').toContain('GEOPLAQUE');
+      expect(cap.displayHtml, 'EC7 absente de l apercu').toContain(
+        'Vérifications — Eurocode 7, annexe H',
+      );
+      expect(cap.displayHtml, 'synthèse absente de l apercu').toContain(
+        'Synthèse des résultats',
+      );
+
+      win.close?.();
+    });
+
+    it('FIGURE SUBSTITUÉE (§8) : la note embarque la HEATMAP design-sûre, PAS le canvas client brut', async () => {
+      const fx = RADIER_FIXTURES[0];
+      if (!fx) return;
+      const env = runRadier(fx.input);
+      if (!env.ok) return;
+      const { win, caps } = await bootRadierCapturing(fx.input, env.output);
+      expect(caps.length).toBe(1);
+      const cap = caps[0];
+      if (!cap) throw new Error('capture absente');
+      // La figure est un SVG INLINE reconstruit depuis la grille 48×48 (design-sûr,
+      // sealable) — PAS le canvas brut cv.toDataURL (dont l alt était « Modèle »), PAS une
+      // URI data: (que la garde de scellement assertInertHtml rejette).
+      expect(cap.printHtml, 'figure SVG absente (substitution ratée)').toMatch(/<svg/i);
+      expect(cap.printHtml, 'légende figure heatmap absente').toContain(
+        'Cartographie du champ de déflexion',
+      );
+      expect(cap.printHtml, 'ancien alt du canvas brut « Modèle » encore présent').not.toContain(
+        'alt="Modèle"',
+      );
+      expect(cap.printHtml, 'URI data: (non sealable) dans la figure').not.toMatch(
+        /src\s*=\s*["']?\s*data:/i,
+      );
+      // La note assume explicitement la nature design-sûre (grille découplée du maillage).
+      expect(cap.printHtml).toContain('découplée du maillage');
+      // Aucun indice de maillage dans la note (lignes d élément / nœuds / valeurs nodales).
+      expect(cap.printHtml).not.toMatch(/Nœuds de calcul|nœud\(s\) plastifié|itération\(s\)/);
+      win.close?.();
+    });
+
+    it('TABLE COMPLÈTE DES COUPLES (task c) : tous les couples voisins + positions sont REPORTÉS', async () => {
+      const fx = RADIER_FIXTURES.find((f) => f.id === 'carre-quatre-poteaux');
+      expect(fx, 'fixture multi-charges absente').toBeDefined();
+      if (!fx) return;
+      const env = runRadier(fx.input);
+      expect(env.ok).toBe(true);
+      if (!env.ok) return;
+      // Le serveur expose bien la table complète (anti-vacuité).
+      expect((env.output.loadPairs?.length ?? 0), 'serveur sans table de couples').toBeGreaterThan(
+        1,
+      );
+
+      const { win, caps } = await bootRadierCapturing(fx.input, env.output);
+      const cap = caps[0];
+      if (!cap) throw new Error('capture absente');
+      // Titre de section de la table complète (client l.1346).
+      expect(cap.printHtml, 'section « couples voisins » absente').toContain(
+        'Tassement différentiel entre charges voisines',
+      );
+      // Chaque couple serveur apparaît (P ki ↔ P kj) — pas seulement le pire.
+      const rows = (env.output.loadPairs ?? []).filter(
+        (e) => (e.p1?.x ?? null) !== null && (e.p2?.x ?? null) !== null,
+      );
+      expect(rows.length).toBeGreaterThan(1);
+      for (const e of rows) {
+        expect(
+          cap.printHtml,
+          `couple P${e.ki}↔P${e.kj} absent de la note`,
+        ).toContain(`P${e.ki} ↔ P${e.kj}`);
+      }
+      // Les POSITIONS SAISIES apparaissent (colonnes Position 1 / Position 2).
+      expect(cap.printHtml).toContain('Position 1 (m)');
+      expect(cap.printHtml).toContain('Position 2 (m)');
+      win.close?.();
+    });
+
+    it('LOCALISATIONS MASQUÉES (task a, §8 #54) : la note garde les VALEURS mais AUCUNE localisation *At', async () => {
+      const fx = RADIER_FIXTURES[0];
+      if (!fx) return;
+      const env = runRadier(fx.input);
+      if (!env.ok) return;
+      const { win, caps } = await bootRadierCapturing(fx.input, env.output);
+      const cap = caps[0];
+      if (!cap) throw new Error('capture absente');
+      // La VALEUR de tassement max EST reportée (fidélité)…
+      expect(cap.printHtml).toContain('Tassement total max');
+      // …mais JAMAIS la localisation « — en (x, y) » (nœud de maillage, exception §8).
+      expect(cap.printHtml, 'localisation *At exposée (masquage §8 rompu)').not.toMatch(
+        /—\s*en\s*\(/,
+      );
+      expect(cap.printHtml).not.toMatch(/entre\s*\([-\d.,\s]+\)\s*et\s*\(/);
+      win.close?.();
+    });
+
+    it('given le displayHtml et le printHtml REELLEMENT captures, when passes dans la VRAIE garde §8 (assertInertHtml), then ACCEPTES', async () => {
+      const fx =
+        RADIER_FIXTURES.find((f) => (f.input.pointLoads?.length ?? 0) >= 2) ??
+        RADIER_FIXTURES[0];
+      if (!fx) return;
+      const env = runRadier(fx.input);
+      if (!env.ok) return;
+      const { win, caps } = await bootRadierCapturing(fx.input, env.output);
+      expect(caps.length, 'capture non emise -> rien a verifier').toBe(1);
+      const cap = caps[0];
+      if (!cap) throw new Error('capture absente');
+      expect(/<script\b/i.test(cap.printHtml), 'printHtml contient <script>').toBe(false);
+      expect(/<script\b/i.test(cap.displayHtml), 'displayHtml contient <script>').toBe(false);
+      const gp = guardInert(cap.printHtml);
+      expect(gp.ok, `garde §8 REFUSE le printHtml — motif : ${gp.error ?? ''}`).toBe(true);
+      const gd = guardInert(cap.displayHtml);
+      expect(gd.ok, `garde §8 REFUSE le displayHtml — motif : ${gd.error ?? ''}`).toBe(true);
+      win.close?.();
+    });
+
+    // ESPRIT MUTATION : doSolve rend la note d'erreur PUIS `return` AVANT
+    // `__geoplaqueCaptureSnapshot()`. Ce test devient ROUGE si l'appel de capture est
+    // déplacé AVANT ce `return` (ou si la garde `if(out.erreur){…return;}` est retirée) :
+    // une capture serait émise sur un document d'erreur → caps.length passerait à 1.
+    it('GARDE §5 : sur une erreur EN BANDE (output.erreur), AUCUNE capture n est emise (on ne scelle pas un document d erreur)', async () => {
+      const fx =
+        RADIER_FIXTURES.find((f) => (f.input.pointLoads?.length ?? 0) >= 1) ??
+        RADIER_FIXTURES[0];
+      if (!fx) return;
+      // Etat PLAUSIBLE (sinon on n atteint jamais le serveur) mais sortie EN ERREUR.
+      const errored = { erreur: 'Erreur de calcul (test en bande).', warnings: [] };
+      const { win, caps } = await bootRadierCapturing(fx.input, errored);
+      expect(caps.length, 'un document d ERREUR a été capturé (garde §5 absente/déplacée)').toBe(
+        0,
+      );
+      // Contre-preuve : la note d ERREUR EST bien rendue (le chemin d erreur a été pris,
+      // la capture n a pas été court-circuitée « en amont » du rendu).
+      const resbody = win.document.getElementById('resbody')?.innerHTML ?? '';
+      expect(resbody, 'la note d erreur n a pas été rendue').toContain(
+        'Erreur de calcul (test en bande)',
+      );
+      win.close?.();
+    });
+
+    it('DETERMINISME : deux captures de la MEME sortie serveur sont IDENTIQUES (hachable/scellable)', async () => {
+      const fx =
+        RADIER_FIXTURES.find((f) => (f.input.pointLoads?.length ?? 0) >= 2) ??
+        RADIER_FIXTURES[0];
+      if (!fx) return;
+      const env = runRadier(fx.input);
+      if (!env.ok) return;
+      const a = await bootRadierCapturing(fx.input, env.output);
+      const b = await bootRadierCapturing(fx.input, env.output);
+      expect(a.caps.length).toBe(1);
+      expect(b.caps.length).toBe(1);
+      expect(b.caps[0]?.printHtml, 'printHtml non déterministe').toBe(a.caps[0]?.printHtml);
+      expect(b.caps[0]?.displayHtml, 'displayHtml non déterministe').toBe(
+        a.caps[0]?.displayHtml,
+      );
+      a.win.close?.();
+      b.win.close?.();
+    });
+
+    it('EQUIVALENCE NOTE : la note capturée == note client, aux SEULES exceptions §8 (localisations *At masquées + figure substituée)', async () => {
+      if (!radierSourceAvailable()) {
+        // eslint-disable-next-line no-console
+        console.warn('[clone-render] SKIP equivalence note : source gelée absente (CI).');
+        return;
+      }
+      const fx = RADIER_FIXTURES.find((f) => f.id === 'carre-quatre-poteaux');
+      expect(fx).toBeDefined();
+      if (!fx) return;
+      const env = runRadier(fx.input);
+      expect(env.ok).toBe(true);
+      if (!env.ok) return;
+
+      const refNote = renderReferenceNote(fx.input);
+      const { win, caps } = await bootRadierCapturing(fx.input, env.output);
+      const cloneNote = caps[0]?.printHtml ?? '';
+
+      // Garde anti faux-vert : la référence a bien produit une note COMPLETE.
+      expect(refNote.length, 'référence sans note (rendu cassé ?)').toBeGreaterThan(3000);
+      expect(refNote, 'référence sans EC7').toContain('Eurocode 7, annexe H');
+      expect(refNote, 'référence sans table de couples').toContain(
+        'Tassement différentiel entre charges voisines',
+      );
+      // La référence PORTE les localisations *At (preuve que le masquage clone est réel,
+      // pas un artefact d une référence qui n en aurait pas).
+      expect(refNote, 'référence sans localisation *At').toMatch(/—\s*en\s*\(/);
+
+      // Extraction du LIBELLÉ (1re cellule) de chaque ligne de tableau — structure de la
+      // note, indépendante des unités et de l ordre d attributs.
+      // Normalise les apostrophes (droite ' vs typographique ’, purement cosmétique et
+      // incohérent dans la source client) pour ne comparer que la STRUCTURE des libellés.
+      const apos = (s: string): string => s.replace(/['’]/g, "'");
+      const labelsOf = (h: string): string[] =>
+        (h.match(/<tr>\s*<td>([\s\S]*?)<\/td>/g) ?? [])
+          .map((r) =>
+            apos(
+              r.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim(),
+            ),
+          )
+          .filter((t) => t.length > 0 && !/^#$|^Élément$|^Couple$|^Critère$/.test(t));
+      const refLabels = labelsOf(refNote);
+      const cloneLabels = new Set(labelsOf(cloneNote));
+
+      // (1) FIDÉLITÉ STRUCTURELLE : chaque LIBELLÉ de ligne de la référence est présent dans
+      //     le clone, SAUF les lignes de MÉTHODE EF légitimement omises (§8) :
+      //      - « Nœuds de calcul » (compte de nœuds) ; « Pas de maillage » (discrétisation) ;
+      //      - la ligne SYNTHÈSE « Plastification de l'interface » ne diffère de la ligne
+      //        OPTION homonyme (Paramètres) que par le nombre de nœuds plastifiés → même label,
+      //        donc couverte par la ligne option présente des deux côtés.
+      const METHOD_ONLY = /^(Nœuds de calcul|Pas de maillage)$/;
+      const missingLabels = refLabels.filter(
+        (l) => !METHOD_ONLY.test(l) && !cloneLabels.has(l),
+      );
+      // Anti-vacuité : structure substantielle des deux côtés.
+      expect(refLabels.length, 'référence sans lignes').toBeGreaterThan(12);
+      // Sanity du comparateur : un libellé mangé NE doit PAS matcher.
+      expect(cloneLabels.has('__inexistant__')).toBe(false);
+      expect(
+        missingLabels,
+        `libellés de ligne de la note client ABSENTS du clone (hors §8) : ${missingLabels.join(' || ')}`,
+      ).toEqual([]);
+
+      // (2) FIDÉLITÉ DES POSITIONS (task c, §8-safe) : chaque couple de la référence figure
+      //     dans le clone avec ses POSITIONS SAISIES p1/p2 (unités-indépendant).
+      const pairPos = (h: string): string[] =>
+        (h.match(/<tr><td>P\d+\s*[↔↔]\s*P\d+<\/td><td>([^<]+)<\/td><td>([^<]+)<\/td>/g) ?? []).map(
+          (r) =>
+            r
+              .replace(/<[^>]+>/g, '|')
+              .replace(/\s+/g, ' ')
+              .trim(),
+        );
+      const refPairs = pairPos(refNote);
+      expect(refPairs.length, 'référence sans couples').toBeGreaterThan(1);
+      const clonePairs = new Set(pairPos(cloneNote));
+      const missingPairs = refPairs.filter((p) => !clonePairs.has(p));
+      expect(
+        missingPairs,
+        `couples (couple + positions) de la référence absents du clone : ${missingPairs.slice(0, 3).join(' ; ')}`,
+      ).toEqual([]);
+
+      // (3) RÉCIPROQUE §8 : le clone n introduit AUCUNE localisation *At, et la figure est
+      //     substituée (SVG heatmap, pas le canvas brut → aucune URI data:).
+      expect(cloneNote, 'localisation *At introduite par le clone').not.toMatch(/—\s*en\s*\(/);
+      expect(cloneNote, 'figure canvas brute (URI data:) dans le clone').not.toMatch(
+        /src\s*=\s*["']?\s*data:/i,
+      );
+
+      // (4) ⚠ SENTINELLE UNITÉS — DIVERGENCE CONNUE À ARBITRER (titulaire + expert).
+      //     Le clone applique le ×1000 (« sur-rapport COPIE », décision 15/07) à une sortie
+      //     serveur DÉJÀ en échelle mm → les tassements/Δs/β (et donc les VERDICTS EC7) du
+      //     clone valent ~1000× la note client (ex. 29147 mm vs 29.4 mm). Ce n'est PAS une
+      //     exception §8 mais un CONFLIT D'UNITÉS non résolu (mémoires 01/07 « ne pas copier »
+      //     vs 15/07 « copier ») qui, en l'état, ferait SCELLER des valeurs et des verdicts
+      //     erronés. On NE MASQUE PAS ce fait : on le CARACTÉRISE (le test reste vert sur la
+      //     structure, ROUGE-documenté ici). Si quelqu'un « corrige » le ×1000, cette
+      //     sentinelle bascule → revue forcée. À TRANCHER AVANT SCELLEMENT.
+      const numAfter = (h: string, label: string): number | null => {
+        const m = h.match(
+          new RegExp(label + '<\\/td><td>([\\d\\u202f\\u00a0 ]*[\\d.]+)\\s*mm'),
+        );
+        return m && m[1] ? parseFloat(m[1].replace(/[^\d.]/g, '')) : null;
+      };
+      const refTass = numAfter(refNote, 'Tassement total max');
+      const cloneTass = numAfter(cloneNote, 'Tassement total max');
+      expect(refTass, 'tassement de référence introuvable').not.toBeNull();
+      expect(cloneTass, 'tassement clone introuvable').not.toBeNull();
+      if (refTass && cloneTass) {
+        const facteur = cloneTass / refTass;
+        // Divergence ~×1000 CARACTÉRISÉE (et non ~1). Si le facteur retombe à ~1 (unités
+        // réconciliées) OU explose autrement, cette sentinelle casse et force la revue.
+        expect(
+          facteur,
+          `DIVERGENCE UNITÉS clone/réf = ×${facteur.toFixed(0)} (attendu ~1000, décision ×1000 non réconciliée) — À ARBITRER`,
+        ).toBeGreaterThan(500);
+      }
+
       win.close?.();
     });
 

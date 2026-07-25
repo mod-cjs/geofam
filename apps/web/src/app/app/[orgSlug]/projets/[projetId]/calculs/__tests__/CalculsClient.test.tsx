@@ -280,6 +280,87 @@ describe('CalculsClient — Exporter (JSON) : livrable « Exporter » de l’out
       URL.revokeObjectURL = origRevoke;
     }
   });
+
+  // GEOPLAQUE : le fichier doit être au FORMAT CLIENT EXACT (geoplaque-projet.json,
+  // ré-ouvrable via « Ouvrir .json ») : bloc `project` rempli + E remis en kPa (×1000)
+  // + `opts`/`projet` retirés. Notre input persisté est le RadierInputSchema (E en MPa).
+  const CALC_GEOPLAQUE: CalcResult = {
+    ...CALC,
+    id: 'calc_gp',
+    engineId: 'radier-plaque',
+    label: 'Radier — exemple',
+    output: { verdict: 'NA' },
+    params: {
+      projet: 'Radier bâtiment industriel',
+      rafts: [{ pts: [{ x: 0, y: 0 }], E: 32000, nu: 0.2, e: 0.4 }], // E en MPa
+      pointLoads: [{ x: 1.5, y: 1.5, Fz: 600 }],
+      lineLoads: [],
+      areaLoads: [],
+      pointSprings: [],
+      lineSprings: [],
+      layers: [{ name: 'Couche 1', zBase: -10, E: 20, nu: 0.33 }], // E en MPa
+      opts: { mesh: 0.8, decol: false },
+    },
+  };
+
+  it('given un calcul GEOPLAQUE, when on clique « Exporter (JSON) », then le fichier = geoplaque-projet.json au FORMAT CLIENT EXACT (bloc project, E en kPa, sans opts)', async () => {
+    mockListCalcResults.mockResolvedValue([CALC_GEOPLAQUE]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    mockGetProjectCached.mockResolvedValue({ name: 'Projet Radier' });
+
+    let capturedBlob: Blob | null = null;
+    let capturedName = '';
+    const origCreate = URL.createObjectURL;
+    const origRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = vi.fn((b: Blob) => {
+      capturedBlob = b;
+      return 'blob:mock';
+    }) as unknown as typeof URL.createObjectURL;
+    URL.revokeObjectURL = vi.fn();
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        capturedName = this.download;
+      });
+
+    try {
+      await renderCalculs();
+      const btn = findButtonByText('Exporter (JSON)');
+      expect(btn).not.toBeUndefined();
+      await act(async () => btn!.click());
+
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      // Nom de fichier client (fixe), pas le patron <logiciel>-<projet>.
+      expect(capturedName).toBe('geoplaque-projet.json');
+      expect(capturedBlob).not.toBeNull();
+      const exported = JSON.parse(await capturedBlob!.text()) as Record<string, unknown>;
+
+      // Bloc project (title = écho `projet` de la saisie, prioritaire sur le nom de projet).
+      expect(exported.project).toEqual({
+        title: 'Radier bâtiment industriel',
+        client: '',
+        ref: '',
+        author: '',
+      });
+      // E REMIS EN kPa (×1000) sur rafts ET layers (l'outil client stocke E en kPa).
+      const rafts = exported.rafts as Array<Record<string, unknown>>;
+      expect(rafts[0].E).toBe(32000 * 1000);
+      expect(rafts[0].e).toBe(0.4); // épaisseur inchangée
+      const layers = exported.layers as Array<Record<string, unknown>>;
+      expect(layers[0].E).toBe(20 * 1000);
+      expect(layers[0].zBase).toBe(-10);
+      // Charges saisies préservées ; `opts` et `projet` RETIRÉS (absents du format client).
+      expect(exported.pointLoads).toEqual([{ x: 1.5, y: 1.5, Fz: 600 }]);
+      expect('opts' in exported).toBe(false);
+      expect('projet' in exported).toBe(false);
+      // ENTRÉES uniquement — aucune sortie moteur.
+      expect(await capturedBlob!.text()).not.toContain('verdict');
+    } finally {
+      clickSpy.mockRestore();
+      URL.createObjectURL = origCreate;
+      URL.revokeObjectURL = origRevoke;
+    }
+  });
 });
 
 describe('CalculsClient — Aperçu de la note avant scellement (filigrané, revue #6)', () => {

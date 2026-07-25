@@ -305,8 +305,15 @@ const LocSchema = z
   .strict()
   .nullable();
 
-/** Pire distorsion entre deux charges voisines (coords = saisie utilisateur). */
-const WorstPairSchema = z
+/**
+ * UN couple de charges voisines (coords = saisie utilisateur ; β/Δs/L = scalaires).
+ * VERIFIE §8 : `p1/p2` sont les coordonnees SAISIES des charges (echo verbatim de
+ * l'entree, jamais snappees sur un nœud) ; `ki/kj` = indices 1-based de charges ;
+ * `beta/ds/L` sont des DIAGNOSTICS scalaires (ds = |tassement_i − tassement_j|, meme
+ * nature que wMax/wMin deja exposes). AUCUN indice interne de graphe (i/j 0-based) ni
+ * localisation de nœud. Element de `loadPairs` (table complete) ET de `worstLoadPair`.
+ */
+const LoadPairSchema = z
   .object({
     /** Distorsion angulaire beta = ds/L (sans dimension). */
     beta: z.number().finite(),
@@ -321,8 +328,10 @@ const WorstPairSchema = z
     p1: LocSchema,
     p2: LocSchema,
   })
-  .strict()
-  .nullable();
+  .strict();
+
+/** Pire distorsion entre deux charges voisines (coords = saisie utilisateur). */
+const WorstPairSchema = LoadPairSchema.nullable();
 
 /**
  * Sortie client-safe du moteur radier : DIAGNOSTICS d'ingenierie uniquement. Aucun
@@ -462,6 +471,17 @@ export const RadierOutputSchema = z
     decolNodes: z.number().int().nullable(),
     /** Pire distorsion entre charges voisines (null si < 2 charges ponctuelles). */
     worstLoadPair: WorstPairSchema,
+    /**
+     * TABLE COMPLETE des couples de charges voisines (task « détails calculs » — écart
+     * de fidélité corrigé : la note client `printReport` liste TOUS les couples voisins,
+     * `d.loadPairs.edges`, pas seulement le pire). §8 TRANCHÉ (décision titulaire +
+     * expert, bénin) : chaque entrée ne porte que des POSITIONS SAISIES (p1/p2) et des
+     * SCALAIRES de diagnostic (β/Δs/L, ki/kj) — même justification que `worstLoadPair`.
+     * Les indices internes de graphe (i/j 0-based), `perLoad` et la topologie de maillage
+     * restent SERVEUR. Triée par β décroissant (déterministe, cf. engine.ts). Optionnelle
+     * (absente si < 2 charges ponctuelles). Bornée (défense en profondeur).
+     */
+    loadPairs: z.array(LoadPairSchema).max(2000).optional(),
     /** Champ de deflexion RE-ECHANTILLONNE pour affichage (grille decouplee du maillage). */
     champDeflexion: HeatmapSchema.optional(),
     /**
