@@ -126,6 +126,34 @@ if $TOUCH_MIG; then
   [ "$fail" -eq 0 ] && record "migrations-destructrices" PASS || record "migrations-destructrices" FAIL
 fi
 
+# --- 5b) Fidélité d'impression + équivalence de note (clone/impression) ------
+# Câble la PREUVE de fidélité au gate (findings adverses) : verify:print (Chromium —
+# prouve l'ABSENCE de pages vierges, non observable en jsdom) + l'équivalence de note
+# (#notePrint clone == référence client, hors date). DÉCLENCHÉE dès qu'un clone, le
+# helper d'impression, le cartouche PV ou leur test change.
+#   ANTI FAUX-VERT (DoD §9) : la suite d'équivalence fait `return;` (vert à vide) quand
+#   la source client gelée (03-Moteurs-client/, HORS dépôt) est absente. Ici on REFUSE
+#   ce silence EN LOCAL : source absente -> FAIL DUR (« source client requise pour la
+#   preuve de fidélité »). EN CI (source absente par construction), on ANNONCE un SKIP
+#   toléré et documenté (la preuve tourne en local avant merge, où la source existe).
+if has 'tools-cloned/|scripts/clone-tool\.mjs|print-inert-html|clone-render\.test|warnings-leak\.test|pv-document-chrome|verify-print-layout'; then
+  echo ">>> [fidélité-impression] changement de clone/impression détecté"
+  SRC_AVAIL="$(npx tsx "$ROOT/scripts/frozen-sources-available.mts" 2>/dev/null)"
+  if [ "$SRC_AVAIL" != "yes" ]; then
+    if [ -n "${CI:-}" ]; then
+      echo "<<< [fidélité-impression] SKIP-CI toléré : source client gelée (03-Moteurs-client/) absente PAR CONSTRUCTION en CI. La preuve d'équivalence est FORCÉE en LOCAL avant merge (où la source existe)."
+      record "fidélité-impression (verify:print + équivalence)" SKIP-CI
+    else
+      echo "<<< [fidélité-impression] FAIL — source client gelée (03-Moteurs-client/) ABSENTE EN LOCAL : preuve de fidélité (note scellée == référence) impossible. Récupérer la source client avant merge (sauté ≠ réussi, DoD §9)."
+      record "fidélité-impression (verify:print + équivalence)" FAIL
+    fi
+  else
+    run "verify:print (Chromium — pas de pages vierges)" $PNPM verify:print
+    run "équivalence note (#notePrint clone == référence, §8)" \
+      $PNPM --filter @roadsen/engines test src/terzaghi/clone-render.test.ts src/terzaghi/warnings-leak.test.ts
+  fi
+fi
+
 # --- 6) e2e frontend Playwright (complet uniquement) -----------------
 if [ "$FAST" = false ]; then
   if ls "$WEB"/playwright.config.* >/dev/null 2>&1 || find "$WEB" -path '*e2e*' -name '*.spec.ts' 2>/dev/null | grep -q .; then

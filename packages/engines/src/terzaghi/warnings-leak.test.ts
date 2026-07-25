@@ -143,4 +143,26 @@ describe('MAJEUR-1 — pas de fuite d intermediaire confidentiel par les warning
       'Sondage limité à 13,5 m : modules E9 à E16 supposés ... (H.2.1.2.6).';
     expect(redactConfidentialWarnings([profondeur])[0]).toBe(profondeur);
   });
+
+  it('EXPOSITION (decision science+titulaire) : la borne D + 2,5·B N EST PLUS masquee', () => {
+    // Faux positif fail-closed CORRIGE : « 2,5·B » -> normalise « 25b », desormais dans
+    // l allowlist BENIGNE (D, B = entrees ; 2,5 = constante NF P 94-261 annexe H). La
+    // VALEUR de la zone d influence (D + 2,5·B) est exposable -> plus de marqueur de
+    // redaction, la valeur en clair est conservee.
+    const warn =
+      'Sondage très court (13,5 m &lt; D + 2,5·B = 19,5 m) : modules profonds extrapolés — tassement indicatif (H.2.1.2.7).';
+    const propre = redactConfidentialWarning(warn);
+    expect(propre, 'la borne D+2,5·B ne doit plus etre masquee').not.toContain(
+      'valeur confidentielle masquee',
+    );
+    expect(propre, 'la valeur 19,5 m doit rester en clair').toContain('2,5·B = 19,5 m');
+    // GARDE anti sur-exposition : ple*/qce restent masques dans le MEME appel (allowlist
+    // stricte, pas d ouverture generale).
+    expect(redactConfidentialWarning('p<sub>le</sub>* = 0,15 MPa faible')).toContain(
+      'valeur confidentielle masquee',
+    );
+    expect(redactConfidentialWarning('qce = 1,1 MPa')).toContain(
+      'valeur confidentielle masquee',
+    );
+  });
 });

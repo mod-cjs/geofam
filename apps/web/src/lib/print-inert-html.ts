@@ -28,11 +28,21 @@ export function printInertHtml(html: string): void {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('sandbox', 'allow-same-origin allow-modals');
   iframe.setAttribute('aria-hidden', 'true');
+  // CAUSE RACINE des « pages vierges » (corrigée) : une iframe `width:0` donne un bloc
+  // conteneur initial de 0 px au document imprimé. Un document dont la largeur n'est que
+  // `max-width` (sans `width`) — cas de la note Terzaghi (.note{max-width:860px}), et
+  // potentiellement d'autres moteurs sans largeur explicite (roadsens, fastlab…) —
+  // s'effondre alors à 0 : le texte s'enroule sur des milliers de px, générant une
+  // dizaine de colonnes fines quasi vides à l'impression. On donne à l'iframe une VRAIE
+  // largeur de page A4 (210mm), positionnée HORS ÉCRAN (`left:-10000px`) plutôt que
+  // `width:0` : le layout d'impression dispose d'un bloc conteneur plein, quel que soit
+  // le document. `visibility:hidden` + hors-flux conservent l'invisibilité à l'écran ; la
+  // sandbox (sans `allow-scripts`) est inchangée.
   iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
+  iframe.style.left = '-10000px';
+  iframe.style.top = '0';
+  iframe.style.width = '210mm';
+  iframe.style.height = '297mm';
   iframe.style.border = 'none';
   iframe.style.visibility = 'hidden';
 

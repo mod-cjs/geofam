@@ -453,6 +453,15 @@ export const TerzaghiOutputSchema = z
     /** Regime d'encastrement classifie (annexe C), si determinable. */
     regime: z.enum(['superficielle', 'semi-profonde']).optional(),
     /**
+     * Profondeur (m/TN) de DEMARRAGE de l'integration de D_e (annexe H) : borne
+     * d'affichage de la note « D_e integre depuis le premier essai a <deFrom> m ».
+     * SCALAIRE de profondeur = min(z du premier essai a pl*>0, encastrement D) —
+     * derive UNIQUEMENT des ENTREES deja affichees (z de sondage, D). On expose la
+     * VALEUR, jamais le schema d'integration (le calcul `deStart` reste SERVEUR,
+     * excise du clone). Elargissement §8 autorise (decision science + titulaire).
+     */
+    deFrom: z.number().finite().optional(),
+    /**
      * Contraintes au niveau de la base — grandeurs d'OVERBURDEN elementaires
      * AFFICHEES par la note de calcul (§2 « Contraintes au niveau de la base ») :
      * u (pression interstitielle), q_0 = γ_ap·D (totale, apres travaux), σ'_v0 =

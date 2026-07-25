@@ -90,6 +90,11 @@ const BENIGN_VALUE_LABELS: ReadonlySet<string> = new Set([
   'l',
   'd',
   'lb', // semelle : largeur B, longueur L, encastrement D, ratio L/B
+  // Borne de zone d'influence D + 2,5·B (annexe H) : etiquette « 2,5·B » -> « 25b ».
+  // BENIGNE : D et B sont des ENTREES deja affichees, 2,5 une constante publiee
+  // (NF P 94-261 annexe H) -> la profondeur d'influence est exposable (faux positif
+  // fail-closed corrige : l'avertissement « Sondage tres court » masquait « = 19,5 m »).
+  '25b',
 ]);
 
 /** Normalise une etiquette : minuscule + non-alphanumeriques retires. Les labels
@@ -210,6 +215,7 @@ function shapeOutput(
     cases?: unknown[];
     ctx?: {
       regime?: unknown;
+      deFrom?: unknown;
       u?: unknown;
       q0?: unknown;
       sv0?: unknown;
@@ -249,6 +255,16 @@ function shapeOutput(
   const regime = R.ctx?.regime;
   if (regime === 'superficielle' || regime === 'semi-profonde') {
     out.regime = regime;
+  }
+
+  // --- Profondeur de demarrage de l'integration D_e (annexe H) ---
+  // SCALAIRE de profondeur (min(premier essai pl*>0, D)), derive des ENTREES : on
+  // expose la VALEUR affichee par la note (« D_e integre depuis le premier essai a
+  // <deFrom> m »), le calcul `deStart` restant SERVEUR (excise du clone). Emis
+  // seulement s'il est > 0 (la note ne l'affiche pas sinon — parite avec l'origine).
+  const deFrom = R.ctx?.deFrom;
+  if (fin(deFrom) && (deFrom as number) > 0) {
+    out.deFrom = deFrom;
   }
 
   // --- Contraintes de base (overburden affiche par la note §2) ---

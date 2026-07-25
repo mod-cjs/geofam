@@ -356,17 +356,36 @@ d('terzaghi — fidelite du clone excise (mapping serveur -> renderers conserves
       '<figure class="coupe-print',
     );
     expect(printHtml, 'SVG de coupe absent du printHtml').toMatch(/<svg/i);
+    // DEFAUT 3 (anti-pages-vierges) — SENTINELLE (defense en profondeur) : le document
+    // imprimable fixe une LARGEUR de contenu definie sur #notePrint (174mm = 210mm - 2x12mm
+    // de marge @page - 2x6mm de #printArea{padding:0 6mm}, cf. terzaghi_V13.html:251/258).
+    // Sans largeur, .note (max-width:860px SANS width) s effondre a 0 dans un bloc conteneur
+    // de 0px -> texte enroule sur ~17000px -> colonnes fines quasi vides = « pages vierges ».
+    // La preuve NAVIGATEUR (comptage de pages en vrai Chromium) est dans clone-print.pw.test —
+    // ce test jsdom ne prouve QUE la presence de la regle, pas le layout.
+    expect(
+      printHtml,
+      'largeur de contenu fixe absente du document imprimable (defaut 3 — pages blanches)',
+    ).toContain(
+      '#notePrint{display:block !important;width:174mm;max-width:none;margin:0 auto}',
+    );
 
-    // displayHtml = aperçu de la note consultable (#noteView), SANS la figure de coupe.
+    // displayHtml = aperçu COMPLET (coupe + note), fidele au livrable client (#notePrint).
     expect(displayHtml.length, 'displayHtml capture vide').toBeGreaterThan(500);
     expect(displayHtml, 'displayHtml non auto-contenu').toContain('<!doctype html>');
     expect(displayHtml, 'note absente du displayHtml').toContain('note de calcul');
-    // On cible l ELEMENT figure : la regle CSS .coupe-print reste inline (styles agreges),
-    // mais AUCUNE figure de coupe ne doit apparaitre dans le corps de l apercu de la note.
+    // DEFAUT 1 — l aperçu doit INCLURE la coupe (figure SVG), comme la note client complete.
     expect(
       displayHtml,
-      'la figure de coupe ne doit PAS etre dans l apercu de la note',
-    ).not.toContain('<figure class="coupe-print');
+      'figure de coupe absente de l apercu (defaut 1 — graphique manquant)',
+    ).toContain('<figure class="coupe-print');
+    expect(displayHtml, 'SVG de coupe absent de l apercu (defaut 1)').toMatch(/<svg/i);
+    // DEFAUT 2 — contenu centré : la regle de centrage de la note est presente dans le CSS
+    // serialise de l aperçu (regle distinctive, absente de l outil d origine).
+    expect(
+      displayHtml,
+      'centrage de la note absent de l apercu (defaut 2 — contenu non centre)',
+    ).toContain('.note{margin:0 auto}');
 
     dom.window.close();
   });
@@ -435,6 +454,79 @@ d('terzaghi — fidelite du clone excise (mapping serveur -> renderers conserves
     expect(note + verifs, 'la note d erreur n a pas ete rendue').toContain('B doit être');
 
     dom.window.close();
+  });
+
+  it('EQUIVALENCE NOTE : #notePrint clone == reference client (l objet SCELLE, date + deFrom §8 normalises)', async () => {
+    // L equivalence clone<->reference existante ne couvre que le DEROULE (#tab-verifs) ;
+    // l objet REELLEMENT scelle est #notePrint (buildNote + coupe). Ce test compare la note
+    // COMPLETE clone vs reference client : il attrape toute section (tableau, verdict,
+    // synthese) qui serait tronquee par la whitelist serveur.
+    if (!terzaghiSourceAvailable()) {
+      // eslint-disable-next-line no-console
+      console.warn('[clone-render] SKIP equivalence note : source gelee absente (CI).');
+      return;
+    }
+    const fx = TERZAGHI_FIXTURES.find((f) => f.id === 'nominal-pressio-rect');
+    expect(fx).toBeDefined();
+    if (!fx) return;
+    const env = runTerzaghi(fx.input);
+    expect(env.ok).toBe(true);
+    if (!env.ok) return;
+
+    const refDom = await renderReferenceWith(fx.input);
+    const cloneDom = await renderCloneWith(fx.input, env.output);
+    const refNote = refDom.window.document.getElementById('notePrint')?.innerHTML ?? '';
+    const cloneNote =
+      cloneDom.window.document.getElementById('notePrint')?.innerHTML ?? '';
+
+    // Garde anti faux-vert : la reference a bien rendu une note COMPLETE.
+    expect(refNote.length, 'reference sans note (rendu casse ?)').toBeGreaterThan(5000);
+    expect(refNote, 'reference sans synthese').toContain('Synthèse');
+    expect(refNote, 'reference sans verdict de portance').toMatch(/VÉRIFIÉE|portance/);
+
+    // ZERO ECART (decision titulaire + expert : les DEUX valeurs autrefois masquees sont
+    // desormais EXPOSEES). On PROUVE l exposition des deux cotes (anti-vacuite) :
+    //  (a) annotation « De integre depuis le premier essai à … » (deFrom emis par le serveur,
+    //      whitelist ; deStart reste excise) -> PRESENTE dans le clone ET la reference.
+    expect(refNote, 'annotation deFrom absente de la reference').toContain(
+      'intégré depuis le premier essai',
+    );
+    expect(
+      cloneNote,
+      'annotation deFrom NON restauree dans le clone (exposition ratee)',
+    ).toContain('intégré depuis le premier essai');
+    //  (b) borne d influence D + 2,5·B (sur-redaction §8 corrigee) -> valeur EN CLAIR des deux
+    //      cotes, plus AUCUN marqueur de redaction dans le clone.
+    expect(cloneNote, 'valeur D+2,5·B non exposee dans le clone').toMatch(
+      /2,5·B\s*=\s*\d/,
+    );
+    expect(refNote, 'valeur D+2,5·B absente de la reference').toMatch(/2,5·B\s*=\s*\d/);
+    expect(
+      cloneNote,
+      'marqueur de redaction §8 encore present (sur-redaction non corrigee)',
+    ).not.toContain('valeur confidentielle masquee');
+
+    // SEULE normalisation toleree = la DATE (new Date() du jour, propriete de la source
+    // client). Toute AUTRE divergence (tableau/verdict/section/valeur) fait echouer.
+    const norm = (h: string): string =>
+      h
+        .replace(/\d{1,2}\s+[a-zà-ÿA-ZÀ-Ÿ]+\s+20\d{2}/g, 'DATE')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    // Sanity du comparateur (non vacue) : une mutation d une valeur DOIT casser l egalite.
+    expect(
+      norm(cloneNote.replace(/2,5·B = [\d ,]+ m/, '2,5·B = 999 m')),
+      'comparateur vacue : une divergence injectee ne rougit pas',
+    ).not.toEqual(norm(refNote));
+
+    // ZERO ECART : note scellee clone == note reference client (date exceptee).
+    expect(norm(cloneNote), 'ECART note scellee clone <-> reference (hors date)').toEqual(
+      norm(refNote),
+    );
+
+    refDom.window.close();
+    cloneDom.window.close();
   });
 
   it('DETERMINISME : deux captures pour la MEME sortie serveur sont IDENTIQUES (haut hachable/scellable)', async () => {

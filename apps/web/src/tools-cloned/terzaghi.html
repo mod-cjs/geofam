@@ -750,6 +750,7 @@ function buildCtxFromState(S, output){
   var labo=(S.essai==="labo");
   var cb=(output&&output.contraintesBase)||{};
   var rd=(output&&output.raideurs&&typeof output.raideurs==="object")?output.raideurs:null;
+  var crf=(output&&output.capaciteReference&&output.capaciteReference.ok)?output.capaciteReference:null;
   return {
     forme:S.forme, B:B, L:L, D:D, essai:S.essai, labo:labo, cat:S.solCat,
     c:num(S.c), phi:num(S.phi), gAv:num(S.gAvant), gAp:num(S.gApres),
@@ -760,7 +761,9 @@ function buildCtxFromState(S, output){
     regime:(output&&output.regime)||undefined,
     raid: rd,
     u:Number.isFinite(cb.u)?cb.u:NaN, q0:Number.isFinite(cb.q0)?cb.q0:NaN, sv0:Number.isFinite(cb.sv0)?cb.sv0:NaN,
-    DeBref:NaN, deFrom:0
+    DeRef:(crf&&Number.isFinite(crf.De))?crf.De:NaN,
+    DeBref:(crf&&Number.isFinite(crf.DeB))?crf.DeB:NaN,
+    deFrom:(output&&Number.isFinite(output.deFrom))?output.deFrom:0
   };
 }
 
@@ -886,10 +889,20 @@ function __terzaghiCollectStyles(){
    recalc : coupeFigure(coupeSvg)+note), avec TOUT le CSS de l outil inline. Les regles de
    la coupe (.coupe-print…) vivent dans @media print : on les PROMEUT a l ecran pour que le
    document reste CONSULTABLE (apercu de la note) tout en restant fidele a l impression
-   (les regles @media print d origine sont conservees telles quelles). */
+   (les regles @media print d origine sont conservees telles quelles).
+   LARGEUR A4 FIXE (defaut de fidelite corrige) : ce document est imprime par printInertHtml
+   via une iframe 0x0 visibility:hidden -> innerWidth=0. Or .note ne porte que max-width:860px
+   (SANS largeur) : dans un bloc conteneur de 0 px elle s effondre a 0, le texte s enroule sur
+   ~17000 px et genere une quinzaine de colonnes fines quasi vides = « pages vierges ». Le
+   moteur client, lui, imprime dans une fenetre pleine (bloc conteneur = page A4) : pas
+   d effondrement. On restitue ce comportement en fixant #notePrint a la LARGEUR DE CONTENU
+   du client : 210mm (A4) - 2x12mm de marge @page (l.258) - 2x6mm de #printArea{padding:0 6mm}
+   (l.251) = 174mm, centre. Reproduit les MEMES coupures de lignes que l impression client
+   (defense en profondeur : le document scelle porte sa propre geometrie ; le helper
+   printInertHtml donne par ailleurs une vraie largeur de page a l iframe). */
 function __terzaghiSerializePrintable(){
   var styles=__terzaghiCollectStyles();
-  styles += "\n#notePrint{display:block !important}\n"
+  styles += "\n#notePrint{display:block !important;width:174mm;max-width:none;margin:0 auto}\n"
     + ".coupe-print{margin:0 0 16px;break-inside:avoid}\n"
     + ".coupe-print-title{font-weight:600;font-size:12px;margin-bottom:6px;color:#232E33}\n"
     + ".coupe-print svg{display:block;width:100%;max-width:540px;height:auto;margin:0 auto}\n"
@@ -902,25 +915,38 @@ function __terzaghiSerializePrintable(){
     + np
     + "</body></html>";
 }
-/* APERCU auto-contenu de la note consultable (#noteView, l onglet « Note de calcul »),
-   pour l iframe du panneau de detail. Meme patron : CSS agrege + enveloppe <!doctype>
-   (sans quoi l outerHTML nu de #noteView perd ses styles — var(--…) non definies dans l
-   iframe sandbox de l onglet Calculs). BORNE a la note (pas de coupe) : c est le
-   displayHtml. */
+/* APERCU auto-contenu du LIVRABLE COMPLET (coupe SVG + note), pour l iframe du panneau
+   de detail (onglet « Calculs »). FIDELITE (defaut corrige) : la note client complete =
+   coupe + note (comme #notePrint = coupeFigure(coupeSvg)+note), pas la seule note. On
+   capture donc #notePrint (et non #noteView), et on PROMEUT les regles de coupe (qui
+   vivent dans @media print d origine) a l ecran. Meme patron : CSS agrege + enveloppe
+   <!doctype> (sans quoi l outerHTML nu perd ses styles — var(--…) non definies dans l
+   iframe sandbox de l onglet Calculs).
+   CENTRAGE (defaut corrige) : le CSS d origine .note{max-width:860px} n a PAS de
+   margin:0 auto -> colle a gauche dans l iframe d apercu. On centre la note (et le bloc
+   #notePrint) en restant RESPONSIVE (l apercu a une largeur reelle, pas d effondrement
+   0-largeur ici — c est le PRINT qui fixe 186mm). */
 function __terzaghiSerializeDisplay(){
   var styles=__terzaghiCollectStyles();
-  styles += "\n#noteView{display:block !important}\n";
-  var nv=__terzaghiCloneClean(document.getElementById("noteView"));
+  styles += "\n#notePrint{display:block !important;max-width:900px;margin:0 auto}\n"
+    + ".note{margin:0 auto}\n"
+    + "body{padding:16px}\n"
+    + ".coupe-print{margin:0 0 16px}\n"
+    + ".coupe-print-title{font-weight:600;font-size:12px;margin-bottom:6px;color:#232E33}\n"
+    + ".coupe-print svg{display:block;width:100%;max-width:540px;height:auto;margin:0 auto}\n"
+    + ".coupe-print .legend{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:6px;font-size:10px}\n";
+  var np=__terzaghiCloneClean(document.getElementById("notePrint"));
   return "<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\">"
     + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
     + "<title>Terzaghi \u2014 Aper\u00e7u de la note</title>"
     + "<style>" + styles + "</style></head><body>"
-    + nv
+    + np
     + "</body></html>";
 }
-/* Emet snapshot:capture APRES le rendu (jamais avant). displayHtml = note consultable
-   (#noteView, stylee) ; printHtml = document imprimable auto-contenu (#notePrint = coupe
-   + note). Garde : ne fait rien si le pont n expose pas snapshot. */
+/* Emet snapshot:capture APRES le rendu (jamais avant). displayHtml = aperçu du livrable
+   complet (#notePrint = coupe + note, stylé ecran centre) ; printHtml = document
+   imprimable auto-contenu (#notePrint = coupe + note, largeur A4 fixe). Garde : ne fait
+   rien si le pont n expose pas snapshot. */
 function __terzaghiCaptureSnapshot(){
   try{
     if(!window.__geofamBridge || typeof window.__geofamBridge.snapshot!=="function") return;
