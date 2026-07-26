@@ -111,11 +111,12 @@ const TAUX_NON_REPRIS = 1e9;
  *     facteur litteral — couverts par B (expose) et Rₛ (symbole, pas une valeur
  *     calculee de methode). Voir le test « NE touche PAS ».
  *
- * --- CEINTURE + BRETELLES ---
- * On CONSERVE en complement la liste d'intermediaires de METHODE connus
- * (`KNOWN_CONFIDENTIAL_LABELS`) — purement redondante avec le fail-closed, mais elle
- * documente les cibles et sert de filet si l'allowlist devait un jour s'elargir par
- * erreur. La barriere PRIMAIRE reste l'allowlist fail-closed.
+ * --- BARRIERE UNIQUE : l'allowlist fail-closed ---
+ * La SEULE barriere active est `BENIGN_VALUE_LABELS` (allowlist ci-dessous). Il existe
+ * aussi une constante `KNOWN_CONFIDENTIAL_LABELS` PUREMENT DOCUMENTAIRE (referencee par
+ * un `void`, JAMAIS lue par `redactConfidentialWarning`) : elle liste, a titre de note,
+ * les intermediaires de methode NON affiches qui doivent rester masques. Elle n'a AUCUN
+ * effet a l'execution — ne pas la prendre pour un filet.
  *
  * --- HARMONISATION (suivi) ---
  * Les 3 autres moteurs (terzaghi/burmister/pressiometre) partagent encore l'ANCIEN
@@ -156,6 +157,28 @@ const BENIGN_VALUE_LABELS: ReadonlySet<string> = new Set([
   'hsol',
   'z0',
   'z',
+  // --- HARMONISATION §8 (politique titulaire 26/07 « on expose ce que l'outil client
+  //     AFFICHE ») : ces grandeurs figurent DEJA dans la sortie structuree whitelistee
+  //     (display-only : qb/ple/qce/kfac(kp,kc)/kmax/Def/Ce + qs/qsm par couche). La
+  //     barriere de redaction DOIT etre coherente avec la whitelist : une meme grandeur
+  //     ne peut etre exposee comme cle structuree ET masquee dans un message. On les
+  //     rend donc benignes ICI aussi. FAIL-CLOSED PRESERVE : on n'ajoute QUE ces
+  //     etiquettes precises (affichees par le client) ; tout autre intermediaire non
+  //     affiche reste masque (sentinelle inconnue -> caviardee). Le seul warning moteur
+  //     concerne est « Cₑ = <n> » (effet de groupe), desormais coherent avec la synthese.
+  'qb',
+  'ple', // normalise « p*le »
+  'qce',
+  'kp',
+  'kc',
+  'kfac',
+  'kmax',
+  'def', // normalise « Def »
+  'debr', // normalise « debR »
+  'defb', // normalise « Def/B » (rapport d'encastrement affiche)
+  'ce', // normalise « Cₑ » — effet de groupe, affiche dans la synthese geometrique
+  'qs',
+  'qsm',
   // NB : on N'ALLOWLISTE PAS les formes NUES rb/rc/rs. Ce sont precisement les
   // resistances BRUTES confidentielles (terme de pointe Rb, total Rc, frottement Rs ;
   // FUITES_INTERDITES) ; seules leurs formes EXPOSEES suffixees (RbK/RsK/RcK/RcD/Rcr*)
@@ -165,30 +188,22 @@ const BENIGN_VALUE_LABELS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * CEINTURE + BRETELLES : intermediaires de METHODE connus (redondant avec le
- * fail-closed ci-dessus, conserve a titre documentaire/filet). NE constitue PAS la
- * barriere primaire.
+ * LISTE DOCUMENTAIRE — NON EXECUTEE. Cette constante n'est LUE nulle part (referencee par
+ * un `void` uniquement) : `redactConfidentialWarning` n'utilise QUE l'allowlist fail-closed
+ * `BENIGN_VALUE_LABELS`. Elle ne sert qu'a NOTER, pour un futur mainteneur, les
+ * intermediaires de methode que l'outil N'AFFICHE PAS et qui doivent donc rester masques —
+ * ici les coefficients α des courbes de frottement (annexes F/G). Ce n'est PAS un filet
+ * actif : la seule barriere est l'allowlist.
+ *
+ * HARMONISATION §8 (26/07) : les grandeurs AFFICHEES par le client (qb/ple/qce/kp/kc/
+ * kfac/kmax/Def/Ce/qs/qsm) ont ete ajoutees a BENIGN_VALUE_LABELS (elles figurent dans la
+ * sortie structuree whitelistee) — elles ne sont donc plus masquees (coherence des deux
+ * lectures de §8).
  */
-const KNOWN_CONFIDENTIAL_LABELS: readonly string[] = [
-  'Cₑ',
-  'Ce',
-  'qb',
-  'ple',
-  'p*le',
-  'qce',
-  'kp',
-  'kc',
-  'kfac',
-  'kmax',
-  'Def',
-  'qs',
-  'qsm',
-  'alpha',
-  'α',
-];
+const KNOWN_CONFIDENTIAL_LABELS: readonly string[] = ['alpha', 'α'];
 
-// Reference inerte : conserve la liste documentaire (ceinture+bretelles) sans
-// declencher no-unused-vars. La barriere primaire est l'allowlist fail-closed.
+// Reference inerte (empeche no-unused-vars) : la constante ci-dessus est purement
+// documentaire — AUCUNE barriere active. La seule barriere = l'allowlist fail-closed.
 void KNOWN_CONFIDENTIAL_LABELS;
 
 /**
@@ -319,6 +334,9 @@ function betonFields(bt: Record<string, unknown> | null): {
   betonTauxELU: number | null;
   betonTauxELS: number | null;
   betonFcd: number | null;
+  betonSigmaELU: number | null;
+  betonSigmaELS: number | null;
+  betonLimELS: number | null;
 } {
   const NULLS = {
     betonApplicable: null,
@@ -327,6 +345,9 @@ function betonFields(bt: Record<string, unknown> | null): {
     betonTauxELU: null,
     betonTauxELS: null,
     betonFcd: null,
+    betonSigmaELU: null,
+    betonSigmaELS: null,
+    betonLimELS: null,
   };
   if (!bt || typeof bt.err === 'string') return NULLS;
   if (bt.na === true) {
@@ -343,6 +364,12 @@ function betonFields(bt: Record<string, unknown> | null): {
     betonTauxELU: fin(bt.tauxELU) ? bt.tauxELU : null,
     betonTauxELS: fin(bt.tauxELS) ? bt.tauxELS : null,
     betonFcd: fin(bt.fcd) ? bt.fcd : null,
+    // Contraintes appliquees + limite ELS : VALEURS AFFICHEES par le tableau beton
+    // (drawBeton) — politique §8 26/07. Les CALAGES (Cmax/k1/k2/fckStar/acc/k3/gc) qui
+    // servent a les calculer restent SERVEUR (non repris ici).
+    betonSigmaELU: fin(bt.sELU) ? bt.sELU : null,
+    betonSigmaELS: fin(bt.sELS) ? bt.sELS : null,
+    betonLimELS: fin(bt.limELS) ? bt.limELS : null,
   };
 }
 
@@ -407,8 +434,12 @@ function resampleSeries(
 function displayScalars(R: Record<string, unknown>): {
   Rb: number | null;
   Rs: number | null;
+  RbD: number | null;
+  RsD: number | null;
   ple: number | null;
   qce: number | null;
+  qb: number | null;
+  qbDetail: string | null;
   kfac: number | null;
   kmax: number | null;
   Def: number | null;
@@ -448,9 +479,17 @@ function displayScalars(R: Record<string, unknown>): {
   return {
     Rb: fin(R.Rb) ? R.Rb : null,
     Rs: fin(R.Rs) ? R.Rs : null,
+    // R_b;d / R_s;d par terme (colonne « Calcul R_d » du tableau Resistances, affichee
+    // par renderResults) : resistances de calcul de la combinaison ELU gouvernante.
+    RbD: fin(R.RbD) ? R.RbD : null,
+    RsD: fin(R.RsD) ? R.RsD : null,
     // p*le : methode pressiometrique uniquement ; qce : penetrometrique uniquement.
     ple: meth === 'pmt' && fin(R.ple) ? R.ple : null,
     qce: meth === 'cpt' && fin(R.qce) ? R.qce : null,
+    // qb (terme de pointe BRUT, kPa) + qbDetail (chaine narrative affichee sous la KPI
+    // R_b) : AFFICHES par l'outil client (politique §8 26/07). qb=0 legitime (micropieu).
+    qb: fin(R.qb) ? R.qb : null,
+    qbDetail: typeof R.qbDetail === 'string' && R.qbDetail ? R.qbDetail : null,
     kfac: fin(R.kfac) ? R.kfac : null,
     // kmax (kp,max/kc,max) : pas de plafond tabule en c-φ (Nq), donc null.
     kmax: meth !== 'cphi' && fin(R.kmax) && (R.kmax as number) > 0 ? R.kmax : null,
@@ -468,8 +507,12 @@ function displayScalars(R: Record<string, unknown>): {
 const DISPLAY_NULLS = {
   Rb: null,
   Rs: null,
+  RbD: null,
+  RsD: null,
   ple: null,
   qce: null,
+  qb: null,
+  qbDetail: null,
   kfac: null,
   kmax: null,
   Def: null,
@@ -535,9 +578,7 @@ function profilsDowndragField(dd: Record<string, unknown> | null): {
 }
 
 /** courbePortance re-echantillonnee depuis le balayage brut. null si non traçable. */
-function courbePortanceField(
-  portanceRaw: Record<string, unknown> | null,
-): {
+function courbePortanceField(portanceRaw: Record<string, unknown> | null): {
   rows: Array<{
     D: number;
     elufond: number;

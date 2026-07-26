@@ -401,6 +401,46 @@ describe('CalculsClient — Exporter (JSON) : livrable « Exporter » de l’out
     expect(findButtonByText('Voir le PV scellé')).not.toBeUndefined();
     expect(findButtonByText('Imprimer')).not.toBeUndefined();
   });
+
+  // CASAGRANDE (pieux) — décision titulaire : l'outil client n'a PAS de bouton
+  // « Exporter .json » (seulement « ⎙ Imprimer la note ») → PAS d'export/import JSON.
+  // Le bouton « Exporter (JSON) » ne doit PAS apparaître pour un calcul pieux.
+  const CALC_CASAGRANDE: CalcResult = {
+    ...CALC,
+    id: 'calc_cg',
+    engineId: 'fondation-profonde-pieux',
+    label: 'Pieu P1 — pressiométrique',
+    output: { allOk: true },
+    params: { projet: 'Ouvrage A', meth: 'pmt' },
+  };
+
+  it('given un calcul CASAGRANDE (pieux) avec document capturé, when la barre d’actions est rendue, then AUCUN bouton « Exporter (JSON) » (hors périmètre) mais « Aperçu de la note » + « Sceller cette version » présents', async () => {
+    mockListCalcResults.mockResolvedValue([CALC_CASAGRANDE]);
+    mockGetCalcSnapshot.mockResolvedValue({
+      displayHtml: '<!doctype html><html><body>Note CASAGRANDE</body></html>',
+      printHtml: '<!doctype html><html><body>Note CASAGRANDE</body></html>',
+    });
+    mockGetProjectCached.mockResolvedValue({ name: 'Projet Pieux' });
+
+    await renderCalculs();
+    expect(
+      findButtonByText('Exporter (JSON)'),
+      'Exporter proposé pour pieux',
+    ).toBeUndefined();
+    expect(findButtonByText('Aperçu de la note')).not.toBeUndefined();
+    expect(findButtonByText('Sceller cette version')).not.toBeUndefined();
+  });
+
+  it('given un calcul CASAGRANDE (pieux) DÉJÀ scellé, when la barre d’actions est rendue, then « Voir le PV scellé » + « Imprimer » sans « Exporter (JSON) »', async () => {
+    mockListCalcResults.mockResolvedValue([{ ...CALC_CASAGRANDE, pvId: 'pv_cg' }]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    mockGetProjectCached.mockResolvedValue({ name: 'Projet Pieux' });
+
+    await renderCalculs();
+    expect(findButtonByText('Exporter (JSON)')).toBeUndefined();
+    expect(findButtonByText('Voir le PV scellé')).not.toBeUndefined();
+    expect(findButtonByText('Imprimer')).not.toBeUndefined();
+  });
 });
 
 describe('CalculsClient — Aperçu de la note avant scellement (filigrané, revue #6)', () => {

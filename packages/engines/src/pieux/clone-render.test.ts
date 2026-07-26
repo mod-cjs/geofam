@@ -19,6 +19,8 @@
  * jsdom n'implemente pas le canvas 2D : sans objet ici (les figures pieux sont en SVG,
  * rendues en innerHTML). Skip BRUYANT si le clone est absent.
  */
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,7 +39,12 @@ import { runPieux } from './index.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // packages/engines/src/pieux -> 05-Plateforme (4 niveaux).
+const REPO = resolve(HERE, '../../../..');
 const CLONE_PATH = resolve(HERE, '../../../../apps/web/src/tools-cloned/casagrande.html');
+// Reference GELEE (meme fichier que la generation du clone) — arbitre clone<->client.
+const REF_PATH = resolve(HERE, '../../reference/casagrande_V5.html');
+// sha256 scelle au registre (fondation-profonde-pieux) — cf. TOOLS.casagrande.expectedSha256.
+const REF_SHA256 = '54c5d7d4cfd0d88998b26010335c888b9361163e0eb2825814f0c6430e4d86b0';
 
 type Win = {
   document: Document;
@@ -227,8 +234,14 @@ d(
         const f0 = out.fric[0]!;
         expect(rc).toContain(fmt(f0.top, 1) + ' – ' + fmt(f0.bot, 1));
       }
-      // 6. RÉSIDUS ENCORE FERMÉS : R_d PAR TERME (RbD/RsD) hors whitelist -> « — » présent.
-      //    Aucun symbole MOTEUR brut (underscore) ne fuit malgré l'affichage détaillé.
+      // 6. OUVERTURE §8 (26/07) : R_d PAR TERME (RbD/RsD, colonne « Calcul R_d ») DÉSORMAIS
+      //    affichés avec les valeurs serveur (plus de « — » divergent). RbD+RsD ≈ RcD total.
+      expect(out.RbD, 'PMT compression -> RbD servi').not.toBeNull();
+      expect(out.RsD, 'PMT compression -> RsD servi').not.toBeNull();
+      if (out.RbD != null) expect(rc).toContain('<td class="r">' + fmt(out.RbD, 0));
+      if (out.RsD != null) expect(rc).toContain('<td class="r">' + fmt(out.RsD, 0));
+      // Le seul « — » légitime restant = la cellule R_d de la ligne « Charge fluage »
+      // (identique au client, l.1354). Aucun symbole MOTEUR brut (underscore) ne fuit.
       expect(rc).toContain('—');
       expect(rc).not.toContain('p_le');
       expect(rc).not.toContain('q_ce');
@@ -430,6 +443,349 @@ d(
         /\bKP_MAX\b|\bKC_MAX\b|\bALPHA_PMT\b|\bQSMAX\b|\bPMT_CURVE\b/,
       );
       expect(html).not.toContain('__ROADSEN_ENGINE_CONFIDENTIAL_DO_NOT_SHIP__');
+    });
+  },
+);
+
+// ===========================================================================
+// CAPTURE OPTION-3 (snapshot:capture) — le pont CASAGRANDE scelle le DOCUMENT
+// (la NOTE que « ⎙ Imprimer la note » produirait : tous les .tabpane, via @media
+// print) APRES un calcul de portance REUSSI (garde §5). §8 (politique 26/07) : la
+// note ne porte que des valeurs AFFICHEES par l'outil (rendues depuis la sortie
+// serveur whitelistee) ; toutes les figures sont des <svg> INLINE (aucune
+// rasterisation), l'HTML est INERTE. ZERO FAUX-VERT : sans le cablage (snapshot /
+// __casagrandeCaptureSnapshot / appel en fin de compute), `caps` reste vide -> ECHEC.
+// ===========================================================================
+
+type Cap = { displayHtml: string; printHtml: string };
+
+/** Passe un HTML dans la VRAIE garde §8 serveur (assertInertHtml) via le runner
+ *  scripts/assert-inert-run.mts — jamais une copie des regles. Sur octets REELS. */
+function guardInert(html: string): { ok: boolean; error?: string } {
+  const raw = execFileSync('npx', ['tsx', 'scripts/assert-inert-run.mts'], {
+    input: html,
+    cwd: REPO,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  return JSON.parse(raw) as { ok: boolean; error?: string };
+}
+
+/** Boote le clone avec un pont CAPTEUR (calc + snapshot), pilote un calcul de
+ *  portance, renvoie les captures emises + la fenetre. */
+async function captureNote(
+  input: PieuxInput,
+  output: unknown,
+): Promise<{ caps: Cap[]; win: Win }> {
+  const { win } = await bootClone();
+  const caps: Cap[] = [];
+  win.__geofamBridge = {
+    calc: () => Promise.resolve({ ok: true, calcResultId: 'cap-cg-1', output }),
+    emitPv: () => undefined,
+    snapshot: (displayHtml: string, printHtml: string) =>
+      caps.push({
+        displayHtml: String(displayHtml || ''),
+        printHtml: String(printHtml || ''),
+      }),
+    context: () => ({}),
+  };
+  setPieuxState(win, input);
+  await (win.eval('compute()') as Promise<unknown>);
+  await new Promise((r) => setTimeout(r, 15));
+  return { caps, win };
+}
+
+/** Transformee EXACTE de drawSettle (clone) : chaine `d` du <path> de #settle-svg.
+ *  Reproduit W/H/marges + X(F)/Y(s) a l'identique -> arbitre point par point. */
+function settlePathD(
+  pts: Array<{ F: number; s: number }>,
+  Fmax: number,
+  sEls: number,
+): string {
+  const W = 420,
+    H = 300,
+    mL = 52,
+    mR = 16,
+    mT = 14,
+    mB = 40;
+  const arrS = pts.map((p) => p.s).concat([sEls]);
+  const maxS = Math.max(...arrS) * 1.1 || 10;
+  const X = (f: number): number => mL + (f / Fmax) * (W - mL - mR);
+  const Y = (ss: number): number => mT + (ss / maxS) * (H - mT - mB);
+  return pts.map((p, k) => (k ? 'L' : 'M') + X(p.F) + ' ' + Y(p.s)).join(' ');
+}
+
+/** Extrait la chaine `d` du <path> de #settle-svg dans un HTML capture. */
+function settlePathFrom(html: string): string {
+  const i = html.indexOf('id="settle-svg"');
+  if (i < 0) return '';
+  const p = html.indexOf('<path d="', i);
+  if (p < 0) return '';
+  const start = p + '<path d="'.length;
+  const end = html.indexOf('"', start);
+  return end < 0 ? '' : html.slice(start, end);
+}
+
+/** Rend la NOTE de REFERENCE du HTML client GELE : boote la source (science REELLE,
+ *  non excisee), pilote via setPieuxState + compute() LOCAL, lit res-content + la liste
+ *  des .tabpane. ARBITRE d'equivalence : ce que le client aurait imprime. */
+function renderReferenceNote(input: PieuxInput): {
+  resContent: string;
+  tabIds: string[];
+} {
+  const buf = readFileSync(REF_PATH);
+  const actualSha = createHash('sha256').update(buf).digest('hex');
+  // Le HTML teste DOIT etre la version scellee au registre (echec DUR, jamais un skip).
+  expect(actualSha, 'SHA-256 reference casagrande != registre (version divergente)').toBe(
+    REF_SHA256,
+  );
+  const vc = new VirtualConsole();
+  vc.on('jsdomError', () => {});
+  const dom = new JSDOM(buf.toString('utf8'), {
+    runScripts: 'dangerously',
+    pretendToBeVisual: true,
+    virtualConsole: vc,
+  });
+  const win = dom.window as unknown as Win;
+  win.dispatchEvent(new win.Event('load'));
+  setPieuxState(win, input);
+  win.eval('compute()'); // science REELLE, synchrone
+  const doc = dom.window.document;
+  const resContent = doc.getElementById('res-content')?.innerHTML ?? '';
+  const tabIds = Array.from(doc.querySelectorAll('.tabpane'))
+    .map((t) => (t as HTMLElement).id)
+    .filter(Boolean)
+    .sort();
+  dom.window.close();
+  return { resContent, tabIds };
+}
+
+const refAvailable = existsSync(REF_PATH);
+const dCap = hasClone && refAvailable ? describe : describe.skip;
+if (hasClone && !refAvailable) {
+  // eslint-disable-next-line no-console
+  console.warn(`[clone-render] capture SKIP : reference gelee absente (${REF_PATH}).`);
+}
+
+dCap(
+  'casagrande — capture option-3 de la note (§8 inerte, garde §5, equivalence, courbe SVG)',
+  () => {
+    const pmtFx = PIEUX_FIXTURES.find((f) => f.input.meth === 'pmt')!;
+
+    it('given un calcul de portance REUSSI, when compute() se termine, then le pont emet snapshot:capture (display + print) NON vide et auto-contenu', async () => {
+      const env = runPieux(pmtFx.input);
+      expect(env.ok).toBe(true);
+      if (!env.ok) return;
+      const { caps, win } = await captureNote(pmtFx.input, env.output);
+      expect(
+        caps.length,
+        'aucune capture emise (cablage snapshot absent ?)',
+      ).toBeGreaterThan(0);
+      const cap = caps[caps.length - 1]!;
+      // printHtml auto-contenu, CSS inline, contenu de note present.
+      expect(cap.printHtml.length, 'printHtml vide').toBeGreaterThan(2000);
+      expect(cap.printHtml, 'printHtml non auto-contenu').toContain('<!doctype html>');
+      expect(cap.printHtml, 'CSS non inline').toContain('<style>');
+      // La note porte le verdict + les resistances + la synthese + le sous-texte qbDetail.
+      const verdict = env.output.allOk ? 'Portance vérifiée' : 'Portance NON vérifiée';
+      expect(cap.printHtml, 'verdict absent de la note').toContain(verdict);
+      expect(cap.printHtml, 'Rc;k absent de la note').toContain(fmt(env.output.RcK, 0));
+      expect(cap.printHtml, 'synthese geometrique absente').toContain(
+        'Synthèse géométrique',
+      );
+      expect(env.output.qbDetail, 'PMT -> qbDetail servi').not.toBeNull();
+      // qbDetail est du HTML (<sub>…) : le fragment stable « p<sub>le</sub>* » figure dans la note.
+      expect(cap.printHtml, 'qbDetail (detail de portance) absent').toContain(
+        'p<sub>le</sub>* =',
+      );
+      // displayHtml auto-contenu aussi.
+      expect(cap.displayHtml.length, 'displayHtml vide').toBeGreaterThan(2000);
+      expect(cap.displayHtml, 'displayHtml non auto-contenu').toContain(
+        '<!doctype html>',
+      );
+      win.close?.();
+    });
+
+    it('given le displayHtml et le printHtml REELLEMENT captures, when passes dans la VRAIE garde §8 (assertInertHtml), then ACCEPTES (aucun script/handler/URI en ligne rasterisee)', async () => {
+      const env = runPieux(pmtFx.input);
+      expect(env.ok).toBe(true);
+      if (!env.ok) return;
+      const { caps, win } = await captureNote(pmtFx.input, env.output);
+      const cap = caps[caps.length - 1]!;
+      // Bornes rapides sur octets REELS (les vraies garanties passent par la garde serveur).
+      expect(/<script\b/i.test(cap.printHtml), 'printHtml contient <script>').toBe(false);
+      expect(
+        /<canvas\b/i.test(cap.printHtml),
+        'printHtml contient un element de rasterisation',
+      ).toBe(false);
+      // Heuristique TAG-SCOPEE : un gestionnaire inline est un attribut `on…=` DANS un tag
+      // ouvrant (`<el … on…=`). On evite ainsi les faux positifs sur du TEXTE (ici un
+      // commentaire CSS « /* ONGLETS = */ » inline). La garde serveur (guardInert) reste
+      // l'arbitre authoritatif (elle PARSE le HTML, pas une regex).
+      expect(
+        /<[a-zA-Z][^>]*\son\w+\s*=/i.test(cap.printHtml),
+        'gestionnaire inline on…= present dans un tag',
+      ).toBe(false);
+      expect(
+        /data:[a-z]+\//i.test(cap.printHtml),
+        'URI en ligne rasterisee presente',
+      ).toBe(false);
+      // VRAIE garde §8 serveur sur les octets captures.
+      const gPrint = guardInert(cap.printHtml);
+      expect(gPrint.ok, `garde §8 REFUSE le printHtml : ${gPrint.error ?? ''}`).toBe(
+        true,
+      );
+      const gDisp = guardInert(cap.displayHtml);
+      expect(gDisp.ok, `garde §8 REFUSE le displayHtml : ${gDisp.error ?? ''}`).toBe(
+        true,
+      );
+      win.close?.();
+    });
+
+    it('EQUIVALENCE clone<->reference client : meme jeu de feuilles + meme verdict + meme qbDetail que la note du HTML gele', async () => {
+      const env = runPieux(pmtFx.input);
+      expect(env.ok).toBe(true);
+      if (!env.ok) return;
+      const ref = renderReferenceNote(pmtFx.input);
+      const { caps, win } = await captureNote(pmtFx.input, env.output);
+      const cap = caps[caps.length - 1]!;
+      // 1. Jeu de feuilles identique : la note du clone porte les MEMES .tabpane que le client.
+      for (const id of ref.tabIds) {
+        expect(cap.printHtml, `feuille ${id} absente de la note du clone`).toContain(
+          `id="${id}"`,
+        );
+      }
+      // 2. Verdict IDENTIQUE (arbitre : la sortie serveur, prouvee equivalente au HTML d'origine).
+      const refVerdict = /Portance vérifiée/.test(ref.resContent)
+        ? 'Portance vérifiée'
+        : 'Portance NON vérifiée';
+      const cloneVerdict = env.output.allOk
+        ? 'Portance vérifiée'
+        : 'Portance NON vérifiée';
+      expect(cloneVerdict, 'verdict clone != verdict reference').toBe(refVerdict);
+      expect(cap.printHtml).toContain(cloneVerdict);
+      // 3. qbDetail IDENTIQUE : le serveur produit la MEME chaine narrative que renderResults
+      //    du client (meme code moteur) -> equivalence forte du detail de portance affiche.
+      expect(env.output.qbDetail, 'qbDetail serveur absent').not.toBeNull();
+      expect(ref.resContent, 'qbDetail reference absent').toContain(env.output.qbDetail!);
+      expect(cap.printHtml, 'qbDetail clone absent de la note').toContain(
+        env.output.qbDetail!,
+      );
+      // 4. COLONNE « Calcul R_d » (R_b;d / R_s;d par terme) : plus de « — » divergent —
+      //    le tableau Resistances du clone == reference client sur RbD/RsD (ouverture §8 26/07).
+      expect(env.output.RbD, 'RbD serveur absent').not.toBeNull();
+      expect(env.output.RsD, 'RsD serveur absent').not.toBeNull();
+      const cellRbD = '<td class="r">' + fmt(env.output.RbD, 0);
+      const cellRsD = '<td class="r">' + fmt(env.output.RsD, 0);
+      expect(ref.resContent, 'RbD absent de la référence client').toContain(cellRbD);
+      expect(ref.resContent, 'RsD absent de la référence client').toContain(cellRsD);
+      expect(cap.printHtml, 'RbD absent de la note du clone').toContain(cellRbD);
+      expect(cap.printHtml, 'RsD absent de la note du clone').toContain(cellRsD);
+      win.close?.();
+    });
+
+    // EQUIVALENCE qbDetail sur les 3 BRANCHES de portance (anti-regression, DoD §9). qbDetail
+    // interpole des grandeurs METHODE-DEPENDANTES : PMT (p*le/D_ef/kp/kp,max), CPT (q_ce + cap
+    // ECRETE/D_ef/kc/kc,max), c-φ (N_q/N_c/σ′v). Le serveur produit la chaine ; le client
+    // (renderResults du HTML gele) produit LA SIENNE. On prouve qu'elles sont IDENTIQUES sur
+    // les 3 branches -> sentinelle : si une branche interpolait un jour un intermediaire NON
+    // AFFICHE (ou divergeait du client), `ref.resContent.toContain(serveur)` ROUGIRAIT.
+    for (const meth of ['pmt', 'cpt', 'cphi'] as const) {
+      it(`EQUIVALENCE qbDetail branche ${meth} : chaine serveur == chaine client (HTML gele)`, async () => {
+        const fx = PIEUX_FIXTURES.find(
+          (f) => f.input.meth === meth && f.id.startsWith(meth),
+        );
+        expect(fx, `fixture ${meth} absente`).toBeDefined();
+        if (!fx) return;
+        const env = runPieux(fx.input);
+        expect(env.ok).toBe(true);
+        if (!env.ok) return;
+        // Anti test creux : la branche produit bien un qbDetail non vide.
+        expect(env.output.qbDetail, `qbDetail ${meth} non servi`).not.toBeNull();
+        expect((env.output.qbDetail ?? '').length).toBeGreaterThan(10);
+        // La chaine SERVEUR figure telle quelle dans la note du CLIENT gele (equivalence).
+        const ref = renderReferenceNote(fx.input);
+        expect(
+          ref.resContent,
+          `qbDetail ${meth} : chaine serveur absente de la note client (divergence de branche ?)`,
+        ).toContain(env.output.qbDetail!);
+        // ... et dans la note capturee par le clone (le clone rend bien out.qbDetail).
+        const { caps, win } = await captureNote(fx.input, env.output);
+        expect(
+          caps[caps.length - 1]!.printHtml,
+          `qbDetail ${meth} absent de la note clone`,
+        ).toContain(env.output.qbDetail!);
+        win.close?.();
+      });
+    }
+
+    it('GARDE §5 (esprit mutation) : sur une ERREUR EN BANDE (output.erreur), AUCUNE capture n est emise', async () => {
+      // runPieux encode les erreurs de garde du moteur dans output.erreur (ok reste true).
+      // La note d'un document d'erreur ne doit JAMAIS etre scellee : compute() return AVANT
+      // la capture. Mutation : deplacer __casagrandeCaptureSnapshot() avant ce return rend
+      // ce test ROUGE.
+      const base = runPieux(pmtFx.input);
+      expect(base.ok).toBe(true);
+      if (!base.ok) return;
+      const errOutput = { ...base.output, erreur: 'La base D doit être > z₀.' };
+      const { caps, win } = await captureNote(pmtFx.input, errOutput);
+      expect(
+        caps.length,
+        'une capture a ete emise sur une erreur en bande (garde §5 KO)',
+      ).toBe(0);
+      // La note d'erreur EST tout de meme rendue a l'ecran (mais NON scellee).
+      const rc = win.document.getElementById('res-content')?.innerHTML ?? '';
+      expect(rc).toMatch(/Calcul impossible|La base D/);
+      win.close?.();
+    });
+
+    it('DETERMINISTE : deux captures du MEME calcul produisent un printHtml identique (aucune horloge/hasard)', async () => {
+      const env = runPieux(pmtFx.input);
+      expect(env.ok).toBe(true);
+      if (!env.ok) return;
+      const a = await captureNote(pmtFx.input, env.output);
+      const b = await captureNote(pmtFx.input, env.output);
+      expect(a.caps[a.caps.length - 1]!.printHtml).toBe(
+        b.caps[b.caps.length - 1]!.printHtml,
+      );
+      a.win.close?.();
+      b.win.close?.();
+    });
+
+    it('COURBE charge-tassement : la note porte le <svg> #settle-svg avec un <path> aux coordonnees de la transformee client (donnees fideles) + sanity-mutation', async () => {
+      const env = runPieux(pmtFx.input);
+      expect(env.ok).toBe(true);
+      if (!env.ok) return;
+      const ct = env.output.courbeTassement;
+      expect(ct, 'courbeTassement servie (PMT)').not.toBeNull();
+      if (!ct) return;
+      const sEls = env.output.tassementELS ?? 0;
+      const { caps, win } = await captureNote(pmtFx.input, env.output);
+      const cap = caps[caps.length - 1]!;
+      // 1. Le settle-svg est present dans la note, avec un <path> vectoriel (pas un canvas).
+      expect(cap.printHtml, '#settle-svg absent de la note').toContain('id="settle-svg"');
+      const dCapt = settlePathFrom(cap.printHtml);
+      expect(dCapt.length, '<path> du settle-svg absent').toBeGreaterThan(20);
+      // 2. DONNEES FIDELES : la chaine `d` == transformee client point par point (arbitre
+      //    independant recalcule ici). Non vacue : le path reproduit EXACTEMENT la serie serveur.
+      const dExpect = settlePathD(ct.pts, ct.Fmax, sEls);
+      expect(dCapt, 'chaine d du settle-svg != transformee client').toBe(dExpect);
+      // 3. SANITY-MUTATION : decaler la serie DEPLACE le trace (donnees reellement branchees).
+      const mutated = {
+        ...env.output,
+        courbeTassement: {
+          ...ct,
+          pts: ct.pts.map((p) => ({ F: p.F, s: p.s + 10 })),
+        },
+      };
+      const capB = await captureNote(pmtFx.input, mutated);
+      const dMut = settlePathFrom(capB.caps[capB.caps.length - 1]!.printHtml);
+      expect(
+        dMut,
+        'muter la serie n a pas deplace le trace (donnees non branchees ?)',
+      ).not.toBe(dCapt);
+      win.close?.();
+      capB.win.close?.();
     });
   },
 );

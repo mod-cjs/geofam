@@ -2,12 +2,12 @@
  * CONTRAT pieux (#56) — la SORTIE est une whitelist stricte : aucun intermediaire de
  * calcul ne fuit (DoD §8, criteres 3 & 7).
  *
- * On verifie que `runPieux` ne renvoie QUE des champs declares, et qu'aucun
- * intermediaire connu du moteur (terme de pointe qb, pression/resistance equivalente
- * ple/qce, facteurs de portance kp/kc/kfac/kmax, hauteur d'encastrement Def/debR,
- * detail de frottement par couche `fric`, chaine `qbDetail`, courbe de tassement
- * `settle.pts`, facteurs de correlation xi3/xi4, facteurs partiels par combinaison
- * Rbf/Rsf/comb...) n'apparait NULLE PART dans la sortie serialisee, a tout niveau.
+ * On verifie que `runPieux` ne renvoie QUE des champs declares, et qu'aucun objet /
+ * chaine de SOLVEUR BRUT jamais affiche (objet d'interpolation `qceDetail`, objet de
+ * tassement `settle.pts` et ses rigidites t-z, facteurs partiels par combinaison
+ * Rbf/Rsf/comb, nom brut `grd`...) n'apparait NULLE PART dans la sortie serialisee, a
+ * tout niveau. Les VALEURS affichees par l'outil (Rb/Rs, ple/qce, kp/kc, Def, Ce, fric,
+ * courbes, et DESORMAIS qb/qbDetail — ouverture §8 26/07) SONT exposees display-only.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -32,16 +32,17 @@ import { runPieux } from './index.js';
  * (re-echantillonnees). Ces cles sont donc RETIREES de la liste ci-dessous.
  *
  * Ce qui reste INTERDIT = le CODE / les objets de solveur bruts, jamais affiches :
- * terme de pointe nu `qb`, chaine `qbDetail`, objet d'interpolation `qceDetail`, objet
+ * objet d'interpolation `qceDetail`, objet
  * `settle` brut et ses rigidites t-z (ktau/kq), facteurs partiels par combinaison
- * (Rbf/Rsf/comb/crit), decomposition RbD/RsD, geometrie interne (Ab/perim/Bsurf/hInLayer),
+ * (Rbf/Rsf/comb/crit), geometrie interne (Ab/perim/Bsurf/hInLayer),
  * profil de couches brut (layers/baseLayer/ztop/zbot/pl/em), `pile`, `cls`, RsKsum, CeF,
  * floating, et le NOM BRUT `grd` (expose seulement sous `gammaRd1`).
  */
 const FUITES_INTERDITES = [
-  // Terme de pointe nu + chaines/objets de solveur (jamais affiches tels quels).
-  'qb',
-  'qbDetail',
+  // OUVERTURE §8 (26/07) : `qb` (terme de pointe brut) et `qbDetail` (chaine narrative
+  // affichee sous la KPI R_b) SONT DESORMAIS exposes display-only (l'outil client les
+  // affiche). Ne reste INTERDIT que l'objet d'interpolation BRUT `qceDetail`
+  // (clipped/mean0/cap/raw) que l'outil n'affiche PAS.
   'qceDetail',
   // Objet de mobilisation du tassement BRUT + ses coefficients t-z (seule la courbe
   // re-echantillonnee `courbeTassement.{pts,Fmax}` sort, pas l'objet `settle`).
@@ -54,8 +55,6 @@ const FUITES_INTERDITES = [
   'Rsf',
   'comb',
   'crit',
-  'RbD',
-  'RsD',
   // Nom BRUT du coef de modele (expose uniquement sous `gammaRd1`) + classe/famille.
   'grd',
   'cls',
@@ -174,12 +173,15 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     expect(env.output.pointNeutre).toBeNull();
   });
 
-  // --- VÉRIFICATION BÉTON (#95) : seul le RÉSULTAT sort, jamais les facteurs de calage --
+  // --- VÉRIFICATION BÉTON (#95) : le RÉSULTAT + les VALEURS AFFICHÉES sortent, jamais
+  //     les facteurs de calage --
   // Le retour BRUT de betonCheck porte les FACTEURS DE CALAGE de la méthode NF P 94-262
   // §4.4 (C_max et k₁ du Tableau 12, k₂ d'élancement, la résistance calée f_ck*, α_cc,
-  // k₃, γ_c) ET les contraintes NUES σ_ELU/σ_ELS/limite ELS. Tout cela révèle la méthode
-  // et reste SERVEUR. Seuls le verdict (okELU/okELS), les taux et f_cd (résistance de
-  // calcul EC2, publique) sont whitelistés — sous des noms préfixés `beton*`.
+  // k₃, γ_c) : ils révèlent la méthode et restent SERVEUR. Les contraintes appliquées
+  // σ_ELU/σ_ELS et la limite ELS sont AFFICHÉES par le tableau béton (drawBeton) → exposées
+  // (politique §8 26/07) sous des noms PRÉFIXÉS `betonSigmaELU/betonSigmaELS/betonLimELS`.
+  // Les CLÉS BRUTES `sELU/sELS/limELS/fck` de l'objet betonCheck ne doivent JAMAIS
+  // apparaître telles quelles (on ne spread pas l'objet ; fail-closed conservé).
   const BETON_FUITES_INTERDITES = [
     'Cmax',
     'k1',
@@ -217,7 +219,7 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
       collectKeys(env.output, keys);
       const fuites = BETON_FUITES_INTERDITES.filter((k) => keys.has(k));
       expect(fuites, `facteurs de calage béton trouvés dans la sortie`).toEqual([]);
-      // Symétrie POSITIVE : les 6 champs client-safe SONT présents (non undefined).
+      // Symétrie POSITIVE : les 9 champs client-safe SONT présents (non undefined).
       for (const k of [
         'betonApplicable',
         'betonOkELU',
@@ -225,6 +227,9 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
         'betonTauxELU',
         'betonTauxELS',
         'betonFcd',
+        'betonSigmaELU',
+        'betonSigmaELS',
+        'betonLimELS',
       ]) {
         expect(Object.prototype.hasOwnProperty.call(env.output, k)).toBe(true);
       }
@@ -246,6 +251,19 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     expect(Number.isFinite(env.output.betonTauxELU)).toBe(true);
     expect(Number.isFinite(env.output.betonTauxELS)).toBe(true);
     expect(Number.isFinite(env.output.betonFcd)).toBe(true);
+    // Ouverture §8 (26/07) : contraintes appliquées σ + limite ELS AFFICHÉES → exposées,
+    // finies, et COHÉRENTES avec le taux (taux_ELU = σ_ELU/f_cd, taux_ELS = σ_ELS/limELS).
+    expect(Number.isFinite(env.output.betonSigmaELU)).toBe(true);
+    expect(Number.isFinite(env.output.betonSigmaELS)).toBe(true);
+    expect(Number.isFinite(env.output.betonLimELS)).toBe(true);
+    expect(env.output.betonSigmaELU! / env.output.betonFcd!).toBeCloseTo(
+      env.output.betonTauxELU!,
+      6,
+    );
+    expect(env.output.betonSigmaELS! / env.output.betonLimELS!).toBeCloseTo(
+      env.output.betonTauxELS!,
+      6,
+    );
   });
 
   it('béton NON APPLICABLE (traction) : betonApplicable=false, verdicts/taux/f_cd = null', () => {
@@ -261,9 +279,13 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     expect(env.output.betonTauxELU).toBeNull();
     expect(env.output.betonTauxELS).toBeNull();
     expect(env.output.betonFcd).toBeNull();
+    // na : aucune section calculée → σ/limite ELS null aussi (rien à afficher).
+    expect(env.output.betonSigmaELU).toBeNull();
+    expect(env.output.betonSigmaELS).toBeNull();
+    expect(env.output.betonLimELS).toBeNull();
   });
 
-  it('SANS groupe beton : les 6 champs beton* valent null (vérification non calculée)', () => {
+  it('SANS groupe beton : les 9 champs beton* valent null (vérification non calculée)', () => {
     const fx = PIEUX_FIXTURES.find((f) => f.id === 'pmt-fore-da2-comp');
     expect(fx).toBeDefined();
     if (!fx) return;
@@ -277,6 +299,9 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     expect(env.output.betonTauxELU).toBeNull();
     expect(env.output.betonTauxELS).toBeNull();
     expect(env.output.betonFcd).toBeNull();
+    expect(env.output.betonSigmaELU).toBeNull();
+    expect(env.output.betonSigmaELS).toBeNull();
+    expect(env.output.betonLimELS).toBeNull();
   });
 
   it('la meta porte l identite, la version et le hash source (tracabilite PV)', () => {
@@ -314,7 +339,7 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
       allOk: true,
       tauxGouvernant: 0.9,
       tassementELS: 8.2,
-      qb: 4200 /* intermediaire interdit */,
+      Rbf: 1.1 /* facteur partiel par combinaison — jamais expose (non whiteliste) */,
     };
     expect(() => PieuxOutputSchema.parse(pollue)).toThrow(/[Uu]nrecognized/);
   });
@@ -331,12 +356,16 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     expect(Number.isFinite(env.output.RcD)).toBe(true);
     expect(Number.isFinite(env.output.RcrK)).toBe(true);
     expect(env.output.verifications.length).toBeGreaterThan(0);
-    // RECLASSIFICATION §8 : les intermediaires d'AFFICHAGE (kfac/ple/qce/Def/xi3/fric)
-    // SONT desormais exposes display-only. Ce qui reste INTERDIT = les objets/chaines de
-    // solveur BRUTS jamais affiches : `qb` nu, `qbDetail`, `qceDetail`, l'objet `settle`,
-    // les facteurs par combinaison `comb`, le nom brut `grd`.
+    // RECLASSIFICATION §8 (+ ouverture 26/07) : les intermediaires d'AFFICHAGE
+    // (kfac/ple/qce/Def/xi3/fric + DESORMAIS qb/qbDetail) SONT exposes display-only.
+    // Ce qui reste INTERDIT = les objets/chaines de solveur BRUTS jamais affiches :
+    // l'objet d'interpolation `qceDetail`, l'objet `settle`, les facteurs par
+    // combinaison `comb`, le nom brut `grd`.
     const s = JSON.stringify(env.output);
-    expect(s).not.toMatch(/"(qb|qbDetail|qceDetail|settle|comb|grd)"\s*:/);
+    expect(s).not.toMatch(/"(qceDetail|settle|comb|grd)"\s*:/);
+    // Ouverture positive : qb et qbDetail SONT bien presents dans la sortie.
+    expect(s).toMatch(/"qb"\s*:/);
+    expect(s).toMatch(/"qbDetail"\s*:/);
   });
 
   it('§8 reclassification : les valeurs d affichage traversent avec les valeurs REELLES du moteur', () => {
@@ -356,6 +385,16 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     expect(o.Rs).toBeCloseTo(rn('Rs'), 9);
     expect(o.ple).toBeCloseTo(rn('ple'), 9); // fixture PMT -> ple defini
     expect(o.qce).toBeNull(); // pas de qce en methode pressiometrique
+    // Ouverture §8 (26/07) : qb (terme de pointe brut) + qbDetail (chaine narrative
+    // affichee) traversent avec les valeurs REELLES du moteur (aucune re-derivation).
+    expect(o.qb).toBeCloseTo(rn('qb'), 9);
+    expect(o.qbDetail).toBe(R.qbDetail as string);
+    expect(typeof o.qbDetail).toBe('string');
+    // R_b;d / R_s;d PAR TERME (colonne « Calcul R_d » affichee) traversent avec les
+    // valeurs REELLES du moteur. Coherence : RbD + RsD ≈ RcD (combinaison gouvernante).
+    expect(o.RbD).toBeCloseTo(rn('RbD'), 9);
+    expect(o.RsD).toBeCloseTo(rn('RsD'), 9);
+    expect(o.RbD! + o.RsD!).toBeCloseTo(o.RcD, 6);
     expect(o.kfac).toBeCloseTo(rn('kfac'), 9);
     expect(o.kmax).toBeCloseTo(rn('kmax'), 9);
     expect(o.Def).toBeCloseTo(rn('Def'), 9);

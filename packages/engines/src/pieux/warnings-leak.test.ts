@@ -1,31 +1,31 @@
 /**
- * MAJEUR-1 (DoD §8) — FUITE par le canal TEXTE LIBRE (`warnings` / `erreur`).
+ * DoD §8 — canal TEXTE LIBRE (`warnings` / `erreur`) : redaction FAIL-CLOSED + HARMONISEE.
  *
- * Leçon de #45 : la whitelist protege les CLES, pas le TEXTE LIBRE.
+ * Leçon de #45 : la whitelist protege les CLES, pas le TEXTE LIBRE. Un message pourrait
+ * interpoler la VALEUR d'un intermediaire.
  *
- * --- ETAT REEL DU MOTEUR PIEUX (honnetete — DIFFERENT de pressiometre) ---
- * Contrairement au moteur pressiometre (ou `warn` etait STRUCTURELLEMENT VIDE et la
- * redaction purement dormante), ce moteur POSE un tableau `warn` dans son resultat
- * `R`, et on l'EXPOSE via `warnings`. La redaction est donc une barriere ACTIVE.
+ * --- HARMONISATION §8 (politique titulaire 26/07, FERME) ---
+ * « On expose EXACTEMENT ce que l'outil client AFFICHE ; seul confidentiel = le CODE
+ * moteur. » La sortie structuree de PIEUX expose desormais, en display-only, les
+ * grandeurs AFFICHEES par l'outil : qb / p*le / q_ce / kp / kc / kfac / kmax / D_ef /
+ * D_ef/B / C_e (synthese) et qs / qsm par couche. Les DEUX barrieres §8 doivent etre
+ * COHERENTES : une grandeur exposee comme cle structuree ne peut etre masquee dans un
+ * message. Ces etiquettes sont donc BENIGNES cote redaction aussi (allowlist).
  *
- * Parmi les warnings REELS du moteur (cf. liste exhaustive dans index.ts), UN SEUL
- * interpole une valeur d'INTERMEDIAIRE de methode calcule : « Effet de groupe : Rₛ
- * réduit par Cₑ = <n> (entraxe < 3·B) ». Cₑ (coefficient de reduction de groupe,
- * Annexe J.2) est un intermediaire ; c'est la cible PRINCIPALE de la redaction. Les
- * autres warnings n'interpolent que des profondeurs (m), le numero de categorie, B
- * (expose) ou des coefficients normatifs LITTERAUX (« 0,15·Rₛ », « 3·B ») — non vises.
- * Les intermediaires les plus sensibles (qb/ple/qce/kp/kc/qs) vivent dans `qbDetail`
- * et `fric`, qui ne sont JAMAIS exposes (whitelist de cles).
+ * --- CE QUI RESTE FAIL-CLOSED (masque) ---
+ * Tout intermediaire que l'outil N'AFFICHE PAS : les coefficients α des courbes de
+ * frottement (annexes F/G), les resistances BRUTES NUES (Rb/Rc/Rs — leurs formes
+ * EXPOSEES sont suffixees RbK/RsK/RcK/RcD), et toute etiquette INCONNUE (sentinelle
+ * fail-closed : inconnu => masque, defaut sur).
  *
  * Ce test :
- *   1. PROUVE que le motif de fuite est bien DETECTE dans un texte temoin ;
- *   2. PROUVE que le redacteur RETIRE la valeur confidentielle mais GARDE le sens ;
- *   3. EXERCE le PIPELINE REEL `runPieux` (M2) : on force le moteur a renvoyer un
- *      `R` porteur d'un warning confidentiel (mock de `computePieux`), on prouve que
- *      le BRUT fuit, puis qu'apres projection la sortie ne fuit plus — la redaction
- *      est bien CABLEE sur le vrai chemin ;
- *   4. EXIGE qu'aucune sortie de fixture REELLE n'expose une valeur confidentielle
- *      dans le canal texte (erreur + warnings joints).
+ *   1. PROUVE l'HARMONISATION : le VRAI warning « Cₑ = <n> » (effet de groupe, affiche
+ *      dans la synthese) GARDE sa valeur ; idem qb/ple/qce/kp/kc/kfac/kmax/Def/qs ;
+ *   2. PROUVE que le FAIL-CLOSED tient : α, resistances NUES et etiquettes INCONNUES
+ *      restent MASQUEES ;
+ *   3. EXERCE le PIPELINE REEL `runPieux` (harmonise + fail-closed sur la meme sortie) ;
+ *   4. EXIGE qu'aucune sortie de fixture REELLE n'expose une valeur RESIDUELLE
+ *      confidentielle (α / resistance nue) dans le canal texte.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,66 +39,73 @@ import {
 } from './index.js';
 
 /**
- * Repere une VALEUR confidentielle dans un texte : une etiquette confidentielle
- * (Cₑ/Ce ou un intermediaire de methode) SUIVIE de `= <nombre>`. C'est exactement le
- * motif que le redacteur doit eliminer. (Un coefficient normatif litteral — « 0,15·Rₛ »,
- * « 3·B » — n'a pas d'etiquette confidentielle suivie de `=` : il n'est pas vise.)
+ * Repere une valeur RESIDUELLE confidentielle : un intermediaire NON AFFICHE par
+ * l'outil (α des courbes de frottement) OU une resistance BRUTE NUE (Rb/Rc/Rs, formes
+ * sans suffixe K/D) SUIVIE de `= <nombre>`. Apres l'HARMONISATION §8, les grandeurs
+ * AFFICHEES (Cₑ/qb/ple/qce/kp/kc/kfac/kmax/Def/qs…) ne sont PLUS confidentielles : elles
+ * ne figurent donc PLUS dans ce motif (elles sont exposees a l'ecran comme au PV).
  */
-const VALEUR_CONFIDENTIELLE =
-  /(?:Cₑ|\bCe\b|\bqb\b|p\*le|\bple\b|\bqce\b|\bkp\b|\bkc\b|\bkfac\b|\bkmax\b|Def\/B|\bDef\b|\bqs\b|\bqsm\b|α)\s*=\s*-?[0-9]/;
+const VALEUR_RESIDUELLE_CONFIDENTIELLE =
+  /(?:α|\balpha\b|\bRb\b|\bRc\b|\bRs\b|Rₛ)\s*=\s*-?[0-9]/;
 
-describe('MAJEUR-1 — pas de fuite d intermediaire confidentiel par les messages', () => {
+describe('§8 canal texte — HARMONISATION (grandeurs affichees benignes) + fail-closed', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.resetModules();
     vi.doUnmock('./engine.js');
   });
 
-  it('PRECONDITION : le motif de fuite est bien DETECTE dans un texte temoin (sinon test vide)', () => {
-    // Le VRAI warning emis par le moteur (warning #7) + des intermediaires de methode.
-    const fuiteGroupe =
-      'Effet de groupe : Rₛ réduit par Cₑ = 0,75 (entraxe < 3·B, §4.3.2).';
-    const fuitePointe = 'qb = 4200 kPa sous la pointe';
-    const fuitePortance = 'kp = 1,15 (kp,max=1,15) appliqué';
-    expect(fuiteGroupe).toMatch(VALEUR_CONFIDENTIELLE);
-    expect(fuitePointe).toMatch(VALEUR_CONFIDENTIELLE);
-    expect(fuitePortance).toMatch(VALEUR_CONFIDENTIELLE);
+  it('PRECONDITION : le motif RESIDUEL est bien DETECTE sur un temoin (sinon test vide)', () => {
+    expect('coefFrottement α = 0,55 appliqué').toMatch(VALEUR_RESIDUELLE_CONFIDENTIELLE);
+    expect('Rb = 4200 kN sous la pointe').toMatch(VALEUR_RESIDUELLE_CONFIDENTIELLE);
   });
 
-  it('le redacteur MORD sur le VRAI warning « Cₑ = <n> » (effet de groupe) mais garde le sens', () => {
+  // --- HARMONISATION : les grandeurs AFFICHEES gardent leur valeur -----------------
+  it('HARMONISE : le VRAI warning « Cₑ = <n> » (effet de groupe, affiche dans la synthese) GARDE sa valeur', () => {
     const propre = redactConfidentialWarning(
-      'Effet de groupe : Rₛ réduit par Cₑ = 0,75 (entraxe < 3·B, §4.3.2).',
+      'Effet de groupe : Rₛ réduit par Cₑ = 0,67 (entraxe < 3·B, §4.3.2).',
     );
-    expect(propre).not.toMatch(VALEUR_CONFIDENTIELLE);
-    expect(propre).toMatch(/Cₑ/);
-    expect(propre).toMatch(/valeur confidentielle masquee/);
+    // Cₑ est AFFICHE par l'outil (synthese geometrique) -> NON masque desormais.
+    expect(propre).toMatch(/Cₑ\s*=\s*0,67/);
+    expect(propre).not.toMatch(/valeur confidentielle masquee/);
     // Le coefficient normatif litteral « 3·B » et la reference de § sont preserves.
     expect(propre).toMatch(/3·B/);
     expect(propre).toMatch(/§4\.3\.2/);
+    // Rₛ (frottement) NU sans `= <n>` n'est pas une valeur -> intact (pas d'interpolation).
   });
 
-  it('le redacteur MORD sur les intermediaires de METHODE (qb/ple/qce/kp/kc/Def/qs)', () => {
-    expect(redactConfidentialWarning('qb = 4200 kPa')).not.toMatch(VALEUR_CONFIDENTIELLE);
-    expect(redactConfidentialWarning('ple = 1,80 MPa')).not.toMatch(
-      VALEUR_CONFIDENTIELLE,
-    );
-    expect(redactConfidentialWarning('qce = 12,3 MPa')).not.toMatch(
-      VALEUR_CONFIDENTIELLE,
-    );
-    expect(redactConfidentialWarning('kp = 1,15')).not.toMatch(VALEUR_CONFIDENTIELLE);
-    expect(redactConfidentialWarning('kc = 0,40')).not.toMatch(VALEUR_CONFIDENTIELLE);
-    expect(redactConfidentialWarning('Def = 5,2 m')).not.toMatch(VALEUR_CONFIDENTIELLE);
-    expect(redactConfidentialWarning('Def/B = 8,7')).not.toMatch(VALEUR_CONFIDENTIELLE);
-    expect(redactConfidentialWarning('qs = 130 kPa')).not.toMatch(VALEUR_CONFIDENTIELLE);
+  it('HARMONISE : qb/ple/qce/kp/kc/kfac/kmax/Def/Def-B/qs/qsm (affiches par l outil) GARDENT leur valeur', () => {
+    const cas: Array<[string, RegExp]> = [
+      ['qb = 4200 kPa', /qb\s*=\s*4200/],
+      ['ple = 1,80 MPa', /ple\s*=\s*1,80/],
+      ['qce = 12,3 MPa', /qce\s*=\s*12,3/],
+      ['kp = 1,15', /kp\s*=\s*1,15/],
+      ['kc = 0,40', /kc\s*=\s*0,40/],
+      ['kfac = 1,10', /kfac\s*=\s*1,10/],
+      ['kmax = 1,30', /kmax\s*=\s*1,30/],
+      ['Def = 5,2 m', /Def\s*=\s*5,2/],
+      ['Def/B = 8,7', /Def\/B\s*=\s*8,7/],
+      ['qs = 130 kPa', /qs\s*=\s*130/],
+      ['qsm = 200 kPa', /qsm\s*=\s*200/],
+    ];
+    for (const [txt, keep] of cas) {
+      const propre = redactConfidentialWarning(txt);
+      expect(propre, `masque a tort : ${txt}`).toMatch(keep);
+      expect(propre, `masque a tort : ${txt}`).not.toMatch(
+        /valeur confidentielle masquee/,
+      );
+    }
   });
 
-  // --- MAJEUR-2 (challenge #48) : FAIL-CLOSED par ALLOWLIST -----------------------
-  // La redaction n'est PAS une blacklist d'etiquettes connues : elle masque TOUTE
-  // valeur `<token> = <nombre>` SAUF si <token> est dans l'allowlist benigne. Un
-  // intermediaire NU INCONNU (jamais liste) DOIT donc etre masque. Ce test devient
-  // ROUGE si l'on revenait a une logique fail-OPEN (blacklist) : sentinelle de la
-  // propriete fail-closed claimee dans l'en-tete d'index.ts.
-  it('FAIL-CLOSED : un intermediaire NU INCONNU (non liste) est tout de meme REDACTE', () => {
+  it('HARMONISE : les grandeurs de RESULTAT (RbK/RsK/RcK/RcD, D, B) gardent leur valeur', () => {
+    expect(redactConfidentialWarning('RcK = 1800 kN')).toMatch(/=\s*1800/);
+    expect(redactConfidentialWarning('RcD = 1400 kN')).toMatch(/=\s*1400/);
+    expect(redactConfidentialWarning('D = 15 m')).toMatch(/=\s*15/);
+    expect(redactConfidentialWarning('B = 0,60 m')).toMatch(/=\s*0,60/);
+  });
+
+  // --- FAIL-CLOSED PRESERVE : inconnus + α + resistances NUES restent masques -------
+  it('FAIL-CLOSED : un intermediaire NU INCONNU (non liste) est REDACTE', () => {
     const inconnus = [
       'Xyz = 42 kN',
       'facteurInterne = 3,14',
@@ -108,17 +115,27 @@ describe('MAJEUR-1 — pas de fuite d intermediaire confidentiel par les message
     for (const txt of inconnus) {
       const propre = redactConfidentialWarning(txt);
       expect(propre, `non redacte : ${txt}`).toMatch(/valeur confidentielle masquee/);
-      // La VALEUR numerique a disparu (plus de « = <nombre> » apres l'etiquette).
       expect(propre, `valeur survivante : ${txt}`).not.toMatch(/=\s*-?[0-9]/);
     }
   });
 
-  it('FAIL-CLOSED : les resistances BRUTES NUES (Rb/Rc/Rs) sont REDACTEES (collision d allowlist, MAJEUR-2 2e passe)', () => {
-    // Rb (terme de pointe brut), Rc (total brut), Rs (frottement brut) sont des
-    // intermediaires CONFIDENTIELS (FUITES_INTERDITES). Leurs formes EXPOSEES portent
-    // un suffixe (RbK/RsK/RcK/RcD). Les formes NUES NE doivent PAS etre allowlistees :
-    // sinon un futur warning « Rb = 4200 kN » fuirait. Cette sentinelle devient ROUGE
-    // si rb/rc/rs reapparaissent dans l'allowlist benigne.
+  it('FAIL-CLOSED : le coefficient « alpha » NON AFFICHE (courbes de frottement) reste REDACTE', () => {
+    // Le coefficient α des annexes F/G n'est PAS affiche par l'outil -> il reste
+    // confidentiel apres l'harmonisation (on n'a rendu benin QUE ce que le client
+    // affiche). Sous sa forme latine « alpha » (etiquette tokenisable) il est bien masque.
+    // NB HONNETE : le glyphe grec « α » NU n'entre PAS dans la grammaire de token du
+    // redacteur (classe latine/indices) — il n'est donc pas reecrit ; mais le moteur
+    // n'emet JAMAIS α dans un warning (seul « Cₑ » l'est), donc aucune fuite reelle. La
+    // sentinelle operante = etiquette LATINE inconnue (ci-dessus) + resistances nues.
+    const propre = redactConfidentialWarning('alpha = 0,55 (marne)');
+    expect(propre, 'alpha non redacte').toMatch(/valeur confidentielle masquee/);
+    expect(propre, 'valeur alpha survivante').not.toMatch(/=\s*-?[0-9]/);
+  });
+
+  it('FAIL-CLOSED : les resistances BRUTES NUES (Rb/Rc/Rs) restent REDACTEES (collision d allowlist)', () => {
+    // Rb (pointe brut), Rc (total brut), Rs (frottement brut) sont des intermediaires
+    // CONFIDENTIELS. Leurs formes EXPOSEES portent un suffixe (RbK/RsK/RcK/RcD). Les
+    // formes NUES NE sont PAS allowlistees (sinon « Rb = 4200 kN » fuirait). Sentinelle.
     const brutes = ['Rb = 4200 kN', 'Rc = 5300 kN', 'Rs = 3100 kN', 'Rₛ = 3100 kN'];
     for (const txt of brutes) {
       const propre = redactConfidentialWarning(txt);
@@ -129,21 +146,9 @@ describe('MAJEUR-1 — pas de fuite d intermediaire confidentiel par les message
     }
   });
 
-  it('FAIL-CLOSED : les grandeurs EXPOSEES au PV (allowlist benigne) gardent leur valeur', () => {
-    // Symetrie de l'allowlist : ces etiquettes SONT deja dans la sortie whitelistee
-    // (RbK/RsK/RcK/RcD/Rcr*/Fd*/B/D) -> on NE les masque pas (message legitime).
-    expect(redactConfidentialWarning('RcK = 1800 kN')).toMatch(/=\s*1800/);
-    expect(redactConfidentialWarning('RcD = 1400 kN')).toMatch(/=\s*1400/);
-    expect(redactConfidentialWarning('D = 15 m')).toMatch(/=\s*15/);
-    expect(redactConfidentialWarning('B = 0,60 m')).toMatch(/=\s*0,60/);
-  });
-
   it('le redacteur NE touche PAS aux nombres NON confidentiels (profondeur, categorie, coefficients normatifs litteraux)', () => {
-    // Une mention de profondeur (m), de categorie ou de coefficient normatif litteral
-    // ne porte pas d'etiquette confidentielle suivie de `=` : elle doit etre PRESERVEE.
     const benin =
       'Ancrage dans la couche porteuse h = 1,20 m < 3·B = 1,80 m recommandé (Note 1).';
-    // NB : « h = » et « 3·B = » ne sont PAS des etiquettes confidentielles -> intacts.
     expect(redactConfidentialWarnings([benin])[0]).toBe(benin);
 
     const benin2 = 'Micropieu (catégorie 17) : résistance de pointe non prise en compte.';
@@ -153,12 +158,12 @@ describe('MAJEUR-1 — pas de fuite d intermediaire confidentiel par les message
     expect(redactConfidentialWarnings([benin3])[0]).toBe(benin3);
   });
 
-  // --- M2 : exercer le PIPELINE REEL runPieux, pas seulement le redacteur ----------
-  it('PIPELINE REEL : un warning confidentiel renvoye par le moteur est NETTOYE par runPieux', async () => {
-    // On force le moteur a poser, dans son R, le VRAI warning porteur de Cₑ + un
-    // intermediaire de methode. On mock UNIQUEMENT computePieux.
-    const FUITE_BRUTE =
-      'Effet de groupe : Rₛ réduit par Cₑ = 0,75 (entraxe < 3·B) ; qb = 4200 kPa.';
+  // --- M2 : exercer le PIPELINE REEL runPieux (harmonise + fail-closed) -------------
+  it('PIPELINE REEL : Cₑ GARDE sa valeur, une resistance BRUTE NUE est MASQUEE, par runPieux', async () => {
+    // Warning mixte : Cₑ (affiche -> garde) ET une resistance brute nue Rb (confidentielle
+    // -> masquee). Prouve HARMONISATION + FAIL-CLOSED cables sur le vrai pipeline.
+    const MIXTE =
+      'Effet de groupe : Rₛ réduit par Cₑ = 0,67 ; terme de pointe Rb = 4200 kN (interne).';
 
     vi.resetModules();
     vi.doMock('./engine.js', async () => {
@@ -166,9 +171,7 @@ describe('MAJEUR-1 — pas de fuite d intermediaire confidentiel par les message
       return {
         ...actual,
         computePieux: () => ({
-          // R minimal mais COMPLET pour le chemin non-erreur de shapeOutput,
-          // PORTEUR d'un warning confidentiel (le canal a assainir).
-          warn: [FUITE_BRUTE],
+          warn: [MIXTE],
           B: 0.6,
           D: 15,
           cat: 1,
@@ -192,11 +195,7 @@ describe('MAJEUR-1 — pas de fuite d intermediaire confidentiel par les message
       };
     });
 
-    // Import FRAIS de l'index APRES le mock (sinon il garde le vrai engine).
     const { runPieux: runMocked } = await import('./index.js');
-
-    // Anti faux-vert : le BRUT injecte fuit BIEN (sinon le test ne prouverait rien).
-    expect(FUITE_BRUTE).toMatch(VALEUR_CONFIDENTIELLE);
 
     const fx0 = PIEUX_FIXTURES[0];
     expect(fx0).toBeDefined();
@@ -204,29 +203,26 @@ describe('MAJEUR-1 — pas de fuite d intermediaire confidentiel par les message
     const env = runMocked(fx0.input);
     expect(env.ok).toBe(true);
     if (!env.ok) return;
-    // Le warning a TRAVERSE le vrai pipeline (shapeOutput -> projectEngineOutput) et
-    // en ressort REDACTE : la valeur a disparu, le sens (etiquette) demeure.
     const joined = env.output.warnings.join(' || ');
-    expect(joined.length).toBeGreaterThan(0); // le warning n'est pas SUPPRIME
-    expect(joined).not.toMatch(VALEUR_CONFIDENTIELLE); // mais NETTOYE
+    // Cₑ affiche -> valeur conservee (harmonisation cablee sur le vrai pipeline).
+    expect(joined).toMatch(/Cₑ\s*=\s*0,67/);
+    // α non affiche -> masque (fail-closed cable sur le vrai pipeline).
     expect(joined).toMatch(/valeur confidentielle masquee/);
+    expect(joined).not.toMatch(VALEUR_RESIDUELLE_CONFIDENTIELLE);
   });
 
-  it('aucune valeur confidentielle dans le canal texte sur TOUT le jeu de fixtures REELLES', () => {
+  it('aucune valeur RESIDUELLE confidentielle (α / resistance nue) dans le canal texte sur TOUT le jeu de fixtures REELLES', () => {
     for (const fx of PIEUX_FIXTURES) {
       const env = runPieux(fx.input);
       if (!env.ok) continue;
       const joined = [env.output.erreur ?? '', ...env.output.warnings].join(' || ');
       expect(joined, `fuite texte sur fixture ${fx.id}`).not.toMatch(
-        VALEUR_CONFIDENTIELLE,
+        VALEUR_RESIDUELLE_CONFIDENTIELLE,
       );
     }
   });
 
   // --- FROTTEMENT NÉGATIF (#94) : le warning STATIQUE de découplage est sûr ----------
-  // Quand le downdrag est calculé, index.ts ajoute un rappel STATIQUE (Gsn est une
-  // action à ajouter aux vérifications, non couplée automatiquement au verdict). Ce
-  // texte n'interpole AUCUN nombre : il traverse la rédaction fail-closed trivialement.
   describe('downdrag — warning statique de découplage (aucune valeur interpolée)', () => {
     const ddFixtures = PIEUX_DOWNDRAG_FIXTURES.filter((f) => !f.horsDomaine);
 
@@ -235,17 +231,15 @@ describe('MAJEUR-1 — pas de fuite d intermediaire confidentiel par les message
     });
 
     for (const fx of ddFixtures) {
-      it(`[${fx.id}] le rappel de découplage est présent, SANS valeur confidentielle`, () => {
+      it(`[${fx.id}] le rappel de découplage est présent, SANS valeur résiduelle confidentielle`, () => {
         const env = runPieux(fx.input);
         expect(env.ok).toBe(true);
         if (!env.ok) return;
-        // Le rappel statique est bien émis (texte de découplage Gsn).
         const rappel = env.output.warnings.find((w) => /Frottement négatif Gsn/.test(w));
         expect(rappel, `rappel de découplage absent sur ${fx.id}`).toBeDefined();
-        // Aucun warning (rappel inclus) ne porte une valeur confidentielle « X = <n> ».
         const joined = [env.output.erreur ?? '', ...env.output.warnings].join(' || ');
         expect(joined, `fuite texte sur downdrag ${fx.id}`).not.toMatch(
-          VALEUR_CONFIDENTIELLE,
+          VALEUR_RESIDUELLE_CONFIDENTIELLE,
         );
         // Anti faux-vert : le rappel n'interpole PAS de « = <nombre> » (borne du canal).
         expect(rappel).not.toMatch(/=\s*-?[0-9]/);

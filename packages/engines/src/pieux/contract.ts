@@ -349,9 +349,17 @@ const CheckSchema = z
 // --- CE QUI RESTE SERVEUR (le CODE, pas les valeurs) ---
 // Les abaques/tables (KP_MAX/KC_MAX/ALPHA_*/PMT_CURVE/QSMAX), l'ordre des sommations,
 // les objets de solveur bruts (qceDetail : clipped/mean0/cap/raw ; settle : rigidites
-// t-z ktau/kq/EM ; downdrag : KtanD/Hc/s0/wTip et le profil HAUTE RESOLUTION), le
-// terme de pointe nu `qb`, la chaine `qbDetail`, les facteurs partiels par combinaison
-// (Rbf/Rsf/comb). Ces champs ne figurent PAS dans la whitelist et sont re-strippes.
+// t-z ktau/kq/EM ; downdrag : KtanD/Hc/s0/wTip et le profil HAUTE RESOLUTION), les
+// facteurs partiels par combinaison (Rbf/Rsf/comb). Ces champs ne figurent PAS dans la
+// whitelist et sont re-strippes.
+//
+// --- OUVERTURE qb + qbDetail (politique §8 26/07, FERME) ---
+// Le terme de pointe BRUT `qb` (kPa) et la chaine narrative `qbDetail` (p*le/qce/Def/kp/
+// kmax) sont AFFICHES par l'outil client (sous-texte de la KPI R_b, renderResults). La
+// politique titulaire tranche : « on expose EXACTEMENT ce que l'outil client affiche ».
+// Les composantes de `qbDetail` (ple/qce/debR/kfac/kmax) etant DEJA exposees, masquer la
+// chaine qui les assemble etait incoherent — on l'expose donc en display-only. AUCUNE
+// autorite (le PV ne consomme ni qb ni qbDetail ; ce sont des sorties, pas des entrees).
 
 /** Une ligne de la courbe de portance en profondeur (capacites par etat-limite a la
  *  profondeur D). Formes/cles dictees par le clone (`courbePortance.rows`). kN. */
@@ -506,10 +514,22 @@ export const PieuxOutputSchema = z
     Rb: z.number().finite().nullable(),
     /** Resistance de frottement BRUTE Rs (kN). */
     Rs: z.number().finite().nullable(),
+    /** Resistance de calcul de POINTE R_b;d (kN) — colonne « Calcul R_d » du tableau
+     *  Resistances (combinaison ELU gouvernante). 0 en traction. null si non calcule. */
+    RbD: z.number().finite().nullable(),
+    /** Resistance de calcul de FROTTEMENT R_s;d (kN) — colonne « Calcul R_d ». null si
+     *  non calcule. Coherence : RbD + RsD ≈ RcD (a la combinaison gouvernante pres). */
+    RsD: z.number().finite().nullable(),
     /** Pression limite nette equivalente p*le (MPa). null hors methode pressiometrique. */
     ple: z.number().finite().nullable(),
     /** Resistance de pointe equivalente q_ce (MPa). null hors methode penetrometrique. */
     qce: z.number().finite().nullable(),
+    /** Terme de pointe BRUT qb (kPa) — kfac·p*le/qce (pmt/cpt) ou c·Nc+σ'v·Nq (cphi).
+     *  0 pour un micropieu (pas de pointe). null en branche erreur / non calculable. */
+    qb: z.number().finite().nullable(),
+    /** Detail narratif de la portance de pointe (chaine affichee sous la KPI R_b —
+     *  peut contenir des balises HTML `<sub>` du rendu d'origine). null si non calcule. */
+    qbDetail: z.string().max(400).nullable(),
     // RESERVE EXPERT (avis A) : les tables kp/kc (Tableaux F.4.2.1/G.4.2.1) sont
     // PRESUMEES reproduire la norme verbatim, A CONFIRMER par STARFIRE. On expose ici
     // la VALEUR APPLIQUEE (kfac) et son PLAFOND (kmax) — mode A. Bascule en mode B
@@ -547,8 +567,11 @@ export const PieuxOutputSchema = z
     /** Cote du point neutre z_N (m) — position (deplacement relatif sol-pieu nul). */
     pointNeutre: z.number().finite().nullable(),
     // --- VERIFICATION STRUCTURALE DU BETON (§4.4, #95) — null si non demandee ---
-    // On expose UNIQUEMENT le RESULTAT de la verification. Les facteurs de calage de
-    // la methode (Cmax, k1, k2, fckStar, acc, k3, gc) NE sortent JAMAIS (SERVEUR, DoD §8).
+    // On expose le RESULTAT de la verification + les VALEURS AFFICHEES par le tableau
+    // beton de l'outil (drawBeton) : contraintes appliquees σ_ELU/σ_ELS et limite ELS,
+    // en MPa (politique §8 26/07 « on expose ce que le client affiche »). Les facteurs
+    // de CALAGE de la methode (Cmax, k1, k2, fckStar, acc, k3, gc) — NON affiches — NE
+    // sortent JAMAIS (SERVEUR, DoD §8).
     /** Verification structurale applicable : false si traction / categorie non couverte (na),
      *  true si calculee, null si non demandee. */
     betonApplicable: z.boolean().nullable(),
@@ -562,6 +585,12 @@ export const PieuxOutputSchema = z
     betonTauxELS: z.number().finite().nullable(),
     /** Resistance de calcul du beton f_cd (MPa, EC2) — resultat de dimensionnement. null si na / non demandee. */
     betonFcd: z.number().finite().nullable(),
+    /** Contrainte appliquee σ_ELU = N_d/A_b (MPa) — affichee par le tableau beton. null si na / non demandee. */
+    betonSigmaELU: z.number().finite().nullable(),
+    /** Contrainte appliquee σ_ELS car. = N_ser/A_b (MPa) — affichee. null si na / non demandee. */
+    betonSigmaELS: z.number().finite().nullable(),
+    /** Limite de contrainte ELS (MPa) — affichee (colonne limite de la ligne ELS). null si na / non demandee. */
+    betonLimELS: z.number().finite().nullable(),
   })
   .strict();
 export type PieuxOutput = z.infer<typeof PieuxOutputSchema>;

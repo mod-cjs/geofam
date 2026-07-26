@@ -43,31 +43,59 @@ vi.mock('@/lib/api/client', () => ({
   getStoredToken: () => 'token-abc',
 }));
 
-// Stub — la boucle de bridge (ready/init/calc/store/pv) est testée dans
+// Stub — la boucle de bridge (ready/init/calc/store/pv/snapshot) est testée dans
 // lib/tool-bridge/__tests__/ToolFrame.test.tsx. Ici on vérifie seulement le
-// câblage : props reçues + remontée de calcResultId au shell.
-vi.mock('@/lib/tool-bridge/ToolFrame', () => ({
-  ToolFrame: (props: {
-    toolId: string;
-    engineId: string;
-    orgId: string | null;
-    orgSlug: string;
-    projectId: string | null;
-    projectLabel: string;
-    accessToken: string | null;
-    onCalcResultId?: (id: string | null) => void;
-  }) => (
-    <div data-testid="tool-frame-stub" data-props={JSON.stringify(props)}>
-      <button
-        type="button"
-        data-testid="simulate-calc-done"
-        onClick={() => props.onCalcResultId?.('calc_42')}
-      >
-        Simuler calcul terminé
-      </button>
-    </div>
-  ),
-}));
+// câblage du shell : props reçues + remontée de calcResultId + gate captureReady.
+// Comme le vrai ToolFrame, un « calcul terminé » émet onCalcResultId PUIS
+// onSnapshotStatus('awaiting') ; la capture se résout ensuite ('confirmed' /
+// 'failed'). Le bouton PV attend cette résolution (patron roadsens/fastlab).
+vi.mock('@/lib/tool-bridge/ToolFrame', () => {
+  type SnapEvt = { calcResultId: string; status: string };
+  return {
+    ToolFrame: (props: {
+      toolId: string;
+      engineId: string;
+      orgId: string | null;
+      orgSlug: string;
+      projectId: string | null;
+      projectLabel: string;
+      accessToken: string | null;
+      onCalcResultId?: (id: string | null) => void;
+      onSnapshotStatus?: (event: SnapEvt) => void;
+    }) => (
+      <div data-testid="tool-frame-stub" data-props={JSON.stringify(props)}>
+        <button
+          type="button"
+          data-testid="simulate-calc-done"
+          onClick={() => {
+            props.onCalcResultId?.('calc_42');
+            props.onSnapshotStatus?.({ calcResultId: 'calc_42', status: 'awaiting' });
+          }}
+        >
+          Simuler calcul terminé
+        </button>
+        <button
+          type="button"
+          data-testid="simulate-capture-confirmed"
+          onClick={() =>
+            props.onSnapshotStatus?.({ calcResultId: 'calc_42', status: 'confirmed' })
+          }
+        >
+          Simuler capture confirmée
+        </button>
+        <button
+          type="button"
+          data-testid="simulate-capture-failed"
+          onClick={() =>
+            props.onSnapshotStatus?.({ calcResultId: 'calc_42', status: 'failed' })
+          }
+        >
+          Simuler capture en échec
+        </button>
+      </div>
+    ),
+  };
+});
 
 import CasagrandePage from '../page';
 
@@ -199,7 +227,7 @@ describe('Page CASAGRANDE — shell GEOFAM', () => {
     expect(btn.disabled).toBe(true);
   });
 
-  it('given ToolFrame remonte un calcResultId, when le calcul est "terminé", then le bouton PV s\'active', async () => {
+  it('given un calcul terminé mais capture NON résolue (awaiting), when rendu, then le bouton PV reste DÉSACTIVÉ (gate captureReady)', async () => {
     await renderPage();
     const simulate = container.querySelector(
       '[data-testid="simulate-calc-done"]',
@@ -210,10 +238,32 @@ describe('Page CASAGRANDE — shell GEOFAM', () => {
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',
     ) as HTMLButtonElement;
+    // calcResultId présent MAIS capture 'awaiting' → PV verrouillé (jamais de PV sans note).
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toMatch(/Capture du document/);
+  });
+
+  it("given un calcul terminé PUIS la capture confirmée, when les deux événements arrivent, then le bouton PV s'active", async () => {
+    await renderPage();
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    const btn = container.querySelector(
+      '[data-testid="btn-emettre-pv"]',
+    ) as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
   });
 
-  it('given un calcul terminé, when "Émettre le PV" cliqué et emitPv résout, then le PV scellé est affiché', async () => {
+  it('given un calcul terminé + capture confirmée, when "Émettre le PV" cliqué et emitPv résout, then le PV scellé est affiché', async () => {
     mockEmitPv.mockResolvedValue({
       id: 'pv_01',
       number: 'PV-2026-0011',
@@ -228,11 +278,17 @@ describe('Page CASAGRANDE — shell GEOFAM', () => {
       output: null,
     });
     await renderPage();
-    const simulate = container.querySelector(
-      '[data-testid="simulate-calc-done"]',
-    ) as HTMLButtonElement;
     await act(async () => {
-      simulate.click();
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed"]',
+        ) as HTMLButtonElement
+      ).click();
     });
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',
@@ -248,14 +304,69 @@ describe('Page CASAGRANDE — shell GEOFAM', () => {
     expect(container.textContent).toMatch(/PV-2026-0011/);
   });
 
-  it('given emitPv échoue, when "Émettre le PV" cliqué, then un message d\'erreur explicite est affiché', async () => {
+  it('given une capture en ÉCHEC, when "Émettre le PV" cliqué, then 1er clic = avertissement, 2e clic = émission (patron roadsens/fastlab)', async () => {
+    mockEmitPv.mockResolvedValue({
+      id: 'pv_02',
+      number: 'PV-2026-0012',
+      orgId: 'org_01',
+      projectId: 'proj_fd_01',
+      calcResultId: 'calc_42',
+      engineId: 'pieux',
+      hmacTruncated: 'ffee',
+      sealedAt: '2026-07-16T10:00:00.000Z',
+      sealedBy: 'Amadou Diallo',
+      params: {},
+      output: null,
+    });
+    await renderPage();
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-failed"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    const btn = container.querySelector(
+      '[data-testid="btn-emettre-pv"]',
+    ) as HTMLButtonElement;
+    // 1er clic : pas d'émission, avertissement affiché.
+    await act(async () => {
+      btn.click();
+    });
+    expect(mockEmitPv).not.toHaveBeenCalled();
+    expect(
+      container.querySelector('[data-testid="capture-failed-warning"]'),
+    ).not.toBeNull();
+    // 2e clic : émission confirmée.
+    await act(async () => {
+      btn.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockEmitPv).toHaveBeenCalledWith('org_01', 'proj_fd_01', {
+      calcResultId: 'calc_42',
+    });
+  });
+
+  it("given un calcul terminé + capture confirmée, when emitPv échoue, then un message d'erreur explicite est affiché", async () => {
     mockEmitPv.mockRejectedValue({ message: 'Quota épuisé.' });
     await renderPage();
-    const simulate = container.querySelector(
-      '[data-testid="simulate-calc-done"]',
-    ) as HTMLButtonElement;
     await act(async () => {
-      simulate.click();
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed"]',
+        ) as HTMLButtonElement
+      ).click();
     });
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',

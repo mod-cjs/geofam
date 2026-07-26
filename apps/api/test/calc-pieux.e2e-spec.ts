@@ -58,14 +58,17 @@ describe('POST /calc/pieux (e2e)', () => {
     expect(body.meta.engineVersion).toMatch(/^\d+\.\d+\.\d+$/);
     // Egalite stricte de la sortie (recalcul deterministe identique).
     expect(body).toEqual(expected);
-    // Frontiere de confidentialite (decision 17/07, avis expert reco A + directive
-    // titulaire) : les valeurs DISPLAY normatives (ple/qce/kfac/kmax/Def/fric/xi3/xi4,
-    // courbes re-echantillonnees) sont whitelistees ; les INTERNES du solveur
-    // (objets bruts, detail de pointe, discretisation t-z, combinaisons) restent
-    // interdits dans la reponse.
+    // Frontiere de confidentialite (decision 17/07 + OUVERTURE §8 26/07) : les valeurs
+    // AFFICHEES par l'outil (ple/qce/kfac/kmax/Def/fric/xi3/xi4/courbes + DESORMAIS
+    // qb/qbDetail) sont whitelistees ; seuls les INTERNES du solveur JAMAIS affiches
+    // (objet d'interpolation qceDetail, discretisation t-z settle/ktau/kq, combinaisons
+    // comb/Rbf/Rsf, nom brut grd, profil/geometrie bruts) restent interdits.
     expect(JSON.stringify(res.body)).not.toMatch(
-      /"(qb|qbDetail|qceDetail|settle|ktau|kq|comb|Rbf|Rsf|grd|baseLayer|layers|Ab|perim)"\s*:/,
+      /"(qceDetail|settle|ktau|kq|comb|Rbf|Rsf|grd|baseLayer|layers|Ab|perim)"\s*:/,
     );
+    // Ouverture positive : qb + qbDetail SONT presents (affiches par l'outil, politique 26/07).
+    expect(JSON.stringify(res.body)).toMatch(/"qb"\s*:/);
+    expect(JSON.stringify(res.body)).toMatch(/"qbDetail"\s*:/);
   });
 
   it('une entree hors-schema renvoie 400 (validation Zod du contrat #56)', async () => {
@@ -99,11 +102,12 @@ describe('POST /calc/pieux (e2e)', () => {
     const body = res.body as EngineResultEnvelope<PieuxOutput>;
     expect(body.ok).toBe(true);
     if (!body.ok) return;
-    // Erreur bornee, message sans INTERNE de solveur (les cles display
-    // whitelistees — decision 17/07 — peuvent apparaitre, a null).
+    // Erreur bornee, message sans INTERNE de solveur (les cles display whitelistees —
+    // dont qb/qbDetail, ouverture §8 26/07 — peuvent apparaitre, ici a null en branche
+    // erreur). Seuls les INTERNES jamais affiches restent interdits.
     expect(body.output.erreur).toBeTruthy();
     expect(JSON.stringify(res.body)).not.toMatch(
-      /"(qb|qbDetail|qceDetail|settle|ktau|kq|comb|Rbf|Rsf|grd|baseLayer|layers)"\s*:/,
+      /"(qceDetail|settle|ktau|kq|comb|Rbf|Rsf|grd|baseLayer|layers)"\s*:/,
     );
   });
 });

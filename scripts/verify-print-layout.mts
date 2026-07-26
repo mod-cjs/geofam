@@ -37,6 +37,8 @@ import { runBurmister } from '../packages/engines/src/burmister/index.js';
 import { BURMISTER_FIXTURES } from '../packages/engines/src/burmister/test-fixtures.js';
 import { runLabo } from '../packages/engines/src/labo/index.js';
 import { LABO_FIXTURES } from '../packages/engines/src/labo/test-fixtures.js';
+import { runPieux } from '../packages/engines/src/pieux/index.js';
+import { PIEUX_FIXTURES } from '../packages/engines/src/pieux/test-fixtures.js';
 import { runRadier } from '../packages/engines/src/radier/index.js';
 import { RADIER_FIXTURES } from '../packages/engines/src/radier/test-fixtures.js';
 import { runTerzaghi } from '../packages/engines/src/terzaghi/index.js';
@@ -346,6 +348,74 @@ async function main(): Promise<void> {
     assert(
       lGuard.ok,
       `FASTLAB : garde §8 REFUSE le printHtml réel (Chromium) — motif : ${lGuard.error ?? ''}`,
+    );
+
+    // ---------------- CASAGRANDE (note pieux — tous les .tabpane, NF P 94-262) ----------------
+    // La note CASAGRANDE = ce que « ⎙ Imprimer la note » (window.print) produit : tous les
+    // .tabpane via @media print. On prouve : largeur A4 (pas d effondrement 0-largeur), pas
+    // d explosion de pages, verdict + résistances + synthèse présents, courbe charge-tassement
+    // en SVG (#settle-svg) présente, AUCUN <canvas>, AUCUNE URI data: (figures sealables),
+    // et la garde §8 serveur ACCEPTE les octets réels.
+    const cfx = PIEUX_FIXTURES.find((f) => f.input.meth === 'pmt')!;
+    const cenv = runPieux(cfx.input);
+    if (!cenv.ok) throw new Error('runPieux a échoué');
+    const cPage = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+    const ci = cfx.input;
+    const cg = ci.geom;
+    const csec = cg.section === 'carre' ? 'carr' : cg.section;
+    const cDrive =
+      `(function(){` +
+      `state.layers=${J(ci.layers)};state.cpt=${J(ci.cpt)};` +
+      `state.meth=${J(ci.meth)};state.da=${J(ci.da)};state.sens=${J(ci.sens)};` +
+      `state.section=${J(csec)};state.arm=${J(ci.beton?.arm ?? 'arme')};` +
+      `state.k3=${J(ci.beton?.k3 ?? '1.0')};state.essais=${J(ci.essais)};` +
+      `state.fnmode=${J(ci.frottementNegatif?.mode ?? 'auto')};` +
+      `function sv(id,v){var e=document.getElementById(id);if(e)e.value=String(v);}` +
+      `sv('g_B',${cg.g_B ?? 0.6});sv('g_z0',${ci.g_z0});sv('g_D',${ci.g_D});` +
+      `sv('g_pieu',${ci.cat});sv('c_G',${ci.c_G});sv('c_Q',${ci.c_Q});` +
+      `sv('o_nappe',${ci.o_nappe});sv('o_nprofil',${ci.o_nprofil});sv('o_surf',${ci.o_surf});` +
+      `sv('grp_n',${ci.grp.grp_n});sv('grp_m',${ci.grp.grp_m});sv('grp_s',${ci.grp.grp_s});` +
+      `compute();})()`;
+    const cReady = `(function(){var r=(document.getElementById('res-content')||{}).innerHTML||'';return r.indexOf('Portance')>=0&&r.indexOf('Calcul en cours')<0;})()`;
+    const cPrint = await capturePrintHtml(
+      cPage,
+      'apps/web/src/tools-cloned/casagrande.html',
+      cenv.output,
+      cDrive,
+      cReady,
+    );
+
+    const c_main = await measure(cPage, cPrint, 'new', 'main');
+    const c_body = await measure(cPage, cPrint, 'new', 'body');
+    await cPage.close();
+
+    console.log('\n=== CASAGRANDE (note pieux — main / body, pages A4) ===');
+    console.log('casagrande + helper APRÈS (210mm) main :', J(c_main));
+    console.log('casagrande + helper APRÈS (210mm) body :', J(c_body));
+    assert(
+      c_main.noteW >= 500 && c_body.pages <= 16,
+      `CASAGRANDE : note pleine largeur A4, pas d'explosion de pages ${J(c_main)} ${J(c_body)}`,
+    );
+    // Contenu de note : verdict + résistances + synthèse (la note n est pas vide).
+    assert(
+      /Portance vérifiée|Portance NON vérifiée/.test(cPrint),
+      'CASAGRANDE : verdict de portance absent de la note',
+    );
+    assert(/Synthèse géométrique/.test(cPrint), 'CASAGRANDE : synthèse géométrique absente');
+    assert(/Résistances/.test(cPrint), 'CASAGRANDE : tableau des résistances absent');
+    // Courbe charge-tassement : SVG inline #settle-svg avec un <path> vectoriel (pas un canvas).
+    assert(/id="settle-svg"/.test(cPrint), 'CASAGRANDE : #settle-svg absent de la note');
+    assert(/<svg\b/i.test(cPrint), 'CASAGRANDE : aucune figure SVG dans la note');
+    assert(!/<canvas\b/i.test(cPrint), 'CASAGRANDE : <canvas> (non sealable) présent dans la note');
+    assert(
+      !/src\s*=\s*["']?\s*data:/i.test(cPrint),
+      'CASAGRANDE : URI data: (non sealable) dans la note',
+    );
+    // §8 sur OCTETS RÉELS (Chromium) : la garde serveur assertInertHtml ACCEPTE la note.
+    const cGuard = guardInert(cPrint);
+    assert(
+      cGuard.ok,
+      `CASAGRANDE : garde §8 REFUSE le printHtml réel (Chromium) — motif : ${cGuard.error ?? ''}`,
     );
 
     console.log('\n=== SYNTHÈSE ASSERTIONS ===');

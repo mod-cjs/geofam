@@ -2057,16 +2057,19 @@ const GEOPLAQUE_TRIRUN = [
 // et les 3 courbes (courbePortance/courbeTassement/profilsDowndrag -> figures SVG). AUCUNE
 // re-derivation cliente : chaque nombre affiche vient d'un champ serveur whiteliste.
 //
-// RESIDUS FERMES §8 (toujours confidentiels — pas dans l'elargissement) affiches « — » :
-//  - R_d PAR TERME (RbD/RsD) : necessitent les coeffs partiels gouvernants (govElu.Rbf/Rsf),
-//    non exposes ; le R_d TOTAL (RcD) l'est. Le total « Brut R_m » = R_b + R_s (somme de deux
-//    valeurs deja affichees, comme dans renderResults d'origine).
-//  - sigma appliquees beton (sELU/sELS) + limite ELS : hors whitelist ; l'exposer = un-liner
-//    serveur (index.ts shapeOutput), PAS une re-derivation cliente (regle §8 titulaire, cf.
-//    burmister adm50). SIGNALE comme ecart a trancher.
+// OUVERTURE §8 (26/07, politique « on expose ce que l'outil client AFFICHE ») — plus
+// AUCUN « — » divergent sur une valeur affichee par renderResults :
+//  - R_d PAR TERME (RbD/RsD, colonne « Calcul R_d » l.1351-1352) : EXPOSES (out.RbD/out.RsD).
+//    Calcules SERVEUR depuis RbK/RsK et les partiels de la combinaison ELU gouvernante ; le
+//    clone ne recalcule rien (RbD+RsD ≈ RcD aux arrondis pres). Le total « Brut R_m » = R_b+R_s.
+//  - sigma appliquees beton σ_ELU/σ_ELS + limite ELS (drawBeton l.1568-1569) : EXPOSES
+//    (out.betonSigmaELU/ELS/betonLimELS) — le client AFFICHE ces VALEURS.
+//  - le sous-texte qbDetail est SERVI PAR LE SERVEUR (out.qbDetail), IDENTIQUE au client :
+//    p*le/q_ce (avec l'ECRETAGE cap affiche) et, en c-φ, N_q/N_c/σ′v.
+// RESIDUS ENCORE FERMES (le CODE moteur / calages NON affiches) :
 //  - abaques COMPLETES de l'onglet Coefficients (kp,max/kc,max/alpha/qs,max par sol x classe)
-//    + C_e;F (effet de groupe non-flottant) + ecretage q_ce (cap) + detail c-φ (Nc/σ′v) :
-//    science confidentielle, non exposee.
+//    + C_e;F (effet de groupe non-flottant) + l'OBJET qceDetail brut (clipped/mean0/raw) +
+//    les CALAGES beton (Cmax/k1/k2/fckStar/acc/k3/gc) : science confidentielle, non affichee.
 //
 // UNITES : aucune conversion (le contrat PieuxInputSchema reprend les champs du HTML tels
 // quels — G/Q en kN, pl*/qc en MPa, gamma en kN/m3). SEULE reconciliation : la valeur de
@@ -2114,6 +2117,14 @@ const CASAGRANDE_BRIDGE_AND_SHIM = [
   '  window.__geofamBridge={',
   '    calc:function(params){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:ENGINE_ID,label:(params&&params.projet)||null,params:params}}); }); },',
   '    emitPv:function(calcResultId){ post({v:1,type:"pv:request",payload:{calcResultId:calcResultId}}); },',
+  '    /* snapshot:capture (option 3 « sceller le document imprime ») : remonte a l hote la',
+  '       NOTE imprimable de casagrande (tous les .tabpane, comme window.print() du client via',
+  '       @media print), auto-contenue. Sens iframe->hote SEUL, fire-and-forget. Contenu = les',
+  '       valeurs AFFICHEES par l outil (rendues depuis la sortie serveur whitelistee ; politique',
+  '       §8 26/07) ; les <script>/<button> sont retires, aucun gestionnaire inline ne subsiste,',
+  '       aucune fonction de calcul n existe dans le clone (excisee). L hote scelle sur SON dernier',
+  '       calcResultId. Patron identique a terzaghi/fastlab. */',
+  '    snapshot:function(displayHtml,printHtml){ post({v:1,type:"snapshot:capture",payload:{displayHtml:String(displayHtml||""),printHtml:String(printHtml||"")}}); },',
   '    context:function(){ return ctx; }',
   '  };',
   '  /* input:dirty (correctif PV BQ-1) : signale a l hote que l ecran a change apres un calcul',
@@ -2185,12 +2196,11 @@ const CASAGRANDE_BRIDGE_AND_SHIM = [
   '',
   '/* SORTIE whitelistee (PieuxOutputSchema) -> objet R attendu par renderResults CONSERVE.',
   '   Whitelistes BRANCHES : allOk/tauxGouvernant/warnings/methode/sens + resistances',
-  '   RbK/RsK/RcK/RcD/RcrK + Rb/Rs bruts + xi3/xi4/gammaRd1 + Def/debR + Ce + fric[] +',
-  '   tassementELS/FdCar/verifications/categorie. Le sous-texte qbDetail est reconstruit des',
-  '   scalaires ple/qce/kfac/kmax/debR (methode-dependant). RESIDUS FERMES -> NaN/« — » : RbD/RsD',
-  '   (coeffs partiels gouvernants non exposes ; RcD total l\\u2019est) et CeF (effet de groupe',
-  '   non-flottant, science confidentielle). Geometrie (Ab/perim/a/b/baseLayer/D/z0/cat/cls)',
-  '   reconstruite depuis la SAISIE (publique). */',
+  '   RbK/RsK/RcK/RcD/RcrK + R_b;d/R_s;d par terme + Rb/Rs bruts + xi3/xi4/gammaRd1 + Def/debR',
+  '   + Ce + fric[] + tassementELS/FdCar/verifications/categorie. Le sous-texte qbDetail est',
+  '   SERVI PAR LE SERVEUR (out.qbDetail, ouverture §8 26/07). RESIDU FERME -> NaN : CeF (effet',
+  '   de groupe non-flottant, science confidentielle). Geometrie (Ab/perim/a/b/baseLayer/D/z0/',
+  '   cat/cls) reconstruite depuis la SAISIE (publique). */',
   'function mapPieuxOutput(out){',
   '  var g=pieuxGeomCtx(); var p=curPile();',
   '  var checks=(Array.isArray(out.verifications)?out.verifications:[]).map(function(v){',
@@ -2201,25 +2211,18 @@ const CASAGRANDE_BRIDGE_AND_SHIM = [
   '  var fric=(Array.isArray(out.fric)?out.fric:[]).map(function(f){',
   '    return { soil:(typeof f.soil==="string"?f.soil:"argile"), top:sv(f.top), bot:sv(f.bot),',
   '      dz:sv(f.dz), qs:sv(f.qs), dRs:sv(f.dRs), qsm:(f.qsm==null?null:sv(f.qsm)), deg:(f.deg===true) }; });',
-  '  /* Sous-texte de la KPI R_b (detail de portance) reconstruit depuis les SCALAIRES',
-  '     serveur whitelistes (ple/qce/debR/kfac/kmax) — jamais une re-derivation de science.',
-  '     L\\u2019ecretage q_ce (cap) et le detail c-\\u03c6 (Nc/\\u03c3\\u2032v) restent confidentiels -> omis. */',
-  '  var meth=(out.methode||state.meth);',
-  '  var qbDetail="\\u2014";',
-  '  if(meth==="pmt" && out.ple!=null){',
-  '    qbDetail="p<sub>le</sub>* = "+fmt(sv(out.ple),2)+" MPa (zone D\\u2212b\\u2026D+3a) \\u00b7 D<sub>ef</sub>/B = "+fmt(sv(out.debR),1)+" (int\\u00e9gr\\u00e9 sur 10B au\\u2011dessus de la pointe) \\u00b7 k<sub>p</sub> = "+fmt(sv(out.kfac),2)+" (k<sub>p,max</sub>="+fmt(sv(out.kmax),2)+")";',
-  '  } else if(meth==="cpt" && out.qce!=null){',
-  '    qbDetail="q<sub>ce</sub> = "+fmt(sv(out.qce),2)+" MPa \\u00b7 D<sub>ef</sub>/B = "+fmt(sv(out.debR),1)+" (int\\u00e9gr\\u00e9 sur 10B au\\u2011dessus de la pointe) \\u00b7 k<sub>c</sub> = "+fmt(sv(out.kfac),2)+" (k<sub>c,max</sub>="+fmt(sv(out.kmax),2)+")";',
-  '  } else if(meth==="cphi" && out.kfac!=null){',
-  '    qbDetail="N<sub>q</sub> = "+fmt(sv(out.kfac),1)+" \\u00b7 D<sub>ef</sub>/B = "+fmt(sv(out.debR),1);',
-  '  }',
+  '  /* Sous-texte de la KPI R_b (detail de portance) : chaine SERVEUR whitelistee',
+  '     out.qbDetail (politique §8 26/07 « on expose ce que l\\u2019outil client affiche »).',
+  '     Le serveur produit la chaine IDENTIQUE au client (p*le/q_ce ecrete/Nc/\\u03c3\\u2032v/D_ef/',
+  '     k_p/k_c) : plus de re-derivation cliente, fidelite complete. Repli \\u00ab \\u2014 \\u00bb si absente. */',
+  '  var qbDetail=(typeof out.qbDetail==="string" && out.qbDetail)?out.qbDetail:"\\u2014";',
   '  return {',
   '    err:null, allOk:(out.allOk===true), sens:(out.sens||state.sens),',
   '    warn:(Array.isArray(out.warnings)?out.warnings.slice():[]), meth:(out.methode||state.meth),',
   '    govern:sv(out.tauxGouvernant), da:state.da,',
   '    Rb:sv(out.Rb), qbDetail:qbDetail, Rs:sv(out.Rs), D:g.D, z0:g.z0, RcD:sv(out.RcD),',
   '    settle:{ sEls:sv(out.tassementELS), pts:(ct?ct.pts:[]), EM:NaN, fine:null, Fmax:(ct&&isFinite(ct.Fmax)?ct.Fmax:0) },',
-  '    RbK:sv(out.RbK), RbD:NaN, RsK:sv(out.RsK), RsD:NaN, RcK:sv(out.RcK), RcrK:sv(out.RcrK),',
+  '    RbK:sv(out.RbK), RbD:sv(out.RbD), RsK:sv(out.RsK), RsD:sv(out.RsD), RcK:sv(out.RcK), RcrK:sv(out.RcrK),',
   '    xi3:sv(out.xi3), xi4:sv(out.xi4), N:Math.max(1,Math.round(num("o_nprofil"))||1),',
   '    Sinv:Math.min(2500,Math.max(100,(num("o_surf")>0?num("o_surf"):2500))),',
   '    redis:($("o_redis")&&$("o_redis").value==="oui"), grd:sv(out.gammaRd1),',
@@ -2294,6 +2297,123 @@ const CASAGRANDE_BRIDGE_AND_SHIM = [
   '  var legend=\'<div class="coupe-legend" style="border-top:1px solid var(--line)"><span><span class="swatch" style="background:\'+teal+\'"></span>Pieu</span>\'+(imp?\'<span><span class="swatch" style="background:rgba(188,59,42,.18)"></span>Zone de frottement négatif imposée</span>\':\'<span><span class="swatch" style="background:\'+ochre+\'"></span>Sol — tassement libre</span>\')+\'<span><span class="swatch" style="background:\'+red+\'"></span>q<sub>sn</sub></span></div>\';',
   '  return \'<div class="card"><div class="hd"><h2>Profils en profondeur</h2><span class="tag">t-z · servis serveur</span></div><div class="bd" style="padding:14px 14px 0">\'+svg+\'</div>\'+legend+\'</div>\';',
   '}',
+  '',
+  '/* ---- CAPTURE DU DOCUMENT (option 3 « sceller le document imprime ») ----',
+  '   Serialise DEUX chaines HTML auto-contenues APRES un calcul de portance REUSSI. La note',
+  '   casagrande = ce que \\u00ab \\u2338 Imprimer la note \\u00bb (window.print) produit : le @media print',
+  '   du client (l.182-188) masque nav/boutons et PROMEUT TOUS les .tabpane (display:block) ->',
+  '   la note imprimee = l ensemble du <main> (onglets Projet & pieu / Frottement negatif / Profil',
+  '   de sol / Coefficients / Resultats). On reproduit ce document a l identique : clone du <main>,',
+  '   valeurs de saisie FIGEES dans les attributs (outerHTML ne porte pas .value), @media print',
+  '   PROMU a l ecran. Toutes les figures (coupe, courbe charge-tassement #settle-svg, portance,',
+  '   profils t-z) sont deja des SVG INLINE (casagrande n utilise aucun element de rasterisation) :',
+  '   elles survivent telles quelles a outerHTML, vectorielles et sealables (aucune URI en ligne',
+  '   rasterisee, invariant du document scelle). §8 (politique 26/07) : la note ne contient QUE',
+  '   des valeurs AFFICHEES par',
+  '   l outil (rendues depuis la sortie serveur whitelistee) ; aucune fonction de calcul n existe',
+  '   dans le clone (science excisee). DETERMINISTE : meme sortie serveur = meme note = meme HTML',
+  '   (aucune horloge/hasard ; les tabpanes de saisie lisent des champs figes). */',
+  '/* Fige les VALEURS de formulaire (input/select/textarea) de <main> dans les ATTRIBUTS avant',
+  '   serialisation (outerHTML ne serialise que les attributs, pas la propriete .value). Reflexion',
+  '   VISUELLEMENT INERTE (on n ecrit que l attribut correspondant a la valeur deja affichee).',
+  '   Idempotent (rappele a chaque capture). */',
+  'function __casagrandeFreezeLive(){',
+  '  var root=document.querySelector("main"); if(!root) return;',
+  '  var fs=root.querySelectorAll("input,select,textarea");',
+  '  for(var i=0;i<fs.length;i++){ var el=fs[i], tag=(el.tagName||"").toLowerCase();',
+  '    if(tag==="input"){ var ty=(el.getAttribute("type")||"text").toLowerCase();',
+  '      if(ty==="checkbox"||ty==="radio"){ if(el.checked) el.setAttribute("checked","checked"); else el.removeAttribute("checked"); }',
+  '      else { el.setAttribute("value", String(el.value==null?"":el.value)); } }',
+  '    else if(tag==="textarea"){ el.textContent=String(el.value==null?"":el.value); }',
+  '    else if(tag==="select"){ var opts=el.options||[]; for(var j=0;j<opts.length;j++){ if(opts[j].selected) opts[j].setAttribute("selected","selected"); else opts[j].removeAttribute("selected"); } } }',
+  '}',
+  '/* Clone un noeud et le rend INERTE : retire tout <script>/<button> descendant, tout attribut',
+  '   gestionnaire inline on…= (sur le noeud et ses descendants) ET toute URI javascript: —',
+  '   conformement a assertInertHtml (apps/api/src/pv/html-guard.ts). Les <svg> inline (coupe,',
+  '   courbe charge-tassement, portance, profils) sont du CONTENU statique conserve. Renvoie',
+  '   son outerHTML (ou "" si absent). */',
+  'function __casagrandeCloneClean(el){',
+  '  if(!el) return "";',
+  '  var c=el.cloneNode(true);',
+  '  var kill=c.querySelectorAll?c.querySelectorAll("script,button"):[];',
+  '  for(var j=0;j<kill.length;j++){ if(kill[j].parentNode) kill[j].parentNode.removeChild(kill[j]); }',
+  '  var all=c.querySelectorAll?c.querySelectorAll("*"):[];',
+  '  var nodes=[c]; for(var a=0;a<all.length;a++){ nodes.push(all[a]); }',
+  '  for(var n=0;n<nodes.length;n++){',
+  '    var nd=nodes[n]; if(!nd.attributes) continue;',
+  '    for(var k=nd.attributes.length-1;k>=0;k--){',
+  '      var att=nd.attributes[k], an=att.name||"", av=att.value||"";',
+  '      if(an.length>=2 && an.slice(0,2).toLowerCase()==="on"){ nd.removeAttribute(an); continue; }',
+  '      if(/^\\s*javascript:/i.test(av)) nd.removeAttribute(an);',
+  '    }',
+  '  }',
+  '  return c.outerHTML||"";',
+  '}',
+  '/* Agrege TOUT le CSS de l outil (les cartes/tables/verdict sont stylees par classes globales',
+  '   + var(--…), y compris les couleurs de la courbe var(--amber)/var(--blue)). */',
+  'function __casagrandeCollectStyles(){',
+  '  var styles="", sl=document.querySelectorAll("style");',
+  '  for(var i=0;i<sl.length;i++){ styles += (sl[i].textContent||"") + "\\n"; }',
+  '  return styles;',
+  '}',
+  '/* PROMEUT les regles du bloc @media print A L ECRAN (l.182-188 : nav.tabs/.ref/.btn masques,',
+  '   .tabpane{display:block!important}, .coupe-wrap static). Pour que l apercu ET le printHtml',
+  '   auto-contenu RESTENT WYSIWYG (le PV n existe qu en impression cote client), on extrait le',
+  '   CONTENU des accolades de @media print et on le re-emet au niveau racine. Extraction par',
+  '   comptage d accolades (conserve les regles imbriquees). Reutilise les REGLES DU CLIENT',
+  '   (aucune duplication a maintenir). Renvoie "" si le bloc est absent. */',
+  'function __casagrandePromotePrintCss(styles){',
+  '  var s=styles.indexOf("@media print"); if(s<0) return "";',
+  '  var open=styles.indexOf("{", s); if(open<0) return "";',
+  '  var depth=0, out="";',
+  '  for(var i=open;i<styles.length;i++){ var ch=styles.charAt(i);',
+  '    if(ch==="{"){ depth++; if(depth===1) continue; }',
+  '    else if(ch==="}"){ depth--; if(depth===0) break; }',
+  '    out+=ch; }',
+  '  return out;',
+  '}',
+  '/* CORPS de la note : fige les valeurs de saisie puis clone-nettoie le <main> ENTIER (tous',
+  '   les .tabpane, comme le print client). AUCUNE science (les valeurs viennent de',
+  '   renderResults/sortie serveur ; la geometrie de saisie est publique). */',
+  'function __casagrandeBuildReportBody(){',
+  '  __casagrandeFreezeLive();',
+  '  return __casagrandeCloneClean(document.querySelector("main"));',
+  '}',
+  '/* Document IMPRIMABLE auto-contenu : <main> (toutes les feuilles) + CSS inline + regles',
+  '   @media print PROMUES a l ecran. LARGEUR A4 (defense en profondeur, cf. terzaghi/fastlab) :',
+  '   174mm (210 - 2x12 marge - 2x6 padding), evite l effondrement 0-largeur du helper',
+  '   printInertHtml (iframe 0x0). */',
+  'function __casagrandeSerializePrintable(){',
+  '  var styles=__casagrandeCollectStyles();',
+  '  styles += "\\n" + __casagrandePromotePrintCss(styles);',
+  '  styles += "\\nbody{background:#fff}main{display:block;padding:0;width:174mm;max-width:none;margin:0 auto}\\n";',
+  '  return "<!doctype html><html lang=\\"fr\\"><head><meta charset=\\"utf-8\\">"',
+  '    + "<meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1\\">"',
+  '    + "<title>CASAGRANDE \\u2014 Note de calcul (NF P 94-262)</title>"',
+  '    + "<style>" + styles + "</style></head><body>"',
+  '    + __casagrandeBuildReportBody()',
+  '    + "</body></html>";',
+  '}',
+  '/* APERCU auto-contenu (iframe du panneau « Calculs ») : MEME corps, styles ecran centres. */',
+  'function __casagrandeSerializeDisplay(){',
+  '  var styles=__casagrandeCollectStyles();',
+  '  styles += "\\n" + __casagrandePromotePrintCss(styles);',
+  '  styles += "\\nbody{background:#fff;padding:16px}main{display:block;padding:0;max-width:1000px;margin:0 auto}\\n";',
+  '  return "<!doctype html><html lang=\\"fr\\"><head><meta charset=\\"utf-8\\">"',
+  '    + "<meta name=\\"viewport\\" content=\\"width=device-width, initial-scale=1\\">"',
+  '    + "<title>CASAGRANDE \\u2014 Aper\\u00e7u de la note</title>"',
+  '    + "<style>" + styles + "</style></head><body>"',
+  '    + __casagrandeBuildReportBody()',
+  '    + "</body></html>";',
+  '}',
+  '/* Emet snapshot:capture APRES le rendu (jamais avant), sur calcul REUSSI (garde §5 dans',
+  '   compute). Ne fait rien si le pont n expose pas snapshot. */',
+  'function __casagrandeCaptureSnapshot(){',
+  '  try{',
+  '    if(!window.__geofamBridge || typeof window.__geofamBridge.snapshot!=="function") return;',
+  '    window.__geofamBridge.snapshot(__casagrandeSerializeDisplay(), __casagrandeSerializePrintable());',
+  '  }catch(e){}',
+  '}',
   '/* =================== FIN BRIDGE + MAPPING =================== */',
 ].join('\n');
 
@@ -2310,13 +2430,25 @@ const CASAGRANDE_COMPUTE = [
   '  if(!resp || !resp.ok){ renderResults({err:fmtCalcErr(resp&&resp.error)}); return; }',
   '  window.__casagrandeLastCalcResultId=resp.calcResultId||null;',
   '  var out=resp.output||{};',
+  '  /* GARDE §5 — ERREUR EN BANDE : runPieux renvoie TOUJOURS ok:true et encode les erreurs',
+  '     de saisie/garde du moteur dans output.erreur (index.ts shapeOutput ; leçon Terzaghi).',
+  '     resp.ok=true ne suffit donc PAS : sur une erreur en bande la « note » se reduit au',
+  '     message d erreur. On NE capture (et donc on NE scelle) JAMAIS un document d erreur —',
+  '     ce return, PLACE AVANT la capture en fin de fonction, en est la barriere. ESPRIT',
+  '     MUTATION : retirer ce return (ou deplacer la capture avant lui) doit rendre ROUGE le',
+  '     test « erreur en bande -> 0 capture ». */',
   '  if(out.erreur){ renderResults({err:out.erreur}); return; }',
   '  var g=pieuxGeomCtx();',
-  '  try{ renderResults(mapPieuxOutput(out)); }catch(e){ if(el) el.innerHTML=\'<div class="verdict no"><span class="ic">!</span><div class="txt"><b>Erreur de rendu</b><div>\'+escPieux(e&&e.message)+\'</div></div></div>\'; }',
+  '  try{ renderResults(mapPieuxOutput(out)); }catch(e){ if(el) el.innerHTML=\'<div class="verdict no"><span class="ic">!</span><div class="txt"><b>Erreur de rendu</b><div>\'+escPieux(e&&e.message)+\'</div></div></div>\'; return; }',
   '  try{ drawCoupe(g.D,g.a,g.b); }catch(e){}',
   '  if(state.meth==="cpt"){ try{ drawQcLog(g.D,g.a,g.b); }catch(e){} }',
   '  try{ drawBeton(out); }catch(e){}',
   '  try{ drawPortance(g.D,out); }catch(e){}',
+  '  /* Option 3 : sceller le DOCUMENT que l outil vient de rendre (tous les .tabpane, la note',
+  '     que window.print produirait), APRES le rendu complet (renderResults + drawBeton +',
+  '     drawPortance) et UNIQUEMENT sur calcul reussi (ni erreur transport/entitlement filtree',
+  '     plus haut, ni erreur en bande filtree par la garde §5). */',
+  '  __casagrandeCaptureSnapshot();',
   '}',
 ].join('\n');
 
@@ -2410,9 +2542,9 @@ const CASAGRANDE_DRAWBETON = [
   '  var okELU=(out.betonOkELU===true), okELS=(out.betonOkELS===true), ok=okELU&&okELS;',
   '  var taux=Math.max((isFinite(out.betonTauxELU)?out.betonTauxELU:0),(isFinite(out.betonTauxELS)?out.betonTauxELS:0));',
   '  var verdict=\'<div class="verdict \'+(ok?"ok":"no")+\'" style="margin:0 0 16px"><div class="ic">\'+(ok?"\\u2713":"\\u2717")+\'</div><div class="txt"><b>Béton \'+(ok?"vérifié":"NON vérifié")+\'</b><div>Contrainte la plus défavorable : \'+fmt(taux*100,0)+\' % \\u00b7 f<sub>cd</sub> = \'+fmt(out.betonFcd,1)+\' MPa</div></div></div>\';',
-  '  var rows=\'<tr><td class="lbl">\\u03c3 ELU = N<sub>d</sub>/A<sub>b</sub></td><td class="r">\\u2014</td><td class="r">\'+fmt(out.betonFcd,2)+\'</td><td class="r"><span class="\'+(okELU?"pass":"fail")+\'">\'+fmt(out.betonTauxELU*100,0)+\' %</span></td><td class="r">\'+(okELU?"\\u2713":"\\u2717")+\'</td></tr>\'',
-  '    +\'<tr><td class="lbl">\\u03c3 ELS car. = N<sub>ser</sub>/A<sub>b</sub></td><td class="r">\\u2014</td><td class="r">\\u2014</td><td class="r"><span class="\'+(okELS?"pass":"fail")+\'">\'+fmt(out.betonTauxELS*100,0)+\' %</span></td><td class="r">\'+(okELS?"\\u2713":"\\u2717")+\'</td></tr>\';',
-  '  el.insertAdjacentHTML("beforeend", \'<div class="card" style="margin-top:20px"><div class="hd"><h2>Résistance du béton (structure)</h2><span class="tag">NF P 94-262 §4.4</span></div><div class="bd">\'+verdict+\'<table class="res"><tr><th>Combinaison</th><th class="r">\\u03c3 (MPa)</th><th class="r">limite (MPa)</th><th class="r">taux</th><th class="r"></th></tr>\'+rows+\'</table><div class="coef-note" style="margin-top:14px">Résistance de calcul du béton f<sub>cd</sub> = \'+fmt(out.betonFcd,1)+\' MPa (NF P 94-262 §4.4). Les contraintes appliquées \\u03c3 et le détail des facteurs (C<sub>max</sub>, k\\u2081, k\\u2082, f<sub>ck</sub>*) sont calculés côté serveur.</div></div></div>\');',
+  '  var rows=\'<tr><td class="lbl">\\u03c3 ELU = N<sub>d</sub>/A<sub>b</sub></td><td class="r">\'+fmt(out.betonSigmaELU,2)+\'</td><td class="r">\'+fmt(out.betonFcd,2)+\'</td><td class="r"><span class="\'+(okELU?"pass":"fail")+\'">\'+fmt(out.betonTauxELU*100,0)+\' %</span></td><td class="r">\'+(okELU?"\\u2713":"\\u2717")+\'</td></tr>\'',
+  '    +\'<tr><td class="lbl">\\u03c3 ELS car. = N<sub>ser</sub>/A<sub>b</sub></td><td class="r">\'+fmt(out.betonSigmaELS,2)+\'</td><td class="r">\'+fmt(out.betonLimELS,2)+\'</td><td class="r"><span class="\'+(okELS?"pass":"fail")+\'">\'+fmt(out.betonTauxELS*100,0)+\' %</span></td><td class="r">\'+(okELS?"\\u2713":"\\u2717")+\'</td></tr>\';',
+  '  el.insertAdjacentHTML("beforeend", \'<div class="card" style="margin-top:20px"><div class="hd"><h2>Résistance du béton (structure)</h2><span class="tag">NF P 94-262 §4.4</span></div><div class="bd">\'+verdict+\'<table class="res"><tr><th>Combinaison</th><th class="r">\\u03c3 (MPa)</th><th class="r">limite (MPa)</th><th class="r">taux</th><th class="r"></th></tr>\'+rows+\'</table><div class="coef-note" style="margin-top:14px">Contrainte appliquée \\u03c3<sub>ELU</sub> = \'+fmt(out.betonSigmaELU,2)+\' MPa · résistance de calcul du béton f<sub>cd</sub> = \'+fmt(out.betonFcd,1)+\' MPa (NF P 94-262 §4.4). Le détail des facteurs de calage (C<sub>max</sub>, k\\u2081, k\\u2082, f<sub>ck</sub>*) est calculé côté serveur.</div></div></div>\');',
   '}',
 ].join('\n');
 
@@ -3654,6 +3786,27 @@ export const TOOLS = {
     // `fmt` et les fonctions hoistées disponibles au 1er appel, jamais au chargement).
     insertAfterAnchor: 'const num = id => parseFloat($(id).value)||0;',
     insertBlock: '\n' + CASAGRANDE_BRIDGE_AND_SHIM + '\n',
+    // Correctif de NOTICE (onglet Coefficients) : le texte d'origine affirme « Toutes les
+    // valeurs ci-dessous sont extraites de la norme » alors que le `soil-coef-table` juste
+    // dessous montre « — · appliqués côté serveur » (calibration kp/kc/α/qs,max EXCISÉE, §8).
+    // Contradiction visible dans le PV scellé → on réécrit la notice pour dire clairement
+    // que ces facteurs sont appliqués côté serveur (aucune réintroduction de calibration ;
+    // texte STATIQUE, aucune science). Le préfixe « ✓ Coefficients NF P 94-262. » est conservé.
+    patchText: [
+      {
+        find:
+          'Toutes les valeurs ci-dessous sont extraites de la norme (juillet 2012) :\n' +
+          '    facteurs de portance k<sub>p,max</sub> (F.4.2.1) / k<sub>c,max</sub> (G.4.2.1) par classe de pieu, courbes de frottement\n' +
+          '    (F.5.2.2 / G.5.2.2), α<sub>pieu-sol</sub> (F.5.2.1 / G.5.2.1) et q<sub>s,max</sub> (F.5.2.3) par catégorie, coefficient de modèle\n' +
+          '    γ<sub>R;d1</sub> (F.2.1) et facteurs de corrélation ξ (C.2.4.2). Les facteurs partiels restent ajustables ci-dessous.',
+        replace:
+          'Les facteurs de portance et de frottement (k<sub>p,max</sub> / k<sub>c,max</sub>, courbes de frottement, α<sub>pieu-sol</sub>, q<sub>s,max</sub>\n' +
+          '    — Tableaux F.4.2.1 / G.4.2.1 / F.5.2 / G.5.2) sont appliqués côté serveur ; le facteur retenu figure dans le détail de portance du\n' +
+          '    panneau Résultats. Le coefficient de modèle γ<sub>R;d1</sub> (F.2.1) et les facteurs de corrélation ξ (C.2.4.2) sont déterminés\n' +
+          '    automatiquement. Les facteurs partiels EC7 restent éditables ci-dessous.',
+        count: 1,
+      },
+    ],
     // compute/computeDowndrag sont RÉÉCRITS (noms conservés) → NON interdits (comme
     // recalc/runCalc/doSolve). Interdits = la science RETIRÉE.
     forbiddenSymbols: CASAGRANDE_ENGINE_SYMBOLS,

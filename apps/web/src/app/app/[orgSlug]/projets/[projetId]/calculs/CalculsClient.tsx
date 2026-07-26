@@ -707,13 +707,16 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   // (scellé ou non) : les ENTRÉES d'un calcul persisté sont toujours
   // exportables/ré-importables. Rendu dans chaque branche de la barre d'actions.
   //
-  // EXCEPTION FASTLAB (labo) — décision titulaire : périmètre strict « impression
-  // du PV uniquement », PAS d'export/import JSON pour ce logiciel. L'outil client
-  // FASTLAB exporte une BIBLIOTHÈQUE d'échantillons (fastlab.json = db + cfg), pas
-  // la saisie d'un calcul isolé — on ne le reproduit pas ici (hors périmètre). Le
-  // bouton est donc masqué pour les calculs labo (jamais un export de forme
-  // différente qui prêterait à confusion).
-  const exportSupported = !selected || slugOf(selected.engineId) !== 'labo';
+  // EXCEPTIONS FASTLAB (labo) + CASAGRANDE (pieux) — décision titulaire : périmètre
+  // strict « impression de la note uniquement », PAS d'export/import JSON pour ces
+  // logiciels. L'outil client FASTLAB exporte une BIBLIOTHÈQUE d'échantillons
+  // (fastlab.json), et l'outil CASAGRANDE n'a PAS de bouton « Exporter .json » visible
+  // (il n'expose que « ⎙ Imprimer la note ») — on ne reproduit donc AUCUN export pour
+  // eux (hors périmètre). Le bouton est masqué pour ces calculs (jamais un export de
+  // forme différente qui prêterait à confusion).
+  const ENGINES_SANS_EXPORT = new Set(['labo', 'pieux']);
+  const exportSupported =
+    !selected || !ENGINES_SANS_EXPORT.has(slugOf(selected.engineId));
   const exportButton = exportSupported ? (
     <Button
       size="sm"
