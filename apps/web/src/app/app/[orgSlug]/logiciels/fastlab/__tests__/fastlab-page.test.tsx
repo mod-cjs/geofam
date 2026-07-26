@@ -55,41 +55,73 @@ vi.mock('@/lib/api/client', () => ({
 // câblage : props reçues + remontée de calcResultId au shell — y compris en
 // rafale (bouton dédié qui pousse plusieurs ids successifs, comme le fait le
 // clone FASTLAB à chaque frappe débouncée).
-vi.mock('@/lib/tool-bridge/ToolFrame', () => ({
-  ToolFrame: (props: {
-    toolId: string;
-    engineId: string;
-    orgId: string | null;
-    orgSlug: string;
-    projectId: string | null;
-    projectLabel: string;
-    accessToken: string | null;
-    onCalcResultId?: (id: string | null) => void;
-  }) => (
-    <div data-testid="tool-frame-stub" data-props={JSON.stringify(props)}>
-      <button
-        type="button"
-        data-testid="simulate-calc-done"
-        onClick={() => props.onCalcResultId?.('calc_42')}
-      >
-        Simuler calcul terminé
-      </button>
-      <button
-        type="button"
-        data-testid="simulate-calc-burst"
-        onClick={() => {
-          // Rafale débouncée : plusieurs calcResultId coup sur coup, seul le
-          // dernier doit compter pour le bouton PV du shell.
-          props.onCalcResultId?.('calc_burst_1');
-          props.onCalcResultId?.('calc_burst_2');
-          props.onCalcResultId?.('calc_burst_3');
-        }}
-      >
-        Simuler rafale de calculs
-      </button>
-    </div>
-  ),
-}));
+// Comme le vrai ToolFrame, un « calcul terminé » émet onCalcResultId PUIS
+// onSnapshotStatus('awaiting') ; la capture se résout ensuite ('confirmed' /
+// 'failed'). M3 (revue adverse) : le bouton PV attend cette résolution.
+vi.mock('@/lib/tool-bridge/ToolFrame', () => {
+  type SnapEvt = { calcResultId: string; status: string };
+  return {
+    ToolFrame: (props: {
+      toolId: string;
+      engineId: string;
+      orgId: string | null;
+      orgSlug: string;
+      projectId: string | null;
+      projectLabel: string;
+      accessToken: string | null;
+      onCalcResultId?: (id: string | null) => void;
+      onSnapshotStatus?: (event: SnapEvt) => void;
+    }) => (
+      <div data-testid="tool-frame-stub" data-props={JSON.stringify(props)}>
+        <button
+          type="button"
+          data-testid="simulate-calc-done"
+          onClick={() => {
+            props.onCalcResultId?.('calc_42');
+            props.onSnapshotStatus?.({ calcResultId: 'calc_42', status: 'awaiting' });
+          }}
+        >
+          Simuler calcul terminé
+        </button>
+        <button
+          type="button"
+          data-testid="simulate-capture-confirmed"
+          onClick={() =>
+            props.onSnapshotStatus?.({ calcResultId: 'calc_42', status: 'confirmed' })
+          }
+        >
+          Simuler capture confirmée
+        </button>
+        <button
+          type="button"
+          data-testid="simulate-capture-failed"
+          onClick={() =>
+            props.onSnapshotStatus?.({ calcResultId: 'calc_42', status: 'failed' })
+          }
+        >
+          Simuler capture en échec
+        </button>
+        <button
+          type="button"
+          data-testid="simulate-calc-burst"
+          onClick={() => {
+            // Rafale débouncée : plusieurs calcResultId coup sur coup, seul le
+            // dernier doit compter pour le bouton PV du shell.
+            props.onCalcResultId?.('calc_burst_1');
+            props.onCalcResultId?.('calc_burst_2');
+            props.onCalcResultId?.('calc_burst_3');
+            props.onSnapshotStatus?.({
+              calcResultId: 'calc_burst_3',
+              status: 'confirmed',
+            });
+          }}
+        >
+          Simuler rafale de calculs
+        </button>
+      </div>
+    ),
+  };
+});
 
 import FastlabPage from '../page';
 
@@ -221,7 +253,10 @@ describe('Page FASTLAB — shell GEOFAM', () => {
     expect(btn.disabled).toBe(true);
   });
 
-  it('given ToolFrame remonte un calcResultId, when le calcul est "terminé", then le bouton PV s\'active', async () => {
+  it('given un calcul terminé mais capture NON résolue (awaiting), when rendu, then le bouton PV reste DÉSACTIVÉ (gate captureReady)', async () => {
+    // M3 (revue adverse) : le calcul remonte calcResultId + capture 'awaiting' — le
+    // bouton ne doit PAS s'activer tant que le document n'est pas capturé (sinon PV
+    // scellé sans la note option-3 de ce lot).
     await renderPage();
     const simulate = container.querySelector(
       '[data-testid="simulate-calc-done"]',
@@ -232,7 +267,80 @@ describe('Page FASTLAB — shell GEOFAM', () => {
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',
     ) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toMatch(/Capture du document/);
+  });
+
+  it("given un calcul terminé, when la capture est CONFIRMÉE, then le bouton PV s'active", async () => {
+    await renderPage();
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    const btn = container.querySelector(
+      '[data-testid="btn-emettre-pv"]',
+    ) as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
+  });
+
+  it('given une capture en ÉCHEC, when 1er clic sur "Émettre", then avertissement + confirmation exigée (jamais de PV sans document en un clic)', async () => {
+    mockEmitPv.mockResolvedValue({
+      id: 'pv_x',
+      number: 'PV-2026-0099',
+      orgId: 'org_01',
+      projectId: 'proj_lb_01',
+      calcResultId: 'calc_42',
+      engineId: 'labo',
+      hmacTruncated: 'ffff',
+      sealedAt: '2026-07-16T10:00:00.000Z',
+      sealedBy: 'X',
+      params: {},
+      output: null,
+    });
+    await renderPage();
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-failed"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    const btn = container.querySelector(
+      '[data-testid="btn-emettre-pv"]',
+    ) as HTMLButtonElement;
+    // Capture en échec = résolue → bouton actif, mais 1er clic n'émet PAS.
+    expect(btn.disabled).toBe(false);
+    await act(async () => {
+      btn.click();
+    });
+    expect(mockEmitPv).not.toHaveBeenCalled();
+    expect(
+      container.querySelector('[data-testid="capture-failed-warning"]'),
+    ).not.toBeNull();
+    // 2e clic (« Confirmer… ») → émission effective.
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="btn-emettre-pv"]') as HTMLButtonElement
+      ).click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockEmitPv).toHaveBeenCalledWith('org_01', 'proj_lb_01', {
+      calcResultId: 'calc_42',
+    });
   });
 
   it('given une rafale débouncée de calculs (3 calcResultId coup sur coup), when le dernier arrive, then le bouton PV émet le PV sur le DERNIER id de la rafale', async () => {
@@ -286,11 +394,17 @@ describe('Page FASTLAB — shell GEOFAM', () => {
       output: null,
     });
     await renderPage();
-    const simulate = container.querySelector(
-      '[data-testid="simulate-calc-done"]',
-    ) as HTMLButtonElement;
     await act(async () => {
-      simulate.click();
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed"]',
+        ) as HTMLButtonElement
+      ).click();
     });
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',
@@ -309,11 +423,17 @@ describe('Page FASTLAB — shell GEOFAM', () => {
   it('given emitPv échoue, when "Émettre le PV" cliqué, then un message d\'erreur explicite est affiché', async () => {
     mockEmitPv.mockRejectedValue({ message: 'Quota épuisé.' });
     await renderPage();
-    const simulate = container.querySelector(
-      '[data-testid="simulate-calc-done"]',
-    ) as HTMLButtonElement;
     await act(async () => {
-      simulate.click();
+      (
+        container.querySelector('[data-testid="simulate-calc-done"]') as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed"]',
+        ) as HTMLButtonElement
+      ).click();
     });
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',

@@ -706,7 +706,15 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   // « Exporter (JSON) » — livrable présent quel que soit l'état du calcul
   // (scellé ou non) : les ENTRÉES d'un calcul persisté sont toujours
   // exportables/ré-importables. Rendu dans chaque branche de la barre d'actions.
-  const exportButton = (
+  //
+  // EXCEPTION FASTLAB (labo) — décision titulaire : périmètre strict « impression
+  // du PV uniquement », PAS d'export/import JSON pour ce logiciel. L'outil client
+  // FASTLAB exporte une BIBLIOTHÈQUE d'échantillons (fastlab.json = db + cfg), pas
+  // la saisie d'un calcul isolé — on ne le reproduit pas ici (hors périmètre). Le
+  // bouton est donc masqué pour les calculs labo (jamais un export de forme
+  // différente qui prêterait à confusion).
+  const exportSupported = !selected || slugOf(selected.engineId) !== 'labo';
+  const exportButton = exportSupported ? (
     <Button
       size="sm"
       variant="secondary"
@@ -715,7 +723,7 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     >
       Exporter (JSON)
     </Button>
-  );
+  ) : null;
 
   function renderActionsBar() {
     if (!selected) return null;

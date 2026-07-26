@@ -35,6 +35,8 @@ import { chromium, type Browser, type Page } from '@playwright/test';
 import { wrapSealedDocumentWithPvChrome } from '../apps/api/src/pv/pv-document-chrome.js';
 import { runBurmister } from '../packages/engines/src/burmister/index.js';
 import { BURMISTER_FIXTURES } from '../packages/engines/src/burmister/test-fixtures.js';
+import { runLabo } from '../packages/engines/src/labo/index.js';
+import { LABO_FIXTURES } from '../packages/engines/src/labo/test-fixtures.js';
 import { runRadier } from '../packages/engines/src/radier/index.js';
 import { RADIER_FIXTURES } from '../packages/engines/src/radier/test-fixtures.js';
 import { runTerzaghi } from '../packages/engines/src/terzaghi/index.js';
@@ -273,6 +275,77 @@ async function main(): Promise<void> {
     assert(
       gGuard.ok,
       `GEOPLAQUE : garde §8 REFUSE le printHtml réel (Chromium) — motif : ${gGuard.error ?? ''}`,
+    );
+
+    // ---------------- FASTLAB (PV multi-feuilles labo + classification GTR) ----------------
+    // Le PV FASTLAB = feuilles d essai RENSEIGNEES + classification GTR + chrome (en-tete
+    // labo, visa, fiche de synthese), assemble par markPV/buildPVChrome (client conserve).
+    // §8 : resultat de labo + classe GTR = LIVRABLE public (contrat labo) — aucun masquage.
+    // On prouve : largeur A4 (pas d effondrement 0-largeur), pas d explosion de pages, feuilles
+    // presentes (data-tab), classification presente, AUCUNE URI data: (pas de canvas -> sealable),
+    // et la garde §8 serveur ACCEPTE les octets reels.
+    const lfx = LABO_FIXTURES.find((f) => f.id === 'demo-A2-limon')!;
+    const lenv = runLabo(lfx.input);
+    if (!lenv.ok) throw new Error('runLabo a échoué');
+    const lPage = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+    const lDrive = `(function(){writeForm(${J(lfx.input)});})()`;
+    const lReady = `(function(){var r=(document.getElementById('result')||{}).innerHTML||'';return r.indexOf('classbadge')>=0;})()`;
+    const lPrint = await capturePrintHtml(
+      lPage,
+      'apps/web/src/tools-cloned/fastlab.html',
+      lenv.output,
+      lDrive,
+      lReady,
+    );
+
+    const l_main = await measure(lPage, lPrint, 'new', 'main#main');
+    const l_body = await measure(lPage, lPrint, 'new', 'body');
+    await lPage.close();
+
+    console.log('\n=== FASTLAB (PV labo — main#main / body, pages A4) ===');
+    console.log('fastlab + helper APRÈS (210mm) main :', J(l_main));
+    console.log('fastlab + helper APRÈS (210mm) body :', J(l_body));
+    assert(
+      l_main.noteW >= 500 && l_body.pages <= 16,
+      `FASTLAB : PV pleine largeur A4, pas d'explosion de pages ${J(l_main)} ${J(l_body)}`,
+    );
+    // Feuilles + classification presentes (le PV n est pas vide).
+    assert(/data-tab="ident"/.test(lPrint), 'FASTLAB : feuille identification absente');
+    assert(/data-tab="class"/.test(lPrint), 'FASTLAB : feuille classification absente');
+    assert(
+      /data-tab="oedo"/.test(lPrint),
+      'FASTLAB : feuille renseignée (œdomètre) absente',
+    );
+    assert(
+      lPrint.includes(lenv.output.classe.full ?? '__x__'),
+      'FASTLAB : classe GTR absente de la note',
+    );
+    // COURBES (décision titulaire « tel quel ») : chaque figure canvas est RE-DESSINÉE en SVG
+    // inline vectoriel sealable. DEMO renseigne granulo/Atterberg/Proctor/cisaillement/œdomètre.
+    assert(!/<canvas\b/i.test(lPrint), 'FASTLAB : <canvas> (non sealable) présent dans le PV');
+    assert(/<svg\b/i.test(lPrint), 'FASTLAB : aucune figure SVG dans le PV');
+    for (const label of [
+      'Courbe granulométrique',
+      'Courbe de liquidité (Atterberg)',
+      'Diagramme de plasticité (Casagrande)',
+      'Courbe Proctor',
+      'Enveloppe de cisaillement (c′/φ′)',
+      'Courbe œdométrique',
+    ]) {
+      assert(
+        lPrint.includes(`aria-label="${label}"`),
+        `FASTLAB : figure « ${label} » absente du PV`,
+      );
+    }
+    assert(
+      !/src\s*=\s*["']?\s*data:/i.test(lPrint),
+      'FASTLAB : URI data: (non sealable) dans le PV',
+    );
+    // §8 sur OCTETS RÉELS (Chromium) : la garde serveur assertInertHtml ACCEPTE le PV.
+    const lGuard = guardInert(lPrint);
+    assert(
+      lGuard.ok,
+      `FASTLAB : garde §8 REFUSE le printHtml réel (Chromium) — motif : ${lGuard.error ?? ''}`,
     );
 
     console.log('\n=== SYNTHÈSE ASSERTIONS ===');

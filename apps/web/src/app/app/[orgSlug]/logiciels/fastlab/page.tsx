@@ -46,7 +46,7 @@ import { matchesDomain } from '@/lib/api/project-domain';
 import type { EntitlementsResponse, OfficialPv, Project } from '@/lib/api/types';
 import { useOrgId } from '@/lib/org-context';
 import { evaluateGate, isQuotaLow } from '@/lib/subscription-gate';
-import { ToolFrame } from '@/lib/tool-bridge/ToolFrame';
+import { ToolFrame, type SnapshotStatusEvent } from '@/lib/tool-bridge/ToolFrame';
 
 const TOOL_ID = 'fastlab';
 const ENGINE_ID = 'labo';
@@ -80,6 +80,15 @@ export default function FastlabPage() {
   const [emittingPv, setEmittingPv] = useState(false);
   const [pvResult, setPvResult] = useState<OfficialPv | null>(null);
   const [pvError, setPvError] = useState<string | null>(null);
+  // Gate captureReady (patron roadsens/geoplaque/terzaghi) : statut de capture du
+  // document (note PV option-3) pour le DERNIER calcResultId. Tant que la capture
+  // n'est pas RÉSOLUE (confirmée OU en échec), le bouton d'émission reste inactif —
+  // sinon un clic rapide scellerait un PV SANS la note (repli format standard,
+  // livrable perdu silencieusement, cf. course calc:response vs POST snapshot).
+  const [snapshotStatus, setSnapshotStatus] = useState<SnapshotStatusEvent | null>(null);
+  // Avertissement AVANT d'émettre un PV sans document capturé (capture 'failed') —
+  // même patron : 1er clic = avertissement, 2e clic = confirmation explicite.
+  const [emitConfirmOpen, setEmitConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!orgId) return;
@@ -99,7 +108,20 @@ export default function FastlabPage() {
     setCalcResultId(null);
     setPvResult(null);
     setPvError(null);
+    setSnapshotStatus(null);
+    setEmitConfirmOpen(false);
   }, [projectId]);
+
+  // Miroir de `onCalcResultId` : un NOUVEAU calcul remet la confirmation
+  // « émission-sans-document » à zéro (jamais de confirmation héritée).
+  const handleCalcResultId = useCallback((id: string | null) => {
+    setCalcResultId(id);
+    setEmitConfirmOpen(false);
+  }, []);
+
+  const handleSnapshotStatus = useCallback((event: SnapshotStatusEvent) => {
+    setSnapshotStatus(event);
+  }, []);
 
   const handleEmitPv = useCallback(async () => {
     if (!calcResultId || !orgId || !projectId) return;
@@ -108,6 +130,7 @@ export default function FastlabPage() {
     try {
       const pv = await emitPv(orgId, projectId, { calcResultId });
       setPvResult(pv);
+      setEmitConfirmOpen(false);
     } catch (err: unknown) {
       setPvError(
         (err as { message?: string })?.message ?? "Erreur lors de l'émission du PV.",
@@ -121,6 +144,8 @@ export default function FastlabPage() {
     setCalcResultId(null);
     setPvResult(null);
     setPvError(null);
+    setSnapshotStatus(null);
+    setEmitConfirmOpen(false);
   }, []);
 
   if (!mounted) {
@@ -132,7 +157,39 @@ export default function FastlabPage() {
   const gate = evaluateGate(ent, ENGINE_ID);
   const project = projects.find((p) => p.id === projectId);
   const quotaLow = ent ? isQuotaLow(ent) : false;
-  const canEmitPv = !!calcResultId && !emittingPv && !pvResult;
+  // Statut de capture APPLICABLE au calcul COURANT uniquement (garde anti-staleness :
+  // un événement pour un calcResultId différent est ignoré → retombe à null = « en
+  // attente », jamais un faux 'confirmed' hérité d'un calcul précédent).
+  const captureStatus =
+    snapshotStatus && snapshotStatus.calcResultId === calcResultId
+      ? snapshotStatus.status
+      : null;
+  const captureReady = captureStatus === 'confirmed' || captureStatus === 'failed';
+  const canEmitPv = !!calcResultId && !emittingPv && !pvResult && captureReady;
+  const emitLabel = emittingPv
+    ? 'Émission…'
+    : !calcResultId
+      ? 'Émettre le PV scellé'
+      : !captureReady
+        ? 'Capture du document…'
+        : captureStatus === 'failed' && emitConfirmOpen
+          ? "Confirmer l'émission sans document"
+          : 'Émettre le PV scellé';
+  const emitTitle = !calcResultId
+    ? 'Lancez un calcul dans l’outil avant d’émettre le PV'
+    : !captureReady
+      ? 'Capture du document en cours — patientez quelques secondes.'
+      : undefined;
+
+  // Capture 'confirmed' → émission directe. Capture 'failed' → 1er clic affiche
+  // l'avertissement, seul le 2e clic (« Confirmer… ») appelle emitPv.
+  const handleEmitClick = () => {
+    if (captureStatus === 'failed' && !emitConfirmOpen) {
+      setEmitConfirmOpen(true);
+      return;
+    }
+    handleEmitPv();
+  };
 
   return (
     <div
@@ -200,14 +257,10 @@ export default function FastlabPage() {
           <button
             type="button"
             data-testid="btn-emettre-pv"
-            onClick={handleEmitPv}
+            onClick={handleEmitClick}
             disabled={!canEmitPv}
             aria-busy={emittingPv}
-            title={
-              !calcResultId
-                ? 'Lancez un calcul dans l’outil avant d’émettre le PV'
-                : undefined
-            }
+            title={emitTitle}
             style={{
               background: canEmitPv ? ACCENT : '#b7bfad',
               color: '#fff',
@@ -219,10 +272,31 @@ export default function FastlabPage() {
               cursor: canEmitPv ? 'pointer' : 'not-allowed',
             }}
           >
-            {emittingPv ? 'Émission…' : 'Émettre le PV scellé'}
+            {emitLabel}
           </button>
         </div>
       </div>
+
+      {/* Capture définitivement en échec pour ce calcul — avertissement explicite
+          AVANT tout scellement sans document (même patron que roadsens/geoplaque). */}
+      {captureStatus === 'failed' && emitConfirmOpen && !pvResult && (
+        <div
+          role="alert"
+          data-testid="capture-failed-warning"
+          style={{
+            background: 'var(--status-warn-bg)',
+            border: '1px solid var(--warn-line, var(--status-warn-tx))',
+            color: 'var(--status-warn-tx)',
+            borderRadius: 12,
+            padding: '11px 15px',
+            marginBottom: 14,
+          }}
+        >
+          Le document (procès-verbal) n’a pas pu être capturé — le PV sera émis au format
+          standard, sans le rendu de l’outil. Relancez le calcul pour capturer le
+          document, ou confirmez l’émission sans document.
+        </div>
+      )}
 
       {!gate.allowed && (
         <div
@@ -321,7 +395,8 @@ export default function FastlabPage() {
           projectId={projectId || null}
           projectLabel={project?.name ?? ''}
           accessToken={getStoredToken()}
-          onCalcResultId={setCalcResultId}
+          onCalcResultId={handleCalcResultId}
+          onSnapshotStatus={handleSnapshotStatus}
         />
       </div>
     </div>

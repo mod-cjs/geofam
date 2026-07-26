@@ -361,6 +361,46 @@ describe('CalculsClient — Exporter (JSON) : livrable « Exporter » de l’out
       URL.revokeObjectURL = origRevoke;
     }
   });
+
+  // FASTLAB (labo) — décision titulaire : périmètre strict « impression du PV
+  // uniquement », PAS d'export/import JSON. Le bouton « Exporter (JSON) » ne doit
+  // PAS apparaître pour un calcul labo (contrairement aux autres logiciels).
+  const CALC_FASTLAB: CalcResult = {
+    ...CALC,
+    id: 'calc_fl',
+    engineId: 'labo',
+    label: 'Échantillon SC2 — A2',
+    output: { verdict: 'NA' },
+    params: { m_ref: 'SC2', m_chantier: 'RN1' },
+  };
+
+  it('given un calcul FASTLAB (labo) avec document capturé, when la barre d’actions est rendue, then AUCUN bouton « Exporter (JSON) » (hors périmètre) mais « Aperçu de la note » + « Sceller cette version » présents', async () => {
+    mockListCalcResults.mockResolvedValue([CALC_FASTLAB]);
+    mockGetCalcSnapshot.mockResolvedValue({
+      displayHtml: '<!doctype html><html><body>PV FASTLAB</body></html>',
+      printHtml: '<!doctype html><html><body>PV FASTLAB</body></html>',
+    });
+    mockGetProjectCached.mockResolvedValue({ name: 'Projet Labo' });
+
+    await renderCalculs();
+    expect(
+      findButtonByText('Exporter (JSON)'),
+      'Exporter proposé pour labo',
+    ).toBeUndefined();
+    expect(findButtonByText('Aperçu de la note')).not.toBeUndefined();
+    expect(findButtonByText('Sceller cette version')).not.toBeUndefined();
+  });
+
+  it('given un calcul FASTLAB (labo) DÉJÀ scellé, when la barre d’actions est rendue, then « Voir le PV scellé » + « Imprimer » sans « Exporter (JSON) »', async () => {
+    mockListCalcResults.mockResolvedValue([{ ...CALC_FASTLAB, pvId: 'pv_fl' }]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    mockGetProjectCached.mockResolvedValue({ name: 'Projet Labo' });
+
+    await renderCalculs();
+    expect(findButtonByText('Exporter (JSON)')).toBeUndefined();
+    expect(findButtonByText('Voir le PV scellé')).not.toBeUndefined();
+    expect(findButtonByText('Imprimer')).not.toBeUndefined();
+  });
 });
 
 describe('CalculsClient — Aperçu de la note avant scellement (filigrané, revue #6)', () => {
