@@ -1,11 +1,29 @@
 import { VersioningType } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { OpenAPIObject } from '@nestjs/swagger';
 import { ZodValidationPipe, cleanupOpenApiDoc } from 'nestjs-zod';
 
 import { AllExceptionsFilter } from './common/http-exception.filter';
 import { getDeployEnv, getScienceStatus } from './recette/recette.config';
+
+/**
+ * Limite de taille du CORPS JSON de l'API. Le defaut d'Express (body-parser) est
+ * 100 Kio (102400 octets) — TROP BAS pour la capture de document « option-3 » :
+ * un snapshot fastlab (note multi-feuilles + 8 courbes SVG inline) envoie
+ * { displayHtml, printHtml } ENSEMBLE, ~180 Kio, ce qui declenchait un 413 AVANT
+ * meme la garde §8/le DTO -> capture perdue en silence, onglet details vide.
+ *
+ * 5 Mio couvre tres largement le plus gros document legitime tout en restant une
+ * surface DoS raisonnable. COHERENCE avec le DTO : chaque champ HTML est borne a
+ * MAX_HTML_BYTES (1 Mio, cf. html-guard) -> un corps snapshot legitime plafonne a
+ * ~2 Mio (2 champs) < 5 Mio ; le DTO rejette donc AVANT la limite de corps (400
+ * clair plutot qu'un 413 opaque) pour un document aberrant. NE PAS relever le DTO
+ * au-dela de la moitie de cette limite (sinon un corps a 2 champs pourrait franchir
+ * la limite de corps et redonner un 413 avant le DTO).
+ */
+export const JSON_BODY_LIMIT = '5mb';
 
 /** Nom du schema de securite apiKey (cle d'acces recette) dans le document OpenAPI. */
 export const RECETTE_SECURITY_SCHEME = 'recette-key';
@@ -27,6 +45,21 @@ export function configureApp(app: INestApplication): void {
   // qui ne doit PAS demarrer silencieusement. On REFUSE le boot : defense en
   // profondeur (le runtime-guard du middleware reste, ceci en est la 2e barriere).
   assertNoDevHeadersInProd();
+
+  // Limite de corps JSON (+ urlencoded) relevee a JSON_BODY_LIMIT. IDIOME NestJS 11 :
+  // useBodyParser APPELE ICI, donc AVANT app.init()/listen() -> il enregistre un
+  // parseur `express.json` (nomme `jsonParser`) que le registerParserMiddleware du
+  // boot detecte comme deja pose (isMiddlewareApplied) et n'ecrase PAS avec le defaut
+  // 100 Kio. On NE double PAS le parseur (pas de app.use(express.json()) en plus).
+  // Applique aux DEUX surfaces (tenant + recette) via le meme configureApp que la prod
+  // et les e2e. `useBodyParser` vit sur NestExpressApplication (l'adapter par defaut) ;
+  // le cast est sur au runtime (createNestApplication/NestFactory.create = Express).
+  const expressApp = app as NestExpressApplication;
+  expressApp.useBodyParser('json', { limit: JSON_BODY_LIMIT });
+  expressApp.useBodyParser('urlencoded', {
+    limit: JSON_BODY_LIMIT,
+    extended: true,
+  });
 
   // Validation Zod GLOBALE (nestjs-zod) : valide les DTO createZodDto a la
   // frontiere. Les controleurs existants gardent leur pipe explicite par route
