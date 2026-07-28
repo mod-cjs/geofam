@@ -428,7 +428,33 @@ describe('Suppression DÉFINITIVE d’un projet (e2e Postgres réel)', () => {
     if (!ready()) return;
     const t = await login(mailOwner());
 
-    // Un calcul RÉEL (donc une consommation de quota réelle) et sa capture.
+    // FACTURATION = ÉMISSION PV (« voir gratuit, sceller payant ») : le calcul ne
+    // génère PLUS aucune ligne usage_ledger. Or seul un projet SANS PV scellé peut
+    // être supprimé définitivement (#3 refuse sinon). Pour que l'invariant
+    // append-only ait du mordant, on seede d'abord une consommation RÉELLE côté
+    // org (comme si un PV avait été émis) — indépendante du projet supprimé — puis
+    // on prouve que la suppression NE la réécrit PAS.
+    const subId = String(
+      (
+        await admin!.query<{ id: string }>(
+          `SELECT id FROM subscriptions WHERE org_id = $1`,
+          [orgA],
+        )
+      ).rows[0].id,
+    );
+    // usage_ledger est APPEND-ONLY (le trigger bloque UPDATE/DELETE, pas INSERT).
+    await admin!.query(
+      `INSERT INTO usage_ledger (id, org_id, subscription_id, kind, ref_id, user_id)
+       VALUES ($1,$2,$3,'PV',$4,$5)`,
+      [randomUUID(), orgA, subId, randomUUID(), ownerA],
+    );
+    await admin!.query(
+      `UPDATE subscriptions SET consommation = consommation + 1 WHERE org_id = $1`,
+      [orgA],
+    );
+
+    // Un calcul RÉEL (GRATUIT : il ne facture rien) et sa capture — c'est ce qui
+    // sera détruit avec le projet.
     const calc = await request(server())
       .post(`/projects/${projPlein}/calc/burmister`)
       .set(auth(t, orgA))
@@ -457,8 +483,9 @@ describe('Suppression DÉFINITIVE d’un projet (e2e Postgres réel)', () => {
     expect(await nbCalcs(projPlein)).toBe(0);
     expect(await nbSnapshots(calcId)).toBe(0);
 
-    // LEDGER APPEND-ONLY : le quota déjà consommé RESTE consommé. On ne réécrit
-    // jamais un registre de facturation, même quand l'objet calculé disparaît.
+    // LEDGER APPEND-ONLY : la consommation déjà engagée (émission de PV) RESTE
+    // engagée. On ne réécrit jamais un registre de facturation, même quand des
+    // calculs (gratuits) du projet disparaissent.
     expect(await nbLedger()).toBe(ledgerAvant);
     expect(await consommation()).toBe(consoAvant);
   });

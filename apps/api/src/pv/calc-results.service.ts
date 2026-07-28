@@ -13,7 +13,6 @@ import {
 } from '@roadsen/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { requireOrgId } from '../tenant/tenant-context';
 
 import { findEngineDispatch, SUPPORTED_ENGINE_SLUGS } from './engine-dispatch';
@@ -47,10 +46,7 @@ export interface PersistedCalcResult {
  */
 @Injectable()
 export class CalcResultsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly subscriptions: SubscriptionsService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Execute le moteur `engineSlug` sur `body` pour `projectId` et persiste le
@@ -154,9 +150,10 @@ export class CalcResultsService {
     // APERÇU (dry-run) : on a la SORTIE (calculée + projetée + gardes fail-closed
     // ci-dessus, exactement comme un calcul réel). On vérifie l'accès tenant au
     // projet (withTenant/RLS INCHANGÉ : un aperçu sur un projet d'un autre org ou
-    // archivé échoue à l'identique), MAIS on NE crée AUCUN calc_result et on NE
-    // décompte AUCUN quota (pas de reserveUnit). Aucun `calcResultId` scellable
-    // n'est renvoyé -> l'hôte ne peut ni émettre un PV vide ni brûler du quota.
+    // archivé échoue à l'identique), MAIS on NE crée AUCUN calc_result. Aucun
+    // `calcResultId` scellable n'est renvoyé -> l'hôte ne peut pas émettre un PV
+    // vide. Le quota n'entre PAS en jeu ici (calculer/prévisualiser est gratuit ;
+    // le décompte n'a lieu qu'à l'émission du PV, cf. persistance ci-dessous).
     if (args.dryRun) {
       await this.prisma.withTenant(orgId, async (tx) => {
         await assertProjetEcrivable(tx, args.projectId);
@@ -171,22 +168,20 @@ export class CalcResultsService {
 
     const created = await this.prisma.withTenant(orgId, async (tx) => {
       // Le projet doit exister DANS le tenant (RLS scope deja la lecture) ET ne pas
-      // etre ARCHIVE. Sans le filtre de statut, on BRULAIT DU QUOTA (reserveUnit +
-      // ledger APPEND-ONLY, donc irreversible) sur un projet que l'utilisateur croit
-      // supprime — et invisible dans toutes les listes. 404 tenant-safe et uniforme
-      // (cf. assertProjetEcrivable).
+      // etre ARCHIVE : sinon on persisterait un calcul dans un projet que
+      // l'utilisateur croit supprime — et invisible dans toutes les listes. 404
+      // tenant-safe et uniforme (cf. assertProjetEcrivable).
       await assertProjetEcrivable(tx, args.projectId);
 
-      // INSERT du calcul d'abord (on a son id pour tracer le ledger), puis
-      // DECOMPTE ATOMIQUE (ADR 0011 §3) — TOUT dans CETTE transaction tenant :
-      //  - le calcul a REUSSI (on n'arrive ici que sur envelope.ok) ;
-      //  - reserveUnit incremente conditionnellement le quota (WHERE consommation
-      //    < quota AND now() <= date_fin) et insere la ligne de ledger ;
-      //  - 0 ligne reservee -> 402 (QUOTA/EXPIRED) -> la tx ROLLBACK -> le calcul
-      //    n'est PAS persiste et RIEN n'est consomme (anti depassement + TM-5).
-      // L'ordre INSERT-puis-reserve est sans incidence sur l'atomicite (meme tx) ;
-      // il donne juste refId = id du calcul pour la tracabilite du ledger.
-      const row = await tx.calcResult.create({
+      // PERSISTANCE SEULE — AUCUN DECOMPTE DE QUOTA (« voir gratuit, sceller
+      // payant », decision titulaire). Calculer/persister est GRATUIT : le
+      // compteur d'usage (consommation + usage_ledger append-only) ne bouge QU'A
+      // l'emission d'un PV scelle (PvService.emitFromCalc, kind 'PV'). On
+      // n'appelle donc PAS reserveUnit ici, et le kind 'CALC' n'est plus jamais
+      // ecrit. Le controle d'entitlement (module dans le pack, abo non expire)
+      // reste assure EN AMONT par le SubscriptionGuard (@RequiresEntitlement),
+      // sans consommer d'unite.
+      return tx.calcResult.create({
         data: {
           orgId,
           projectId: args.projectId,
@@ -199,15 +194,6 @@ export class CalcResultsService {
         },
         select: { id: true },
       });
-
-      await this.subscriptions.reserveUnit(tx, {
-        orgId,
-        kind: 'CALC',
-        refId: row.id,
-        userId: args.userId,
-      });
-
-      return row;
     });
 
     return {
@@ -340,10 +326,12 @@ export class CalcResultsService {
    * d'abord, enfants (calc_snapshots -> calc_results) ensuite — memes regle
    * anti-interblocage que deletePermanently.
    *
-   * LEDGER DE FACTURATION : on n'y touche PAS. Les lignes usage_ledger et la
-   * `consommation` de l'abonnement restent telles quelles — le quota deja
-   * consomme reste consomme (registre append-only, jamais reecrit
-   * retroactivement, meme quand l'objet calcule disparait).
+   * LEDGER DE FACTURATION : on n'y touche PAS (registre append-only, jamais
+   * reecrit retroactivement). Depuis « voir gratuit, sceller payant », un calcul
+   * NE consomme AUCUNE unite (seule l'emission d'un PV le fait) et un calcul
+   * SUPPRIMABLE ici est par definition NON scelle -> il n'a genere aucune ligne
+   * usage_ledger. La consommation de l'abonnement reste donc inchangee par cette
+   * suppression, comme le veut le principe append-only.
    *
    * @returns le calcul tel qu'il etait avant destruction, ou `null` (404).
    * @throws ConflictException si un PV scelle existe pour ce calcul.

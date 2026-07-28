@@ -20,9 +20,10 @@
  *      forte (DoD §5).
  *
  * CE QUE CE FICHIER VERROUILLE (given/when/then)
- *  #1 CONTROLE POSITIF (projet ACTIF) : calcul -> 201 + ligne en base + quota +1 ;
- *     capture -> 200 + ligne calc_snapshots ; emission PV -> 201 + ligne
- *     official_pvs. SANS ce controle, un 404 systematique du a un tout autre bug
+ *  #1 CONTROLE POSITIF (projet ACTIF) : calcul -> 201 + ligne en base (quota
+ *     INCHANGE au calcul — facturation = emission PV) ; capture -> 200 + ligne
+ *     calc_snapshots ; emission PV -> 201 + ligne official_pvs + quota +1.
+ *     SANS ce controle, un 404 systematique du a un tout autre bug
  *     ferait passer les tests de refus ci-dessous pour des succes.
  *  #2 CALCUL sur projet ARCHIVE -> 404 tenant-safe, ET CONTRE-PREUVE EN BASE :
  *     AUCUNE ligne calc_results creee, consommation d'abonnement INCHANGEE,
@@ -343,11 +344,12 @@ describe('Écriture sur projet ARCHIVÉ — refus fail-closed (e2e Postgres rée
     const calcId = String((calc.body as CalcBody).calcResultId);
     expect(calcId).toMatch(/^[0-9a-f-]{36}$/);
 
-    // Écriture RÉELLE en base + quota RÉELLEMENT consommé : c'est l'étalon auquel
-    // les refus ci-dessous seront comparés.
+    // Écriture RÉELLE de la ligne calc_results — MAIS le calcul est GRATUIT
+    // (« voir gratuit, sceller payant ») : ni la consommation ni le ledger ne
+    // bougent au calcul. Le décompte est reporté à l'émission du PV (ci-dessous).
     expect(await nbCalcs(projActif)).toBe(1);
-    expect(await consommation()).toBe(consoAvant + 1);
-    expect(await nbLedger()).toBe(ledgerAvant + 1);
+    expect(await consommation()).toBe(consoAvant);
+    expect(await nbLedger()).toBe(ledgerAvant);
 
     const snap = await capturer(t, orgA, projActif, calcId);
     expect(snap.status).toBeLessThan(300);
@@ -357,6 +359,10 @@ describe('Écriture sur projet ARCHIVÉ — refus fail-closed (e2e Postgres rée
     expect(pv.status).toBeLessThan(300);
     expect(String((pv.body as PvBody).pvNumber)).toContain('PV-RDS-');
     expect(await nbPvs(projActif)).toBe(1);
+    // ÉMISSION = acte consommant : c'est ICI que le quota et le ledger avancent
+    // d'exactement 1. C'est l'étalon auquel les refus ci-dessous sont comparés.
+    expect(await consommation()).toBe(consoAvant + 1);
+    expect(await nbLedger()).toBe(ledgerAvant + 1);
   });
 
   // --- #1-bis Préparation : un calcul RÉEL, puis archivage du projet ----------
@@ -399,8 +405,10 @@ describe('Écriture sur projet ARCHIVÉ — refus fail-closed (e2e Postgres rée
     expect(res.status).toBe(404);
 
     // CONTRE-PREUVE EN BASE — c'est elle qui prouve le défaut, pas le code HTTP :
-    // avant correctif, la ligne était créée ET le quota brûlé (ledger append-only,
-    // donc irréversible) alors que l'utilisateur croit le projet supprimé.
+    // avant correctif, la ligne calc_results était créée sur un projet que
+    // l'utilisateur croit supprimé. Le calcul étant désormais GRATUIT, la
+    // consommation et le ledger ne bougeraient de toute façon pas ; on garde
+    // néanmoins ces invariants (un calcul ne consomme jamais, archivé ou non).
     expect(await nbCalcs(projArchive)).toBe(calcsAvant);
     expect(await consommation()).toBe(consoAvant);
     expect(await nbLedger()).toBe(ledgerAvant);

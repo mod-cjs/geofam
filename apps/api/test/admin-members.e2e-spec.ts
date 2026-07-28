@@ -14,8 +14,9 @@
  *      provisioning dans A n'affecte pas B (compte de memberships de B inchangé).
  *   3) ANTI-LOCKOUT : suspendre le DERNIER OWNER actif -> 409.
  *   4) OWNER INTERDIT par la route : POST …/members { role:'OWNER' } -> 400 (Zod).
- *   5) QUOTA PARTAGÉ : le nouveau membre émet un calcul -> décrémente le quota DE
- *      L'ORG (même compteur), tracé à SON userId dans le ledger.
+ *   5) QUOTA PARTAGÉ : le nouveau membre émet un PV scellé (acte facturant depuis
+ *      « voir gratuit, sceller payant ») -> décrémente le quota DE L'ORG (même
+ *      compteur), tracé à SON userId dans le ledger (kind 'PV').
  *   6) RÉACTIVATION : isActive=true -> l'accès revient au prochain appel.
  *
  * ANTI-SKIP : DATABASE_URL absent ET CI -> échec dur. Hors CI sans base ->
@@ -212,7 +213,22 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
         } finally {
           await admin.query(`ALTER TABLE admin_audit_log ENABLE TRIGGER USER`);
         }
-        // Ordre FK : ledger/calc -> subscriptions/projects -> memberships -> orgs -> users.
+        // official_pvs est IMMUABLE (trigger) : le test 5 émet désormais un PV réel
+        // (facturation = émission PV) -> on désactive le trigger le temps du DELETE.
+        try {
+          await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+          await admin.query(
+            `DELETE FROM official_pvs WHERE org_id IN ($1,$2)`,
+            [orgA, orgB],
+          );
+        } finally {
+          await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        }
+        await admin.query(`DELETE FROM pv_counters WHERE org_id IN ($1,$2)`, [
+          orgA,
+          orgB,
+        ]);
+        // Ordre FK : pv/ledger/calc -> subscriptions/projects -> memberships -> orgs -> users.
         // usage_ledger est APPEND-ONLY (trigger 0008 refuse DELETE) : on désactive les
         // triggers USER le temps du nettoyage (même patron que official_pvs dans
         // pv-emission.e2e), puis on les réactive.
@@ -415,7 +431,11 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
 
   // --- 5) QUOTA PARTAGÉ -----------------------------------------------------
 
-  it('5) quota partagé : le membre émet un calcul -> quota de l org -1, tracé à son userId', async () => {
+  it('5) quota partagé : le membre ÉMET UN PV -> quota de l org -1, tracé à son userId', async () => {
+    // FACTURATION = ÉMISSION PV (« voir gratuit, sceller payant ») : c'est le
+    // scellement du PV — non plus le calcul — qui consomme une unité. Le test
+    // vérifie donc que l'acte CONSOMMANT (émission) décompte le quota PARTAGÉ de
+    // l'org et trace l'unité au userId du membre (non-répudiation, kind 'PV').
     expect.hasAssertions();
     if (!ready()) return;
     superToken = await login(emailSuper());
@@ -423,16 +443,25 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
     const add = await addMember(orgA, memberCalc, 'ENGINEER');
     expect(add.status).toBe(201);
 
+    const token = await login(emailCalc());
+    // Calculer est gratuit et ne bouge pas le quota (contrôlé ailleurs) : on le
+    // fait juste pour obtenir un calcResultId scellable.
+    const calc = await calcBurmister(token, orgA, projectA);
+    expect(calc.status).toBe(201);
+    const calcId = String((calc.body as CalcBody).calcResultId);
+
     const before = await admin!.query<{ consommation: number }>(
       `SELECT consommation FROM subscriptions WHERE org_id = $1`,
       [orgA],
     );
     const consoBefore = Number(before.rows[0].consommation);
 
-    const token = await login(emailCalc());
-    const calc = await calcBurmister(token, orgA, projectA);
-    expect(calc.status).toBe(201);
-    expect((calc.body as CalcBody).ok).toBe(true);
+    // ACTE CONSOMMANT : le membre émet le PV scellé.
+    const pv = await request(server())
+      .post(`/projects/${projectA}/calc-results/${calcId}/pv`)
+      .set('authorization', `Bearer ${token}`)
+      .set('x-org-id', orgA);
+    expect(pv.status).toBe(201);
 
     // Le compteur DE L'ORG a avancé d'exactement 1.
     const after = await admin!.query<{ consommation: number }>(
@@ -444,7 +473,7 @@ describe('Accès contrôlés multi-membres (e2e)', () => {
     // L'unité est tracée au userId DU MEMBRE dans le ledger (non-répudiation).
     const led = await admin!.query<{ n: string }>(
       `SELECT count(*)::text AS n FROM usage_ledger
-       WHERE org_id = $1 AND user_id = $2 AND kind = 'CALC'`,
+       WHERE org_id = $1 AND user_id = $2 AND kind = 'PV'`,
       [orgA, memberCalc],
     );
     expect(Number(led.rows[0].n)).toBeGreaterThanOrEqual(1);

@@ -674,7 +674,7 @@ describe('Etiquettes name (calc + PV) — e2e (Postgres réel)', () => {
     expect(await consommation(orgA)).toBe(beforeConso);
   });
 
-  it('H2) CONTRE-ÉPREUVE : un calcul PERSISTANT (sans dryRun) crée bien une ligne + décompte le quota + renvoie un calcResultId', async () => {
+  it('H2) CONTRE-ÉPREUVE : un calcul PERSISTANT (sans dryRun) crée bien une ligne + renvoie un calcResultId, MAIS ne décompte AUCUN quota (facturation = émission PV)', async () => {
     expect.hasAssertions();
     if (!ready()) return;
     const t = await login(mailEng());
@@ -687,9 +687,13 @@ describe('Etiquettes name (calc + PV) — e2e (Postgres réel)', () => {
     expect(typeof calcResultId).toBe('string');
     expect(String(calcResultId).length).toBeGreaterThan(0);
 
-    // Un calcul réel INCRÉMENTE le compte ET la consommation (+1 chacun).
+    // Ce qui DISTINGUE le persistant de l'aperçu : la ligne calc_results est créée
+    // (+1) et un calcResultId scellable est renvoyé. Le QUOTA, lui, ne bouge pas :
+    // « voir gratuit, sceller payant » — le décompte n'a lieu qu'à l'émission du PV
+    // (cf. billing-meter-on-pv.e2e). La contre-épreuve porte donc sur la PERSISTANCE,
+    // plus sur la consommation (qui reste identique en aperçu comme en persistant).
     expect(await calcCount(orgA)).toBe(beforeCount + 1);
-    expect(await consommation(orgA)).toBe(beforeConso + 1);
+    expect(await consommation(orgA)).toBe(beforeConso);
   });
 
   it("H3) ISOLATION : un aperçu sur un projet d'un AUTRE org échoue (RLS/tenant intact, pas de contournement)", async () => {

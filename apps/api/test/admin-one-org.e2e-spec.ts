@@ -45,6 +45,7 @@ interface AuthBody {
 }
 interface CalcBody {
   ok?: unknown;
+  calcResultId?: unknown;
 }
 
 const DB_URL = process.env.DATABASE_URL ?? '';
@@ -208,6 +209,21 @@ describe('Un user = une org + retrait hard-delete (e2e)', () => {
         } finally {
           await admin.query(`ALTER TABLE usage_ledger ENABLE TRIGGER USER`);
         }
+        // official_pvs est IMMUABLE (trigger) : le test 3 émet désormais un PV réel
+        // (facturation = émission PV) -> trigger désactivé le temps du DELETE.
+        try {
+          await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+          await admin.query(
+            `DELETE FROM official_pvs WHERE org_id = ANY($1::uuid[])`,
+            [orgIds],
+          );
+        } finally {
+          await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        }
+        await admin.query(
+          `DELETE FROM pv_counters WHERE org_id = ANY($1::uuid[])`,
+          [orgIds],
+        );
         await admin.query(
           `DELETE FROM calc_results WHERE org_id = ANY($1::uuid[])`,
           [orgIds],
@@ -359,11 +375,19 @@ describe('Un user = une org + retrait hard-delete (e2e)', () => {
 
     expect((await addMember(orgA, memberReadd)).status).toBe(201);
 
-    // Le membre émet un calcul -> calc_results + usage_ledger tracés à SON userId.
+    // Le membre calcule (gratuit) PUIS émet un PV -> calc_results + usage_ledger
+    // (kind 'PV') tracés à SON userId. Depuis « voir gratuit, sceller payant »,
+    // c'est l'émission — non plus le calcul — qui écrit au ledger.
     const token = await login(email(memberReadd, 'readd'));
     const calc = await calcBurmister(token, orgA, projectA);
     expect(calc.status).toBe(201);
     expect((calc.body as CalcBody).ok).toBe(true);
+    const calcId = String((calc.body as CalcBody).calcResultId);
+    const pv = await request(server())
+      .post(`/projects/${projectA}/calc-results/${calcId}/pv`)
+      .set('authorization', `Bearer ${token}`)
+      .set('x-org-id', orgA);
+    expect(pv.status).toBe(201);
 
     const calcBefore = await admin!.query<{ n: string }>(
       `SELECT count(*)::text AS n FROM calc_results WHERE org_id = $1`,

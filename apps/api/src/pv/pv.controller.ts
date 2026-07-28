@@ -92,29 +92,30 @@ export class PvController {
    * Valide le corps contre le contrat du moteur (meme run<Engine> que la recette),
    * persiste un calc_result org-scope, renvoie l'enveloppe + calcResultId.
    *
-   * APERÇU (`?dryRun=true`) — sécurité (revue adverse) : un aperçu live (ex.
-   * `updateSeuilPreview` de PressioPro) calcule POUR L'AFFICHAGE mais NE DOIT
-   * NI persister un calc_result NI décompter le quota NI produire un
-   * `calcResultId` scellable (sinon on pourrait sceller un PV vide, brûler du
-   * quota et désynchroniser le dernier calcul scellable). Le contexte tenant
-   * (withTenant/RLS + vérification d'accès au moteur) reste INTACT — seul le
-   * comptage d'usage et l'INSERT sont sautés (une SOUSTRACTION, pas un
-   * contournement d'isolation). `@Consumes('CALC')` (pré-check quota du guard)
-   * reste actif : un aperçu reste soumis à l'entitlement d'accès.
+   * APERÇU (`?dryRun=true`) : un aperçu live (ex. `updateSeuilPreview` de
+   * PressioPro) calcule POUR L'AFFICHAGE mais NE persiste PAS de calc_result et
+   * NE renvoie PAS de `calcResultId` scellable (sinon on pourrait sceller un PV
+   * vide et désynchroniser le dernier calcul scellable). Le contexte tenant
+   * (withTenant/RLS + vérification d'accès au moteur) reste INTACT — seul l'INSERT
+   * est sauté (une SOUSTRACTION, pas un contournement d'isolation).
+   *
+   * FACTURATION (« voir gratuit, sceller payant », décision titulaire) : le
+   * calcul NE décompte AUCUN quota — ni en aperçu ni en persistant. Le compteur
+   * d'usage ne bouge QU'À l'émission d'un PV scellé (POST .../pv, @Consumes('PV')).
+   * D'où l'ABSENCE de @Consumes('CALC') ici : un quota épuisé ne doit pas empêcher
+   * de calculer/prévisualiser (on ne barre que le scellement).
    */
   @Post('calc/:engine')
   @Roles('OWNER', 'ADMIN', 'ENGINEER', 'TECHNICIAN', 'SUPERADMIN')
   // Enforcement abonnement (ADR 0011) : le moteur (slug d'URL :engine) doit etre
-  // dans le pack (sinon 403), l'abo non expire et le quota non epuise (sinon 402).
-  // @Consumes('CALC') : un calcul PERSISTANT REUSSI decremente le quota (decompte
-  // atomique dans runAndPersist, pas ici ; SAUTE en dryRun). L'entitlement est
-  // compare au SLUG d'URL, qui est aussi la cle des `modules` du contrat
-  // /me/entitlements (selecteur C-01 cote UI).
+  // dans le pack (sinon 403) et l'abo non expire (sinon 402). PAS de @Consumes ici
+  // -> aucun pre-check de quota ni decompte au calcul (facturation = emission PV).
+  // L'entitlement est compare au SLUG d'URL, qui est aussi la cle des `modules` du
+  // contrat /me/entitlements (selecteur C-01 cote UI).
   @RequiresEntitlement({ param: 'engine' })
-  @Consumes('CALC')
   @ApiOperation({
     summary:
-      'Recalcul serveur PERSISTANT (surface tenant) : execute le moteur et stocke un calc_result org-scope. ?dryRun=true = apercu (calcule sans persister ni decompter).',
+      'Recalcul serveur PERSISTANT (surface tenant) : execute le moteur et stocke un calc_result org-scope. Gratuit (aucun decompte) — la facturation a lieu a l emission du PV. ?dryRun=true = apercu (calcule sans persister).',
   })
   runCalc(
     @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,

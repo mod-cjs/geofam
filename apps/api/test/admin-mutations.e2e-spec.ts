@@ -52,6 +52,7 @@ interface AuthBody {
 }
 interface CalcBody {
   ok?: unknown;
+  calcResultId?: unknown;
 }
 
 const ADMIN_URL = process.env.DATABASE_URL ?? '';
@@ -199,6 +200,21 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
         } finally {
           await admin.query(`ALTER TABLE admin_audit_log ENABLE TRIGGER USER`);
         }
+        // official_pvs est IMMUABLE (trigger) : le test 2 émet désormais un PV réel
+        // (facturation = émission PV) -> trigger désactivé le temps du DELETE.
+        try {
+          await admin.query(`ALTER TABLE official_pvs DISABLE TRIGGER USER`);
+          await admin.query(
+            `DELETE FROM official_pvs WHERE org_id = ANY($1::uuid[])`,
+            [orgs],
+          );
+        } finally {
+          await admin.query(`ALTER TABLE official_pvs ENABLE TRIGGER USER`);
+        }
+        await admin.query(
+          `DELETE FROM pv_counters WHERE org_id = ANY($1::uuid[])`,
+          [orgs],
+        );
         await admin.query(
           `DELETE FROM calc_results WHERE org_id = ANY($1::uuid[])`,
           [orgs],
@@ -357,19 +373,32 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
 
   // --- 2) reserveUnit NON-REGRESSION (le point qui casse si le GRANT est mal fait) --
 
-  it('2) reserveUnit : un calcul consomme toujours le quota APRES le re-scope colonne', async () => {
+  it('2) reserveUnit : une ÉMISSION DE PV consomme toujours le quota APRES le re-scope colonne', async () => {
+    // Depuis « voir gratuit, sceller payant », l'acte consommant est l'émission du
+    // PV (plus le calcul). Ce test reste la sentinelle du GRANT colonne-scope
+    // (consommation, updated_at) : si le re-scope casse l'UPDATE de reserveUnit,
+    // l'émission remontera une erreur au lieu de décompter proprement.
     expect.hasAssertions();
     if (!ready()) return;
-    const before = await subRow();
 
     const token = await login(emailCalc());
+    // Calcul gratuit (juste pour obtenir un calcResultId scellable).
     const calc = await calcBurmister(token, orgA, projectA);
     expect(calc.status).toBe(201);
-    expect((calc.body as CalcBody).ok).toBe(true);
+    const calcId = String((calc.body as CalcBody).calcResultId);
+
+    const before = await subRow();
+
+    // ACTE CONSOMMANT : émission du PV -> reserveUnit (kind 'PV').
+    const pv = await request(server())
+      .post(`/projects/${projectA}/calc-results/${calcId}/pv`)
+      .set('authorization', `Bearer ${token}`)
+      .set('x-org-id', orgA);
+    expect(pv.status).toBe(201);
 
     const after = await subRow();
     expect(after.consommation).toBe(before.consommation + 1); // decompte OK
-    expect(after.quota).toBe(before.quota); // quota inchange par le calcul
+    expect(after.quota).toBe(before.quota); // quota inchange par l'emission
   });
 
   // --- 3) QUOTA DIRECT INTERDIT (chemin non trace ferme) ---------------------
@@ -518,7 +547,7 @@ describe('Back-office mutations money-adjacent (e2e)', () => {
     if (!ready()) return;
     superToken = await login(emailSuper());
     const before = await subRow();
-    expect(before.consommation).toBeGreaterThan(0); // conso engagee (calcul de T2)
+    expect(before.consommation).toBeGreaterThan(0); // conso engagee (emission PV de T2)
 
     const debut = new Date().toISOString();
     const fin = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();

@@ -2,7 +2,6 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import type { CalcResult, Prisma } from '@prisma/client';
 
 import type { PrismaService } from '../prisma/prisma.service';
-import type { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { tenantStorage } from '../tenant/tenant-context';
 
 import { CalcResultsService } from './calc-results.service';
@@ -49,9 +48,7 @@ describe('CalcResultsService — lecture master-detail', () => {
           fn(tx as unknown as Prisma.TransactionClient),
       ),
     };
-    // SubscriptionsService non sollicite par les lectures : stub vide.
-    const subs = {} as unknown as SubscriptionsService;
-    service = new CalcResultsService(prisma as unknown as PrismaService, subs);
+    service = new CalcResultsService(prisma as unknown as PrismaService);
   });
 
   describe('getForProject — detail scope projet', () => {
@@ -194,8 +191,7 @@ describe('CalcResultsService — rename + deleteUnsealed', () => {
           fn(tx as unknown as Prisma.TransactionClient),
       ),
     };
-    const subs = {} as unknown as SubscriptionsService;
-    service = new CalcResultsService(prisma as unknown as PrismaService, subs);
+    service = new CalcResultsService(prisma as unknown as PrismaService);
   });
 
   describe('rename — etiquette scope projet', () => {
