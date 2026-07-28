@@ -336,16 +336,47 @@ export function ToolFrame({
               break;
             }
           }
+          // APERÇU (dry-run) : un aperçu live (ex. updateSeuilPreview de PressioPro)
+          // calcule POUR L'AFFICHAGE seulement. L'API ne persiste rien, ne décompte
+          // pas et ne renvoie AUCUN calcResultId scellable. Ici, on NE pose PAS
+          // currentCalcResultIdRef, on NE remonte PAS onCalcResultId, on N'arme PAS
+          // le watchdog snapshot : un aperçu ne rend JAMAIS le bouton PV actif et ne
+          // désynchronise JAMAIS le dernier calcul scellable (finding revue adverse).
+          const isDryRun = payload.dryRun === true;
           runCalc(orgId, projectId, {
             engineId: effectiveEngineId,
             label: payload.label,
             params: payload.params,
+            // Champ ADDITIF : présent SEULEMENT en aperçu (un calcul persistant
+            // conserve exactement la forme d'appel historique).
+            ...(isDryRun ? { dryRun: true } : {}),
           })
             .then((result) => {
               // Réponse PÉRIMÉE (une requête plus récente a déjà été émise
               // pendant que celle-ci était en vol) : ignorée SILENCIEUSEMENT —
               // ni remontée au shell (onCalcResultId), ni renvoyée au clone.
               if (seq !== requestSeqRef.current) return;
+              // Aperçu (dry-run) OU réponse sans id persisté : on renvoie la sortie
+              // pour l'affichage SANS jamais la rendre scellable. Ceinture + bretelles :
+              // même si le backend renvoyait un id, un dryRun ne devient pas scellable.
+              if (isDryRun || !result.id) {
+                post({
+                  v: TOOL_BRIDGE_PROTOCOL_VERSION,
+                  type: 'calc:response',
+                  id: msg.id,
+                  payload: {
+                    ok: true,
+                    // Pas de calcResultId : rien à sceller (aperçu).
+                    output: result.rawOutput ?? result.output ?? undefined,
+                    meta: {
+                      engineId: result.engineId,
+                      domain: result.domain,
+                      status: result.status,
+                    },
+                  },
+                });
+                return;
+              }
               currentCalcResultIdRef.current = result.id;
               onCalcResultId?.(result.id);
               // Course M3 (revue adverse) : le calcul est connu du serveur mais

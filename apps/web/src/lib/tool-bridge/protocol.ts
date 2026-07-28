@@ -38,6 +38,16 @@ export interface CalcRequestPayload {
   engineId: string;
   label: string;
   params: Record<string, unknown>;
+  /**
+   * APERÇU (dry-run) — DÉFAUT false, rétrocompatible. Un `calc:request` marqué
+   * `dryRun` calcule la sortie POUR L'AFFICHAGE (aperçu live) SANS persister de
+   * calc_result, SANS décrémenter le quota/ledger, et SANS jamais produire un
+   * `calcResultId` scellable. L'hôte (`ToolFrame`) ne remonte alors NI
+   * `onCalcResultId` NI `onSnapshotStatus` (le bouton d'émission PV reste
+   * inactif). Un clone qui n'émet jamais ce flag conserve exactement le
+   * comportement historique.
+   */
+  dryRun?: boolean;
 }
 
 /** Erreur métier transmise par le serveur (402 EXPIRED/QUOTA, 403 MODULE_NOT_IN_PACK…). */

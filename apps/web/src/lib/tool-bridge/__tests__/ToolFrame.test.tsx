@@ -256,6 +256,120 @@ describe('ToolFrame — calc:request → calc:response', () => {
     );
   });
 
+  // APERÇU (dry-run) — sécurité (revue adverse) : un aperçu live NE DOIT PAS
+  // devenir scellable. Même si l'API renvoyait un id, l'hôte NE remonte NI
+  // onCalcResultId NI onSnapshotStatus et NE pose PAS de calcResultId dans la
+  // réponse : le bouton d'émission PV reste inactif, le quota n'est pas consommé.
+  it('given un calc:request dryRun, when runCalc résout, then NI onCalcResultId NI onSnapshotStatus, et calc:response.output SANS calcResultId (aperçu non scellable)', async () => {
+    // Backend dry-run : calcResultId=null (rien persisté) — l'adaptateur donne id=''.
+    mockRunCalc.mockResolvedValue({
+      id: '',
+      engineId: 'pressiometre',
+      domain: 'LB',
+      status: 'DONE',
+      output: { EM: 12.4 },
+      rawOutput: { EM: 12.4 },
+    });
+    const onCalcResultId = vi.fn();
+    const onSnapshotStatus = vi.fn();
+    await renderFrame({ onCalcResultId, onSnapshotStatus });
+    const iframe = getIframe();
+    const postSpy = vi.spyOn(iframe.contentWindow as Window, 'postMessage');
+
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_preview',
+      payload: {
+        engineId: 'pressiometre',
+        label: 'Aperçu E_M',
+        params: { pf_idx: 2, plm_idx: 5 },
+        dryRun: true,
+      },
+    });
+
+    // Le flag dryRun est transmis à runCalc (l'engineId facturable reste celui de
+    // l'hôte — frontière de confiance ; on ne couple pas le test à sa valeur).
+    expect(mockRunCalc).toHaveBeenCalledWith(
+      'org_01',
+      'proj_01',
+      expect.objectContaining({
+        label: 'Aperçu E_M',
+        params: { pf_idx: 2, plm_idx: 5 },
+        dryRun: true,
+      }),
+    );
+    // Aucun calcResultId scellable ne remonte au shell, aucun statut de capture.
+    expect(
+      onCalcResultId,
+      'un aperçu a remonté un calcResultId scellable',
+    ).not.toHaveBeenCalled();
+    expect(
+      onSnapshotStatus,
+      'un aperçu a armé le pipeline de capture',
+    ).not.toHaveBeenCalled();
+    // La réponse porte l'output (pour l'affichage) mais AUCUN calcResultId.
+    const calcResponse = postSpy.mock.calls
+      .map((c) => c[0] as { type?: string; payload?: Record<string, unknown> })
+      .find((m) => m?.type === 'calc:response');
+    expect(calcResponse?.payload?.ok).toBe(true);
+    expect(calcResponse?.payload?.output).toEqual({ EM: 12.4 });
+    expect(
+      'calcResultId' in (calcResponse?.payload ?? {}),
+      'calcResultId présent dans une réponse dry-run',
+    ).toBe(false);
+  });
+
+  // DÉSYNC (finding revue adverse) : après un calcul PERSISTANT confirmé
+  // (calcResultId scellable posé), un APERÇU ne doit NI changer NI invalider ce
+  // dernier calcResultId scellable. On prouve que le preview ne rappelle pas
+  // onCalcResultId (l'id scellable reste celui du vrai calcul).
+  it('given un calcul persistant confirmé PUIS un aperçu dryRun, when les deux résolvent, then onCalcResultId reste sur le calcul persistant (l’aperçu ne désynchronise pas)', async () => {
+    const onCalcResultId = vi.fn();
+    await renderFrame({ onCalcResultId });
+    const iframe = getIframe();
+
+    // 1. Calcul PERSISTANT (dryRun absent) -> id scellable 'calc_real'.
+    mockRunCalc.mockResolvedValueOnce({
+      id: 'calc_real',
+      engineId: 'pressiometre',
+      domain: 'LB',
+      status: 'DONE',
+      output: { EM: 10 },
+      rawOutput: { EM: 10 },
+    });
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_real',
+      payload: { engineId: 'pressiometre', label: 'Dépouillement', params: {} },
+    });
+    expect(onCalcResultId).toHaveBeenCalledTimes(1);
+    expect(onCalcResultId).toHaveBeenLastCalledWith('calc_real');
+
+    // 2. APERÇU dryRun -> l'API ne persiste rien (id=''). Ne doit PAS rappeler
+    //    onCalcResultId (ni avec un nouvel id, ni avec null).
+    mockRunCalc.mockResolvedValueOnce({
+      id: '',
+      engineId: 'pressiometre',
+      domain: 'LB',
+      status: 'DONE',
+      output: { EM: 11 },
+      rawOutput: { EM: 11 },
+    });
+    await sendFromIframe(iframe, {
+      v: 1,
+      type: 'calc:request',
+      id: 'req_preview2',
+      payload: { engineId: 'pressiometre', label: 'Aperçu', params: {}, dryRun: true },
+    });
+    // Toujours un seul appel : le dernier calcResultId scellable reste 'calc_real'.
+    expect(
+      onCalcResultId,
+      'l’aperçu a rappelé onCalcResultId (désync du calcul scellable)',
+    ).toHaveBeenCalledTimes(1);
+  });
+
   // Régression BLOQUANTE (ADR 0015 §4) : le clone (mapOutputToR) lit la sortie
   // serveur BRUTE (`output.cas` / `capaciteReference` / `contraintesBase`). Si l'hôte
   // poste la forme NORMALISÉE (`{verdict, rows}`), `output.cas` est absent → le clone

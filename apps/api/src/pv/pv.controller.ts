@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -90,31 +91,46 @@ export class PvController {
    * POST /projects/:projectId/calc/:engine — recalcul SERVEUR persistant.
    * Valide le corps contre le contrat du moteur (meme run<Engine> que la recette),
    * persiste un calc_result org-scope, renvoie l'enveloppe + calcResultId.
+   *
+   * APERÇU (`?dryRun=true`) — sécurité (revue adverse) : un aperçu live (ex.
+   * `updateSeuilPreview` de PressioPro) calcule POUR L'AFFICHAGE mais NE DOIT
+   * NI persister un calc_result NI décompter le quota NI produire un
+   * `calcResultId` scellable (sinon on pourrait sceller un PV vide, brûler du
+   * quota et désynchroniser le dernier calcul scellable). Le contexte tenant
+   * (withTenant/RLS + vérification d'accès au moteur) reste INTACT — seul le
+   * comptage d'usage et l'INSERT sont sautés (une SOUSTRACTION, pas un
+   * contournement d'isolation). `@Consumes('CALC')` (pré-check quota du guard)
+   * reste actif : un aperçu reste soumis à l'entitlement d'accès.
    */
   @Post('calc/:engine')
   @Roles('OWNER', 'ADMIN', 'ENGINEER', 'TECHNICIAN', 'SUPERADMIN')
   // Enforcement abonnement (ADR 0011) : le moteur (slug d'URL :engine) doit etre
   // dans le pack (sinon 403), l'abo non expire et le quota non epuise (sinon 402).
-  // @Consumes('CALC') : un calcul REUSSI decremente le quota (decompte atomique
-  // dans runAndPersist, pas ici). L'entitlement est compare au SLUG d'URL, qui est
-  // aussi la cle des `modules` du contrat /me/entitlements (selecteur C-01 cote UI).
+  // @Consumes('CALC') : un calcul PERSISTANT REUSSI decremente le quota (decompte
+  // atomique dans runAndPersist, pas ici ; SAUTE en dryRun). L'entitlement est
+  // compare au SLUG d'URL, qui est aussi la cle des `modules` du contrat
+  // /me/entitlements (selecteur C-01 cote UI).
   @RequiresEntitlement({ param: 'engine' })
   @Consumes('CALC')
   @ApiOperation({
     summary:
-      'Recalcul serveur PERSISTANT (surface tenant) : execute le moteur et stocke un calc_result org-scope.',
+      'Recalcul serveur PERSISTANT (surface tenant) : execute le moteur et stocke un calc_result org-scope. ?dryRun=true = apercu (calcule sans persister ni decompter).',
   })
   runCalc(
     @Param('projectId', new ZodValidationPipe(uuidParam)) projectId: string,
     @Param('engine') engine: string,
     @Body() body: unknown,
     @Req() req: AuthedRequest,
+    @Query('dryRun') dryRun?: string,
   ): Promise<PersistedCalcResult> {
     return this.calcResults.runAndPersist({
       engineSlug: engine,
       projectId,
       userId: req.auth!.userId, // identite JWT verifiee (jamais une valeur cliente)
       body,
+      // Query string -> booleen : « true » (ou « 1 ») active l'apercu ; tout le
+      // reste (absent, « false », vide) = calcul persistant historique.
+      dryRun: dryRun === 'true' || dryRun === '1',
     });
   }
 

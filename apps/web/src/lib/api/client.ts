@@ -489,9 +489,11 @@ export async function runCalc(
   projectId: string,
   req: CalcRequest,
 ): Promise<CalcResult> {
-  // Un calcul de plus => `calcCount` du projet a changé : le cache doit tomber,
-  // sinon la pastille d'onglet reste sur l'ancien compte (cf. project-cache-invalidation).
-  invalidateProjectCache(orgId, projectId);
+  // Un calcul PERSISTANT de plus => `calcCount` du projet a changé : le cache doit
+  // tomber, sinon la pastille d'onglet reste sur l'ancien compte (cf.
+  // project-cache-invalidation). Un APERÇU (dry-run) ne persiste RIEN : le compte
+  // ne change pas, on NE périme donc pas le cache projet.
+  if (!req.dryRun) invalidateProjectCache(orgId, projectId);
   if (_USE_REAL_BACKEND) return httpRunCalc(orgId, projectId, req);
 
   // Vérifier entitlements en défense

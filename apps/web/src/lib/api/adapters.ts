@@ -72,9 +72,11 @@ export interface PrismaCalcResult {
  *  - `meta.engineId` (pas `engineId` direct)
  *  - pas de `projectId`/`orgId`/`createdAt` (contexte passé à l'adaptateur)
  *  - `ok: false` = échec moteur (rien persisté, calcResultId='')
+ *  - `calcResultId: null` = APERÇU (dry-run) : calcul RÉUSSI mais NON persisté
+ *    (aucun id scellable). L'hôte ne remonte alors pas de calcResultId au shell.
  */
 export interface BackendPersistedCalcResult {
-  calcResultId: string;
+  calcResultId: string | null;
   ok: boolean;
   meta: {
     engineId: string;
@@ -446,7 +448,9 @@ export function adaptPersistedCalcResult(
   }
 
   return {
-    id: raw.calcResultId,
+    // Aperçu (dry-run) : le backend renvoie calcResultId=null (non persisté) ->
+    // id='' (jamais scellable). L'hôte détecte l'absence d'id et ne remonte rien.
+    id: raw.calcResultId ?? '',
     projectId: context.projectId,
     orgId: context.orgId,
     engineId,

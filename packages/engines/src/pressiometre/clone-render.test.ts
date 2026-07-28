@@ -22,6 +22,8 @@
  *
  * Skip BRUYANT si le clone est absent (« pnpm clone:tools »).
  */
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -257,6 +259,115 @@ d(
       dom.window.close();
     });
 
+    it('PONT dryRun : bridge.calc(engineId, params, {dryRun:true}) poste un calc:request payload.dryRun=true ; sans opts -> dryRun=false (additif, rétrocompatible)', async () => {
+      // On teste le VRAI pont du clone (pas un mock) : on espionne postMessage vers le parent.
+      const html = readFileSync(CLONE_PATH, 'utf8');
+      const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
+      const win = dom.window as unknown as Window & {
+        __geofamBridge: {
+          calc: (e: string, p: unknown, o?: unknown) => Promise<unknown>;
+        };
+      };
+      const posted: Array<{ type?: string; payload?: Record<string, unknown> }> = [];
+      const parent = dom.window.parent as unknown as {
+        postMessage: (m: unknown, o?: string) => void;
+      };
+      parent.postMessage = (m: unknown) =>
+        posted.push(m as { type?: string; payload?: Record<string, unknown> });
+
+      void win.__geofamBridge.calc('pressiometre', { rows: [] }, { dryRun: true });
+      void win.__geofamBridge.calc('pressiometre', { rows: [] });
+
+      const reqs = posted.filter((m) => m?.type === 'calc:request');
+      expect(reqs.length, 'le pont n a pas posté 2 calc:request').toBe(2);
+      // 1er appel = APERÇU (dryRun:true) ; 2e = calcul PERSISTANT (dryRun:false).
+      expect(reqs[0]!.payload?.dryRun, 'opts.dryRun non transmis par le pont').toBe(true);
+      expect(reqs[1]!.payload?.dryRun, 'un appel sans opts doit rester persistant').toBe(
+        false,
+      );
+      dom.window.close();
+    });
+
+    it('APERÇU E_M (updateSeuilPreview) : émet le calc via le pont AVEC dryRun=true (aucun calcul persistant/facturé/scellable) — vs doCalc PERSISTANT', async () => {
+      const fx = PRESSIOMETRE_FIXTURES.find((f) => f.id === 'demo-4m-seuils-manuels')!;
+      const html = readFileSync(CLONE_PATH, 'utf8');
+      const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
+      const win = dom.window as unknown as CloneWin & {
+        updateSeuilPreview: () => void;
+        setTimeout: (fn: () => void, ms?: number) => number;
+      };
+      // Pont capteur : enregistre l'engineId, les params ET les OPTIONS (3ᵉ arg) reçus.
+      const calls: Array<{ engineId: string; opts: unknown }> = [];
+      (win as unknown as { __geofamBridge: unknown }).__geofamBridge = {
+        calc: (engineId: string, params: unknown, opts?: unknown) => {
+          calls.push({ engineId, opts: opts ?? null });
+          const env = runPressiometre(params);
+          return Promise.resolve(
+            env.ok
+              ? { ok: true, calcResultId: 'cr-1', output: env.output }
+              : { ok: false },
+          );
+        },
+        emitPv: () => undefined,
+        snapshot: () => undefined,
+        storeGet: () => Promise.resolve(undefined),
+        storeSet: () => Promise.resolve(undefined),
+        context: () => ({}),
+      };
+      applyEssai(win, fx);
+      const setSel = (id: string, v: number): void => {
+        const el = dom.window.document.getElementById(id) as HTMLSelectElement | null;
+        if (el) el.value = String(v);
+      };
+      setSel('sel_pf', fx.input.pf_idx ?? 2);
+      setSel('sel_plm', fx.input.plm_idx ?? 5);
+      // L'aperçu est débouncé (~300 ms). Sous jsdom, ce timer est fragile (re-rendus
+      // asynchrones concurrents). On rend l'HORLOGE de debounce DÉTERMINISTE : le
+      // callback ~300 ms s'exécute immédiatement. On ne teste QUE le contenu de l'appel
+      // (le débounce lui-même est un détail temporel, hors périmètre de cette assertion).
+      const realSetTimeout = win.setTimeout.bind(win);
+      (win as unknown as { setTimeout: unknown }).setTimeout = (
+        fn: () => void,
+        ms?: number,
+      ): number => {
+        if ((ms ?? 0) >= 250 && (ms ?? 0) <= 350) {
+          fn();
+          return 0;
+        }
+        return realSetTimeout(fn, ms);
+      };
+      win.updateSeuilPreview();
+      (win as unknown as { setTimeout: unknown }).setTimeout = realSetTimeout;
+
+      const preview = calls.find((c) => c.engineId === 'pressiometre');
+      expect(preview, "updateSeuilPreview n'a pas émis de calc").toBeDefined();
+      expect(
+        (preview!.opts as { dryRun?: boolean } | null)?.dryRun,
+        'aperçu E_M NON marqué dryRun (persisté/facturé/scellable = finding revue adverse)',
+      ).toBe(true);
+      // Aucun calcResultId scellable posé par un aperçu.
+      expect(
+        (win as unknown as { __pressioLastCalcResultId: unknown })
+          .__pressioLastCalcResultId,
+      ).toBeNull();
+
+      // CONTRE-ÉPREUVE : un dépouillement RÉEL (doCalc) reste PERSISTANT (opts absent /
+      // dryRun non vrai) et pose bien un calcResultId scellable — l'un ne contamine pas l'autre.
+      calls.length = 0;
+      await win.doCalc();
+      const real = calls.find((c) => c.engineId === 'pressiometre');
+      expect(real, 'doCalc doit émettre un calc').toBeDefined();
+      expect(
+        (real!.opts as { dryRun?: boolean } | null)?.dryRun === true,
+        'doCalc marqué dryRun (un calcul réel ne doit pas être un aperçu)',
+      ).toBe(false);
+      expect(
+        (win as unknown as { __pressioLastCalcResultId: unknown })
+          .__pressioLastCalcResultId,
+      ).toBe('cr-1');
+      dom.window.close();
+    });
+
     it('EQUIVALENCE : le panneau Resultats du clone est IDENTIQUE a la reference gelee', async () => {
       if (!pressiometreSourceAvailable()) {
         // eslint-disable-next-line no-console
@@ -277,6 +388,12 @@ d(
       const cloneRes = normalizeRes(
         cloneDom.window.document.getElementById('resCont')?.innerHTML ?? '',
       );
+      // Non-sur-exposition (minor revue) : on capture AUSSI une page HORS Résultats
+      // (Log/coupe de sondage) pour verrouiller que le clone n'expose RIEN de plus que
+      // la référence sur les autres onglets (pas seulement Résultats).
+      const cloneLog = normalizeRes(
+        cloneDom.window.document.getElementById('pg-log')?.innerHTML ?? '',
+      );
       cloneDom.window.close();
 
       // REFERENCE : depouillement LOCAL (moteur intact). doCalc y differe renderResults de
@@ -294,6 +411,9 @@ d(
       const refRes = normalizeRes(
         refDom.window.document.getElementById('resCont')?.innerHTML ?? '',
       );
+      const refLog = normalizeRes(
+        refDom.window.document.getElementById('pg-log')?.innerHTML ?? '',
+      );
 
       // Garde anti faux-vert : la reference DOIT avoir rendu un vrai depouillement.
       expect(
@@ -303,6 +423,15 @@ d(
       expect(refRes).toContain('E<sub>M</sub>');
       // ZERO ECART : meme HTML de panneau Resultats (hors canvas dynamiques, normalises).
       expect(cloneRes, 'panneau Resultats clone != reference').toBe(refRes);
+      // ZERO ECART sur une page HORS Résultats (Log) : anti-vacuité (contenu réel rendu)
+      // + égalité stricte -> le clone n'expose pas plus que la référence hors Résultats.
+      expect(refLog.length, 'reference sans page Log (rendu casse ?)').toBeGreaterThan(
+        50,
+      );
+      expect(
+        cloneLog,
+        'page Log clone != reference (sur-exposition hors Résultats ?)',
+      ).toBe(refLog);
 
       refDom.window.close();
     });
@@ -339,3 +468,440 @@ d(
 function normalizeRes(html: string): string {
   return html.replace(/\s+/g, ' ').trim();
 }
+
+// ===========================================================================
+// CAPTURE OPTION-3 (snapshot:capture) — le pont PRESSIOPRO scelle le DOCUMENT
+// (la NOTE que « Imprimer / PDF » produit : TOUTES les pages .pg via @media print)
+// APRES un calcul REUSSI (garde §5). §8 (politique 26/07) : la note ne porte que des
+// valeurs AFFICHEES par l'outil (rendues depuis la sortie serveur whitelistee) ; toutes
+// les figures (chartPV/EM/PLM/Spec/Etal/Calib) sont des <svg> INLINE (aucune
+// rasterisation), l'HTML est INERTE. ZERO FAUX-VERT : sans le cablage (snapshot /
+// __pressioproCaptureSnapshot / appel en fin de calcul), `caps` reste vide -> ECHEC.
+// ===========================================================================
+
+const REPO = resolve(HERE, '../../../..');
+// sha256 scelle au registre (pressiometre-menard) — cf. TOOLS.pressiopro.expectedSha256.
+const REF_SHA256 = 'b5a06e1c34e1928b06a3e9dcd5628d516ba7d0d2818a67c62bdb43e93c65e4dc';
+
+type Cap = { displayHtml: string; printHtml: string };
+
+/** Passe un HTML dans la VRAIE garde §8 serveur (assertInertHtml) via le runner
+ *  scripts/assert-inert-run.mts — jamais une copie des regles. Sur octets REELS. */
+function guardInert(html: string): { ok: boolean; error?: string } {
+  const raw = execFileSync('npx', ['tsx', 'scripts/assert-inert-run.mts'], {
+    input: html,
+    cwd: REPO,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  return JSON.parse(raw) as { ok: boolean; error?: string };
+}
+
+/** Boote le clone avec un pont CAPTEUR multi-engine (calc via moteur reel + snapshot),
+ *  applique un essai, pilote doCalc, renvoie les captures + la fenetre. `xform` permet de
+ *  muter la sortie serveur (sanity-mutation / injection d'erreur en bande). */
+async function captureEssai(
+  fx: (typeof PRESSIOMETRE_FIXTURES)[number],
+  xform?: (out: Record<string, unknown>) => Record<string, unknown>,
+): Promise<{ caps: Cap[]; win: CloneWin; dom: JSDOM }> {
+  const html = readFileSync(CLONE_PATH, 'utf8');
+  const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
+  const win = dom.window as unknown as CloneWin;
+  const caps: Cap[] = [];
+  (win as unknown as { __geofamBridge: unknown }).__geofamBridge = {
+    calc: (engineId: string, params: unknown) => {
+      const env =
+        engineId === 'pressio-etalonnage'
+          ? runPressioEtalonnage(params)
+          : engineId === 'pressio-calibrage'
+            ? runPressioCalibrage(params)
+            : runPressiometre(params);
+      if (!env.ok) return Promise.resolve({ ok: false, error: env.error });
+      const out = xform
+        ? xform(env.output as Record<string, unknown>)
+        : (env.output as Record<string, unknown>);
+      return Promise.resolve({ ok: true, calcResultId: 'cap-pp-1', output: out });
+    },
+    emitPv: () => undefined,
+    snapshot: (displayHtml: string, printHtml: string) =>
+      caps.push({
+        displayHtml: String(displayHtml || ''),
+        printHtml: String(printHtml || ''),
+      }),
+    storeGet: () => Promise.resolve(undefined),
+    storeSet: () => Promise.resolve(undefined),
+    context: () => ({}),
+  };
+  applyEssai(win, fx);
+  await win.doCalc();
+  await new Promise((r) => setTimeout(r, 15));
+  return { caps, win, dom };
+}
+
+/** Extrait le fragment <svg> d'aria-label donne dans un HTML capture (isole une figure). */
+function svgByLabel(html: string, label: string): string {
+  const marker = `aria-label="${label}"`;
+  const at = html.indexOf(marker);
+  if (at < 0) return '';
+  const start = html.lastIndexOf('<svg', at);
+  const end = html.indexOf('</svg>', at);
+  return start < 0 || end < 0 ? '' : html.slice(start, end + 6);
+}
+
+/** cx des cercles de mesure (class="ppt") d'un fragment SVG, dans l'ordre du DOM. */
+function pptCx(svg: string): number[] {
+  const out: number[] = [];
+  const re = /class="ppt"[^>]*cx="([-\d.]+)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(svg)) !== null) out.push(Number(m[1]));
+  return out;
+}
+
+/** Nombre de sommets (commandes M/L) du 1er <path> d'un fragment SVG (la courbe tracée). */
+function pathVertexCount(svg: string): number {
+  const m = svg.match(/<path d="([^"]*)"/);
+  if (!m) return 0;
+  return ((m[1] ?? '').match(/[ML]/g) ?? []).length;
+}
+
+const capD = hasClone ? describe : describe.skip;
+
+capD(
+  'pressiopro — capture option-3 de la note (§8 inerte, garde §5, equivalence, courbes SVG)',
+  () => {
+    const essaiFx = PRESSIOMETRE_FIXTURES.find((f) => f.id === 'demo-4m-seuils-manuels')!;
+
+    it('given un depouillement REUSSI, when doCalc() se termine, then le pont emet snapshot:capture (display + print) NON vide et auto-contenu', async () => {
+      const env = runPressiometre(essaiFx.input);
+      expect(env.ok).toBe(true);
+      if (!env.ok) return;
+      const { caps, dom } = await captureEssai(essaiFx);
+      expect(
+        caps.length,
+        'aucune capture emise (cablage snapshot absent ?)',
+      ).toBeGreaterThan(0);
+      const cap = caps[caps.length - 1]!;
+      expect(cap.printHtml.length, 'printHtml vide').toBeGreaterThan(2000);
+      expect(cap.printHtml, 'printHtml non auto-contenu').toContain('<!doctype html>');
+      expect(cap.printHtml, 'CSS non inline').toContain('<style>');
+      // La note porte les KPI du depouillement (E_M) + le bandeau categorie.
+      expect(cap.printHtml, 'E_M absent de la note').toContain(env.output.EM.toFixed(2));
+      expect(cap.printHtml, 'categorie absente de la note').toContain(
+        env.output.categorieLibelle,
+      );
+      // displayHtml auto-contenu aussi.
+      expect(cap.displayHtml.length, 'displayHtml vide').toBeGreaterThan(2000);
+      expect(cap.displayHtml, 'displayHtml non auto-contenu').toContain(
+        '<!doctype html>',
+      );
+      dom.window.close();
+    });
+
+    it('given les HTML REELLEMENT captures, when passes dans la VRAIE garde §8 (assertInertHtml), then ACCEPTES (aucun script/handler/canvas/URI data:)', async () => {
+      const { caps, dom } = await captureEssai(essaiFx);
+      const cap = caps[caps.length - 1]!;
+      expect(/<script\b/i.test(cap.printHtml), 'printHtml contient <script>').toBe(false);
+      expect(/<canvas\b/i.test(cap.printHtml), 'printHtml contient un <canvas>').toBe(
+        false,
+      );
+      expect(
+        /<[a-zA-Z][^>]*\son\w+\s*=/i.test(cap.printHtml),
+        'handler inline present',
+      ).toBe(false);
+      // On cible une FIGURE rasterisee (src=data:), pas les url(data:image/svg+xml) legitimes
+      // du CSS client (fleche de <select>). La garde §8 serveur (guardInert) reste l'arbitre.
+      expect(
+        /src\s*=\s*["']?\s*data:/i.test(cap.printHtml),
+        'figure rasterisee (src=data:) presente',
+      ).toBe(false);
+      // La note DOIT porter au moins une figure SVG (courbe P-V redessinee).
+      expect(/<svg\b/i.test(cap.printHtml), 'aucune figure SVG dans la note').toBe(true);
+      const gPrint = guardInert(cap.printHtml);
+      expect(gPrint.ok, `garde §8 REFUSE le printHtml : ${gPrint.error ?? ''}`).toBe(
+        true,
+      );
+      const gDisp = guardInert(cap.displayHtml);
+      expect(gDisp.ok, `garde §8 REFUSE le displayHtml : ${gDisp.error ?? ''}`).toBe(
+        true,
+      );
+      dom.window.close();
+    });
+
+    it('EQUIVALENCE clone<->reference client : meme jeu de PAGES (.pg) + memes valeurs affichees (E_M, categorie) que la note du HTML gele', async () => {
+      if (!pressiometreSourceAvailable()) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[clone-render] capture SKIP equivalence : source gelee absente (CI).',
+        );
+        return;
+      }
+      // La reference (HTML gele) DOIT etre la version scellee au registre (echec DUR).
+      const refBuf = readFileSync(pressiometreSourcePath());
+      const actualSha = createHash('sha256').update(refBuf).digest('hex');
+      expect(
+        actualSha,
+        'SHA-256 reference pressiometre != registre (version divergente)',
+      ).toBe(REF_SHA256);
+      // Jeu de pages de la reference (toutes les .pg imprimees via @media print).
+      const refDom = new JSDOM(refBuf.toString('utf8'), {
+        runScripts: 'dangerously',
+        pretendToBeVisual: true,
+      });
+      const refPgIds = Array.from(refDom.window.document.querySelectorAll('.pg'))
+        .map((p) => (p as HTMLElement).id)
+        .filter(Boolean)
+        .sort();
+      refDom.window.close();
+      expect(refPgIds.length, 'reference sans pages .pg').toBeGreaterThanOrEqual(8);
+
+      const env = runPressiometre(essaiFx.input);
+      if (!env.ok) return;
+      const { caps, dom } = await captureEssai(essaiFx);
+      const cap = caps[caps.length - 1]!;
+      // 1. Jeu de pages IDENTIQUE : la note du clone porte les MEMES .pg que le client.
+      for (const id of refPgIds) {
+        expect(cap.printHtml, `page ${id} absente de la note du clone`).toContain(
+          `id="${id}"`,
+        );
+      }
+      // 2. Valeurs affichees IDENTIQUES (arbitre : sortie serveur, prouvee equivalente au
+      //    HTML d'origine par engine.equivalence.test) : E_M + categorie.
+      expect(cap.printHtml).toContain(env.output.EM.toFixed(2));
+      expect(cap.printHtml).toContain(env.output.categorieLibelle);
+      dom.window.close();
+    });
+
+    it('GARDE §5 (essai, erreur EN BANDE output.erreur) : AUCUNE capture n est emise', async () => {
+      // runPressiometre encode ses erreurs de garde dans output.erreur (ok:true). La note
+      // d'un document d'erreur ne doit JAMAIS etre scellee. Mutation : deplacer l'appel de
+      // capture avant le « if(out.erreur) return » rendrait ce test ROUGE.
+      const { caps, win } = await captureEssai(essaiFx, (out) => ({
+        ...out,
+        erreur: 'Plage pseudo-élastique invalide.',
+      }));
+      expect(
+        caps.length,
+        'une capture a ete emise sur une erreur en bande (garde §5 KO)',
+      ).toBe(0);
+      const res = win.document.getElementById('resCont')?.innerHTML ?? '';
+      expect(res).toMatch(/Calcul indisponible|invalide/);
+      win.close?.();
+    });
+
+    it('DETERMINISTE : deux captures du MEME calcul produisent un printHtml identique (aucune horloge/hasard)', async () => {
+      const a = await captureEssai(essaiFx);
+      const b = await captureEssai(essaiFx);
+      expect(a.caps[a.caps.length - 1]!.printHtml).toBe(
+        b.caps[b.caps.length - 1]!.printHtml,
+      );
+      a.dom.window.close();
+      b.dom.window.close();
+    });
+
+    it('COURBE P-V : la note porte le <svg> chartPV avec un cercle de mesure (class ppt) par palier, aux abscisses de la transformee client (donnees fideles) + sanity-mutation', async () => {
+      const env = runPressiometre(essaiFx.input);
+      expect(env.ok).toBe(true);
+      if (!env.ok) return;
+      const courbe = (env.output as { courbe?: Array<{ pCorr: number }> }).courbe ?? [];
+      expect(courbe.length, 'la fixture doit produire une courbe').toBeGreaterThan(3);
+
+      const { caps, dom } = await captureEssai(essaiFx);
+      const svg = svgByLabel(
+        caps[caps.length - 1]!.printHtml,
+        'Courbe pressiometrique P-V et fluage',
+      );
+      expect(svg.length, 'SVG chartPV absent de la note').toBeGreaterThan(50);
+      const cx = pptCx(svg);
+      // 1. Un cercle de mesure par palier de la courbe serveur (fidelite du nombre de points).
+      expect(cx.length, 'nb de points mesures != longueur de la courbe serveur').toBe(
+        courbe.length,
+      );
+      // 2. DONNEES FIDELES : abscisse (X) = transformee client repliquee ici. X ne depend que
+      //    de P=pCorr*0,1 et de pMax=pL*0,1*1,4 (arbitre independant, non vacu).
+      const W = 760,
+        mL = 54,
+        mR = 54;
+      const pMax = (env.output.pL as number) * 0.1 * 1.4;
+      const pxOf = (p: number): number =>
+        Math.round((mL + (p / pMax) * (W - mL - mR)) * 100) / 100;
+      courbe.forEach((c, i) => {
+        expect(cx[i], `abscisse du point ${i} != transformee client`).toBeCloseTo(
+          pxOf(c.pCorr * 0.1),
+          2,
+        );
+      });
+      // 3. SANITY-MUTATION : tronquer la courbe d'un palier DIMINUE le nombre de cercles.
+      const mut = await captureEssai(essaiFx, (out) => ({
+        ...out,
+        courbe: (out.courbe as unknown[]).slice(0, -1),
+      }));
+      const cxMut = pptCx(
+        svgByLabel(
+          mut.caps[mut.caps.length - 1]!.printHtml,
+          'Courbe pressiometrique P-V et fluage',
+        ),
+      );
+      expect(
+        cxMut.length,
+        'muter la courbe n a pas change le trace (donnees non branchees ?)',
+      ).toBe(courbe.length - 1);
+      dom.window.close();
+      mut.dom.window.close();
+    });
+
+    it('COURBE ETALONNAGE : le calcul etalonnage capture une note avec le <svg> chartEtal (un point ppt par palier saisi) + sanity-mutation', async () => {
+      const expected = runPressioEtalonnage({ rows: ETAL_ROWS });
+      expect(expected.ok).toBe(true);
+      if (!expected.ok) return;
+
+      const html = readFileSync(CLONE_PATH, 'utf8');
+      const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
+      const win = dom.window as unknown as CloneWin;
+      const caps: Cap[] = [];
+      (win as unknown as { __geofamBridge: unknown }).__geofamBridge = {
+        calc: (engineId: string, params: unknown) =>
+          Promise.resolve(
+            engineId === 'pressio-etalonnage'
+              ? (() => {
+                  const e = runPressioEtalonnage(params);
+                  return e.ok
+                    ? { ok: true, calcResultId: 'cap-etal', output: e.output }
+                    : { ok: false, error: e.error };
+                })()
+              : { ok: false, error: { message: 'engine inattendu' } },
+          ),
+        emitPv: () => undefined,
+        snapshot: (d: string, p: string) =>
+          caps.push({ displayHtml: String(d || ''), printHtml: String(p || '') }),
+        storeGet: () => Promise.resolve(undefined),
+        storeSet: () => Promise.resolve(undefined),
+        context: () => ({}),
+      };
+      win.applyData({ etalRows: ETAL_ROWS });
+      win.calcEtalonnage();
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(
+        caps.length,
+        'aucune capture emise apres un etalonnage reussi',
+      ).toBeGreaterThan(0);
+      const svg = svgByLabel(
+        caps[caps.length - 1]!.printHtml,
+        'Courbe d etalonnage V=f(P)',
+      );
+      expect(svg.length, 'SVG chartEtal absent de la note').toBeGreaterThan(50);
+      expect(pptCx(svg).length, 'nb points etalonnage != nb paliers saisis').toBe(
+        ETAL_ROWS.length,
+      );
+      dom.window.close();
+    });
+
+    it('COURBE CALIBRAGE : le <svg> chartCalib reproduit FIDÈLEMENT le tracé (bugué) de drawCalibChart du client — points mesurés INVISIBLES (y=r.pc inexistant), courbe balayée sur les VOLUMES + filtre pc>=0, axe X mal-titré « Pression P (bar) »', async () => {
+      const expected = runPressioCalibrage({ rows: CALIB_ROWS });
+      expect(expected.ok).toBe(true);
+      if (!expected.ok) return;
+
+      const html = readFileSync(CLONE_PATH, 'utf8');
+      const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
+      const win = dom.window as unknown as CloneWin;
+      const caps: Cap[] = [];
+      (win as unknown as { __geofamBridge: unknown }).__geofamBridge = {
+        calc: (engineId: string, params: unknown) =>
+          Promise.resolve(
+            engineId === 'pressio-calibrage'
+              ? (() => {
+                  const e = runPressioCalibrage(params);
+                  return e.ok
+                    ? { ok: true, calcResultId: 'cap-calib', output: e.output }
+                    : { ok: false, error: e.error };
+                })()
+              : { ok: false, error: { message: 'engine inattendu' } },
+          ),
+        emitPv: () => undefined,
+        snapshot: (d: string, p: string) =>
+          caps.push({ displayHtml: String(d || ''), printHtml: String(p || '') }),
+        storeGet: () => Promise.resolve(undefined),
+        storeSet: () => Promise.resolve(undefined),
+        context: () => ({}),
+      };
+      win.applyData({ calibRows: CALIB_ROWS });
+      win.calcCalibrage();
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(
+        caps.length,
+        'aucune capture emise apres un calibrage reussi',
+      ).toBeGreaterThan(0);
+      const svg = svgByLabel(
+        caps[caps.length - 1]!.printHtml,
+        'Courbe de calibrage Pc=f(V)',
+      );
+      expect(svg.length, 'SVG chartCalib absent de la note').toBeGreaterThan(50);
+      // 1. FIDÉLITÉ AU BUG : les points mesurés sont mappés {x:r.v, y:r.pc} avec r.pc
+      //    INEXISTANT côté client -> AUCUN cercle de mesure (class ppt) n'est tracé. La
+      //    version « corrigée » (un ppt par palier) est INTERDITE (décision titulaire).
+      expect(
+        pptCx(svg).length,
+        'des points de mesure sont tracés — la version corrigée a été réintroduite',
+      ).toBe(0);
+      // 2. Axe X mal-titré comme le client (l'abscisse est un volume, le titre dit « Pression »).
+      expect(svg, 'axe X non conforme au client').toContain('Pression P (bar)');
+      expect(svg, 'axe Y non conforme au client').toContain('Volume V60 (cm3)');
+      // 3. La « courbe ajustée » = balayage EXACT du client sur les VOLUMES (vMin=min(v)-20 ..
+      //    vMax=max(v)+50, 61 pas, filtre pc>=0). On reproduit ici la logique cliente et on
+      //    compare le nombre de sommets tracés (non vacue : reflète le filtre pc>=0).
+      const vs = CALIB_ROWS.map((r) => r.v60);
+      const vMin = Math.min(...vs) - 20;
+      const vMax = Math.max(...vs) + 50;
+      const { c0, c1, c2 } = expected.output;
+      let expectedVerts = 0;
+      for (let i = 0; i <= 60; i++) {
+        const v = vMin + ((vMax - vMin) * i) / 60;
+        const pc = c0 + c1 * v + c2 * v * v;
+        if (pc >= 0) expectedVerts += 1;
+      }
+      expect(
+        pathVertexCount(svg),
+        'nb de sommets de la courbe != balayage client (filtre pc>=0)',
+      ).toBe(expectedVerts);
+      // Garde anti-vacuité : la fixture DOIT produire une courbe non triviale.
+      expect(expectedVerts, 'fixture calibrage sans courbe (test creux)').toBeGreaterThan(
+        1,
+      );
+      // 4. DOMAINE X (minor revue) : le canvas client fixe x.min=vMin. Le SVG dérive le
+      //    domaine X de la seule courbe tracée (origine=vMin, borne haute=dernier v avec
+      //    pc>=0). On verrouille l'ORIGINE du domaine à vMin (graduation la plus à gauche) —
+      //    tolérance app==PV actée explicitement : la borne HAUTE suit la courbe clippée
+      //    (pc>=0), fidèle au tracé bugué (jamais une reconstruction cohérente).
+      expect(
+        svg,
+        'graduation X de gauche != vMin (domaine X non conforme au canvas client)',
+      ).toContain(`>${vMin.toFixed(1)}</text>`);
+      dom.window.close();
+    });
+
+    it('GARDE §5 (calibrage, erreur HORS bande resp.ok=false) : AUCUNE capture n est emise', async () => {
+      const html = readFileSync(CLONE_PATH, 'utf8');
+      const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true });
+      const win = dom.window as unknown as CloneWin;
+      const caps: Cap[] = [];
+      (win as unknown as { __geofamBridge: unknown }).__geofamBridge = {
+        calc: () =>
+          Promise.resolve({ ok: false, error: { message: 'points insuffisants' } }),
+        emitPv: () => undefined,
+        snapshot: (d: string, p: string) =>
+          caps.push({ displayHtml: String(d || ''), printHtml: String(p || '') }),
+        storeGet: () => Promise.resolve(undefined),
+        storeSet: () => Promise.resolve(undefined),
+        context: () => ({}),
+      };
+      win.applyData({ calibRows: CALIB_ROWS });
+      win.calcCalibrage();
+      await new Promise((r) => setTimeout(r, 20));
+      expect(caps.length, 'capture emise sur une erreur hors bande (garde §5 KO)').toBe(
+        0,
+      );
+      dom.window.close();
+    });
+  },
+);

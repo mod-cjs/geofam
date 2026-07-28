@@ -548,18 +548,23 @@ export async function httpRunCalc(
   // #2 — Le backend renvoie PersistedCalcResult (pas PrismaCalcResult) :
   // { calcResultId, ok, meta: { engineId, ... }, output }
   // On utilise adaptPersistedCalcResult (contexte orgId/projectId/params fourni ici).
-  const raw = await apiFetch<BackendPersistedCalcResult>(
-    `/projects/${projectId}/calc/${req.engineId}`,
-    {
-      method: 'POST',
-      // Le backend valide le body avec un schéma Zod strict contre l'input moteur à la racine.
-      // Toute clé inconnue (ex. { label, params }) → rejet 400 "Entrée hors-contrat moteur".
-      body: JSON.stringify(req.params),
-      orgId,
-    },
-  );
-  // Invalider le cache entitlements : un calcul consomme du quota
-  invalidateEntCache(orgId);
+  // APERÇU (dry-run) : le flag passe en QUERY (le body reste l'input moteur PUR —
+  // le schéma Zod backend est strict, toute clé parasite dans le body = 400). Le
+  // backend calcule alors la sortie SANS persister ni décompter le quota.
+  const path = req.dryRun
+    ? `/projects/${projectId}/calc/${req.engineId}?dryRun=true`
+    : `/projects/${projectId}/calc/${req.engineId}`;
+  const raw = await apiFetch<BackendPersistedCalcResult>(path, {
+    method: 'POST',
+    // Le backend valide le body avec un schéma Zod strict contre l'input moteur à la racine.
+    // Toute clé inconnue (ex. { label, params }) → rejet 400 "Entrée hors-contrat moteur".
+    body: JSON.stringify(req.params),
+    orgId,
+  });
+  // Un APERÇU ne consomme PAS de quota : on NE périme PAS le cache entitlements
+  // (sinon chaque frappe re-fetcherait l'abonnement pour rien). Seul un calcul
+  // PERSISTANT invalide le cache.
+  if (!req.dryRun) invalidateEntCache(orgId);
   return adaptPersistedCalcResult(raw, {
     orgId,
     projectId,

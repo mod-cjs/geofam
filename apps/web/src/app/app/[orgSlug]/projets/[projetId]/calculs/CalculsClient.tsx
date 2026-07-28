@@ -707,14 +707,22 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   // (scellé ou non) : les ENTRÉES d'un calcul persisté sont toujours
   // exportables/ré-importables. Rendu dans chaque branche de la barre d'actions.
   //
-  // EXCEPTIONS FASTLAB (labo) + CASAGRANDE (pieux) — décision titulaire : périmètre
-  // strict « impression de la note uniquement », PAS d'export/import JSON pour ces
-  // logiciels. L'outil client FASTLAB exporte une BIBLIOTHÈQUE d'échantillons
-  // (fastlab.json), et l'outil CASAGRANDE n'a PAS de bouton « Exporter .json » visible
-  // (il n'expose que « ⎙ Imprimer la note ») — on ne reproduit donc AUCUN export pour
-  // eux (hors périmètre). Le bouton est masqué pour ces calculs (jamais un export de
-  // forme différente qui prêterait à confusion).
-  const ENGINES_SANS_EXPORT = new Set(['labo', 'pieux']);
+  // EXCEPTIONS FASTLAB (labo) + CASAGRANDE (pieux) + PRESSIOPRO (pressiometre et ses 2
+  // modes d'appareillage) — décision titulaire : périmètre strict « impression de la note
+  // uniquement », PAS d'export/import JSON pour ces logiciels. L'outil client FASTLAB
+  // exporte une BIBLIOTHÈQUE d'échantillons (fastlab.json), CASAGRANDE n'a pas de bouton
+  // « Exporter .json » (que « ⎙ Imprimer la note »), et PRESSIOPRO exporte des CSV/JSON
+  // d'une forme propre à l'outil (essai/global) HORS de notre périmètre PV — on ne
+  // reproduit donc AUCUN export pour eux. Le bouton est masqué pour ces calculs (jamais un
+  // export de forme différente qui prêterait à confusion). Les 3 slugs pressio couvrent le
+  // dépouillement (pressiometre) + l'étalonnage/calibrage d'appareillage.
+  const ENGINES_SANS_EXPORT = new Set([
+    'labo',
+    'pieux',
+    'pressiometre',
+    'pressio-etalonnage',
+    'pressio-calibrage',
+  ]);
   const exportSupported =
     !selected || !ENGINES_SANS_EXPORT.has(slugOf(selected.engineId));
   const exportButton = exportSupported ? (

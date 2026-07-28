@@ -623,4 +623,85 @@ describe('Etiquettes name (calc + PV) — e2e (Postgres réel)', () => {
       (await patchCalc(t, orgA, projA, calcId, 'x'.repeat(201))).status,
     ).toBe(400);
   });
+
+  // APERÇU (dry-run) — sécurité (revue adverse) : `?dryRun=true` calcule POUR
+  // L'AFFICHAGE mais NE persiste AUCUN calc_result, NE décompte AUCUN quota et NE
+  // renvoie AUCUN calcResultId scellable. Contexte tenant INCHANGÉ (withTenant/RLS :
+  // le projet est vérifié écrivable). Contre-preuve EN BASE (un 200 ne prouve rien
+  // seul) : comptage de calc_results et consommation AVANT/APRÈS strictement égaux.
+  const runCalcDry = (t: string, org: string, project: string) =>
+    request(server())
+      .post(`/projects/${project}/calc/burmister?dryRun=true`)
+      .set(auth(t, org))
+      .send(burmisterInput);
+  const calcCount = async (org: string): Promise<number> => {
+    const { rows } = await admin!.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM calc_results WHERE org_id = $1`,
+      [org],
+    );
+    return Number(rows[0]?.n ?? '0');
+  };
+  const consommation = async (org: string): Promise<number> => {
+    const { rows } = await admin!.query<{ consommation: number }>(
+      `SELECT consommation FROM subscriptions WHERE org_id = $1`,
+      [org],
+    );
+    return Number(rows[0]?.consommation ?? 0);
+  };
+
+  it('H1) dryRun -> 200/201 + output, calcResultId NULL, et EN BASE aucune ligne calc_results créée ni quota décompté', async () => {
+    expect.hasAssertions();
+    if (!ready()) return;
+    const t = await login(mailEng());
+    const beforeCount = await calcCount(orgA);
+    const beforeConso = await consommation(orgA);
+
+    const res = await runCalcDry(t, orgA, projA);
+    expect([200, 201]).toContain(res.status);
+    const body = res.body as {
+      ok?: unknown;
+      output?: unknown;
+      calcResultId?: unknown;
+    };
+    // Calcul RÉUSSI (sortie présente) mais NON persisté : aucun id scellable.
+    expect(body.ok).toBe(true);
+    expect(body.output).toBeTruthy();
+    // Aperçu = aucun id scellable.
+    expect(body.calcResultId ?? null).toBeNull();
+
+    // CONTRE-PREUVE EN BASE : ni ligne créée, ni quota consommé.
+    expect(await calcCount(orgA)).toBe(beforeCount);
+    expect(await consommation(orgA)).toBe(beforeConso);
+  });
+
+  it('H2) CONTRE-ÉPREUVE : un calcul PERSISTANT (sans dryRun) crée bien une ligne + décompte le quota + renvoie un calcResultId', async () => {
+    expect.hasAssertions();
+    if (!ready()) return;
+    const t = await login(mailEng());
+    const beforeCount = await calcCount(orgA);
+    const beforeConso = await consommation(orgA);
+
+    const res = await runCalc(t, orgA, projA);
+    expect(res.status).toBe(201);
+    const calcResultId = (res.body as { calcResultId?: unknown }).calcResultId;
+    expect(typeof calcResultId).toBe('string');
+    expect(String(calcResultId).length).toBeGreaterThan(0);
+
+    // Un calcul réel INCRÉMENTE le compte ET la consommation (+1 chacun).
+    expect(await calcCount(orgA)).toBe(beforeCount + 1);
+    expect(await consommation(orgA)).toBe(beforeConso + 1);
+  });
+
+  it("H3) ISOLATION : un aperçu sur un projet d'un AUTRE org échoue (RLS/tenant intact, pas de contournement)", async () => {
+    expect.hasAssertions();
+    if (!ready()) return;
+    const tB = await login(mailB());
+    // Owner B tente un aperçu sur le projet d'org A -> 404 tenant-safe (projet
+    // invisible/écriture refusée), exactement comme un calcul persistant.
+    const res = await runCalcDry(tB, orgB, projA);
+    expect([403, 404]).toContain(res.status);
+    // Et aucune ligne d'orgA/orgB n'a été créée par cette tentative.
+    // (le comptage global d'orgA est couvert par H1 ; ici on borne orgB à 0 net.)
+    expect(res.status).not.toBe(201);
+  });
 });

@@ -441,6 +441,55 @@ describe('CalculsClient — Exporter (JSON) : livrable « Exporter » de l’out
     expect(findButtonByText('Voir le PV scellé')).not.toBeUndefined();
     expect(findButtonByText('Imprimer')).not.toBeUndefined();
   });
+
+  // PRESSIOPRO — décision titulaire : l'outil client exporte des CSV/JSON d'une forme
+  // propre (essai/global), HORS de notre périmètre PV → PAS d'export/import JSON. Les 3
+  // modes (dépouillement pressiometre / étalonnage / calibrage) sont tous couverts : le
+  // bouton « Exporter (JSON) » ne doit apparaître pour AUCUN calcul pressio, mais la note
+  // scellable (Aperçu / Sceller) reste proposée.
+  const CALC_PRESSIO_ESSAI: CalcResult = {
+    ...CALC,
+    id: 'calc_pp_essai',
+    engineId: 'pressiometre-menard',
+    label: 'Profondeur 4 m — dépouillement',
+    output: { EM: 12.4 },
+    params: { projet: 'Sondage SP1' },
+  };
+
+  it.each([
+    ['dépouillement', 'pressiometre-menard'],
+    ['étalonnage', 'pressio-etalonnage'],
+    ['calibrage', 'pressio-calibrage'],
+  ])(
+    'given un calcul PRESSIOPRO (%s) avec document capturé, when la barre d’actions est rendue, then AUCUN bouton « Exporter (JSON) » (hors périmètre) mais « Aperçu de la note » + « Sceller cette version » présents',
+    async (_mode, engineId) => {
+      mockListCalcResults.mockResolvedValue([{ ...CALC_PRESSIO_ESSAI, engineId }]);
+      mockGetCalcSnapshot.mockResolvedValue({
+        displayHtml: '<!doctype html><html><body>Note PRESSIOPRO</body></html>',
+        printHtml: '<!doctype html><html><body>Note PRESSIOPRO</body></html>',
+      });
+      mockGetProjectCached.mockResolvedValue({ name: 'Sondage SP1' });
+
+      await renderCalculs();
+      expect(
+        findButtonByText('Exporter (JSON)'),
+        'Exporter proposé pour pressiopro',
+      ).toBeUndefined();
+      expect(findButtonByText('Aperçu de la note')).not.toBeUndefined();
+      expect(findButtonByText('Sceller cette version')).not.toBeUndefined();
+    },
+  );
+
+  it('given un calcul PRESSIOPRO DÉJÀ scellé, when la barre d’actions est rendue, then « Voir le PV scellé » + « Imprimer » sans « Exporter (JSON) »', async () => {
+    mockListCalcResults.mockResolvedValue([{ ...CALC_PRESSIO_ESSAI, pvId: 'pv_pp' }]);
+    mockGetCalcSnapshot.mockResolvedValue(null);
+    mockGetProjectCached.mockResolvedValue({ name: 'Sondage SP1' });
+
+    await renderCalculs();
+    expect(findButtonByText('Exporter (JSON)')).toBeUndefined();
+    expect(findButtonByText('Voir le PV scellé')).not.toBeUndefined();
+    expect(findButtonByText('Imprimer')).not.toBeUndefined();
+  });
 });
 
 describe('CalculsClient — Aperçu de la note avant scellement (filigrané, revue #6)', () => {

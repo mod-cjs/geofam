@@ -655,8 +655,19 @@ let depths = [], cur = 0, CC = {};
   /* calc(engineId, params) : engineId choisi par la PAGE/ACTION (liste fermée validée
      côté hôte : pressiometre / pressio-etalonnage / pressio-calibrage). */
   window.__geofamBridge={
-    calc:function(engineId, params){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:engineId,label:(params&&params.projet)||(params&&params.label)||null,params:params}}); }); },
+    /* calc(engineId, params[, opts]) : opts.dryRun=true -> APERÇU (l hôte calcule pour
+       l'affichage SANS persister ni décompter le quota, et ne remonte AUCUN calcResultId
+       scellable). Arg opts ADDITIF (rétrocompatible : les appels a 2 args restent des calculs
+       PERSISTANTS). Utilisé par updateSeuilPreview (aperçu E_M live). */
+    calc:function(engineId, params, opts){ var id=TOOL_ID+":"+(++seq); return new Promise(function(resolve){ pending[id]=resolve; post({v:1,type:"calc:request",id:id,payload:{engineId:engineId,label:(params&&params.projet)||(params&&params.label)||null,params:params,dryRun:!!(opts&&opts.dryRun)}}); }); },
     emitPv:function(calcResultId){ post({v:1,type:"pv:request",payload:{calcResultId:calcResultId}}); },
+    /* snapshot:capture (option 3 « sceller le document imprime ») : remonte a l hote la
+       NOTE imprimable de pressiopro (toutes les pages .pg, comme window.print() du client
+       via @media print), auto-contenue. Sens iframe->hote SEUL, fire-and-forget. Les
+       <script>/<button>/<canvas> sont retires (canvas re-dessine en SVG inline), aucun
+       gestionnaire inline ne subsiste, aucune science n existe dans le clone (excisee).
+       L hote le scelle sur SON dernier calcResultId. Patron identique a fastlab/casagrande. */
+    snapshot:function(displayHtml,printHtml){ post({v:1,type:"snapshot:capture",payload:{displayHtml:String(displayHtml||""),printHtml:String(printHtml||"")}}); },
     storeGet:function(key){ var id=TOOL_ID+":s:"+(++stseq); return new Promise(function(resolve){ stpend[id]=resolve; post({v:1,type:"store:get",id:id,payload:{key:key}}); }); },
     storeSet:function(key,value){ var id=TOOL_ID+":s:"+(++stseq); return new Promise(function(resolve){ stpend[id]=resolve; post({v:1,type:"store:set",id:id,payload:{key:key,value:value}}); }); },
     context:function(){ return ctx; }
@@ -680,6 +691,13 @@ let depths = [], cur = 0, CC = {};
 var ENG_ESSAI="pressiometre", ENG_ETAL="pressio-etalonnage", ENG_CALIB="pressio-calibrage";
 var __seuilTimer=null;
 window.__pressioLastCalcResultId=null;
+/* Registre des DONNEES de courbe (series exactes tracees par les draw* canvas) — relu par
+   les __ppSvg* pour re-dessiner CHAQUE figure en SVG inline (vectoriel, sealable) au moment
+   de la capture PV. Les series viennent de la SORTIE serveur whitelistee (courbe/fluage/
+   extrapolation/volumes/synthese, cf. _res) ou de la SAISIE (points etalonnage/calibrage).
+   AUCUN calcul navigateur : on ne trace que des points fournis. Peuple au rendu (doCalc/
+   __pressioCalcAndShow/__pressioDrawProfil/calcEtalonnage/calcCalibrage), relu a la capture. */
+window.__pressioCurves={};
 
 /* --- helpers de mapping (rejeu des SAISIES + lecture whitelistée ; aucune science) --- */
 function _pnum(v,def){ return (typeof v==="number"&&isFinite(v))?v:(def===undefined?0:def); }
@@ -746,7 +764,7 @@ function renderCalcErrorRes(msg){ var el=document.getElementById("resCont"); if(
 function __pressioCalcAndShow(idx){
   var d=depths[idx]; if(!d) return;
   window.__geofamBridge.calc(ENG_ESSAI, buildEssaiInput(idx)).then(function(resp){
-    if(resp&&resp.ok&&resp.output&&!resp.output.erreur){ var r=mapEssaiOutput(resp.output, idx); renderResults(r, d.label); }
+    if(resp&&resp.ok&&resp.output&&!resp.output.erreur){ var r=mapEssaiOutput(resp.output, idx); renderResults(r, d.label); __ppFeedRes(r); }
     else { renderCalcErrorRes(_gerrP(resp&&resp.error)); }
   }).catch(function(e){ renderCalcErrorRes("Pont de calcul indisponible : "+((e&&e.message)||e)); });
 }
@@ -754,6 +772,7 @@ function __pressioCalcAndShow(idx){
 function __pressioDrawProfil(){
   function pd(l){var m=l.match(/[\d.,]+/);return m?parseFloat(m[0].replace(",",".")):0;}
   var data=depths.filter(function(d){return d._res;}).map(function(d){var o={depth:pd(d.label),label:d.label};for(var k in d._res){o[k]=d._res[k];}return o;}).sort(function(a,b){return a.depth-b.depth;});
+  __ppFeedProfil(data);
   var plc=document.getElementById("pressioLog");
   if(plc) plc.innerHTML=drawPressioLog(logLayers, data, _pNappe());
   var pll=document.getElementById("pressioLogLeg");
@@ -794,6 +813,268 @@ function __pressioDrawProfil(){
       scales:{x:{type:'linear',title:{display:true,text:'log(PLM*) en MPa',color:tc,font:{size:11}},grid:{color:gc},ticks:{color:tc,font:{size:11},callback:function(v){return Math.pow(10,v).toFixed(2)+' MPa';}}},y:{type:'linear',title:{display:true,text:'log(EM/PLM*)',color:tc,font:{size:11}},grid:{color:gc},ticks:{color:tc,font:{size:11},callback:function(v){return ''+Math.pow(10,v).toFixed(0);}}}}
     }
   });
+}
+/* ---- FEED du registre de courbes (peuple __pressioCurves depuis la sortie serveur
+   whitelistee / la saisie ; AUCUN calcul de science). ---- */
+/* Courbe P-V + fluage + extrapolation (miroir de drawResCharts, memes series). */
+function __ppFeedRes(r){
+  try{
+    if(!r||!Array.isArray(r.C)||!r.C.length){ window.__pressioCurves.resPV=null; return; }
+    var V0=_pnum(r.V0,535);
+    var pvPts=r.C.map(function(c){ return [+(c.p*0.1), +(c.v60+V0)]; });
+    var flPts=(r.fluage||[]).map(function(f){ return [+(f.p*0.1), +f.dv]; });
+    var pMax=r.pL*0.1*1.40; var nSteps=60, step=pMax/nSteps, p0=r.C[0].p*0.1;
+    var gen=(r.ext&&r.ext.recip&&typeof r.ext.recip.gen==="function")?r.ext.recip.gen:null;
+    var recipPts=[];
+    if(gen){ for(var i=0;i<=nSteps;i++){ var p=+(i*step); if(p<p0) continue; var v=gen(p/0.1); if(v&&v>V0&&v<V0+r.VsP2V1*3.5) recipPts.push([p,+v]); } }
+    var VsLine=V0+r.VsP2V1;
+    var volMax=VsLine; for(var k=0;k<pvPts.length;k++){ if(pvPts[k][1]>volMax) volMax=pvPts[k][1]; } volMax=volMax*1.15;
+    var flMax=5, flMin=0; for(var m=0;m<flPts.length;m++){ if(flPts[m][1]>flMax) flMax=flPts[m][1]; if(flPts[m][1]<flMin) flMin=flPts[m][1]; } flMax=flMax*1.4;
+    window.__pressioCurves.resPV={ pvPts:pvPts, recipPts:recipPts, flPts:flPts, VsLine:VsLine, volMax:volMax, flMax:flMax, flMin:flMin, pMax:pMax, p0M:r.p0*0.1, pfM:r.Pf*0.1, pLM:r.pL*0.1, EM:r.EM };
+  }catch(e){ window.__pressioCurves.resPV=null; }
+}
+/* Profils EM/PLM/Pf vs profondeur + diagramme spectral Baud (miroir __pressioDrawProfil). */
+function __ppFeedProfil(data){
+  try{
+    if(!data||!data.length){ window.__pressioCurves.profil=null; return; }
+    var em=data.map(function(d){ return [+d.EM, d.depth]; });
+    var plm=data.map(function(d){ return [+(d.pL*0.1), d.depth]; });
+    var pf=data.map(function(d){ return [+(d.Pf*0.1), d.depth]; });
+    var spec=data.map(function(d){ return [Math.log10(Math.max(0.001,d.pLS*0.1)), Math.log10(Math.max(0.5,d.ratio))]; });
+    var dmax=0; for(var i=0;i<data.length;i++){ if(data[i].depth>dmax) dmax=data[i].depth; }
+    window.__pressioCurves.profil={ em:em, plm:plm, pf:pf, spec:spec, dmax:dmax };
+  }catch(e){ window.__pressioCurves.profil=null; }
+}
+/* Etalonnage V=f(P) (miroir drawEtalChart : points + droite Vs+aP + Pe + 1,2Vs). */
+function __ppFeedEtal(e){
+  try{ window.__pressioCurves.etal={ pts:(e.pts||[]).map(function(r){ return [r.p,r.v]; }), Vs:_pnum(e.Vs), a:_pnum(e.a), Pe:_pnum(e.Pe), Vpe:_pnum(e.V_pe) }; }catch(x){ window.__pressioCurves.etal=null; }
+}
+/* Calibrage Pc=f(V) (points mesures P/V60 + fit V=c0+c1P+c2P^2, coeffs serveur). */
+function __ppFeedCalib(e){
+  try{ window.__pressioCurves.calib={ pts:(e.pts||[]).map(function(r){ return [r.p,r.v]; }), c0:_pnum(e.c0), c1:_pnum(e.c1), c2:_pnum(e.c2) }; }catch(x){ window.__pressioCurves.calib=null; }
+}
+/* ---- COURBES SVG INLINE (vectorielles, sealables) ----
+   Le PV client trace 6 figures sur <canvas> ; le bitmap ne survit PAS a outerHTML et une
+   URI data: (rasterisation) est REJETEE par assertInertHtml. On REDESSINE chaque figure en
+   SVG inline a partir des memes series que les draw* (SERVEUR whitelistee / SAISIE). Le clone
+   NE recalcule RIEN. Points de mesure = cercles class ppt ; reperes = <circle> sans classe. */
+function __ppN(n){ return (isFinite(n)?Math.round(n*100)/100:0); }
+function __ppEsc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function __ppL(x1,y1,x2,y2,st,w,dsh){ return "<line x1=\""+__ppN(x1)+"\" y1=\""+__ppN(y1)+"\" x2=\""+__ppN(x2)+"\" y2=\""+__ppN(y2)+"\" stroke=\""+st+"\""+(w?" stroke-width=\""+w+"\"":"")+(dsh?" stroke-dasharray=\""+dsh+"\"":"")+"/>"; }
+function __ppT(x,y,s,fill,anc,sz){ return "<text x=\""+__ppN(x)+"\" y=\""+__ppN(y)+"\" fill=\""+fill+"\" text-anchor=\""+(anc||"start")+"\" font-family=\"system-ui,sans-serif\" font-size=\""+(sz||10)+"\">"+__ppEsc(s)+"</text>"; }
+function __ppTR(x,y,s,fill){ return "<text x=\""+__ppN(x)+"\" y=\""+__ppN(y)+"\" fill=\""+fill+"\" text-anchor=\"middle\" font-family=\"system-ui,sans-serif\" font-size=\"10\" transform=\"rotate(-90 "+__ppN(x)+" "+__ppN(y)+")\">"+__ppEsc(s)+"</text>"; }
+function __ppC(cx,cy,r,fill){ return "<circle class=\"ppt\" cx=\""+__ppN(cx)+"\" cy=\""+__ppN(cy)+"\" r=\""+r+"\" fill=\""+fill+"\"/>"; }
+function __ppCm(cx,cy,r,fill){ return "<circle cx=\""+__ppN(cx)+"\" cy=\""+__ppN(cy)+"\" r=\""+r+"\" fill=\""+fill+"\"/>"; }
+function __ppPath(pts,st,w,dsh){ if(!pts.length) return ""; var dd=""; for(var i=0;i<pts.length;i++){ dd+=(i?"L":"M")+__ppN(pts[i][0])+" "+__ppN(pts[i][1])+" "; } return "<path d=\""+dd+"\" fill=\"none\" stroke=\""+st+"\""+(w?" stroke-width=\""+w+"\"":"")+(dsh?" stroke-dasharray=\""+dsh+"\"":"")+"/>"; }
+function __ppWrap(W,H,inner,title){ return "<svg viewBox=\"0 0 "+W+" "+H+"\" width=\""+W+"\" height=\""+H+"\" preserveAspectRatio=\"xMidYMid meet\" role=\"img\" aria-label=\""+__ppEsc(title)+"\" style=\"width:100%;max-width:"+W+"px;height:auto;display:block;background:#fff\">"+inner+"</svg>"; }
+/* Courbe P-V pressiometrique + fluage + extrapolation (chartPV). */
+function __ppSvgResPV(){
+  var d=window.__pressioCurves&&window.__pressioCurves.resPV; var W=760,H=360,mL=54,mR=54,mT=16,mB=34,s="";
+  if(!d||!d.pvPts||!d.pvPts.length){ s+=__ppT(mL,H/2,"Depouillez une profondeur pour tracer la courbe P-V","#9aa7b3","start",12); return __ppWrap(W,H,s,"Courbe pressiometrique P-V"); }
+  var xmax=d.pMax||1, vmax=d.volMax||1, flmin=d.flMin||0, flmax=d.flMax||1;
+  var px=function(p){ return mL+(p/xmax)*(W-mL-mR); };
+  var pyV=function(v){ return mT+(vmax-v)/vmax*(H-mT-mB); };
+  var pyF=function(f){ return mT+(flmax-f)/(flmax-flmin)*(H-mT-mB); };
+  var gx=5; for(var i=0;i<=gx;i++){ var pv=xmax*i/gx,X=px(pv); s+=__ppL(X,mT,X,H-mB,"#eef2f5"); s+=__ppT(X,H-mB+13,pv.toFixed(3),"#9aa7b3","middle"); }
+  var gy=5; for(var j=0;j<=gy;j++){ var vv=vmax*j/gy,Y=pyV(vv); s+=__ppL(mL,Y,W-mR,Y,"#f1f4f6"); s+=__ppT(mL-4,Y+3,Math.round(vv),"#f0a500","end"); }
+  var vsY=pyV(d.VsLine); s+=__ppL(mL,vsY,W-mR,vsY,"#29b85a",1.5,"6,4");
+  if(d.recipPts&&d.recipPts.length){ var rp=d.recipPts.map(function(p){ return [px(p[0]),pyV(p[1])]; }); s+=__ppPath(rp,"#f97316",2.5); }
+  if(d.flPts&&d.flPts.length){ var fp=d.flPts.map(function(p){ return [px(p[0]),pyF(p[1])]; }); s+=__ppPath(fp,"#15b896",2,"3,2"); for(var q=0;q<d.flPts.length;q++){ s+=__ppCm(px(d.flPts[q][0]),pyF(d.flPts[q][1]),3,"#15b896"); } }
+  var pp=d.pvPts.map(function(p){ return [px(p[0]),pyV(p[1])]; }); s+=__ppPath(pp,"#f0a500",2.5);
+  for(var k=0;k<d.pvPts.length;k++){ s+=__ppC(px(d.pvPts[k][0]),pyV(d.pvPts[k][1]),5,"#f0a500"); }
+  function vl(pm,col,lbl){ if(!(pm>=0&&pm<=xmax)) return; var X=px(pm); s+=__ppL(X,mT,X,H-mB,col,1.5,"5,4"); s+=__ppT(X+3,H-mB-4,lbl,col,"start",10); }
+  vl(d.p0M,"#29b85a","p1"); vl(d.pfM,"#e05252","pf (p2)"); vl(d.pLM,"#29b85a","pLM");
+  s+=__ppT(mL,12,"Volume V (cm3)","#f0a500","start"); s+=__ppT(W-mR,12,"D60/30 (cm3)","#15b896","end"); s+=__ppT(W-8,H-6,"P corrigee (MPa)","#6b7886","end");
+  return __ppWrap(W,H,s,"Courbe pressiometrique P-V et fluage");
+}
+/* Profil EM vs profondeur (chartEM). */
+function __ppSvgEM(){
+  var d=window.__pressioCurves&&window.__pressioCurves.profil; var W=560,H=300,mL=52,mR=16,mT=16,mB=30,s="";
+  if(!d||!d.em||!d.em.length){ s+=__ppT(mL,H/2,"Depouillez les profondeurs","#9aa7b3","start",12); return __ppWrap(W,H,s,"EM vs profondeur"); }
+  var xmax=0; for(var i=0;i<d.em.length;i++){ if(d.em[i][0]>xmax) xmax=d.em[i][0]; } xmax=xmax*1.15||1; var ymax=d.dmax*1.1||1;
+  var px=function(v){ return mL+(v/xmax)*(W-mL-mR); }; var py=function(z){ return mT+(z/ymax)*(H-mT-mB); };
+  for(var g=0;g<=5;g++){ var xv=xmax*g/5,X=px(xv); s+=__ppL(X,mT,X,H-mB,"#eef2f5"); s+=__ppT(X,H-mB+13,xv.toFixed(1),"#9aa7b3","middle"); }
+  for(var h=0;h<=5;h++){ var zv=ymax*h/5,Y=py(zv); s+=__ppL(mL,Y,W-mR,Y,"#f1f4f6"); s+=__ppT(mL-4,Y+3,zv.toFixed(1),"#9aa7b3","end"); }
+  var pp=d.em.map(function(p){ return [px(p[0]),py(p[1])]; }); s+=__ppPath(pp,"#2484ec",2.5);
+  for(var k=0;k<d.em.length;k++){ s+=__ppC(px(d.em[k][0]),py(d.em[k][1]),5,"#2484ec"); }
+  s+=__ppT(W-8,H-6,"EM (MPa)","#6b7886","end"); s+=__ppTR(12,H/2,"Profondeur (m)","#6b7886");
+  return __ppWrap(W,H,s,"EM vs profondeur");
+}
+/* Profil PLM et Pf vs profondeur (chartPLM). */
+function __ppSvgPLM(){
+  var d=window.__pressioCurves&&window.__pressioCurves.profil; var W=560,H=300,mL=52,mR=16,mT=16,mB=30,s="";
+  if(!d||!d.plm||!d.plm.length){ s+=__ppT(mL,H/2,"Depouillez les profondeurs","#9aa7b3","start",12); return __ppWrap(W,H,s,"PLM et Pf vs profondeur"); }
+  var xmax=0; for(var i=0;i<d.plm.length;i++){ if(d.plm[i][0]>xmax) xmax=d.plm[i][0]; } xmax=xmax*1.15||1; var ymax=d.dmax*1.1||1;
+  var px=function(v){ return mL+(v/xmax)*(W-mL-mR); }; var py=function(z){ return mT+(z/ymax)*(H-mT-mB); };
+  for(var g=0;g<=5;g++){ var xv=xmax*g/5,X=px(xv); s+=__ppL(X,mT,X,H-mB,"#eef2f5"); s+=__ppT(X,H-mB+13,xv.toFixed(2),"#9aa7b3","middle"); }
+  for(var h=0;h<=5;h++){ var zv=ymax*h/5,Y=py(zv); s+=__ppL(mL,Y,W-mR,Y,"#f1f4f6"); s+=__ppT(mL-4,Y+3,zv.toFixed(1),"#9aa7b3","end"); }
+  var lp=d.plm.map(function(p){ return [px(p[0]),py(p[1])]; }); s+=__ppPath(lp,"#15b896",2.5);
+  for(var k=0;k<d.plm.length;k++){ s+=__ppC(px(d.plm[k][0]),py(d.plm[k][1]),5,"#15b896"); }
+  var fp=d.pf.map(function(p){ return [px(p[0]),py(p[1])]; }); s+=__ppPath(fp,"#e05252",2,"5,4");
+  for(var q=0;q<d.pf.length;q++){ s+=__ppC(px(d.pf[q][0]),py(d.pf[q][1]),4,"#e05252"); }
+  s+=__ppT(mL,12,"PLM","#15b896","start"); s+=__ppT(mL+42,12,"Pf","#e05252","start"); s+=__ppT(W-8,H-6,"Pression (MPa)","#6b7886","end"); s+=__ppTR(12,H/2,"Profondeur (m)","#6b7886");
+  return __ppWrap(W,H,s,"PLM et Pf vs profondeur");
+}
+/* Diagramme spectral de Baud (chartSpec) : log(PLM*) x, log(EM/PLM*) y + isovaleurs. */
+function __ppSvgSpec(){
+  var d=window.__pressioCurves&&window.__pressioCurves.profil; var W=560,H=300,mL=52,mR=16,mT=16,mB=32,s="";
+  if(!d||!d.spec||!d.spec.length){ s+=__ppT(mL,H/2,"Depouillez les profondeurs","#9aa7b3","start",12); return __ppWrap(W,H,s,"Diagramme spectral Baud"); }
+  var xmin=Math.log10(0.01),xmax=Math.log10(10),ymin=Math.log10(1),ymax=Math.log10(30);
+  var px=function(v){ return mL+(v-xmin)/(xmax-xmin)*(W-mL-mR); }; var py=function(v){ return mT+(ymax-v)/(ymax-ymin)*(H-mT-mB); };
+  var xt=[0.01,0.1,1,10]; for(var i=0;i<xt.length;i++){ var X=px(Math.log10(xt[i])); s+=__ppL(X,mT,X,H-mB,"#eef2f5"); s+=__ppT(X,H-mB+13,xt[i],"#9aa7b3","middle"); }
+  var iso=[[4,"#e05252","E/P=4"],[8,"#f0a500","E/P=8"],[14,"#2484ec","E/P=14"],[22,"#15b896","E/P=22"]];
+  for(var r=0;r<iso.length;r++){ var Y=py(Math.log10(iso[r][0])); s+=__ppL(mL,Y,W-mR,Y,iso[r][1],1.2,"4,4"); s+=__ppT(W-mR-2,Y-3,iso[r][2],iso[r][1],"end",9); }
+  for(var k=0;k<d.spec.length;k++){ s+=__ppC(px(d.spec[k][0]),py(d.spec[k][1]),6,"#f0a500"); }
+  s+=__ppT(W-8,H-6,"log(PLM*)","#6b7886","end"); s+=__ppTR(12,H/2,"log(EM/PLM*)","#6b7886");
+  return __ppWrap(W,H,s,"Diagramme spectral de Baud");
+}
+/* Etalonnage V=f(P) (chartEtal) : points + droite V=Vs+aP + Pe + 1,2Vs. */
+function __ppSvgEtal(){
+  var d=window.__pressioCurves&&window.__pressioCurves.etal; var W=680,H=300,mL=52,mR=16,mT=16,mB=32,s="";
+  if(!d||!d.pts||!d.pts.length){ s+=__ppT(mL,H/2,"Saisir au moins 3 points d etalonnage","#9aa7b3","start",12); return __ppWrap(W,H,s,"Courbe d etalonnage V=f(P)"); }
+  var pmax=0; for(var i=0;i<d.pts.length;i++){ if(d.pts[i][0]>pmax) pmax=d.pts[i][0]; } pmax=pmax*1.15||1;
+  var vmax=d.Vpe||0; for(var j=0;j<d.pts.length;j++){ if(d.pts[j][1]>vmax) vmax=d.pts[j][1]; } vmax=vmax*1.1||1;
+  var px=function(p){ return mL+(p/pmax)*(W-mL-mR); }; var py=function(v){ return mT+(vmax-v)/vmax*(H-mT-mB); };
+  for(var g=0;g<=5;g++){ var pv=pmax*g/5,X=px(pv); s+=__ppL(X,mT,X,H-mB,"#eef2f5"); s+=__ppT(X,H-mB+13,pv.toFixed(2),"#9aa7b3","middle"); }
+  for(var h=0;h<=5;h++){ var vv=vmax*h/5,Y=py(vv); s+=__ppL(mL,Y,W-mR,Y,"#f1f4f6"); s+=__ppT(mL-4,Y+3,Math.round(vv),"#9aa7b3","end"); }
+  s+=__ppPath([[px(0),py(d.Vs)],[px(pmax),py(d.Vs+d.a*pmax)]],"#8b5cf6",2.5);
+  if(d.Pe>0){ s+=__ppPath([[px(d.Pe),py(0)],[px(d.Pe),py(d.Vpe)]],"#e05252",1.5,"5,4"); s+=__ppPath([[px(0),py(d.Vpe)],[px(d.Pe),py(d.Vpe)]],"#15b896",1.5,"5,4"); }
+  for(var k=0;k<d.pts.length;k++){ s+=__ppC(px(d.pts[k][0]),py(d.pts[k][1]),5,"#f0a500"); }
+  s+=__ppT(W-8,H-6,"Pression P (bar)","#6b7886","end"); s+=__ppTR(12,H/2,"Volume V (cm3)","#6b7886");
+  return __ppWrap(W,H,s,"Courbe d etalonnage V=f(P)");
+}
+/* Calibrage : FIDELITE STRICTE au tracé de drawCalibChart du CLIENT (décision titulaire —
+   on reproduit le BUG de RENDU, pas une version corrigée). Le client mappe les points mesurés
+   {x:r.v, y:r.pc} avec r.pc INEXISTANT (pts=[{p,v}]) -> ordonnee undefined -> points NON traces ;
+   la « courbe ajustée » est balayee sur la plage de VOLUMES (vMin=min(v)-20 .. vMax=max(v)+50)
+   avec pc=c0+c1*v+c2*v^2 filtre pc>=0 (aberrante/clippee) ; axes titres X « Pression P (bar) »
+   (min=vMin) et Y « Volume V60 (cm³) » (min=0). Le calcul/les coeffs/les residus restent JUSTES
+   et inchanges — seul ce trace reproduit la confusion du client. Cf. drawCalibChart l.1996-2029. */
+function __ppSvgCalib(){
+  var d=window.__pressioCurves&&window.__pressioCurves.calib; var W=680,H=300,mL=52,mR=16,mT=16,mB=32,s="";
+  if(!d||!d.pts||!d.pts.length){ s+=__ppT(mL,H/2,"Saisir au moins 3 points de calibrage","#9aa7b3","start",12); return __ppWrap(W,H,s,"Courbe de calibrage Pc=f(V)"); }
+  var vs=d.pts.map(function(p){ return p[1]; });
+  var vMin=Math.min.apply(null,vs)-20, vMax=Math.max.apply(null,vs)+50;
+  var steps=60, curve=[];
+  for(var i=0;i<=steps;i++){ var v=vMin+(vMax-vMin)*i/steps; var pc=d.c0+d.c1*v+d.c2*v*v; if(pc>=0) curve.push([+v.toFixed(1), +pc.toFixed(4)]); }
+  /* Domaines Chart.js : x min=vMin, max=max des x TRACES (curve) ; y min=0, max=max pc. */
+  var xmax=vMin, ymax=0; for(var k=0;k<curve.length;k++){ if(curve[k][0]>xmax) xmax=curve[k][0]; if(curve[k][1]>ymax) ymax=curve[k][1]; }
+  var xspan=(xmax-vMin)||1; ymax=ymax||1;
+  var px=function(v){ return mL+(v-vMin)/xspan*(W-mL-mR); }; var py=function(pc){ return mT+(ymax-pc)/ymax*(H-mT-mB); };
+  for(var g=0;g<=5;g++){ var xv=vMin+xspan*g/5,X=px(xv); s+=__ppL(X,mT,X,H-mB,"#eef2f5"); s+=__ppT(X,H-mB+13,xv.toFixed(1),"#9aa7b3","middle"); }
+  for(var h=0;h<=5;h++){ var yv=ymax*h/5,Y=py(yv); s+=__ppL(mL,Y,W-mR,Y,"#f1f4f6"); s+=__ppT(mL-4,Y+3,yv.toFixed(3),"#9aa7b3","end"); }
+  /* Courbe « ajustée » (aberrante/clippee) telle qu evaluee par le client sur les volumes. */
+  var cp=curve.map(function(p){ return [px(p[0]),py(p[1])]; }); s+=__ppPath(cp,"#15b896",2.5);
+  /* Points mesures : y=r.pc INEXISTANT cote client -> AUCUN cercle trace (bug reproduit tel quel). */
+  s+=__ppT(W-8,H-6,"Pression P (bar)","#6b7886","end"); s+=__ppTR(12,H/2,"Volume V60 (cm3)","#6b7886");
+  return __ppWrap(W,H,s,"Courbe de calibrage Pc=f(V)");
+}
+/* Dispatch id de canvas -> SVG fidele. Renvoie "" si inconnu (canvas alors retire). */
+function __ppSvgFor(id){ try{
+  if(id==="chartPV") return __ppSvgResPV();
+  if(id==="chartEM") return __ppSvgEM();
+  if(id==="chartPLM") return __ppSvgPLM();
+  if(id==="chartSpec") return __ppSvgSpec();
+  if(id==="chartEtal") return __ppSvgEtal();
+  if(id==="chartCalib") return __ppSvgCalib();
+  }catch(e){} return ""; }
+/* ---- CAPTURE DU DOCUMENT (option 3 « sceller le document imprime ») ----
+   La NOTE pressiopro = ce que window.print() produit : TOUTES les pages .pg (le @media
+   print les passe en display:block et masque nav/header/dbar). On serialise .pgs entier,
+   inerte (canvas -> SVG ; script/button/input figes retires), CSS inline + @media print
+   PROMU a l ecran (apercu WYSIWYG). DETERMINISTE : lit les champs SAISIS + la sortie
+   serveur ; aucune horloge/hasard. */
+/* Fige les VALEURS de formulaire (input/select/textarea) dans les ATTRIBUTS : outerHTML ne
+   serialise QUE les attributs, pas la propriete .value (perdue sinon). Reflexion inerte
+   (on ne change que l attribut). Sur le sous-arbre .pgs (la note). */
+function __ppFreezeLive(){
+  var root=document.querySelector(".pgs"); if(!root) return;
+  var fs=root.querySelectorAll("input,select,textarea");
+  for(var i=0;i<fs.length;i++){ var el=fs[i], tag=(el.tagName||"").toLowerCase();
+    if(tag==="input"){ var ty=(el.getAttribute("type")||"text").toLowerCase();
+      if(ty==="checkbox"||ty==="radio"){ if(el.checked) el.setAttribute("checked","checked"); else el.removeAttribute("checked"); }
+      else { el.setAttribute("value", String(el.value==null?"":el.value)); } }
+    else if(tag==="textarea"){ el.textContent=String(el.value==null?"":el.value); }
+    else if(tag==="select"){ var opts=el.options||[]; for(var j=0;j<opts.length;j++){ if(opts[j].selected) opts[j].setAttribute("selected","selected"); else opts[j].removeAttribute("selected"); } } }
+}
+/* Clone un noeud et le rend INERTE : SUBSTITUE chaque <canvas> par sa figure SVG fidele,
+   puis retire <script>/<button>, tout attribut gestionnaire inline on…= et toute URI
+   javascript: (conforme a assertInertHtml). Un canvas sans SVG connu est simplement retire. */
+function __ppCloneClean(el){
+  if(!el) return "";
+  var c=el.cloneNode(true);
+  var cvs=c.querySelectorAll?Array.prototype.slice.call(c.querySelectorAll("canvas")):[];
+  for(var q=0;q<cvs.length;q++){ var cv=cvs[q]; var svg=__ppSvgFor(cv.id||"");
+    if(svg && cv.insertAdjacentHTML){ try{ cv.insertAdjacentHTML("afterend", svg); }catch(e){} }
+    if(cv.parentNode) cv.parentNode.removeChild(cv); }
+  var kill=c.querySelectorAll?c.querySelectorAll("script,button"):[];
+  for(var j=0;j<kill.length;j++){ if(kill[j].parentNode) kill[j].parentNode.removeChild(kill[j]); }
+  var all=c.querySelectorAll?c.querySelectorAll("*"):[];
+  var nodes=[c]; for(var a=0;a<all.length;a++){ nodes.push(all[a]); }
+  for(var n=0;n<nodes.length;n++){ var nd=nodes[n]; if(!nd.attributes) continue;
+    for(var k=nd.attributes.length-1;k>=0;k--){ var att=nd.attributes[k], an=att.name||"", av=att.value||"";
+      if(an.length>=2 && an.slice(0,2).toLowerCase()==="on"){ nd.removeAttribute(an); continue; }
+      if(/^\s*javascript:/i.test(av)) nd.removeAttribute(an); } }
+  return c.outerHTML||"";
+}
+/* Agrege TOUT le CSS de l outil (feuilles stylees par classes globales + var(--…)). */
+function __ppCollectStyles(){
+  var styles="", sl=document.querySelectorAll("style");
+  for(var i=0;i<sl.length;i++){ styles += (sl[i].textContent||"") + "\n"; }
+  return styles;
+}
+/* PROMEUT les regles du bloc @media print A L ECRAN (l.213 : nav/header/dbar masques,
+   .pg{display:block}). Pour que l apercu ET le printHtml auto-contenu RESTENT WYSIWYG, on
+   extrait le CONTENU des accolades de @media print et on le re-emet au niveau racine.
+   Extraction par comptage d accolades (conserve les regles imbriquees). Renvoie "" si absent. */
+function __ppPromotePrintCss(styles){
+  var s=styles.indexOf("@media print"); if(s<0) return "";
+  var open=styles.indexOf("{", s); if(open<0) return "";
+  var depth=0, out="";
+  for(var i=open;i<styles.length;i++){ var ch=styles.charAt(i);
+    if(ch==="{"){ depth++; if(depth===1) continue; }
+    else if(ch==="}"){ depth--; if(depth===0) break; }
+    out+=ch; }
+  return out;
+}
+/* CORPS de la note : fige les valeurs de saisie, clone/nettoie le sous-arbre .pgs (toutes
+   les pages), canvas -> SVG. AUCUNE science (valeurs = saisie + sortie serveur rendue). */
+function __ppBuildReportBody(){
+  __ppFreezeLive();
+  return __ppCloneClean(document.querySelector(".pgs"));
+}
+/* Document IMPRIMABLE auto-contenu : pages + chrome, CSS inline + @media print PROMU a l
+   ecran. LARGEUR A4 (defense en profondeur, cf. terzaghi/fastlab) : .pgs en 174mm centre. */
+function __ppSerializePrintable(){
+  var styles=__ppCollectStyles();
+  styles += "\n" + __ppPromotePrintCss(styles);
+  styles += "\nbody{background:#fff}.pgs{position:static;display:block;width:174mm;max-width:none;margin:0 auto;height:auto;overflow:visible}.pg{position:static;display:block}\n";
+  return "<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\">"
+    + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+    + "<title>PressioPro \u2014 Note d essai pressiometrique (NF EN ISO 22476-4)</title>"
+    + "<style>" + styles + "</style></head><body>"
+    + __ppBuildReportBody()
+    + "</body></html>";
+}
+/* APERCU auto-contenu (iframe du panneau « Calculs ») : MEME corps, styles ecran centres. */
+function __ppSerializeDisplay(){
+  var styles=__ppCollectStyles();
+  styles += "\n" + __ppPromotePrintCss(styles);
+  styles += "\nbody{background:#fff;padding:16px}.pgs{position:static;display:block;max-width:1000px;margin:0 auto;height:auto;overflow:visible}.pg{position:static;display:block}\n";
+  return "<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\">"
+    + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+    + "<title>PressioPro \u2014 Apercu de la note</title>"
+    + "<style>" + styles + "</style></head><body>"
+    + __ppBuildReportBody()
+    + "</body></html>";
+}
+/* Emet snapshot:capture APRES le rendu (jamais avant), sur calcul REUSSI (garde §5 dans
+   doCalc/calcEtalonnage/calcCalibrage). Ne fait rien si le pont n expose pas snapshot. */
+function __pressioproCaptureSnapshot(){
+  try{
+    if(!window.__geofamBridge || typeof window.__geofamBridge.snapshot!=="function") return;
+    window.__geofamBridge.snapshot(__ppSerializeDisplay(), __ppSerializePrintable());
+  }catch(e){}
 }
 /* =================== FIN BRIDGE + MAPPING =================== */
   // CC = chart cache
@@ -1000,7 +1281,9 @@ function updateSeuilPreview(){
   prev.innerHTML='<span style="color:var(--t3);font-size:10px">Aperçu E_M…</span>';
   var inp=buildEssaiInput(cur); inp.pf_idx=pfI; inp.plm_idx=plmI;
   __seuilTimer=setTimeout(function(){ __seuilTimer=null;
-    window.__geofamBridge.calc(ENG_ESSAI, inp).then(function(resp){
+    /* APERÇU E_M : dryRun -> aucun calc_result persisté, aucun quota décompté, aucun
+       calcResultId scellable (l'aperçu ne doit jamais activer l'émission d'un PV vide). */
+    window.__geofamBridge.calc(ENG_ESSAI, inp, {dryRun:true}).then(function(resp){
       var pv=document.getElementById('seuilPreview'); if(!pv) return;
       if(!resp||!resp.ok||!resp.output||resp.output.erreur){ pv.innerHTML='<span style="color:var(--re);font-size:10px">Aperçu indisponible.</span>'; return; }
       var o=resp.output, vol=o.volumes||{}, syn=o.synthese||{};
@@ -1040,7 +1323,13 @@ async function doCalc(){
   window.__pressioLastCalcResultId=resp.calcResultId||null;
   var _res=mapEssaiOutput(out, cur);
   renderResults(_res, d.label);
+  __ppFeedRes(_res);
   toast('Dépouillement OK — '+d.label,'ok');
+  /* GARDE §5 : erreur HORS bande (resp.ok=false) et EN bande (out.erreur) déjà filtrées
+     ci-dessus (return AVANT ici). On ne scelle donc que le document d un calcul REUSSI —
+     la note = toutes les pages via @media print. ESPRIT MUTATION : remonter cet appel
+     avant le « if(out.erreur) return » rend ROUGE le test « erreur -> 0 capture ». */
+  __pressioproCaptureSnapshot();
 }
 
 /* =========================================================
@@ -1776,7 +2065,11 @@ function calcCalibrage(){
     var e={ pts:pts, c0:_pnum(o.c0), c1:_pnum(o.c1), c2:_pnum(o.c2), R2:_pnum(o.R2), rms:_pnum(o.rms), a_calib:_pnum(o.a),
       residuals:(Array.isArray(o.residus)?o.residus:[]).map(function(r){return {v:_pnum(r.p),pc:_pnum(r.v60Mesure),phat:_pnum(r.v60Ajuste),res:_pnum(r.residu)};}) };
     renderCalibResult(e);
+    __ppFeedCalib(e);
     setTimeout(function(){ try{ drawCalibChart(e); }catch(e2){} }, 100);
+    /* GARDE §5 : pressio-calibrage encode ses erreurs HORS bande (resp.ok=false) —
+       filtre par le if ci-dessus (return). On ne scelle donc qu un calibrage REUSSI. */
+    __pressioproCaptureSnapshot();
   }).catch(function(err){ if(el) el.innerHTML='<div class="warnbox">Pont de calcul indisponible : '+_escP((err&&err.message)||err)+'</div>'; });
 }
 
@@ -1928,7 +2221,11 @@ function calcEtalonnage(){
       pts:pts, V_pe:_pnum(o.vPe), Vs_reel:_pnum(o.vsReel),
       residuals:(Array.isArray(o.residus)?o.residus:[]).map(function(r){return {p:_pnum(r.p),v:_pnum(r.vMesure),vhat:_pnum(r.vAjuste),res:_pnum(r.residu)};}) };
     renderEtalResult(e);
+    __ppFeedEtal(e);
     setTimeout(function(){ try{ drawEtalChart(e); }catch(e2){} }, 100);
+    /* GARDE §5 : pressio-etalonnage encode ses erreurs HORS bande (resp.ok=false) —
+       filtre par le if ci-dessus (return). On ne scelle donc qu un etalonnage REUSSI. */
+    __pressioproCaptureSnapshot();
   }).catch(function(err){ if(el) el.innerHTML='<div class="warnbox">Pont de calcul indisponible : '+_escP((err&&err.message)||err)+'</div>'; });
 }
 

@@ -39,6 +39,8 @@ import { runLabo } from '../packages/engines/src/labo/index.js';
 import { LABO_FIXTURES } from '../packages/engines/src/labo/test-fixtures.js';
 import { runPieux } from '../packages/engines/src/pieux/index.js';
 import { PIEUX_FIXTURES } from '../packages/engines/src/pieux/test-fixtures.js';
+import { runPressiometre } from '../packages/engines/src/pressiometre/index.js';
+import { PRESSIOMETRE_FIXTURES } from '../packages/engines/src/pressiometre/test-fixtures.js';
 import { runRadier } from '../packages/engines/src/radier/index.js';
 import { RADIER_FIXTURES } from '../packages/engines/src/radier/test-fixtures.js';
 import { runTerzaghi } from '../packages/engines/src/terzaghi/index.js';
@@ -59,7 +61,12 @@ const J = (v: unknown): string => JSON.stringify(v);
 
 /** Injecte `html` dans une iframe reproduisant printInertHtml (mode helper donné) et
  *  mesure la largeur du bloc de contenu + le nombre de pages A4 du layout réel. */
-async function measure(page: Page, html: string, helper: 'old' | 'new', sel: string): Promise<Metric> {
+async function measure(
+  page: Page,
+  html: string,
+  helper: 'old' | 'new',
+  sel: string,
+): Promise<Metric> {
   await page.setContent('<!doctype html><body style="margin:0"></body>');
   await page.evaluate(
     `(function(){var f=document.createElement('iframe');f.setAttribute('sandbox','allow-same-origin allow-modals');f.style.cssText=${J(HELPER[helper])};f.id='__pf';f.srcdoc=${J(html)};document.body.appendChild(f);})()`,
@@ -73,7 +80,9 @@ async function measure(page: Page, html: string, helper: 'old' | 'new', sel: str
     `(function(){var el=document.querySelector(${J(sel)});var r=el?el.getBoundingClientRect():null;return {noteW:r?Math.round(r.width):-1,bodyH:document.body.scrollHeight};})()`,
   )) as { noteW: number; bodyH: number };
   await page.emulateMedia({ media: 'screen' });
-  await page.evaluate(`(function(){var e=document.getElementById('__pf');if(e)e.remove();})()`);
+  await page.evaluate(
+    `(function(){var e=document.getElementById('__pf');if(e)e.remove();})()`,
+  );
   return { ...m, pages: Math.max(1, Math.ceil(m.bodyH / A4_PX)) };
 }
 
@@ -137,11 +146,22 @@ async function main(): Promise<void> {
       `Object.defineProperty(fi,'files',{value:dt.files,configurable:true});` +
       `fi.dispatchEvent(new Event('change',{bubbles:true}));})()`;
     const tReady = `(function(){var p=(document.getElementById('tab-verifs')||{}).innerHTML||'';return p.indexOf('vcard')>=0&&p.indexOf('Calcul en cours')<0;})()`;
-    const tPrint = await capturePrintHtml(tPage, 'apps/web/src/tools-cloned/terzaghi.html', tenv.output, tDrive, tReady);
+    const tPrint = await capturePrintHtml(
+      tPage,
+      'apps/web/src/tools-cloned/terzaghi.html',
+      tenv.output,
+      tDrive,
+      tReady,
+    );
 
-    const PIN = '#notePrint{display:block !important;width:174mm;max-width:none;margin:0 auto}';
-    const tUnpinned = tPrint.replace(PIN, '#notePrint{display:block !important;margin:0 auto}');
-    if (tUnpinned === tPrint) throw new Error('pin 174mm introuvable dans le printHtml Terzaghi (test caduc)');
+    const PIN =
+      '#notePrint{display:block !important;width:174mm;max-width:none;margin:0 auto}';
+    const tUnpinned = tPrint.replace(
+      PIN,
+      '#notePrint{display:block !important;margin:0 auto}',
+    );
+    if (tUnpinned === tPrint)
+      throw new Error('pin 174mm introuvable dans le printHtml Terzaghi (test caduc)');
 
     const t_unpin_old = await measure(tPage, tUnpinned, 'old', '.note');
     const t_unpin_new = await measure(tPage, tUnpinned, 'new', '.note');
@@ -150,15 +170,43 @@ async function main(): Promise<void> {
     await tPage.close();
 
     console.log('\n=== TERZAGHI (note .note — largeur px, pages A4) ===');
-    console.log('doc SANS pin + helper AVANT (width:0)  :', J(t_unpin_old), '<= BUG reproduit');
-    console.log('doc SANS pin + helper APRÈS (210mm)    :', J(t_unpin_new), '<= corrigé par le helper');
-    console.log('doc AVEC pin + helper AVANT (width:0)  :', J(t_pin_old), '<= corrigé par le document');
-    console.log('doc AVEC pin + helper APRÈS (210mm)    :', J(t_pin_new), '<= état livré');
+    console.log(
+      'doc SANS pin + helper AVANT (width:0)  :',
+      J(t_unpin_old),
+      '<= BUG reproduit',
+    );
+    console.log(
+      'doc SANS pin + helper APRÈS (210mm)    :',
+      J(t_unpin_new),
+      '<= corrigé par le helper',
+    );
+    console.log(
+      'doc AVEC pin + helper AVANT (width:0)  :',
+      J(t_pin_old),
+      '<= corrigé par le document',
+    );
+    console.log(
+      'doc AVEC pin + helper APRÈS (210mm)    :',
+      J(t_pin_new),
+      '<= état livré',
+    );
 
-    assert(t_unpin_old.noteW <= 60 && t_unpin_old.pages >= 12, `Terzaghi non-corrigé s'effondre (~0px, ≥12 pages) — bug reproduit ${J(t_unpin_old)}`);
-    assert(t_unpin_new.noteW >= 600 && t_unpin_new.pages <= 7, `helper corrigé sauve le doc non-piné ${J(t_unpin_new)}`);
-    assert(t_pin_old.noteW >= 400 && t_pin_old.pages <= 7, `pin document tient sous helper buggé ${J(t_pin_old)}`);
-    assert(t_pin_new.noteW >= 600 && t_pin_new.pages <= 7, `état livré : pleine largeur, pages denses ${J(t_pin_new)}`);
+    assert(
+      t_unpin_old.noteW <= 60 && t_unpin_old.pages >= 12,
+      `Terzaghi non-corrigé s'effondre (~0px, ≥12 pages) — bug reproduit ${J(t_unpin_old)}`,
+    );
+    assert(
+      t_unpin_new.noteW >= 600 && t_unpin_new.pages <= 7,
+      `helper corrigé sauve le doc non-piné ${J(t_unpin_new)}`,
+    );
+    assert(
+      t_pin_old.noteW >= 400 && t_pin_old.pages <= 7,
+      `pin document tient sous helper buggé ${J(t_pin_old)}`,
+    );
+    assert(
+      t_pin_new.noteW >= 600 && t_pin_new.pages <= 7,
+      `état livré : pleine largeur, pages denses ${J(t_pin_new)}`,
+    );
 
     // ---------------- ROADSENS (audit réel, non-régression du helper partagé) ----------------
     const bfx = BURMISTER_FIXTURES.find((f) => f.id === 'bitumineuse-epaisse-defaut')!;
@@ -171,7 +219,13 @@ async function main(): Promise<void> {
       `window.pf=inp.subgrade;window.tr=inp.traffic;` +
       `window.cp=Object.assign({},inp.load,{gntAuto:false,neForce:null});window.runCalc();})()`;
     const rReady = `(function(){var r=(document.getElementById('resout')||{}).innerHTML||'';return r.length>400&&/satisfaisante/.test(r);})()`;
-    const rPrint = await capturePrintHtml(rPage, 'apps/web/src/tools-cloned/roadsens.html', benv.output, rDrive, rReady);
+    const rPrint = await capturePrintHtml(
+      rPage,
+      'apps/web/src/tools-cloned/roadsens.html',
+      benv.output,
+      rDrive,
+      rReady,
+    );
 
     const r_old = await measure(rPage, rPrint, 'old', 'main.app');
     const r_new = await measure(rPage, rPrint, 'new', 'main.app');
@@ -181,8 +235,16 @@ async function main(): Promise<void> {
     console.log('roadsens + helper AVANT (width:0) :', J(r_old));
     console.log('roadsens + helper APRÈS (210mm)   :', J(r_new));
     const latent = r_old.noteW <= 60 || r_old.pages >= 12;
-    console.log('VERDICT roadsens sous ANCIEN helper :', latent ? 'BUG LATENT (aurait produit des pages vierges)' : 'marchait (largeur non nulle)');
-    assert(r_new.noteW >= 600 && r_new.pages <= 12, `helper corrigé : roadsens pleine largeur, pages raisonnables (NON-régression) ${J(r_new)}`);
+    console.log(
+      'VERDICT roadsens sous ANCIEN helper :',
+      latent
+        ? 'BUG LATENT (aurait produit des pages vierges)'
+        : 'marchait (largeur non nulle)',
+    );
+    assert(
+      r_new.noteW >= 600 && r_new.pages <= 12,
+      `helper corrigé : roadsens pleine largeur, pages raisonnables (NON-régression) ${J(r_new)}`,
+    );
 
     // ---------------- DOCUMENT ENROBÉ (l'artefact REELLEMENT imprimé/scellé au service) ----------------
     // Le PV servi = printHtml enrobé du cartouche PV (bandeau + pied) par
@@ -206,8 +268,14 @@ async function main(): Promise<void> {
     console.log('\n=== DOCUMENT ENROBÉ (cartouche PV — helper corrigé) ===');
     console.log('note dans le PV enrobé :', J(w_note));
     console.log('bandeau pvx-band       :', J(w_band), '(largeur px)');
-    assert(w_note.noteW >= 600 && w_note.pages <= 8, `PV enrobé : note pleine largeur, pas d'explosion de pages ${J(w_note)}`);
-    assert(w_band.noteW >= 600, `cartouche pvx-band non effondré (grille intacte) ${J(w_band)}`);
+    assert(
+      w_note.noteW >= 600 && w_note.pages <= 8,
+      `PV enrobé : note pleine largeur, pas d'explosion de pages ${J(w_note)}`,
+    );
+    assert(
+      w_band.noteW >= 600,
+      `cartouche pvx-band non effondré (grille intacte) ${J(w_band)}`,
+    );
 
     // ---------------- GEOPLAQUE (note printReport option-3 — radier, mode principal) ----------------
     // La note client `printReport` est TOUJOURS bâtie sur `state.results` (mode RADIER
@@ -324,7 +392,10 @@ async function main(): Promise<void> {
     );
     // COURBES (décision titulaire « tel quel ») : chaque figure canvas est RE-DESSINÉE en SVG
     // inline vectoriel sealable. DEMO renseigne granulo/Atterberg/Proctor/cisaillement/œdomètre.
-    assert(!/<canvas\b/i.test(lPrint), 'FASTLAB : <canvas> (non sealable) présent dans le PV');
+    assert(
+      !/<canvas\b/i.test(lPrint),
+      'FASTLAB : <canvas> (non sealable) présent dans le PV',
+    );
     assert(/<svg\b/i.test(lPrint), 'FASTLAB : aucune figure SVG dans le PV');
     for (const label of [
       'Courbe granulométrique',
@@ -401,12 +472,18 @@ async function main(): Promise<void> {
       /Portance vérifiée|Portance NON vérifiée/.test(cPrint),
       'CASAGRANDE : verdict de portance absent de la note',
     );
-    assert(/Synthèse géométrique/.test(cPrint), 'CASAGRANDE : synthèse géométrique absente');
+    assert(
+      /Synthèse géométrique/.test(cPrint),
+      'CASAGRANDE : synthèse géométrique absente',
+    );
     assert(/Résistances/.test(cPrint), 'CASAGRANDE : tableau des résistances absent');
     // Courbe charge-tassement : SVG inline #settle-svg avec un <path> vectoriel (pas un canvas).
     assert(/id="settle-svg"/.test(cPrint), 'CASAGRANDE : #settle-svg absent de la note');
     assert(/<svg\b/i.test(cPrint), 'CASAGRANDE : aucune figure SVG dans la note');
-    assert(!/<canvas\b/i.test(cPrint), 'CASAGRANDE : <canvas> (non sealable) présent dans la note');
+    assert(
+      !/<canvas\b/i.test(cPrint),
+      'CASAGRANDE : <canvas> (non sealable) présent dans la note',
+    );
     assert(
       !/src\s*=\s*["']?\s*data:/i.test(cPrint),
       'CASAGRANDE : URI data: (non sealable) dans la note',
@@ -418,9 +495,80 @@ async function main(): Promise<void> {
       `CASAGRANDE : garde §8 REFUSE le printHtml réel (Chromium) — motif : ${cGuard.error ?? ''}`,
     );
 
+    // ---------------- PRESSIOPRO (note pressiométrique — toutes les pages .pg) ----------------
+    // La note PressioPro = ce que « Imprimer / PDF » (window.print) produit : TOUTES les
+    // pages .pg via @media print. On prouve : largeur A4 (pas d'effondrement 0-largeur), pas
+    // d'explosion de pages, KPI de dépouillement présents (E_M + catégorie), courbe P-V
+    // redessinée en SVG inline (chartPV), AUCUN <canvas>, AUCUNE figure rasterisée (src=data:),
+    // et la garde §8 serveur ACCEPTE les octets réels.
+    const pfx = PRESSIOMETRE_FIXTURES.find((f) => f.id === 'demo-4m-seuils-manuels')!;
+    const penv = runPressiometre(pfx.input);
+    if (!penv.ok) throw new Error('runPressiometre a échoué');
+    const pPage = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+    const pi = pfx.input;
+    const pParams = pi.params;
+    const pDrive =
+      `(function(){window.applyData({` +
+      `projet:{projet:'Sondage démo',sondage:'BH-DEMO',a:String(${pParams.a * 10}),` +
+      `ph:String(${pParams.Ph}),pe:String(${pParams.Pe}),v0:String(${pParams.V0}),` +
+      `k0:String(${pParams.k0}),gamma:String(${pi.gamma}),nappe:String(${pi.nappe})},` +
+      `depths:[{label:${J(pi.label)},pf_idx:${pi.pf_idx ?? 2},plm_idx:${pi.plm_idx ?? 5},rows:${J(pi.rows)}}]});` +
+      `doCalc();})()`;
+    const pReady = `(function(){var r=(document.getElementById('resCont')||{}).innerHTML||'';return r.indexOf('E<sub>M</sub>')>=0&&r.indexOf('Calcul en cours')<0;})()`;
+    const pPrint = await capturePrintHtml(
+      pPage,
+      'apps/web/src/tools-cloned/pressiopro.html',
+      penv.output,
+      pDrive,
+      pReady,
+    );
+
+    const p_pgs = await measure(pPage, pPrint, 'new', '.pgs');
+    const p_body = await measure(pPage, pPrint, 'new', 'body');
+    await pPage.close();
+
+    console.log('\n=== PRESSIOPRO (note pressiométrique — .pgs / body, pages A4) ===');
+    console.log('pressiopro + helper APRÈS (210mm) .pgs :', J(p_pgs));
+    console.log('pressiopro + helper APRÈS (210mm) body :', J(p_body));
+    assert(
+      p_pgs.noteW >= 500 && p_body.pages <= 24,
+      `PRESSIOPRO : note pleine largeur A4, pas d'explosion de pages ${J(p_pgs)} ${J(p_body)}`,
+    );
+    // Contenu de note : KPI de dépouillement (E_M + catégorie) — la note n'est pas vide.
+    assert(
+      pPrint.includes(penv.output.EM.toFixed(2)),
+      'PRESSIOPRO : E_M absent de la note',
+    );
+    assert(
+      pPrint.includes(penv.output.categorieLibelle),
+      'PRESSIOPRO : catégorie absente de la note',
+    );
+    // Courbe P-V redessinée en SVG inline vectoriel sealable (pas un canvas).
+    assert(
+      /aria-label="Courbe pressiometrique P-V et fluage"/.test(pPrint),
+      'PRESSIOPRO : courbe P-V (SVG) absente de la note',
+    );
+    assert(/<svg\b/i.test(pPrint), 'PRESSIOPRO : aucune figure SVG dans la note');
+    assert(
+      !/<canvas\b/i.test(pPrint),
+      'PRESSIOPRO : <canvas> (non sealable) présent dans la note',
+    );
+    assert(
+      !/src\s*=\s*["']?\s*data:/i.test(pPrint),
+      'PRESSIOPRO : figure rasterisée (src=data:) dans la note',
+    );
+    // §8 sur OCTETS RÉELS (Chromium) : la garde serveur assertInertHtml ACCEPTE la note.
+    const pGuard = guardInert(pPrint);
+    assert(
+      pGuard.ok,
+      `PRESSIOPRO : garde §8 REFUSE le printHtml réel (Chromium) — motif : ${pGuard.error ?? ''}`,
+    );
+
     console.log('\n=== SYNTHÈSE ASSERTIONS ===');
     results.forEach((r) => console.log('  ' + r));
-    console.log('\nPREUVE NAVIGATEUR : VERTE — pas de pages vierges (helper + document).');
+    console.log(
+      '\nPREUVE NAVIGATEUR : VERTE — pas de pages vierges (helper + document).',
+    );
   } finally {
     await browser.close();
   }

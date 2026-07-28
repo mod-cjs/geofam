@@ -51,43 +51,67 @@ vi.mock('@/lib/api/client', () => ({
 // engineAllowlist) est testée dans lib/tool-bridge/__tests__/ToolFrame.test.tsx.
 // Ici on vérifie seulement le câblage : props reçues (dont engineAllowlist) +
 // remontée de calcResultId au shell, quel que soit le mode déclarant.
-vi.mock('@/lib/tool-bridge/ToolFrame', () => ({
-  ToolFrame: (props: {
-    toolId: string;
-    engineId: string;
-    engineAllowlist?: string[];
-    orgId: string | null;
-    orgSlug: string;
-    projectId: string | null;
-    projectLabel: string;
-    accessToken: string | null;
-    onCalcResultId?: (id: string | null) => void;
-  }) => (
-    <div data-testid="tool-frame-stub" data-props={JSON.stringify(props)}>
-      <button
-        type="button"
-        data-testid="simulate-calc-depouillement"
-        onClick={() => props.onCalcResultId?.('calc_depouillement')}
-      >
-        Simuler calcul dépouillement terminé
-      </button>
-      <button
-        type="button"
-        data-testid="simulate-calc-etalonnage"
-        onClick={() => props.onCalcResultId?.('calc_etalonnage')}
-      >
-        Simuler calcul étalonnage terminé
-      </button>
-      <button
-        type="button"
-        data-testid="simulate-calc-calibrage"
-        onClick={() => props.onCalcResultId?.('calc_calibrage')}
-      >
-        Simuler calcul calibrage terminé
-      </button>
-    </div>
-  ),
-}));
+// Comme le vrai ToolFrame, un « calcul terminé » émet onCalcResultId PUIS
+// onSnapshotStatus('awaiting') ; la capture (note option-3) se résout ensuite
+// ('confirmed'/'failed'). Le bouton PV attend cette résolution (gate captureReady,
+// patron roadsens/fastlab/casagrande). Chaque mode PressioPro a son propre calcResultId.
+vi.mock('@/lib/tool-bridge/ToolFrame', () => {
+  type SnapEvt = { calcResultId: string; status: string };
+  const MODES: Array<[string, string]> = [
+    ['depouillement', 'calc_depouillement'],
+    ['etalonnage', 'calc_etalonnage'],
+    ['calibrage', 'calc_calibrage'],
+  ];
+  return {
+    ToolFrame: (props: {
+      toolId: string;
+      engineId: string;
+      engineAllowlist?: string[];
+      orgId: string | null;
+      orgSlug: string;
+      projectId: string | null;
+      projectLabel: string;
+      accessToken: string | null;
+      onCalcResultId?: (id: string | null) => void;
+      onSnapshotStatus?: (event: SnapEvt) => void;
+    }) => (
+      <div data-testid="tool-frame-stub" data-props={JSON.stringify(props)}>
+        {MODES.map(([mode, id]) => (
+          <div key={mode}>
+            <button
+              type="button"
+              data-testid={`simulate-calc-${mode}`}
+              onClick={() => {
+                props.onCalcResultId?.(id);
+                props.onSnapshotStatus?.({ calcResultId: id, status: 'awaiting' });
+              }}
+            >
+              Simuler calcul {mode} terminé
+            </button>
+            <button
+              type="button"
+              data-testid={`simulate-capture-confirmed-${mode}`}
+              onClick={() =>
+                props.onSnapshotStatus?.({ calcResultId: id, status: 'confirmed' })
+              }
+            >
+              Simuler capture {mode} confirmée
+            </button>
+            <button
+              type="button"
+              data-testid={`simulate-capture-failed-${mode}`}
+              onClick={() =>
+                props.onSnapshotStatus?.({ calcResultId: id, status: 'failed' })
+              }
+            >
+              Simuler capture {mode} en échec
+            </button>
+          </div>
+        ))}
+      </div>
+    ),
+  };
+});
 
 import PressioProPage from '../page';
 
@@ -226,25 +250,102 @@ describe('Page PressioPro — shell GEOFAM', () => {
   });
 
   it.each([
-    ['dépouillement', 'simulate-calc-depouillement', 'calc_depouillement'],
-    ['étalonnage', 'simulate-calc-etalonnage', 'calc_etalonnage'],
-    ['calibrage', 'simulate-calc-calibrage', 'calc_calibrage'],
+    ['dépouillement', 'depouillement'],
+    ['étalonnage', 'etalonnage'],
+    ['calibrage', 'calibrage'],
   ])(
-    'given ToolFrame remonte un calcResultId produit par le mode %s, when le calcul est "terminé", then le bouton PV s\'active (quel que soit le mode PressioPro d\'origine)',
-    async (_mode, testid) => {
+    "given ToolFrame remonte un calcResultId produit par le mode %s, when le calcul est terminé PUIS la capture confirmée, then le bouton PV s'active (quel que soit le mode PressioPro d'origine)",
+    async (_mode, slug) => {
       await renderPage();
-      const simulate = container.querySelector(
-        `[data-testid="${testid}"]`,
-      ) as HTMLButtonElement;
+      const btn = () =>
+        container.querySelector('[data-testid="btn-emettre-pv"]') as HTMLButtonElement;
+      // 1. Calcul terminé (calcResultId + capture 'awaiting') : PV encore DÉSACTIVÉ
+      //    (gate captureReady — on ne scelle pas un PV sans note capturée).
       await act(async () => {
-        simulate.click();
+        (
+          container.querySelector(
+            `[data-testid="simulate-calc-${slug}"]`,
+          ) as HTMLButtonElement
+        ).click();
       });
-      const btn = container.querySelector(
-        '[data-testid="btn-emettre-pv"]',
-      ) as HTMLButtonElement;
-      expect(btn.disabled).toBe(false);
+      expect(btn().disabled, 'PV activé AVANT résolution de la capture (gate KO)').toBe(
+        true,
+      );
+      // 2. Capture confirmée : le PV s'active.
+      await act(async () => {
+        (
+          container.querySelector(
+            `[data-testid="simulate-capture-confirmed-${slug}"]`,
+          ) as HTMLButtonElement
+        ).click();
+      });
+      expect(btn().disabled).toBe(false);
     },
   );
+
+  it('given un calcul terminé mais capture NON résolue (awaiting), when rendu, then le bouton PV reste DÉSACTIVÉ (gate captureReady)', async () => {
+    await renderPage();
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-calc-depouillement"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    const btn = container.querySelector(
+      '[data-testid="btn-emettre-pv"]',
+    ) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toMatch(/Capture du document/);
+  });
+
+  it('given une capture en ÉCHEC, when 1er clic sur émettre, then avertissement affiché ; 2e clic (confirmer), then emitPv appelé (émission sans document assumée)', async () => {
+    mockEmitPv.mockResolvedValue({
+      id: 'pv_x',
+      number: 'PV-2026-0099',
+      orgId: 'org_01',
+      projectId: 'proj_lb_01',
+      calcResultId: 'calc_depouillement',
+      engineId: 'pressiometre',
+      hmacTruncated: 'ffff0000',
+      sealedAt: '2026-07-16T10:00:00.000Z',
+      sealedBy: 'Amadou Diallo',
+    });
+    await renderPage();
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-calc-depouillement"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-failed-depouillement"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    const btn = () =>
+      container.querySelector('[data-testid="btn-emettre-pv"]') as HTMLButtonElement;
+    // 1er clic : avertissement, PAS d'appel emitPv.
+    await act(async () => {
+      btn().click();
+    });
+    expect(
+      container.querySelector('[data-testid="capture-failed-warning"]'),
+      'avertissement absent après le 1er clic sur capture en échec',
+    ).not.toBeNull();
+    expect(mockEmitPv).not.toHaveBeenCalled();
+    // 2e clic : confirmation -> emitPv appelé.
+    await act(async () => {
+      btn().click();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mockEmitPv).toHaveBeenCalledTimes(1);
+  });
 
   it('given un calcul terminé (mode étalonnage), when "Émettre le PV" cliqué et emitPv résout, then le PV scellé est affiché', async () => {
     mockEmitPv.mockResolvedValue({
@@ -261,11 +362,19 @@ describe('Page PressioPro — shell GEOFAM', () => {
       output: null,
     });
     await renderPage();
-    const simulate = container.querySelector(
-      '[data-testid="simulate-calc-etalonnage"]',
-    ) as HTMLButtonElement;
     await act(async () => {
-      simulate.click();
+      (
+        container.querySelector(
+          '[data-testid="simulate-calc-etalonnage"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed-etalonnage"]',
+        ) as HTMLButtonElement
+      ).click();
     });
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',
@@ -284,11 +393,19 @@ describe('Page PressioPro — shell GEOFAM', () => {
   it('given emitPv échoue, when "Émettre le PV" cliqué, then un message d\'erreur explicite est affiché', async () => {
     mockEmitPv.mockRejectedValue({ message: 'Quota épuisé.' });
     await renderPage();
-    const simulate = container.querySelector(
-      '[data-testid="simulate-calc-depouillement"]',
-    ) as HTMLButtonElement;
     await act(async () => {
-      simulate.click();
+      (
+        container.querySelector(
+          '[data-testid="simulate-calc-depouillement"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    await act(async () => {
+      (
+        container.querySelector(
+          '[data-testid="simulate-capture-confirmed-depouillement"]',
+        ) as HTMLButtonElement
+      ).click();
     });
     const btn = container.querySelector(
       '[data-testid="btn-emettre-pv"]',

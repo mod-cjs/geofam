@@ -173,6 +173,12 @@ export interface CalcRequest {
   engineId: string;
   label: string;
   params: Record<string, unknown>;
+  /**
+   * APERÇU (dry-run) — DÉFAUT false. Calcule la sortie pour l'affichage SANS
+   * persister ni décompter le quota ; l'API ne renvoie alors PAS de
+   * `calcResultId` scellable (cf. `POST /projects/:id/calc/:engine?dryRun=true`).
+   */
+  dryRun?: boolean;
 }
 
 /** PATCH /projects/:projectId/calc-results/:calcResultId — renomme un calcul. */

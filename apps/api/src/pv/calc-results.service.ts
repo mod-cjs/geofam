@@ -21,7 +21,8 @@ import { assertProjetEcrivable } from './project-write-guard';
 
 /** Resultat d'un calcul tenant persiste : enveloppe + id de la ligne stockee. */
 export interface PersistedCalcResult {
-  calcResultId: string;
+  /** `null` = APERÇU (dry-run) : calcul RÉUSSI mais NON persisté (aucun id scellable). */
+  calcResultId: string | null;
   ok: boolean;
   meta: EngineResultMeta;
   output: unknown;
@@ -64,6 +65,14 @@ export class CalcResultsService {
     projectId: string;
     userId: string;
     body: unknown;
+    /**
+     * APERÇU (dry-run) — calcule la sortie POUR L'AFFICHAGE sans persister de
+     * calc_result ni décompter le quota (aucun `calcResultId` scellable). Le
+     * contexte tenant reste appliqué (withTenant + projet écrivable = isolation
+     * intacte) : c'est une SOUSTRACTION de l'INSERT + du décompte, pas un
+     * contournement du RLS ni de l'entitlement.
+     */
+    dryRun?: boolean;
   }): Promise<PersistedCalcResult> {
     const orgId = requireOrgId();
     const dispatch = findEngineDispatch(args.engineSlug);
@@ -141,6 +150,24 @@ export class CalcResultsService {
           ? { engineSourceHash: envelope.meta.engineSourceHash }
           : {}),
     };
+
+    // APERÇU (dry-run) : on a la SORTIE (calculée + projetée + gardes fail-closed
+    // ci-dessus, exactement comme un calcul réel). On vérifie l'accès tenant au
+    // projet (withTenant/RLS INCHANGÉ : un aperçu sur un projet d'un autre org ou
+    // archivé échoue à l'identique), MAIS on NE crée AUCUN calc_result et on NE
+    // décompte AUCUN quota (pas de reserveUnit). Aucun `calcResultId` scellable
+    // n'est renvoyé -> l'hôte ne peut ni émettre un PV vide ni brûler du quota.
+    if (args.dryRun) {
+      await this.prisma.withTenant(orgId, async (tx) => {
+        await assertProjetEcrivable(tx, args.projectId);
+      });
+      return {
+        calcResultId: null,
+        ok: true,
+        meta,
+        output: projectedOutput,
+      };
+    }
 
     const created = await this.prisma.withTenant(orgId, async (tx) => {
       // Le projet doit exister DANS le tenant (RLS scope deja la lecture) ET ne pas
