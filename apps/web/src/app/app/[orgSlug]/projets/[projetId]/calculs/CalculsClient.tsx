@@ -57,6 +57,13 @@ import type { CalcResult, CalcSnapshot, NormalizedCalcOutput } from '@/lib/api/t
 import { nomAffiche, nomAfficheCompact, seqParCreation } from '@/lib/calc-name';
 import { slugOf, metaOf } from '@/lib/engine-labels';
 import { useOrgId } from '@/lib/org-context';
+import {
+  buildPressioEssaiCsv,
+  buildPressioGlobalCsv,
+  buildPressioJsonExport,
+  pressioResultFrom,
+  type PressioExportParams,
+} from '@/lib/pressio-export';
 import { printInertHtml } from '@/lib/print-inert-html';
 import { SOFTWARE_CATALOG } from '@/lib/software-catalog';
 
@@ -86,6 +93,77 @@ function triggerJsonDownload(data: unknown, filename: string): void {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Téléchargement d'un contenu texte DÉJÀ sérialisé (CSV, ou JSON dont la
+ * sérialisation exacte fait partie du format — cf. exports PressioPro, où
+ * l'indentation à 2 espaces et l'ordre des clés doivent être préservés à
+ * l'octet). Contrairement à `triggerJsonDownload`, on n'appelle PAS
+ * `JSON.stringify` : le contenu est écrit verbatim.
+ */
+function triggerTextDownload(content: string, filename: string, mime: string): void {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Coercition §8-safe de l'input PERSISTÉ (PressiometreInput) vers la forme
+ * attendue par la lib d'export. Purement structurelle (aucune valeur inventée,
+ * aucun recalcul) : renvoie `null` si la saisie ne porte pas la forme du
+ * dépouillement (params sonde + rows), auquel cas l'appelant s'abstient.
+ */
+function pressioParamsFrom(raw: Record<string, unknown>): PressioExportParams | null {
+  const p = raw.params as Record<string, unknown> | undefined;
+  const rows = raw.rows;
+  if (!p || !Array.isArray(rows)) return null;
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const a = num(p.a);
+  const Ph = num(p.Ph);
+  const Pe = num(p.Pe);
+  const V0 = num(p.V0);
+  const k0 = num(p.k0);
+  const gamma = num(raw.gamma);
+  const nappe = num(raw.nappe);
+  if (
+    a == null ||
+    Ph == null ||
+    Pe == null ||
+    V0 == null ||
+    k0 == null ||
+    gamma == null ||
+    nappe == null ||
+    typeof raw.label !== 'string'
+  ) {
+    return null;
+  }
+  const mappedRows = rows.map((r) => {
+    const ro = r as Record<string, unknown>;
+    return {
+      p: Number(ro.p),
+      v15: Number(ro.v15),
+      v30: Number(ro.v30),
+      v60: Number(ro.v60),
+    };
+  });
+  return {
+    projet: typeof raw.projet === 'string' ? raw.projet : undefined,
+    label: raw.label,
+    params: { a, Ph, Pe, V0, k0 },
+    gamma,
+    nappe,
+    rows: mappedRows,
+    pf_idx: typeof raw.pf_idx === 'number' ? raw.pf_idx : undefined,
+    plm_idx: typeof raw.plm_idx === 'number' ? raw.plm_idx : undefined,
+  };
 }
 
 /** Nom de fichier calqué sur l'outil client : `<logiciel>-<projet>.json`. */
@@ -522,6 +600,30 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
     triggerJsonDownload(selected.params, exportFilename(slug, selected.params));
   }
 
+  // PRESSIOPRO : les 3 exports NATIFS de l'outil (pg-export) portés sur un calcul
+  // persisté — CSV essai courant, CSV global, JSON complet (cf. lib pressio-export,
+  // reproduction octet-à-octet). §8 : construit UNIQUEMENT depuis `params` (entrées)
+  // + le sous-ensemble whitelisté de `output` (via pressioResultFrom) — jamais de
+  // recalcul ni d'intermédiaire moteur.
+  function handlePressioExport(kind: 'essai' | 'global' | 'json') {
+    if (!selected) return;
+    const p = pressioParamsFrom(selected.params);
+    if (!p) return; // saisie non conforme au dépouillement → aucun export
+    if (kind === 'json') {
+      const f = buildPressioJsonExport(p);
+      triggerTextDownload(f.content, f.filename, 'application/json');
+      return;
+    }
+    // CSV : la ligne de résultat n'apparaît que si la sortie est exploitable
+    // (parité du `if(d._res)` client — pressioResultFrom renvoie null sinon).
+    const result = pressioResultFrom(selected.output);
+    const f =
+      kind === 'essai'
+        ? buildPressioEssaiCsv(p, result)
+        : buildPressioGlobalCsv(p, result);
+    triggerTextDownload(f.content, f.filename, 'text/csv;charset=utf-8;');
+  }
+
   // APERÇU DE LA NOTE avant scellement (livrable « Imprimer la note » de l'outil,
   // version TRAVAIL) : imprime le document capturé, FILIGRANÉ « non scellé » pour
   // qu'il ne se confonde jamais avec le PV opposable. Bouton présent seulement si
@@ -707,25 +809,52 @@ export default function CalculsClient({ orgSlug, projetId }: CalculsClientProps)
   // (scellé ou non) : les ENTRÉES d'un calcul persisté sont toujours
   // exportables/ré-importables. Rendu dans chaque branche de la barre d'actions.
   //
-  // EXCEPTIONS FASTLAB (labo) + CASAGRANDE (pieux) + PRESSIOPRO (pressiometre et ses 2
-  // modes d'appareillage) — décision titulaire : périmètre strict « impression de la note
-  // uniquement », PAS d'export/import JSON pour ces logiciels. L'outil client FASTLAB
-  // exporte une BIBLIOTHÈQUE d'échantillons (fastlab.json), CASAGRANDE n'a pas de bouton
-  // « Exporter .json » (que « ⎙ Imprimer la note »), et PRESSIOPRO exporte des CSV/JSON
-  // d'une forme propre à l'outil (essai/global) HORS de notre périmètre PV — on ne
-  // reproduit donc AUCUN export pour eux. Le bouton est masqué pour ces calculs (jamais un
-  // export de forme différente qui prêterait à confusion). Les 3 slugs pressio couvrent le
-  // dépouillement (pressiometre) + l'étalonnage/calibrage d'appareillage.
-  const ENGINES_SANS_EXPORT = new Set([
-    'labo',
-    'pieux',
-    'pressiometre',
-    'pressio-etalonnage',
-    'pressio-calibrage',
-  ]);
+  // EXCEPTIONS FASTLAB (labo) + CASAGRANDE (pieux) — décision titulaire : périmètre
+  // strict « impression de la note uniquement », PAS d'export/import JSON pour ces
+  // logiciels. L'outil FASTLAB exporte une BIBLIOTHÈQUE d'échantillons (fastlab.json)
+  // et CASAGRANDE n'a pas de bouton « Exporter .json » (que « ⎙ Imprimer la note ») —
+  // aucune reproduction. Le bouton est masqué pour ces calculs (jamais un export de
+  // forme différente qui prêterait à confusion).
+  //
+  // PRESSIOPRO fait EXCEPTION à l'exception : l'outil client (pg-export) porte 3 exports
+  // NATIFS (CSV essai courant, CSV global, JSON complet) que l'on reproduit FIDÈLEMENT
+  // (cf. handlePressioExport / lib pressio-export) — donc pressio SORT de cette liste et
+  // rend ses 3 boutons dédiés à la place du bouton générique.
+  const ENGINES_SANS_EXPORT = new Set(['labo', 'pieux']);
+  const selectedSlug = selected ? slugOf(selected.engineId) : null;
+  const isPressioExport = selectedSlug != null && selectedSlug.startsWith('pressio');
   const exportSupported =
     !selected || !ENGINES_SANS_EXPORT.has(slugOf(selected.engineId));
-  const exportButton = exportSupported ? (
+  const exportButton = isPressioExport ? (
+    // PRESSIOPRO : les 3 exports natifs de l'outil (pg-export), à la place du
+    // bouton générique — mêmes intitulés que le client.
+    <>
+      <Button
+        size="sm"
+        variant="secondary"
+        iconLeft={<Download size={14} strokeWidth={1.5} aria-hidden="true" />}
+        onClick={() => handlePressioExport('essai')}
+      >
+        CSV — essai courant
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        iconLeft={<Download size={14} strokeWidth={1.5} aria-hidden="true" />}
+        onClick={() => handlePressioExport('global')}
+      >
+        CSV global — toutes profondeurs
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        iconLeft={<Download size={14} strokeWidth={1.5} aria-hidden="true" />}
+        onClick={() => handlePressioExport('json')}
+      >
+        JSON complet
+      </Button>
+    </>
+  ) : exportSupported ? (
     <Button
       size="sm"
       variant="secondary"

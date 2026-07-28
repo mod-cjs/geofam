@@ -76,6 +76,11 @@ type CloneWin = Window &
     doCalc: () => Promise<void>;
     calcEtalonnage: () => void;
     calcCalibrage: () => void;
+    // Rafraichissements d'en-tete / mesures INDEPENDANTS du calcul (lisent les champs
+    // de saisie + depths.rows) : servent a resynchroniser les deux DOM dans un etat
+    // UI canonique commun avant comparaison (cf. test EQUIVALENCE OCTET-A-OCTET).
+    updateHdr: () => void;
+    renderMrows: () => void;
   };
 
 /** Hote MULTI-ENGINE : calc(engineId, params) recalcule cote « serveur » (moteur reel)
@@ -368,7 +373,7 @@ d(
       dom.window.close();
     });
 
-    it('EQUIVALENCE : le panneau Resultats du clone est IDENTIQUE a la reference gelee', async () => {
+    it('EQUIVALENCE OCTET-A-OCTET : les 8 pages .pg du clone sont IDENTIQUES a la reference gelee', async () => {
       if (!pressiometreSourceAvailable()) {
         // eslint-disable-next-line no-console
         console.warn('[clone-render] SKIP equivalence : source gelee absente (CI).');
@@ -383,21 +388,19 @@ d(
       // (pas de setTimeout) : on capture juste apres l'await, PUIS on ferme le DOM pour
       // annuler le timer drawResCharts (+120 ms) qui appellerait Chart.js (absent en jsdom).
       const { dom: cloneDom, win: cloneWin } = loadClone();
+      // Laisser l'init AU CHARGEMENT du clone se stabiliser AVANT d'appliquer l'essai :
+      // le clone execute son init differee (renderMrows/updateHdr/placeholders) qui,
+      // sinon, ECRASE applyData pendant l'await de doCalc. La reference, dont l'init
+      // avorte sur l'acces localStorage (origine opaque jsdom), n'en a pas besoin — le
+      // wait symetrique est neutre pour elle.
+      await new Promise((r) => setTimeout(r, 100));
       applyEssai(cloneWin, fx);
       await cloneWin.doCalc();
-      const cloneRes = normalizeRes(
-        cloneDom.window.document.getElementById('resCont')?.innerHTML ?? '',
-      );
-      // Non-sur-exposition (minor revue) : on capture AUSSI une page HORS Résultats
-      // (Log/coupe de sondage) pour verrouiller que le clone n'expose RIEN de plus que
-      // la référence sur les autres onglets (pas seulement Résultats).
-      const cloneLog = normalizeRes(
-        cloneDom.window.document.getElementById('pg-log')?.innerHTML ?? '',
-      );
+      const clonePages = readAllPages(cloneDom);
       cloneDom.window.close();
 
       // REFERENCE : depouillement LOCAL (moteur intact). doCalc y differe renderResults de
-      // 80 ms (setTimeout) puis drawResCharts de +120 ms : on attend ~120 ms (renderResults
+      // 80 ms (setTimeout) puis drawResCharts de +120 ms : on attend ~130 ms (renderResults
       // a rendu, drawResCharts pas encore) puis on ferme AVANT l'appel Chart.js.
       const refHtml = readFileSync(pressiometreSourcePath(), 'utf8');
       const refDom = new JSDOM(refHtml, {
@@ -405,35 +408,31 @@ d(
         pretendToBeVisual: true,
       });
       const refWin = refDom.window as unknown as CloneWin;
+      await new Promise((r) => setTimeout(r, 100));
       applyEssai(refWin, fx);
       await refWin.doCalc();
       await new Promise((r) => setTimeout(r, 130));
-      const refRes = normalizeRes(
-        refDom.window.document.getElementById('resCont')?.innerHTML ?? '',
-      );
-      const refLog = normalizeRes(
-        refDom.window.document.getElementById('pg-log')?.innerHTML ?? '',
-      );
-
-      // Garde anti faux-vert : la reference DOIT avoir rendu un vrai depouillement.
-      expect(
-        refRes.length,
-        'reference sans depouillement (rendu casse ?)',
-      ).toBeGreaterThan(200);
-      expect(refRes).toContain('E<sub>M</sub>');
-      // ZERO ECART : meme HTML de panneau Resultats (hors canvas dynamiques, normalises).
-      expect(cloneRes, 'panneau Resultats clone != reference').toBe(refRes);
-      // ZERO ECART sur une page HORS Résultats (Log) : anti-vacuité (contenu réel rendu)
-      // + égalité stricte -> le clone n'expose pas plus que la référence hors Résultats.
-      expect(refLog.length, 'reference sans page Log (rendu casse ?)').toBeGreaterThan(
-        50,
-      );
-      expect(
-        cloneLog,
-        'page Log clone != reference (sur-exposition hors Résultats ?)',
-      ).toBe(refLog);
-
+      const refPages = readAllPages(refDom);
       refDom.window.close();
+
+      for (const id of PG_IDS) {
+        // readAllPages remplit TOUJOURS les 8 cles (cf. boucle sur PG_IDS) -> `!` sur.
+        const ref = refPages[id]!;
+        const clone = clonePages[id]!;
+        // Anti-vacuite : la reference DOIT avoir rendu un contenu reel sur CHAQUE page
+        // (pages alimentees par l'essai) ou son placeholder (pages conditionnelles) —
+        // jamais une chaine vide qui rendrait l'egalite trivialement vraie.
+        expect(
+          ref.length,
+          `page ${id} vide cote reference (rendu casse ?)`,
+        ).toBeGreaterThan(PG_FLOOR[id]);
+        // ZERO ECART : meme HTML de page (canvas dynamiques vides des deux cotes, normalises).
+        // Pages conditionnelles (etalon/calibrage/profil non declenchees par un simple
+        // essai) : le PLACEHOLDER est identique des deux cotes -> egalite valable aussi.
+        expect(clone, `page ${id} du clone != reference gelee`).toBe(ref);
+      }
+      // Ancrage semantique fort : la page Resultats porte bien le depouillement.
+      expect(refPages['pg-resultats']!).toContain('E<sub>M</sub>');
     });
 
     it('NO-CALC-INITIAL : au chargement (etat vide) aucun calc:request emis', async () => {
@@ -467,6 +466,54 @@ d(
  * Chart.js absent en jsdom). */
 function normalizeRes(html: string): string {
   return html.replace(/\s+/g, ' ').trim();
+}
+
+/** Les 8 pages .pg de la note PressioPro, dans l'ordre de l'outil (onglets). */
+const PG_IDS = [
+  'pg-projet',
+  'pg-log',
+  'pg-etalon',
+  'pg-calibrage',
+  'pg-mesures',
+  'pg-resultats',
+  'pg-profil',
+  'pg-export',
+] as const;
+
+/**
+ * Plancher anti-vacuite (octets d'innerHTML normalise) par page. Verrouille qu'une
+ * egalite clone==reference ne soit JAMAIS trivialement vraie sur une page vide.
+ * Valeurs mesurees sur la reference gelee (marge de securite dessous) ; les pages
+ * CONDITIONNELLES non declenchees par un simple essai (etalon/calibrage/profil)
+ * restent a leur placeholder — non vide, mais plus court que les pages alimentees.
+ */
+const PG_FLOOR: Record<(typeof PG_IDS)[number], number> = {
+  'pg-projet': 2000,
+  'pg-log': 200,
+  'pg-etalon': 200,
+  'pg-calibrage': 200,
+  'pg-mesures': 500,
+  'pg-resultats': 2000,
+  'pg-profil': 200,
+  'pg-export': 500,
+};
+
+/** innerHTML NORMALISE de chacune des 8 pages .pg (comparaison stable clone<->ref).
+ *
+ * Neutralise le WIDGET LIVE `#seuilPreview` (apercu E_M de la page Mesures) : son
+ * CONTENU dynamique est excise cote clone (calcul local -> apercu asynchrone via le
+ * pont, dryRun) et rendu SYNCHRONE cote reference — divergence attendue, verifiee par
+ * le test dedie « APERCU E_M (updateSeuilPreview) ... dryRun ». Sa STRUCTURE (le
+ * conteneur, present des deux cotes) reste comparee ; seul son inner dynamique est
+ * remis a un placeholder identique. Toute autre divergence de la page reste detectee. */
+function readAllPages(dom: JSDOM): Record<string, string> {
+  const preview = dom.window.document.getElementById('seuilPreview');
+  if (preview) preview.innerHTML = '';
+  const out: Record<string, string> = {};
+  for (const id of PG_IDS) {
+    out[id] = normalizeRes(dom.window.document.getElementById(id)?.innerHTML ?? '');
+  }
+  return out;
 }
 
 // ===========================================================================

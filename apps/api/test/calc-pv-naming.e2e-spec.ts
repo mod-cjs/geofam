@@ -696,16 +696,32 @@ describe('Etiquettes name (calc + PV) — e2e (Postgres réel)', () => {
     expect(await consommation(orgA)).toBe(beforeConso);
   });
 
-  it("H3) ISOLATION : un aperçu sur un projet d'un AUTRE org échoue (RLS/tenant intact, pas de contournement)", async () => {
+  it("H3) ISOLATION : un aperçu sur un projet d'un AUTRE org échoue ET NE MUTE RIEN en base (RLS/tenant intact, contre-preuve avant/après)", async () => {
     expect.hasAssertions();
     if (!ready()) return;
     const tB = await login(mailB());
+
+    // CONTRE-PREUVE EN BASE (un 403/404 ne prouve rien seul, revue adverse) : on
+    // fige l'état persistant AVANT la tentative — calc_results ET consommation de
+    // l'org ATTAQUANTE (orgB) et de l'org CIBLE (orgA). NB facturation : depuis le
+    // nouveau modèle, un calcul ne décompte plus (décompte à l'émission PV) ; les
+    // consommations doivent donc rester STRICTEMENT ÉGALES — un décalage signalerait
+    // soit une fuite d'écriture cross-org, soit une régression de facturation.
+    const beforeCalcB = await calcCount(orgB);
+    const beforeCalcA = await calcCount(orgA);
+    const beforeConsoB = await consommation(orgB);
+    const beforeConsoA = await consommation(orgA);
+
     // Owner B tente un aperçu sur le projet d'org A -> 404 tenant-safe (projet
     // invisible/écriture refusée), exactement comme un calcul persistant.
     const res = await runCalcDry(tB, orgB, projA);
     expect([403, 404]).toContain(res.status);
-    // Et aucune ligne d'orgA/orgB n'a été créée par cette tentative.
-    // (le comptage global d'orgA est couvert par H1 ; ici on borne orgB à 0 net.)
     expect(res.status).not.toBe(201);
+
+    // RIEN n'a bougé : ni ligne calc_results (attaquant NI cible), ni quota.
+    expect(await calcCount(orgB)).toBe(beforeCalcB);
+    expect(await calcCount(orgA)).toBe(beforeCalcA);
+    expect(await consommation(orgB)).toBe(beforeConsoB);
+    expect(await consommation(orgA)).toBe(beforeConsoA);
   });
 });
