@@ -11,45 +11,83 @@
 import { Lock } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { QuotaBar } from '@/components/admin/QuotaBar';
 import { getEntitlements } from '@/lib/api/client';
 import type { EntitlementsResponse } from '@/lib/api/types';
-import { useOrgId } from '@/lib/org-context';
+import {
+  readEntitlementsSnapshot,
+  writeEntitlementsSnapshot,
+} from '@/lib/entitlements-snapshot';
+import { useOrgIdReady } from '@/lib/org-context';
 import { SOFTWARE_CATALOG } from '@/lib/software-catalog';
 import { evaluateGate, isQuotaLow } from '@/lib/subscription-gate';
 
 export default function LogicielsGallery() {
   const params = useParams<{ orgSlug: string }>();
   const orgSlug = params?.orgSlug ?? '';
-  const orgId = useOrgId(orgSlug);
+  const { orgId, ready } = useOrgIdReady(orgSlug);
 
   const [ent, setEnt] = useState<EntitlementsResponse | null>(null);
+  // true = "rien à montrer encore" (ni squelette, ni amorçage) -> squelettes de
+  // cartes affichés à la place du catalogue. Ne repasse JAMAIS à true une fois
+  // passé à false pour une revalidation en arrière-plan (pas de re-flash).
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Miroir de `ent` en ref : lu par l'effet de fetch pour savoir si un amorçage
+  // (snapshot) est déjà affiché, sans dépendre de `ent` dans le tableau de deps
+  // de cet effet (ce qui redéclencherait un fetch à chaque mise à jour de `ent`).
+  const entRef = useRef<EntitlementsResponse | null>(null);
+  useEffect(() => {
+    entRef.current = ent;
+  }, [ent]);
+
+  // Amorçage stale-while-revalidate : affiche instantanément le dernier
+  // EntitlementsResponse connu pour cet org (localStorage), le temps que la
+  // résolution orgId + le fetch réseau (tous deux post-montage) aboutissent.
+  // Snapshot absent -> on reste en squelette (fail-closed, cf. lib/entitlements-snapshot).
+  useEffect(() => {
+    if (!orgSlug) return;
+    const snapshot = readEntitlementsSnapshot(orgSlug);
+    if (snapshot) {
+      setEnt(snapshot);
+      setLoading(false);
+    }
+  }, [orgSlug]);
+
   useEffect(() => {
     let cancelled = false;
+    // Résolution orgId pas encore terminée (post-montage) : ne PAS basculer
+    // loading à false ici, sinon on retombe sur le bug diagnostiqué
+    // (evaluateGate(null, …) => "Non inclus" affiché avant la vérité serveur).
+    if (!ready) return;
     if (!orgId) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    // Ne remontre le squelette que si rien n'est déjà affiché (pas d'amorçage) —
+    // une revalidation en arrière-plan ne doit pas faire disparaître le contenu.
+    if (entRef.current === null) setLoading(true);
     setError(null);
     getEntitlements(orgId)
       .then((e) => {
         if (!cancelled) {
           setEnt(e);
           setLoading(false);
+          writeEntitlementsSnapshot(orgSlug, e);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          // Fail-closed : entitlements non chargés -> tout reste verrouillé
-          // (evaluateGate(null, …) renvoie déjà « non inclus »).
+          // Fail-closed : sans données fraîches, on retombe sur le dernier
+          // amorçage connu (déjà dans `ent`) ou, à défaut, tout reste
+          // verrouillé (evaluateGate(null, …) renvoie déjà « non inclus »).
           setError(
-            'Impossible de charger votre abonnement — modules affichés comme verrouillés.',
+            entRef.current
+              ? 'Impossible de vérifier votre abonnement — affichage basé sur la dernière vérification connue.'
+              : 'Impossible de charger votre abonnement — modules affichés comme verrouillés.',
           );
           setLoading(false);
         }
@@ -57,7 +95,7 @@ export default function LogicielsGallery() {
     return () => {
       cancelled = true;
     };
-  }, [orgId]);
+  }, [ready, orgId, orgSlug]);
 
   return (
     <div style={{ maxWidth: 1080, margin: '0 auto', padding: '28px 20px 56px' }}>
@@ -194,157 +232,216 @@ export default function LogicielsGallery() {
           gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
           gap: 16,
         }}
+        aria-busy={loading || undefined}
       >
-        {SOFTWARE_CATALOG.map((l) => {
-          const gate = l.hasUi
-            ? evaluateGate(ent, l.engineId)
-            : { allowed: false, reasons: [], message: null };
-          // Fail-closed pendant le chargement : pas de flash « disponible » avant
-          // la vérité serveur (evaluateGate(null, …) renvoie déjà NOT_INCLUDED).
-          const clickable = l.hasUi && !loading && gate.allowed;
-          const inner = (
-            <>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 13,
-                  marginBottom: 12,
-                }}
-              >
-                <div
-                  aria-hidden="true"
-                  style={{
-                    width: 46,
-                    height: 46,
-                    borderRadius: 12,
-                    flex: 'none',
-                    display: 'grid',
-                    placeItems: 'center',
-                    color: '#fff',
-                    fontWeight: 800,
-                    fontSize: 19,
-                    letterSpacing: 0.5,
-                    background: `linear-gradient(150deg, ${l.accent}, ${shade(l.accent)})`,
-                    boxShadow: `0 6px 16px -8px ${l.accent}`,
-                    opacity: clickable ? 1 : 0.6,
-                  }}
-                >
-                  {l.nom[0]}
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span
+        {loading
+          ? SOFTWARE_CATALOG.map((l) => <SoftwareCardSkeleton key={l.id} />)
+          : SOFTWARE_CATALOG.map((l) => {
+              const gate = l.hasUi
+                ? evaluateGate(ent, l.engineId)
+                : { allowed: false, reasons: [], message: null };
+              // Vérité serveur déjà chargée dans cette branche (loading === false) —
+              // jamais de flash « disponible » avant chargement réel des entitlements
+              // (évité en amont : cf. squelette ci-dessus tant que loading === true).
+              const clickable = l.hasUi && gate.allowed;
+              const inner = (
+                <>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 13,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div
+                      aria-hidden="true"
                       style={{
-                        fontSize: 16,
-                        fontWeight: 700,
-                        color: 'var(--text-primary, #16212e)',
+                        width: 46,
+                        height: 46,
+                        borderRadius: 12,
+                        flex: 'none',
+                        display: 'grid',
+                        placeItems: 'center',
+                        color: '#fff',
+                        fontWeight: 800,
+                        fontSize: 19,
+                        letterSpacing: 0.5,
+                        background: `linear-gradient(150deg, ${l.accent}, ${shade(l.accent)})`,
+                        boxShadow: `0 6px 16px -8px ${l.accent}`,
+                        opacity: clickable ? 1 : 0.6,
                       }}
                     >
-                      {l.nom}
-                    </span>
-                    {!loading && (
-                      <span
+                      {l.nom[0]}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span
+                          style={{
+                            fontSize: 16,
+                            fontWeight: 700,
+                            color: 'var(--text-primary, #16212e)',
+                          }}
+                        >
+                          {l.nom}
+                        </span>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            fontSize: 9.5,
+                            fontWeight: 800,
+                            letterSpacing: 0.4,
+                            textTransform: 'uppercase',
+                            padding: '2px 7px',
+                            borderRadius: 20,
+                            background: !l.hasUi
+                              ? 'var(--color-alt)'
+                              : gate.allowed
+                                ? 'var(--status-pass-bg)'
+                                : 'var(--status-fail-bg)',
+                            color: !l.hasUi
+                              ? 'var(--text-muted)'
+                              : gate.allowed
+                                ? 'var(--status-pass-tx)'
+                                : 'var(--status-fail-tx)',
+                          }}
+                        >
+                          {!l.hasUi ? (
+                            'Bientôt'
+                          ) : gate.allowed ? (
+                            'Disponible'
+                          ) : (
+                            <>
+                              <Lock size={9} strokeWidth={2} aria-hidden="true" /> Non
+                              inclus
+                            </>
+                          )}
+                        </span>
+                      </div>
+                      <div
                         style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          fontSize: 9.5,
-                          fontWeight: 800,
-                          letterSpacing: 0.4,
-                          textTransform: 'uppercase',
-                          padding: '2px 7px',
-                          borderRadius: 20,
-                          background: !l.hasUi
-                            ? 'var(--color-alt)'
-                            : gate.allowed
-                              ? 'var(--status-pass-bg)'
-                              : 'var(--status-fail-bg)',
-                          color: !l.hasUi
-                            ? 'var(--text-muted)'
-                            : gate.allowed
-                              ? 'var(--status-pass-tx)'
-                              : 'var(--status-fail-tx)',
+                          fontSize: 12.5,
+                          color: 'var(--text-secondary, #6b7178)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
                         }}
                       >
-                        {!l.hasUi ? (
-                          'Bientôt'
-                        ) : gate.allowed ? (
-                          'Disponible'
-                        ) : (
-                          <>
-                            <Lock size={9} strokeWidth={2} aria-hidden="true" /> Non
-                            inclus
-                          </>
-                        )}
-                      </span>
-                    )}
+                        {l.tagline}
+                      </div>
+                    </div>
                   </div>
                   <div
                     style={{
-                      fontSize: 12.5,
+                      fontSize: 11.5,
                       color: 'var(--text-secondary, #6b7178)',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
+                      borderTop: '1px solid var(--border-subtle)',
+                      paddingTop: 10,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
                     }}
                   >
-                    {l.tagline}
+                    <span>{l.domaine}</span>
+                    {clickable && (
+                      <span style={{ color: l.accent, fontWeight: 700 }}>Ouvrir →</span>
+                    )}
+                    {!clickable && l.hasUi && (
+                      <span style={{ color: 'var(--status-fail-tx)', fontWeight: 600 }}>
+                        {gate.message}
+                      </span>
+                    )}
                   </div>
+                </>
+              );
+              const cardStyle: React.CSSProperties = {
+                display: 'block',
+                background: 'var(--surface-base)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 14,
+                padding: '16px 18px',
+                textDecoration: 'none',
+                opacity: clickable ? 1 : 0.72,
+                cursor: clickable ? 'pointer' : 'default',
+                boxShadow: '0 1px 2px rgba(22,33,46,.04)',
+              };
+              return clickable ? (
+                <Link
+                  key={l.id}
+                  href={`/app/${orgSlug}/logiciels/${l.id}`}
+                  style={cardStyle}
+                  className="geofam-card"
+                >
+                  {inner}
+                </Link>
+              ) : (
+                <div key={l.id} style={cardStyle} aria-disabled="true">
+                  {inner}
                 </div>
-              </div>
-              <div
-                style={{
-                  fontSize: 11.5,
-                  color: 'var(--text-secondary, #6b7178)',
-                  borderTop: '1px solid var(--border-subtle)',
-                  paddingTop: 10,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <span>{l.domaine}</span>
-                {clickable && (
-                  <span style={{ color: l.accent, fontWeight: 700 }}>Ouvrir →</span>
-                )}
-                {!loading && !clickable && l.hasUi && (
-                  <span style={{ color: 'var(--status-fail-tx)', fontWeight: 600 }}>
-                    {gate.message}
-                  </span>
-                )}
-              </div>
-            </>
-          );
-          const cardStyle: React.CSSProperties = {
-            display: 'block',
-            background: 'var(--surface-base)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 14,
-            padding: '16px 18px',
-            textDecoration: 'none',
-            opacity: clickable ? 1 : 0.72,
-            cursor: clickable ? 'pointer' : 'default',
-            boxShadow: '0 1px 2px rgba(22,33,46,.04)',
-          };
-          return clickable ? (
-            <Link
-              key={l.id}
-              href={`/app/${orgSlug}/logiciels/${l.id}`}
-              style={cardStyle}
-              className="geofam-card"
-            >
-              {inner}
-            </Link>
-          ) : (
-            <div key={l.id} style={cardStyle} aria-disabled="true">
-              {inner}
-            </div>
-          );
-        })}
+              );
+            })}
       </div>
 
-      <style>{`.geofam-card{transition:box-shadow .15s,transform .15s}.geofam-card:hover{box-shadow:0 10px 28px -14px rgba(22,33,46,.28);transform:translateY(-1px)}`}</style>
+      <style>{`
+        .geofam-card{transition:box-shadow .15s,transform .15s}
+        .geofam-card:hover{box-shadow:0 10px 28px -14px rgba(22,33,46,.28);transform:translateY(-1px)}
+        .geofam-skel{position:relative;overflow:hidden;background:var(--surface-inset,var(--surface-alt,#eceae4))}
+        .geofam-skel::after{content:'';position:absolute;inset:0;transform:translateX(-100%);
+          background:linear-gradient(90deg,transparent,rgba(255,255,255,0.35),transparent);
+          animation:geofam-shimmer 1.4s ease-in-out infinite}
+        @media (prefers-reduced-motion: reduce){.geofam-skel::after{animation:none}}
+        @keyframes geofam-shimmer{100%{transform:translateX(100%)}}
+      `}</style>
+    </div>
+  );
+}
+
+/**
+ * Carte squelette — affichée tant que l'org/les entitlements ne sont pas
+ * résolus (orgId post-montage + fetch réseau). Neutre : aucun badge
+ * « Disponible »/« Non inclus » ne doit jamais apparaître ici (cf. bug F5
+ * diagnostiqué — flash de mauvais contenu avant la vérité serveur).
+ */
+function SoftwareCardSkeleton() {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        background: 'var(--surface-base)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: 14,
+        padding: '16px 18px',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 13, marginBottom: 12 }}>
+        <div
+          className="geofam-skel"
+          style={{ width: 46, height: 46, borderRadius: 12, flex: 'none' }}
+        />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div
+            className="geofam-skel"
+            style={{ width: '60%', height: 14, borderRadius: 4 }}
+          />
+          <div
+            className="geofam-skel"
+            style={{ width: '80%', height: 11, borderRadius: 4, marginTop: 8 }}
+          />
+        </div>
+      </div>
+      <div
+        style={{
+          borderTop: '1px solid var(--border-subtle)',
+          paddingTop: 10,
+        }}
+      >
+        <div
+          className="geofam-skel"
+          style={{ width: '40%', height: 11, borderRadius: 4 }}
+        />
+      </div>
     </div>
   );
 }

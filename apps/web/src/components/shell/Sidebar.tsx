@@ -33,8 +33,12 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { Avatar } from '@/components/ui/Avatar';
 import { Logotype, StrataBar } from '@/components/ui/Logotype';
 import { logout, getStoredUser, getStoredOrgs, getEntitlements } from '@/lib/api/client';
-import type { OrgClaim } from '@/lib/api/types';
-import { useOrgId } from '@/lib/org-context';
+import type { EntitlementsResponse, OrgClaim } from '@/lib/api/types';
+import {
+  readEntitlementsSnapshot,
+  writeEntitlementsSnapshot,
+} from '@/lib/entitlements-snapshot';
+import { useOrgIdReady } from '@/lib/org-context';
 import { engineIdForSoftware } from '@/lib/software-catalog';
 
 const SIDEBAR_STATE_KEY = 'sidebar-desktop-state';
@@ -107,33 +111,101 @@ const ALL_LOGICIELS: NavItem[] = [
   },
 ];
 
+interface LogicielsItemsResult {
+  items: NavItem[];
+  /** true tant que les entitlements ne sont pas résolus (post-montage) : afficher
+   * des items squelettes plutôt qu'une section vide (évite le saut de mise en
+   * page + le flash « aucun logiciel » avant la vérité serveur). */
+  loading: boolean;
+}
+
 // La sidebar ne liste QUE les logiciels INCLUS dans le pack de l'org (entitlements).
 // Un module hors pack n'apparait pas (fail-closed : tant que les entitlements ne sont pas
-// charges, on n'affiche rien plutot que de flasher un module non inclus). Le slug de gate
-// est derive de l'id logiciel via software-catalog (roadsens->burmister, casagrande->pieux...).
-function useLogicielsItems(orgSlug: string): NavItem[] {
-  const orgId = useOrgId(orgSlug);
+// charges, on affiche des squelettes plutot que de flasher une section vide ou un module
+// non inclus). Le slug de gate est derive de l'id logiciel via software-catalog
+// (roadsens->burmister, casagrande->pieux...).
+function useLogicielsItems(orgSlug: string): LogicielsItemsResult {
+  const { orgId, ready } = useOrgIdReady(orgSlug);
   const [modules, setModules] = useState<string[] | null>(null);
+
+  // Miroir de `modules` en ref, lu dans l'effet de fetch pour ne pas écraser un
+  // état déjà connu (snapshot ou fetch précédent) en cas d'échec réseau, sans
+  // dépendre de `modules` dans le tableau de deps (éviterait un re-fetch en boucle).
+  const modulesRef = useRef<string[] | null>(null);
   useEffect(() => {
-    if (!orgId) return;
+    modulesRef.current = modules;
+  }, [modules]);
+
+  // Amorçage stale-while-revalidate : snapshot connu -> section remplie
+  // instantanément au F5, revalidée en arrière-plan (cf. lib/entitlements-snapshot).
+  useEffect(() => {
+    if (!orgSlug) return;
+    const snapshot = readEntitlementsSnapshot(orgSlug);
+    if (snapshot) setModules(snapshot.modules ?? []);
+  }, [orgSlug]);
+
+  useEffect(() => {
+    if (!ready || !orgId) return;
     let alive = true;
     getEntitlements(orgId)
-      .then((e) => {
-        if (alive) setModules(e.modules ?? []);
+      .then((e: EntitlementsResponse) => {
+        if (alive) {
+          setModules(e.modules ?? []);
+          writeEntitlementsSnapshot(orgSlug, e);
+        }
       })
       .catch(() => {
-        if (alive) setModules([]);
+        // Ne verrouille à vide que si rien n'était déjà connu (pas d'amorçage) —
+        // un échec de revalidation ne doit pas faire disparaître une section déjà remplie.
+        if (alive && modulesRef.current === null) setModules([]);
       });
     return () => {
       alive = false;
     };
-  }, [orgId]);
+  }, [ready, orgId, orgSlug]);
 
-  if (modules === null) return [];
-  return ALL_LOGICIELS.filter((it) => {
+  if (modules === null) return { items: [], loading: true };
+  const items = ALL_LOGICIELS.filter((it) => {
     const slug = engineIdForSoftware(it.id);
     return slug != null && modules.includes(slug);
   }).map((it) => ({ ...it, href: `/app/${orgSlug}${it.href}` }));
+  return { items, loading: false };
+}
+
+// ---------------------------------------------------------------------------
+// Item squelette (section Logiciels — entitlements en cours de résolution)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ligne squelette neutre (shimmer), affichée à la place des vrais items le
+ * temps que les entitlements chargent — évite une section « Logiciels » vide
+ * qui provoquerait un saut de mise en page une fois les items réels reçus.
+ */
+function SidebarItemSkeleton({ collapsed }: { collapsed: boolean }) {
+  return (
+    <li aria-hidden="true" style={{ position: 'relative' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: collapsed ? '10px 0' : '10px 10px',
+          justifyContent: collapsed ? 'center' : 'flex-start',
+        }}
+      >
+        <div
+          className="sidebar-skel"
+          style={{ width: 20, height: 20, borderRadius: 4, flexShrink: 0 }}
+        />
+        {!collapsed && (
+          <div
+            className="sidebar-skel"
+            style={{ width: '65%', height: 12, borderRadius: 4 }}
+          />
+        )}
+      </div>
+    </li>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -181,7 +253,7 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
   const pathname = usePathname();
   const router = useRouter();
   const navItems = useNavItems(orgSlug);
-  const logicielsItems = useLogicielsItems(orgSlug);
+  const { items: logicielsItems, loading: logicielsLoading } = useLogicielsItems(orgSlug);
   const [tooltipId, setTooltipId] = useState<string | null>(null);
   const tooltipTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -416,60 +488,69 @@ function SidebarContent({ orgSlug, collapsed, onClose }: SidebarContentProps) {
           </div>
         )}
 
-        <ul role="list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {logicielsItems.map((item) => {
-            const active = isActive(item.href);
-            return (
-              <li key={item.id} style={{ position: 'relative' }}>
-                <Link
-                  href={item.href}
-                  aria-current={active ? 'page' : undefined}
-                  onMouseEnter={() => showTooltip(item.id)}
-                  onMouseLeave={() => hideTooltip(item.id)}
-                  onFocus={() => showTooltip(item.id)}
-                  onBlur={() => hideTooltip(item.id)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: collapsed ? '10px 0' : '10px 10px',
-                    justifyContent: collapsed ? 'center' : 'flex-start',
-                    borderRadius: 'var(--radius-base)',
-                    textDecoration: 'none',
-                    color: active ? 'var(--accent-action-on-nav)' : 'var(--text-on-nav)',
-                    background: active ? 'rgba(31,78,74,0.12)' : 'transparent',
-                    borderLeft: active
-                      ? '3px solid var(--struct-petrole-text)'
-                      : '3px solid transparent',
-                    fontSize: 'var(--text-sm)',
-                    fontWeight: active ? 500 : 400,
-                    transition: `background var(--dur-fast) var(--ease-state), color var(--dur-fast) var(--ease-state)`,
-                    position: 'relative',
-                  }}
-                  onMouseOver={(e) => {
-                    if (!active)
-                      (e.currentTarget as HTMLElement).style.background =
-                        'var(--nav-hover)';
-                  }}
-                  onMouseOut={(e) => {
-                    if (!active)
-                      (e.currentTarget as HTMLElement).style.background = 'transparent';
-                  }}
-                >
-                  {item.icon}
-                  {collapsed ? (
-                    <span className="sr-only">{item.label}</span>
-                  ) : (
-                    <span>{item.label}</span>
-                  )}
-                </Link>
-                <NavTooltip
-                  label={item.label}
-                  visible={collapsed && tooltipId === item.id}
-                />
-              </li>
-            );
-          })}
+        <ul
+          role="list"
+          aria-busy={logicielsLoading || undefined}
+          style={{ listStyle: 'none', padding: 0, margin: 0 }}
+        >
+          {logicielsLoading
+            ? [0, 1, 2].map((i) => <SidebarItemSkeleton key={i} collapsed={collapsed} />)
+            : logicielsItems.map((item) => {
+                const active = isActive(item.href);
+                return (
+                  <li key={item.id} style={{ position: 'relative' }}>
+                    <Link
+                      href={item.href}
+                      aria-current={active ? 'page' : undefined}
+                      onMouseEnter={() => showTooltip(item.id)}
+                      onMouseLeave={() => hideTooltip(item.id)}
+                      onFocus={() => showTooltip(item.id)}
+                      onBlur={() => hideTooltip(item.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: collapsed ? '10px 0' : '10px 10px',
+                        justifyContent: collapsed ? 'center' : 'flex-start',
+                        borderRadius: 'var(--radius-base)',
+                        textDecoration: 'none',
+                        color: active
+                          ? 'var(--accent-action-on-nav)'
+                          : 'var(--text-on-nav)',
+                        background: active ? 'rgba(31,78,74,0.12)' : 'transparent',
+                        borderLeft: active
+                          ? '3px solid var(--struct-petrole-text)'
+                          : '3px solid transparent',
+                        fontSize: 'var(--text-sm)',
+                        fontWeight: active ? 500 : 400,
+                        transition: `background var(--dur-fast) var(--ease-state), color var(--dur-fast) var(--ease-state)`,
+                        position: 'relative',
+                      }}
+                      onMouseOver={(e) => {
+                        if (!active)
+                          (e.currentTarget as HTMLElement).style.background =
+                            'var(--nav-hover)';
+                      }}
+                      onMouseOut={(e) => {
+                        if (!active)
+                          (e.currentTarget as HTMLElement).style.background =
+                            'transparent';
+                      }}
+                    >
+                      {item.icon}
+                      {collapsed ? (
+                        <span className="sr-only">{item.label}</span>
+                      ) : (
+                        <span>{item.label}</span>
+                      )}
+                    </Link>
+                    <NavTooltip
+                      label={item.label}
+                      visible={collapsed && tooltipId === item.id}
+                    />
+                  </li>
+                );
+              })}
         </ul>
 
         {/* Séparateur */}
@@ -900,6 +981,25 @@ export function Sidebar({ orgSlug }: SidebarProps) {
         }
         @media (prefers-reduced-motion: reduce) {
           .sidebar-mobile, .sidebar-desktop { transition: none !important; }
+        }
+        .sidebar-skel {
+          position: relative;
+          overflow: hidden;
+          background: var(--border-nav);
+        }
+        .sidebar-skel::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          transform: translateX(-100%);
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent);
+          animation: sidebar-shimmer 1.4s ease-in-out infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .sidebar-skel::after { animation: none; }
+        }
+        @keyframes sidebar-shimmer {
+          100% { transform: translateX(100%); }
         }
       `}</style>
     </>
