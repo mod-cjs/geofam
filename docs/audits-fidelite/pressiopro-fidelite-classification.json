@@ -1,0 +1,18 @@
+{
+  "integrationOk": true,
+  "refKpis": 8,
+  "ourKpis": 8,
+  "refParamRows": 13,
+  "ourParamRows": 13,
+  "refRecTable": 10,
+  "ourRecTable": 10,
+  "catRef": "Sol mou (cat. B)",
+  "catNous": "Sol mou (cat. B)",
+  "classes": {
+    "uncovered": [],
+    "omitted": [],
+    "valueMismatch": [],
+    "sec8Residual": [],
+    "absentClosed": []
+  }
+}

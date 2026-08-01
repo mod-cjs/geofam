@@ -113,6 +113,15 @@ if [ "$FAST" = false ]; then
   else echo "<<< [confidentialité-bundle] FAIL — .next/static non bâti : la confidentialité §8 ne peut PAS être vérifiée (fail-closed). Lancer 'pnpm --filter @roadsen/web build' avant le gate complet."; record "confidentialité-bundle (DoD8)" FAIL; fi
 fi
 
+# BARRIÈRE #3 — audit d'excision des CLONES SERVIS (ADR 0015). Prouve qu'AUCUN symbole
+# de calcul moteur (liste nominative par outil dans clone-tool.mjs) n'a fuité dans un
+# clone d'UI servi au navigateur (apps/web/src/tools-cloned/*.html). Lit le clone COMMITÉ
+# -> ne nécessite AUCUN build : exécutée TOUJOURS (y compris --fast). Le mode --self-test
+# est STRICTEMENT PLUS FORT que l'audit simple : il prouve à la fois que (a) chaque témoin
+# moteur forgé EST capturé (audit non laxiste, anti faux-vert) ET (b) les clones réels sont
+# propres. « 0 clone inspecté » = échec dur (jamais un faux-vert).
+run "audit-excision clones servis (DoD8 §8)" node "$ROOT/scripts/audit-excision.mjs" --self-test
+
 # --- 5) Garde-fou migrations destructrices ---------------------------
 if $TOUCH_MIG; then
   fail=0
@@ -156,6 +165,67 @@ if has 'tools-cloned/|scripts/clone-tool\.mjs|print-inert-html|clone-render\.tes
         src/labo/clone-render.test.ts src/labo/warnings-leak.test.ts \
         src/pieux/clone-render.test.ts src/pieux/contract.test.ts src/pieux/warnings-leak.test.ts \
         src/pressiometre/clone-render.test.ts src/pressiometre/contract.test.ts src/pressiometre/warnings-leak.test.ts
+  fi
+fi
+
+# --- 5c) Fidélité d'INTERFACE (clone servi ↔ référence client, ADR 0015) ------
+# Preuve DOM close (classification fermée, zéro ligne non classée) via la spec Playwright
+# DÉDIÉE (stub backend + next dev sur ports propres). Complet uniquement (Playwright + next
+# dev = lourd ; sauté en --fast — cf. §5b/§6).
+#
+# GARDE (finding B2, revue adverse) : chaque spec de fidélité consomme la RÉFÉRENCE
+# `packages/engines/reference/<REF>.html` — un HTML client CONFIDENTIEL (méthode), donc
+# GITIGNORÉ (hors dépôt, comme 03-Moteurs-client/). On garde donc sur la PRÉSENCE de CETTE
+# référence précise (la vraie dépendance), et NON sur frozen-sources-available.mts (qui sonde
+# 03-Moteurs-client — la dépendance de §5b/équivalence de note, PAS celle-ci).
+#   - référence présente (LOCAL, point d'enforcement avant merge) → run RÉEL, gate mord ;
+#   - absente EN CI (les réfs confidentielles n'y sont jamais expédiées) → SKIP-CI documenté :
+#     la CI Actions est de toute façon bloquée (facturation) et l'enforcement est le gate LOCAL
+#     complet (/review-pr) où la réf existe ; provisionner les réfs en secret CI lèverait le skip ;
+#   - absente EN LOCAL → FAIL DUR (sauté ≠ réussi, DoD §9).
+#
+# DÉCLENCHEMENT (finding M1) : moteur touché (clone/logiciel/spec) OU infra PARTAGÉE dont
+# dépend TOUTE spec de fidélité (bridge ToolFrame, httpRunCalc, adapter de sortie, route
+# /api/tools, modules moteur, *-engine-run, générateur clone-tool) → dans ce dernier cas on
+# lance les 5 specs LOCALES. geoplaque = spec LIVE (cible préprod) → hors gate local.
+# Suite complète en pré-livraison : `pnpm fidelite:local` (+ `pnpm fidelite:geoplaque` live).
+fidelite_run_one() { # $1=moteur  $2=fichier de reference versionne-hors-git
+  local eng="$1" ref="$2" cfg="playwright.fidelite-$1.config.ts"
+  if [ ! -f "$ROOT/$cfg" ]; then
+    echo "<<< [fidélité-ui:$eng] FAIL — config dédiée absente ($cfg)"; record "fidélité-ui:$eng (clone↔réf)" FAIL; return
+  fi
+  if [ ! -f "$ROOT/packages/engines/reference/$ref" ]; then
+    if [ -n "${CI:-}" ]; then
+      echo "<<< [fidélité-ui:$eng] SKIP-CI toléré : référence client confidentielle ($ref) hors dépôt PAR CONSTRUCTION en CI (preuve FORCÉE au gate LOCAL avant merge)."
+      record "fidélité-ui:$eng (clone↔réf)" SKIP-CI
+    else
+      echo "<<< [fidélité-ui:$eng] FAIL — référence ABSENTE EN LOCAL (packages/engines/reference/$ref) : preuve de fidélité impossible (sauté ≠ réussi, DoD §9)."
+      record "fidélité-ui:$eng (clone↔réf)" FAIL
+    fi
+    return
+  fi
+  run "fidélité-ui:$eng (clone servi ↔ référence, §8)" $PNPM exec playwright test --config="$cfg"
+}
+if [ "$FAST" = false ]; then
+  # finding MAJEUR-1 (2e revue) : `has` grep des CHEMINS (git diff --name-only), pas des symboles.
+  # On cible donc des FRAGMENTS DE CHEMIN réels — surtout `apps/web/src/lib/api/` (tout le
+  # transport : client.ts, http-client.ts=httpRunCalc, adapters.ts=adaptPersistedCalcResult,
+  # le passthrough `rawOutput` qui envoie la sortie au clone). Les anciens tokens symboles
+  # (httpRunCalc/adaptPersistedCalcResult) ne matchaient AUCUN chemin → transport §8 non gardé.
+  FID_INFRA='src/lib/tool-bridge|ToolFrame|apps/web/src/lib/api/|app/api/tools|packages/engines/src/(pieux|labo|pressiometre|terzaghi|burmister)/|scripts/[a-z]+-engine-run\.mts|scripts/clone-tool\.mjs'
+  if has "$FID_INFRA"; then
+    echo ">>> [fidélité-ui] infra PARTAGÉE modifiée → lancement des 5 specs de fidélité locales"
+    fidelite_run_one terzaghi   terzaghi_V13.html
+    fidelite_run_one roadsens   roadsens_burmister_definitive.html
+    fidelite_run_one pressiopro pressiometre__1_.html
+    fidelite_run_one casagrande casagrande_V5.html
+    fidelite_run_one fastlab    FASTLAB7.html
+  else
+    has "tools-cloned/terzaghi|logiciels/terzaghi|fidelite-terzaghi"       && fidelite_run_one terzaghi   terzaghi_V13.html
+    has "tools-cloned/roadsens|logiciels/roadsens|fidelite-roadsens"       && fidelite_run_one roadsens   roadsens_burmister_definitive.html
+    has "tools-cloned/pressiopro|logiciels/pressiopro|fidelite-pressiopro" && fidelite_run_one pressiopro pressiometre__1_.html
+    has "tools-cloned/casagrande|logiciels/casagrande|fidelite-casagrande" && fidelite_run_one casagrande casagrande_V5.html
+    has "tools-cloned/fastlab|logiciels/fastlab|fidelite-fastlab"          && fidelite_run_one fastlab    FASTLAB7.html
   fi
 fi
 

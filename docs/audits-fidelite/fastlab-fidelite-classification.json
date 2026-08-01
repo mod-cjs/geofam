@@ -1,0 +1,73 @@
+{
+  "integrationOk": true,
+  "classRef": "A2 h",
+  "classNous": "A2 h",
+  "refRecapRows": 34,
+  "ourRecapRows": 34,
+  "refPathSteps": 3,
+  "ourPathSteps": 3,
+  "filledPanels": [
+    {
+      "id": "out_w",
+      "ref": 2,
+      "clone": 2
+    },
+    {
+      "id": "out_gran",
+      "ref": 5,
+      "clone": 5
+    },
+    {
+      "id": "out_ll",
+      "ref": 4,
+      "clone": 4
+    },
+    {
+      "id": "out_att",
+      "ref": 5,
+      "clone": 5
+    },
+    {
+      "id": "out_vbs",
+      "ref": 3,
+      "clone": 3
+    },
+    {
+      "id": "out_proctor",
+      "ref": 4,
+      "clone": 4
+    },
+    {
+      "id": "out_cisail",
+      "ref": 4,
+      "clone": 4
+    },
+    {
+      "id": "out_oedo",
+      "ref": 6,
+      "clone": 6
+    }
+  ],
+  "classes": {
+    "uncovered": [],
+    "omitted": [],
+    "valueMismatch": [],
+    "sec8Residual": [],
+    "absentClosed": [
+      "out_rhos (essai non déclenché par l'exemple) — réf 3 puce(s), clone 3 puce(s), identique (vérifié)",
+      "out_dens (essai non déclenché par l'exemple) — réf 2 puce(s), clone 2 puce(s), identique (vérifié)",
+      "out_cbr (essai non déclenché par l'exemple) — réf 3 puce(s), clone 3 puce(s), identique (vérifié)",
+      "out_ucs (essai non déclenché par l'exemple) — réf 2 puce(s), clone 2 puce(s), identique (vérifié)",
+      "out_triuu (essai non déclenché par l'exemple) — réf 3 puce(s), clone 3 puce(s), identique (vérifié)",
+      "out_tricu (essai non déclenché par l'exemple) — réf 3 puce(s), clone 3 puce(s), identique (vérifié)",
+      "out_perm (essai non déclenché par l'exemple) — réf 2 puce(s), clone 2 puce(s), identique (vérifié)",
+      "out_es (essai non déclenché par l'exemple) — réf 1 puce(s), clone 1 puce(s), identique (vérifié)",
+      "out_la (essai non déclenché par l'exemple) — réf 2 puce(s), clone 2 puce(s), identique (vérifié)",
+      "out_sz (essai non déclenché par l'exemple) — réf 2 puce(s), clone 2 puce(s), identique (vérifié)",
+      "out_mde (essai non déclenché par l'exemple) — réf 2 puce(s), clone 2 puce(s), identique (vérifié)",
+      "out_mdecamp (essai non déclenché par l'exemple) — réf 0 puce(s), clone 0 puce(s), identique (vérifié)",
+      "out_rho (essai non déclenché par l'exemple) — réf 4 puce(s), clone 4 puce(s), identique (vérifié)",
+      "out_sulf (essai non déclenché par l'exemple) — réf 2 puce(s), clone 2 puce(s), identique (vérifié)"
+    ]
+  }
+}

@@ -32,7 +32,13 @@
     ".next-fidelite-roadsens/types/**/*.ts",
     ".next-fidelite-roadsens/dev/types/**/*.ts",
     ".next-scellement-pressiopro/types/**/*.ts",
-    ".next-scellement-pressiopro/dev/types/**/*.ts"
+    ".next-scellement-pressiopro/dev/types/**/*.ts",
+    ".next-fidelite-pressiopro/types/**/*.ts",
+    ".next-fidelite-pressiopro/dev/types/**/*.ts",
+    ".next-fidelite-casagrande/types/**/*.ts",
+    ".next-fidelite-casagrande/dev/types/**/*.ts",
+    ".next-fidelite-fastlab/types/**/*.ts",
+    ".next-fidelite-fastlab/dev/types/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }

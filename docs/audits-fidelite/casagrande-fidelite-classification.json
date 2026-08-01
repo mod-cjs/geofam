@@ -1,0 +1,18 @@
+{
+  "integrationOk": true,
+  "verdictRef": "Portance vérifiée",
+  "verdictNous": "Portance vérifiée",
+  "refKpis": 4,
+  "ourKpis": 4,
+  "refTables": [5, 4, 6, 10, 3],
+  "ourTables": [5, 4, 6, 10, 3],
+  "refVerifs": 3,
+  "ourVerifs": 3,
+  "classes": {
+    "uncovered": [],
+    "omitted": [],
+    "valueMismatch": [],
+    "sec8Residual": [],
+    "absentClosed": []
+  }
+}

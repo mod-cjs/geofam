@@ -240,6 +240,21 @@ d(
       expect(out.RsD, 'PMT compression -> RsD servi').not.toBeNull();
       if (out.RbD != null) expect(rc).toContain('<td class="r">' + fmt(out.RbD, 0));
       if (out.RsD != null) expect(rc).toContain('<td class="r">' + fmt(out.RsD, 0));
+      // 6b. OUVERTURE B1 (revue adverse) : le LIBELLE de combinaison EC7 par vérification
+      //     (comb — « 1,35·G + 1,50·Q · R2 (NA) », « G + Q », « G + ψ₂·Q ») et le module
+      //     E_M de la couche PORTEUSE (encart tassement) sont DÉSORMAIS servis et rendus
+      //     FIDÈLEMENT (nomenclature normative publique / écho de saisie utilisateur).
+      expect(out.verifications.length).toBeGreaterThan(0);
+      for (const v of out.verifications) {
+        expect(
+          v.comb,
+          'chaque vérification doit porter son libellé de combinaison',
+        ).toBeTruthy();
+        if (v.comb) expect(rc, `comb « ${v.comb} » doit être rendu`).toContain(v.comb);
+      }
+      expect(out.EMbaseLayer, 'PMT nominal -> E_M couche porteuse servi').not.toBeNull();
+      if (out.EMbaseLayer != null)
+        expect(rc).toContain('couche porteuse = ' + fmt(out.EMbaseLayer, 0) + ' MPa');
       // Le seul « — » légitime restant = la cellule R_d de la ligne « Charge fluage »
       // (identique au client, l.1354). Aucun symbole MOTEUR brut (underscore) ne fuit.
       expect(rc).toContain('—');

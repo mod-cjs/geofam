@@ -1,0 +1,114 @@
+{
+  "erreur": null,
+  "warnings": [],
+  "pL": 4.391173396919428,
+  "pLNette": 4.201173396919428,
+  "pfNette": 2.11,
+  "EM": 3.4064121212121212,
+  "aUsed": 0.5,
+  "aForced": false,
+  "ratioEMpL": 7.757407447407671,
+  "alpha": 0.67,
+  "Ey": 5.084197195838986,
+  "pLDirect": false,
+  "categorie": "B",
+  "categorieLibelle": "Sol mou (cat. B)",
+  "consolidation": "Sol normalement consolidé",
+  "pf": 2.3,
+  "pE": 0.3,
+  "p0": 1.1,
+  "sigmaH0": 0.19,
+  "z": 2,
+  "categorieDescription": "Argile molle, limon. 0,2 ≤ pL < 0,6 MPa.",
+  "volumes": {
+    "vE": 23.6,
+    "v0": 69.2,
+    "vf": 128.6,
+    "vLim": 673.4
+  },
+  "extrapolation": {
+    "a": 0.014687557807636925,
+    "b": -0.003006612385631942,
+    "plmVLim": 4.391173396919428,
+    "plmAsymptote": 4.885085246713581,
+    "errV": 0.13258891720445262
+  },
+  "synthese": {
+    "beta": 1.5,
+    "mE": 49.50000000000001,
+    "plageAutoDebut": 0,
+    "plageAutoFin": 6
+  },
+  "courbe": [
+    {
+      "p": 0.8,
+      "pCorr": 0.3,
+      "v60": 23.6,
+      "d6030": 2,
+      "phase": "Recompression"
+    },
+    {
+      "p": 1.2,
+      "pCorr": 0.7,
+      "v60": 46.4,
+      "d6030": 2,
+      "phase": "Recompression"
+    },
+    {
+      "p": 1.6,
+      "pCorr": 1.1,
+      "v60": 69.2,
+      "d6030": 1,
+      "phase": "Pseudo-élast."
+    },
+    {
+      "p": 2,
+      "pCorr": 1.5,
+      "v60": 89,
+      "d6030": 1,
+      "phase": "Pseudo-élast."
+    },
+    {
+      "p": 2.4,
+      "pCorr": 1.9,
+      "v60": 108.8,
+      "d6030": 1,
+      "phase": "Pseudo-élast."
+    },
+    {
+      "p": 2.8,
+      "pCorr": 2.3,
+      "v60": 128.6,
+      "d6030": 2,
+      "phase": "Pseudo-élast."
+    },
+    {
+      "p": 3.2,
+      "pCorr": 2.7,
+      "v60": 152.4,
+      "d6030": 6,
+      "phase": "Plastique"
+    },
+    {
+      "p": 3.6,
+      "pCorr": 3.1,
+      "v60": 186.2,
+      "d6030": 11,
+      "phase": "Plastique"
+    },
+    {
+      "p": 4,
+      "pCorr": 3.5,
+      "v60": 240,
+      "d6030": 15,
+      "phase": "Plastique"
+    },
+    {
+      "p": 4.4,
+      "pCorr": 3.9,
+      "v60": 337.8,
+      "d6030": 19,
+      "phase": "Plastique"
+    }
+  ]
+}

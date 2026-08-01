@@ -1,0 +1,377 @@
+{
+  "classFull": "A2 h",
+  "classHeading": "Famille A — A2",
+  "classDesc": "Sables fins argileux, limons, argiles peu plastiques",
+  "classEtat": "État hydrique : h",
+  "pathSteps": [
+    "Passant 80µm = 52.0 % > 35 % → sol fin → famille A.",
+    "Ip = 18.0 (préférentiel) → A2.",
+    "État hydrique h (wn/wOPN = 1.11) → A2 h."
+  ],
+  "caveats": "",
+  "rNote": "",
+  "recapRows": [
+    ["Paramètre", "Valeur"],
+    ["Classe GTR", "A2 h"],
+    ["Dmax (mm)", "20"],
+    ["Passant 80 µm (%)", "52.0"],
+    ["Passant 2 mm (%)", "73.0"],
+    ["Module de finesse", "—"],
+    ["WL (%)", "38"],
+    ["WP (%)", "20"],
+    ["Ip", "18"],
+    ["Ic", "1.11"],
+    ["VBS", "3.50"],
+    ["Teneur en eau wn (%)", "17.99"],
+    ["wOPN (%)", "16.2"],
+    ["ρd max (t/m³)", "1.841"],
+    ["I.CBR à 95 % OPM", "—"],
+    ["Gonflement (%)", "—"],
+    ["ρ apparente (Mg/m³)", "—"],
+    ["ρs grains (Mg/m³)", "—"],
+    ["Équivalent de sable (%)", "—"],
+    ["Los Angeles", "—"],
+    ["Fragmentation SZ (%)", "—"],
+    ["Micro-Deval", "—"],
+    ["WA24 (%)", "—"],
+    ["SO₃ (%)", "—"],
+    ["qu (MPa)", "—"],
+    ["c′ cisaillement (kPa)", "8.2"],
+    ["φ′ cisaillement (°)", "25.0"],
+    ["c' triaxial (kPa)", "—"],
+    ["φ' triaxial (°)", "—"],
+    ["cu UU (kPa)", "—"],
+    ["e₀ œdo", "0.742"],
+    ["Cc œdo", "0.122"],
+    ["Cs œdo", "0.014"],
+    ["k (cm/s)", "—"]
+  ],
+  "panels": {
+    "out_w": [
+      {
+        "k": "w moyenne",
+        "v": "17.99 %"
+      },
+      {
+        "k": "Nb prises",
+        "v": "3"
+      }
+    ],
+    "out_gran": [
+      {
+        "k": "Dmax",
+        "v": "20 mm"
+      },
+      {
+        "k": "P 80µm",
+        "v": "52.0 %"
+      },
+      {
+        "k": "P 2mm",
+        "v": "73.0 %"
+      },
+      {
+        "k": "Cu",
+        "v": "—"
+      },
+      {
+        "k": "Cc",
+        "v": "—"
+      }
+    ],
+    "out_ll": [
+      {
+        "k": "wL",
+        "v": "38 %"
+      },
+      {
+        "k": "Points",
+        "v": "4"
+      },
+      {
+        "k": "Pente droite",
+        "v": "-13.05"
+      },
+      {
+        "k": "Validité",
+        "v": "✓ conforme"
+      }
+    ],
+    "out_att": [
+      {
+        "k": "wL",
+        "v": "38 %"
+      },
+      {
+        "k": "wP",
+        "v": "20 %"
+      },
+      {
+        "k": "Ip",
+        "v": "18"
+      },
+      {
+        "k": "Ic",
+        "v": "1.11"
+      },
+      {
+        "k": "Nature",
+        "v": "Argile (au-dessus ligne A)"
+      }
+    ],
+    "out_vbs": [
+      {
+        "k": "VBS du sol (moyenne)",
+        "v": "3.50"
+      },
+      {
+        "k": "VBS retenue",
+        "v": "3.50"
+      },
+      {
+        "k": "Essais",
+        "v": "2"
+      }
+    ],
+    "out_proctor": [
+      {
+        "k": "wOPN",
+        "v": "16.2 %"
+      },
+      {
+        "k": "ρd max",
+        "v": "1.841 t/m³"
+      },
+      {
+        "k": "Points",
+        "v": "5"
+      },
+      {
+        "k": "Volume",
+        "v": "944 cm³"
+      }
+    ],
+    "out_cisail": [
+      {
+        "k": "c′",
+        "v": "8.2 kPa"
+      },
+      {
+        "k": "φ′",
+        "v": "25.0 °"
+      },
+      {
+        "k": "Éprouvettes",
+        "v": "4"
+      },
+      {
+        "k": "R²",
+        "v": "1.0000"
+      }
+    ],
+    "out_oedo": [
+      {
+        "k": "e₀",
+        "v": "0.742"
+      },
+      {
+        "k": "ρd",
+        "v": "1.550 Mg/m³"
+      },
+      {
+        "k": "Hs",
+        "v": "11.481 mm"
+      },
+      {
+        "k": "Cc",
+        "v": "0.122"
+      },
+      {
+        "k": "Cs",
+        "v": "0.014"
+      },
+      {
+        "k": "Paliers",
+        "v": "9"
+      }
+    ],
+    "out_rhos": [
+      {
+        "k": "ρL utilisée",
+        "v": "0.9982 Mg/m³"
+      },
+      {
+        "k": "Déterminations",
+        "v": "0"
+      },
+      {
+        "k": "ρs moyenne",
+        "v": "— Mg/m³"
+      }
+    ],
+    "out_dens": [
+      {
+        "k": "Volume V",
+        "v": "— cm³"
+      },
+      {
+        "k": "ρ apparente",
+        "v": "— Mg/m³"
+      }
+    ],
+    "out_cbr": [
+      {
+        "k": "I.CBR à 95%",
+        "v": "—"
+      },
+      {
+        "k": "ρd du CBR",
+        "v": "1.749 Mg/m³"
+      },
+      {
+        "k": "Moules valides",
+        "v": "0"
+      }
+    ],
+    "out_ucs": [
+      {
+        "k": "qu",
+        "v": "— MPa"
+      },
+      {
+        "k": "cu",
+        "v": "— kPa"
+      }
+    ],
+    "out_triuu": [
+      {
+        "k": "cu moyen",
+        "v": "— kPa"
+      },
+      {
+        "k": "φu",
+        "v": "≈ 0 °"
+      },
+      {
+        "k": "Éprouvettes",
+        "v": "0"
+      }
+    ],
+    "out_tricu": [
+      {
+        "k": "c'",
+        "v": "— kPa"
+      },
+      {
+        "k": "φ'",
+        "v": "— °"
+      },
+      {
+        "k": "Éprouvettes",
+        "v": "0"
+      }
+    ],
+    "out_perm": [
+      {
+        "k": "k",
+        "v": "— cm/s"
+      },
+      {
+        "k": "k",
+        "v": "— m/s"
+      }
+    ],
+    "out_es": [
+      {
+        "k": "SE moyen",
+        "v": "— %"
+      }
+    ],
+    "out_la": [
+      {
+        "k": "LA",
+        "v": "—"
+      },
+      {
+        "k": "Prise M",
+        "v": "5000 g"
+      }
+    ],
+    "out_sz": [
+      {
+        "k": "Σ passant",
+        "v": "— %"
+      },
+      {
+        "k": "SZ",
+        "v": "— %"
+      }
+    ],
+    "out_mde": [
+      {
+        "k": "MDE",
+        "v": "—"
+      },
+      {
+        "k": "Éprouvettes",
+        "v": "0"
+      }
+    ],
+    "out_mdecamp": [],
+    "out_rho": [
+      {
+        "k": "ρa",
+        "v": "— Mg/m³"
+      },
+      {
+        "k": "ρrd",
+        "v": "— Mg/m³"
+      },
+      {
+        "k": "ρssd",
+        "v": "— Mg/m³"
+      },
+      {
+        "k": "WA24",
+        "v": "— %"
+      }
+    ],
+    "out_sulf": [
+      {
+        "k": "SO₃",
+        "v": "— %"
+      },
+      {
+        "k": "SO₄",
+        "v": "— %"
+      }
+    ]
+  },
+  "navTabs": [
+    "Identification",
+    "Teneur en eau",
+    "Granulométrie",
+    "Atterberg",
+    "Bleu (VBS)",
+    "Masse vol. grains",
+    "Masse vol. apparente",
+    "Proctor",
+    "CBR / IPI",
+    "Cisaillement direct",
+    "Œdomètre",
+    "Compression simple",
+    "Triaxial UU",
+    "Triaxial CU/CD",
+    "Perméabilité",
+    "Équivalent de sable",
+    "Los Angeles",
+    "Fragmentation SZ",
+    "Micro-Deval",
+    "Masse vol. & absorption",
+    "Sulfates",
+    "★ Classification GTR",
+    "Seuils",
+    "Enregistrés"
+  ],
+  "resultLen": 436
+}

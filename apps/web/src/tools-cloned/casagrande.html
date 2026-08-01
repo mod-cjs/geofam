@@ -827,8 +827,12 @@ function pieuxGeomCtx(){
  
 function mapPieuxOutput(out){
   var g=pieuxGeomCtx(); var p=curPile();
+  /* comb = LIBELLE de combinaison EC7 (« 1,35·G + 1,50·Q · R2 (NA) », « G + Q »,
+     « G + ψ₂·Q ») servi par le serveur (out.verifications[].comb) : nomenclature
+     normative PUBLIQUE derivee de l'entree, PAS un intermediaire de methode (§8, B1).
+     Affiche tel quel sous chaque verification, comme l'outil client. Repli « » si absent. */
   var checks=(Array.isArray(out.verifications)?out.verifications:[]).map(function(v){
-    return { nom:(typeof v.nom==="string"?v.nom:""), comb:"", Fd:sv(v.Fd), Rd:sv(v.Rd) }; });
+    return { nom:(typeof v.nom==="string"?v.nom:""), comb:(typeof v.comb==="string"?v.comb:""), Fd:sv(v.Fd), Rd:sv(v.Rd) }; });
   var ct=(out.courbeTassement&&Array.isArray(out.courbeTassement.pts))?out.courbeTassement:null;
   /* Frottement lateral par couche (out.fric[], whitelist elargie) -> tableau consomme
      tel quel par renderResults (soil/top/bot/dz/qs/dRs). null/[] si non fourni. */
@@ -845,7 +849,11 @@ function mapPieuxOutput(out){
     warn:(Array.isArray(out.warnings)?out.warnings.slice():[]), meth:(out.methode||state.meth),
     govern:sv(out.tauxGouvernant), da:state.da,
     Rb:sv(out.Rb), qbDetail:qbDetail, Rs:sv(out.Rs), D:g.D, z0:g.z0, RcD:sv(out.RcD),
-    settle:{ sEls:sv(out.tassementELS), pts:(ct?ct.pts:[]), EM:NaN, fine:null, Fmax:(ct&&isFinite(ct.Fmax)?ct.Fmax:0) },
+    /* EM = module E_M de la couche PORTEUSE servi par le serveur (out.EMbaseLayer) :
+       ECHO de la SAISIE UTILISATEUR de cette couche, affiche dans l'encart tassement
+       comme l'outil client (§8, B1) ; fine (out.EMbaseFine) pilote le libelle k_τ.
+       Repli NaN/null -> « — MPa » / « granulaire » si le serveur ne les fournit pas. */
+    settle:{ sEls:sv(out.tassementELS), pts:(ct?ct.pts:[]), EM:sv(out.EMbaseLayer), fine:(typeof out.EMbaseFine==="boolean"?out.EMbaseFine:null), Fmax:(ct&&isFinite(ct.Fmax)?ct.Fmax:0) },
     RbK:sv(out.RbK), RbD:sv(out.RbD), RsK:sv(out.RsK), RsD:sv(out.RsD), RcK:sv(out.RcK), RcrK:sv(out.RcrK),
     xi3:sv(out.xi3), xi4:sv(out.xi4), N:Math.max(1,Math.round(num("o_nprofil"))||1),
     Sinv:Math.min(2500,Math.max(100,(num("o_surf")>0?num("o_surf"):2500))),

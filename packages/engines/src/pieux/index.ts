@@ -269,8 +269,10 @@ export function redactConfidentialWarnings(warnings: readonly string[]): string[
  * objet propre champ a champ (jamais de copie brute) : seuls les champs de RESULTAT
  * destines au PV sont repris. Tout intermediaire (qb/ple/qce/kfac/kmax/Def/debR,
  * detail de frottement `fric`, chaine `qbDetail`, courbe `settle.pts`, facteurs
- * xi3/xi4/grd, facteurs partiels par combinaison `Rbf/Rsf/comb`...) est ECARTE ici,
- * puis re-strippe par projectEngineOutput (defense en profondeur).
+ * xi3/xi4/grd, facteurs partiels APPLIQUES par combinaison `Rbf/Rsf`...) est ECARTE
+ * ici, puis re-strippe par projectEngineOutput (defense en profondeur). Le LIBELLE de
+ * combinaison EC7 `comb` et le module `EMbaseLayer`/`EMbaseFine` (encart tassement)
+ * sont, eux, REPRIS (display-only, valeurs publiques affichees — ouverture B1).
  */
 /**
  * Warning STATIQUE (aucun nombre interpole) rappelant le statut du frottement negatif
@@ -505,6 +507,8 @@ function displayScalars(R: Record<string, unknown>): {
 
 /** Bloc de champs d'affichage tous NULS (branche erreur / non calculable). */
 const DISPLAY_NULLS = {
+  EMbaseLayer: null,
+  EMbaseFine: null,
   Rb: null,
   Rs: null,
   RbD: null,
@@ -662,7 +666,9 @@ function shapeOutput(
   // on RECONSTRUIT `tauxGouvernant`/`allOk` A PARTIR de ces memes valeurs. Un test
   // (contract.test.ts) prouve que ces valeurs derivees EGALENT le verdict du moteur
   // (`R.govern`/`R.allOk`) sur tout le jeu de fixtures : pas de divergence non testee.
-  // On ne reprend QUE nom + Fd/Rd + taux + verdict ; on ECARTE `comb`/`Rbf`/`Rsf`/`crit`.
+  // On reprend nom + Fd/Rd + taux + verdict + le LIBELLE de combinaison EC7 `comb`
+  // (nomenclature normative PUBLIQUE, display-only — cf. contrat, ouverture B1) ; on
+  // ECARTE toujours les FACTEURS PARTIELS appliques `Rbf`/`Rsf` et `crit` (methode).
   const checksRaw = Array.isArray(R.checks)
     ? (R.checks as Record<string, unknown>[])
     : [];
@@ -671,6 +677,7 @@ function shapeOutput(
     const Rd = fin(c.Rd) ? c.Rd : 0;
     return {
       nom: typeof c.nom === 'string' ? c.nom : '',
+      comb: typeof c.comb === 'string' ? c.comb : undefined,
       Fd,
       Rd,
       rawTaux: Fd / Rd, // formule MOTEUR (Infinity si Rd=0) — base du verdict
@@ -686,6 +693,9 @@ function shapeOutput(
   const finiteTaux = (t: number): number => (Number.isFinite(t) ? t : TAUX_NON_REPRIS);
   const verifications = rawChecks.map((c) => ({
     nom: c.nom,
+    // comb : additif (omis si le moteur n'a pas fourni de libelle) pour garder la
+    // sortie deterministe (Object.keys stable) — pas de cle `comb: undefined`.
+    ...(c.comb !== undefined ? { comb: c.comb } : {}),
     Fd: c.Fd,
     Rd: c.Rd,
     taux: finiteTaux(c.rawTaux),
@@ -694,6 +704,11 @@ function shapeOutput(
 
   const settle = (R.settle ?? null) as Record<string, unknown> | null;
   const tassementELS = settle && fin(settle.sEls) ? (settle.sEls as number) : null;
+  // E_M de la couche porteuse + nature fine (encart tassement) — ECHO de saisie
+  // utilisateur, display-only (cf. contrat, ouverture B1). null si settlement non evalue.
+  const EMbaseLayer = settle && fin(settle.EM) ? (settle.EM as number) : null;
+  const EMbaseFine =
+    settle && typeof settle.fine === 'boolean' ? (settle.fine as boolean) : null;
 
   return {
     erreur: null,
@@ -718,6 +733,8 @@ function shapeOutput(
     allOk: derivedAllOk,
     tauxGouvernant: finiteTaux(derivedGovern),
     tassementELS,
+    EMbaseLayer,
+    EMbaseFine,
     // --- AFFICHAGE DETAILLE (display-only, §8) : scalaires + tableau frottement + courbes ---
     ...displayScalars(R),
     courbePortance: courbePortanceField(portanceRaw),

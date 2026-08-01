@@ -16,6 +16,12 @@ const isCI = !!process.env.CI;
 
 export default defineConfig({
   testDir: 'tests/e2e',
+  // Specs de FIDÉLITÉ d'interface : chacune a sa config DÉDIÉE
+  // (playwright.fidelite-<moteur>.config.ts — stub backend + ports/JWT propres en
+  // local, ou cible LIVE pour geoplaque). NE PAS les ramasser via la config par
+  // défaut (localhost:3000 sans stub → 401 sur /api/tools). Le review-gate les
+  // lance via leur config dédiée (§5c, moteur touché).
+  testIgnore: ['**/fidelite-*-ui.spec.ts'],
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,

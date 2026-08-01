@@ -54,21 +54,39 @@ describe('POST /calc/pieux (e2e)', () => {
 
     const body = res.body as EngineResultEnvelope<PieuxOutput>;
     expect(body.ok).toBe(true);
+    // Narrowing pour TS (l'assertion ci-dessus garantit deja le cas ok=true) : donne acces
+    // typé a `body.output` plus bas (union EngineResultEnvelope = ok:true{output} | ok:false{error}).
+    if (!body.ok) throw new Error('enveloppe attendue ok=true');
     expect(body.meta.engineId).toBe('fondation-profonde-pieux');
     expect(body.meta.engineVersion).toMatch(/^\d+\.\d+\.\d+$/);
     // Egalite stricte de la sortie (recalcul deterministe identique).
     expect(body).toEqual(expected);
-    // Frontiere de confidentialite (decision 17/07 + OUVERTURE §8 26/07) : les valeurs
-    // AFFICHEES par l'outil (ple/qce/kfac/kmax/Def/fric/xi3/xi4/courbes + DESORMAIS
-    // qb/qbDetail) sont whitelistees ; seuls les INTERNES du solveur JAMAIS affiches
-    // (objet d'interpolation qceDetail, discretisation t-z settle/ktau/kq, combinaisons
-    // comb/Rbf/Rsf, nom brut grd, profil/geometrie bruts) restent interdits.
+    // Frontiere de confidentialite (decision 17/07 + OUVERTURE §8 26/07 + OUVERTURE B1 01/08) :
+    // les valeurs AFFICHEES par l'outil (ple/qce/kfac/kmax/Def/fric/xi3/xi4/courbes + qb/qbDetail
+    // + DESORMAIS le libelle de combinaison EC7 `comb` et le module `EMbaseLayer` de la couche
+    // porteuse) sont whitelistees ; seuls les INTERNES du solveur JAMAIS affiches (objet
+    // d'interpolation qceDetail, discretisation t-z settle/ktau/kq, facteurs partiels Rbf/Rsf,
+    // nom brut grd, profil/geometrie bruts) restent interdits. NB : `comb` est RETIRE de la
+    // liste interdite (ouverture B1, exposabilite §8 actee — nomenclature normative publique) ;
+    // `baseLayer`/`layers` (objets bruts) restent interdits et ne matchent PAS le scalaire
+    // `EMbaseLayer` (correspondance exacte entre guillemets).
     expect(JSON.stringify(res.body)).not.toMatch(
-      /"(qceDetail|settle|ktau|kq|comb|Rbf|Rsf|grd|baseLayer|layers|Ab|perim)"\s*:/,
+      /"(qceDetail|settle|ktau|kq|Rbf|Rsf|grd|baseLayer|layers|Ab|perim)"\s*:/,
     );
-    // Ouverture positive : qb + qbDetail SONT presents (affiches par l'outil, politique 26/07).
+    // Ouverture positive : qb + qbDetail SONT presents (politique 26/07) ; `comb` + `EMbaseLayer`
+    // SONT presents (ouverture B1). Sentinelle de FORME sur `comb` (defense en profondeur, comme
+    // la redaction des warnings) : nomenclature EC7 (facteurs sur G/Q + label de resistance
+    // MAJUSCULES/chiffres/+/(), ou combinaison ELS statique) — un leak (minuscules/`=`/decimale)
+    // dans le label casserait ce motif -> le test MORD avant la fuite.
     expect(JSON.stringify(res.body)).toMatch(/"qb"\s*:/);
     expect(JSON.stringify(res.body)).toMatch(/"qbDetail"\s*:/);
+    expect(JSON.stringify(res.body)).toMatch(/"comb"\s*:/);
+    expect(JSON.stringify(res.body)).toMatch(/"EMbaseLayer"\s*:/);
+    for (const v of body.output.verifications) {
+      expect(v.comb ?? '').toMatch(
+        /^[\d.,\s]+·G \+ [\d.,\s]+·Q · [A-Z0-9+()\s]+$|^G \+ Q$|^G \+ ψ₂·Q$/,
+      );
+    }
   });
 
   it('une entree hors-schema renvoie 400 (validation Zod du contrat #56)', async () => {

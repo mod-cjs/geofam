@@ -314,6 +314,15 @@ const CheckSchema = z
   .object({
     /** Libelle de la combinaison (ex. « ELU portance — DA2 », « ELS caractéristique »). */
     nom: z.string().max(120),
+    /**
+     * Libelle de COMBINAISON EC7 (ex. « 1,35·G + 1,50·Q · R2 (NA) », « G + Q »,
+     * « G + ψ₂·Q »). NOMENCLATURE NORMATIVE PUBLIQUE derivee de l'entree (approche de
+     * calcul `da`, etats ELU/ELS et facteurs partiels affiches) — PAS un intermediaire
+     * de METHODE (ni abaque, ni ordre de calcul). L'outil client l'affiche sous chaque
+     * vérification (renderResults, sous-span). display-only, AUCUNE autorite. Optionnel
+     * (additif / retro-compatible : une sortie anterieure sans comb reste valide).
+     */
+    comb: z.string().max(120).optional(),
     /** Sollicitation de calcul Fd (kN). */
     Fd: z.number().finite(),
     /** Resistance de calcul Rd (kN). */
@@ -349,9 +358,19 @@ const CheckSchema = z
 // --- CE QUI RESTE SERVEUR (le CODE, pas les valeurs) ---
 // Les abaques/tables (KP_MAX/KC_MAX/ALPHA_*/PMT_CURVE/QSMAX), l'ordre des sommations,
 // les objets de solveur bruts (qceDetail : clipped/mean0/cap/raw ; settle : rigidites
-// t-z ktau/kq/EM ; downdrag : KtanD/Hc/s0/wTip et le profil HAUTE RESOLUTION), les
-// facteurs partiels par combinaison (Rbf/Rsf/comb). Ces champs ne figurent PAS dans la
-// whitelist et sont re-strippes.
+// t-z ktau/kq ; downdrag : KtanD/Hc/s0/wTip et le profil HAUTE RESOLUTION), les FACTEURS
+// PARTIELS par combinaison APPLIQUES par la methode (Rbf/Rsf). Ces champs ne figurent
+// PAS dans la whitelist et sont re-strippes.
+//
+// --- OUVERTURE comb + E_M couche porteuse (politique §8, B1 revue adverse) ---
+// Le LIBELLE de combinaison EC7 `comb` (« 1,35·G + 1,50·Q · R2 (NA) », « G + Q »,
+// « G + ψ₂·Q ») et le module `EMbaseLayer` (E_M de la couche porteuse, affiche dans
+// l'encart tassement) SONT DESORMAIS exposes display-only : le premier est une
+// nomenclature normative PUBLIQUE derivee de l'entree (`da`/ELU/ELS), le second est
+// l'ECHO d'une SAISIE UTILISATEUR (l'`em` de la couche porteuse). Sous « zero ecart »
+// (ADR 0014), masquer une valeur AFFICHEE par l'outil client — a fortiori la propre
+// donnee de l'operateur — etait un ecart LOGICIEL, pas une decision de confidentialite.
+// AUCUNE autorite (ce sont des sorties, jamais reinjectees ; l'InputSchema reste strict).
 //
 // --- OUVERTURE qb + qbDetail (politique §8 26/07, FERME) ---
 // Le terme de pointe BRUT `qb` (kPa) et la chaine narrative `qbDetail` (p*le/qce/Def/kp/
@@ -506,6 +525,19 @@ export const PieuxOutputSchema = z
     tauxGouvernant: z.number().finite(),
     /** Tassement ELS estime sous charge caracteristique (mm). null si non calculable. */
     tassementELS: z.number().finite().nullable(),
+    /**
+     * Module pressiometrique E_M de la couche PORTEUSE (MPa) — ECHO de la SAISIE
+     * UTILISATEUR de cette couche, affiche dans l'encart de l'onglet tassement de
+     * l'outil client. display-only, AUCUNE autorite (jamais reinjecte). null si
+     * non calculable (settlement non evalue). Cf. bloc « OUVERTURE comb + E_M ».
+     */
+    EMbaseLayer: z.number().finite().nullable(),
+    /**
+     * Nature FINE (argile/limon) de la couche porteuse — pilote le libelle k_τ affiche
+     * a cote de E_M dans l'encart tassement (« fin (k_τ=2,0·E_M/B) » vs « granulaire
+     * (k_τ=0,8·E_M/B) »). Derive de la nature de sol SAISIE. null si non calculable.
+     */
+    EMbaseFine: z.boolean().nullable(),
     // --- AFFICHAGE DETAILLE (display-only, RECLASSIFICATION §8) ---
     // Valeurs affichees par le panneau Resultats de l'outil client. AUCUNE autorite
     // (le verdict/PV ne les consomme pas ; ce sont des sorties, pas des entrees).

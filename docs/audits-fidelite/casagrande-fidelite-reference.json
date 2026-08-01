@@ -1,0 +1,106 @@
+{
+  "verdict": "Portance vérifiée",
+  "verdictSub": "Taux de travail le plus défavorable : 85 % · pieu pressiométrique en compression · approche DA 2",
+  "kpis": [
+    {
+      "lab": "R_b — pointe",
+      "val": "1,31MN",
+      "sub": "ple* = 3,20 MPa (zone D−b…D+3a) · Def/B = 6,6 (intégré sur 10B au‑dessus de la pointe) · kp = 1,45 (kp,max=1,45)"
+    },
+    {
+      "lab": "R_s — frottement",
+      "val": "2,03MN",
+      "sub": "sur 15,0 m de fût"
+    },
+    {
+      "lab": "R_c;d — calcul ELU",
+      "val": "1,89MN",
+      "sub": "après γ_b, γ_s, ξ"
+    },
+    {
+      "lab": "Tassement (ELS car.)",
+      "val": "3,1mm",
+      "sub": "Frank & Zhao"
+    }
+  ],
+  "tables": [
+    [
+      ["Terme", "Brut Rm", "Caract. Rk", "Calcul Rd"],
+      ["Pointe Rb", "1 312", "815", "741"],
+      ["Frottement Rs", "2 027", "1 259", "1 144"],
+      ["Total Rc", "3 339", "2 074", "1 885"],
+      ["Charge fluage Rc;cr;k", "1 289", "—"]
+    ],
+    [
+      ["État-limite", "Fd", "Rd", "Taux", ""],
+      ["ELU portance — DA21,35·G + 1,50·Q · R2 (NA)", "1 605", "1 885", "85%", "✓"],
+      ["ELS caractéristiqueG + Q", "1 150", "1 432", "80%", "✓"],
+      ["ELS quasi-permanentG + ψ₂·Q", "905", "1 171", "77%", "✓"]
+    ],
+    [
+      ["Couche", "Cote (m)", "Ép. mob. (m)", "qs (kPa)", "Rs,i (kN)"],
+      ["Argile / Limon", "0,0 – 4,0", "4,00", "40", "304"],
+      ["Sable / Grave", "4,0 – 9,0", "5,00", "60", "567"],
+      ["Argile / Limon", "9,0 – 12,0", "3,00", "46", "259"],
+      ["Marne / M-calc.", "12,0 – 15,0", "3,00", "158", "896"],
+      ["Total Rs", "2 027"]
+    ],
+    [
+      ["Pieu", "cat. 1 (FS) → classe 1"],
+      ["Section", "Ab = 0,283 m² · périm. = 1,88 m"],
+      ["Encastrement", "D = 15,00 m"],
+      ["Encastrement équiv. Def", "3,94 m · Def/B = 6,6"],
+      ["Couche porteuse", "Marne / M-calc."],
+      ["Zone d'influence pointe", "14,50 → 16,50 m"],
+      ["a = max(B/2 ; 0,5) · b = min(a ; h)", "0,50 · 0,50 m"],
+      ["Coef. de modèle γR;d1", "1,15"],
+      ["Effet de groupe Ce", "1,00 (pieu isolé / entraxe ≥ 3B)"],
+      ["Charge de fluage", "0,5·Rb+0,7·Rs"]
+    ],
+    [
+      ["Combinaison", "σ (MPa)", "limite (MPa)", "taux", ""],
+      ["σ ELU = Nd/Ab", "5,68", "12,21", "46 %", "✓"],
+      ["σ ELS car. = Nser/Ab", "4,07", "5,49", "74 %", "✓"]
+    ]
+  ],
+  "verifs": [
+    {
+      "nom": "ELU portance — DA2",
+      "comb": "1,35·G + 1,50·Q · R2 (NA)",
+      "Fd": "1 605",
+      "Rd": "1 885",
+      "taux": "85%",
+      "ok": "✓"
+    },
+    {
+      "nom": "ELS caractéristique",
+      "comb": "G + Q",
+      "Fd": "1 150",
+      "Rd": "1 432",
+      "taux": "80%",
+      "ok": "✓"
+    },
+    {
+      "nom": "ELS quasi-permanent",
+      "comb": "G + ψ₂·Q",
+      "Fd": "905",
+      "Rd": "1 171",
+      "taux": "77%",
+      "ok": "✓"
+    }
+  ],
+  "hints": [
+    "ξ₃ = 1,40 · ξ₄ = 1,40 (N = 1 profil · S = 2 500 m² → √(S/2500) = 1,00) · γR;d1 = 1,15",
+    "Fd = sollicitation pondérée · Rd = résistance de calcul. Charges : G = 800 kN, Q = 350 kN.",
+    "EM couche porteuse = 45 MPa · sol granulaire (k_τ=0,8·E_M/B). Loi trilinéaire t-z Frank & Zhao résolue par tir (module pieu ≈ 20 GPa)."
+  ],
+  "hasSettle": true,
+  "tabs": [
+    "01Projet & pieu",
+    "02Frottement négatif",
+    "03Profil de sol",
+    "04Coefficients",
+    "05Résultats & vérifs"
+  ],
+  "resLen": 35015
+}

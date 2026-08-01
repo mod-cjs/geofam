@@ -4,10 +4,12 @@
  *
  * On verifie que `runPieux` ne renvoie QUE des champs declares, et qu'aucun objet /
  * chaine de SOLVEUR BRUT jamais affiche (objet d'interpolation `qceDetail`, objet de
- * tassement `settle.pts` et ses rigidites t-z, facteurs partiels par combinaison
- * Rbf/Rsf/comb, nom brut `grd`...) n'apparait NULLE PART dans la sortie serialisee, a
- * tout niveau. Les VALEURS affichees par l'outil (Rb/Rs, ple/qce, kp/kc, Def, Ce, fric,
- * courbes, et DESORMAIS qb/qbDetail — ouverture §8 26/07) SONT exposees display-only.
+ * tassement `settle.pts` et ses rigidites t-z, facteurs partiels APPLIQUES par
+ * combinaison Rbf/Rsf, nom brut `grd`...) n'apparait NULLE PART dans la sortie
+ * serialisee, a tout niveau. Les VALEURS affichees par l'outil (Rb/Rs, ple/qce, kp/kc,
+ * Def, Ce, fric, courbes, qb/qbDetail — ouverture §8 26/07 — et le LIBELLE de
+ * combinaison EC7 `comb` + le module `EMbaseLayer` de la couche porteuse — ouverture
+ * B1) SONT exposes display-only.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -33,10 +35,13 @@ import { runPieux } from './index.js';
  *
  * Ce qui reste INTERDIT = le CODE / les objets de solveur bruts, jamais affiches :
  * objet d'interpolation `qceDetail`, objet
- * `settle` brut et ses rigidites t-z (ktau/kq), facteurs partiels par combinaison
- * (Rbf/Rsf/comb/crit), geometrie interne (Ab/perim/Bsurf/hInLayer),
+ * `settle` brut et ses rigidites t-z (ktau/kq), facteurs partiels APPLIQUES par
+ * combinaison (Rbf/Rsf/crit), geometrie interne (Ab/perim/Bsurf/hInLayer),
  * profil de couches brut (layers/baseLayer/ztop/zbot/pl/em), `pile`, `cls`, RsKsum, CeF,
- * floating, et le NOM BRUT `grd` (expose seulement sous `gammaRd1`).
+ * floating, et le NOM BRUT `grd` (expose seulement sous `gammaRd1`). NB : le LIBELLE
+ * `comb` et le scalaire `EMbaseLayer` (E_M couche porteuse) sont, eux, AUTORISES
+ * (display-only, valeurs publiques affichees — ouverture B1) ; l'`em` interdit ici
+ * vise le profil de couches BRUT (`layers[].em`), pas le scalaire d'affichage.
  */
 const FUITES_INTERDITES = [
   // OUVERTURE §8 (26/07) : `qb` (terme de pointe brut) et `qbDetail` (chaine narrative
@@ -49,11 +54,13 @@ const FUITES_INTERDITES = [
   'settle',
   'ktau',
   'kq',
-  // Facteurs partiels par combinaison + decomposition de resistance.
+  // Facteurs partiels APPLIQUES par combinaison + decomposition de resistance. NB : le
+  // LIBELLE de combinaison EC7 `comb` (nomenclature normative PUBLIQUE) est DESORMAIS
+  // expose display-only (ouverture B1) — il ne figure donc PLUS dans cette liste ; seuls
+  // les FACTEURS partiels Rbf/Rsf et le nom brut de critere `crit` restent interdits.
   'RsKsum',
   'Rbf',
   'Rsf',
-  'comb',
   'crit',
   // Nom BRUT du coef de modele (expose uniquement sous `gammaRd1`) + classe/famille.
   'grd',
@@ -356,16 +363,20 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     expect(Number.isFinite(env.output.RcD)).toBe(true);
     expect(Number.isFinite(env.output.RcrK)).toBe(true);
     expect(env.output.verifications.length).toBeGreaterThan(0);
-    // RECLASSIFICATION §8 (+ ouverture 26/07) : les intermediaires d'AFFICHAGE
-    // (kfac/ple/qce/Def/xi3/fric + DESORMAIS qb/qbDetail) SONT exposes display-only.
-    // Ce qui reste INTERDIT = les objets/chaines de solveur BRUTS jamais affiches :
-    // l'objet d'interpolation `qceDetail`, l'objet `settle`, les facteurs par
-    // combinaison `comb`, le nom brut `grd`.
+    // RECLASSIFICATION §8 (+ ouverture 26/07 + B1) : les intermediaires d'AFFICHAGE
+    // (kfac/ple/qce/Def/xi3/fric + qb/qbDetail + libelle `comb` + `EMbaseLayer`) SONT
+    // exposes display-only. Ce qui reste INTERDIT = les objets/chaines de solveur BRUTS
+    // jamais affiches : l'objet d'interpolation `qceDetail`, l'objet `settle` BRUT, le
+    // nom brut `grd`. NB : on cible `"settle":` (objet brut) — `EMbaseLayer` est un
+    // scalaire distinct, autorise, et ne matche pas ce motif.
     const s = JSON.stringify(env.output);
-    expect(s).not.toMatch(/"(qceDetail|settle|comb|grd)"\s*:/);
-    // Ouverture positive : qb et qbDetail SONT bien presents dans la sortie.
+    expect(s).not.toMatch(/"(qceDetail|settle|grd)"\s*:/);
+    // Ouverture positive : qb, qbDetail, le libelle comb et E_M couche porteuse SONT
+    // bien presents dans la sortie (valeurs publiques affichees — DoD zero ecart).
     expect(s).toMatch(/"qb"\s*:/);
     expect(s).toMatch(/"qbDetail"\s*:/);
+    expect(s).toMatch(/"comb"\s*:/);
+    expect(s).toMatch(/"EMbaseLayer"\s*:/);
   });
 
   it('§8 reclassification : les valeurs d affichage traversent avec les valeurs REELLES du moteur', () => {
@@ -432,7 +443,7 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
     expect(allNums.every((n) => Number.isFinite(n))).toBe(true);
   });
 
-  it('chaque verification expose le verdict (taux, ok) sans la formule de combinaison', () => {
+  it('chaque verification expose le verdict (taux, ok) + le libelle de combinaison, sans les facteurs partiels', () => {
     const fx = PIEUX_FIXTURES.find((f) => f.id === 'pmt-fore-da1');
     expect(fx).toBeDefined();
     if (!fx) return;
@@ -443,8 +454,23 @@ describe('pieux — contrat de sortie (whitelist stricte, anti-fuite)', () => {
       expect(typeof v.nom).toBe('string');
       expect(Number.isFinite(v.taux)).toBe(true);
       expect(typeof v.ok).toBe('boolean');
-      // Pas de fuite de la formule ('comb') ni des facteurs partiels (Rbf/Rsf).
-      expect(Object.keys(v).sort()).toEqual(['Fd', 'Rd', 'nom', 'ok', 'taux']);
+      // Le LIBELLE de combinaison EC7 (comb) est expose (nomenclature normative publique,
+      // ouverture B1) ; les FACTEURS partiels (Rbf/Rsf) et le critere brut (crit) NON.
+      expect(typeof v.comb).toBe('string');
+      expect((v.comb ?? '').length).toBeGreaterThan(0);
+      // MINEUR-1 (2e revue adverse) — SENTINELLE DE FORME, defense en profondeur fail-closed
+      // (comme la redaction des warnings, #45) : `comb` est un canal TEXTE LIBRE nouvellement
+      // expose (ouverture B1). On verrouille sa FORME a la nomenclature normative EC7 : facteurs
+      // partiels sur G/Q + label de resistance R1..R4 (ELU), ou combinaison ELS statique. Toute
+      // interpolation future d'une valeur confidentielle (kp/ple/qce/calage…) briserait ce motif
+      // -> le test MORD AVANT la fuite, sans dependre d'une relecture humaine.
+      // Label de resistance = notation normative EC7 en MAJUSCULES/chiffres/+/() uniquement
+      // (« A1+M1+R1 » pour DA1, « R2 (NA) » pour DA2). Un leak (« kp=1,45… », minuscules/`=`/
+      // decimales dans le label) ne matcherait pas -> fail-closed.
+      expect(v.comb ?? '').toMatch(
+        /^[\d.,\s]+·G \+ [\d.,\s]+·Q · [A-Z0-9+()\s]+$|^G \+ Q$|^G \+ ψ₂·Q$/,
+      );
+      expect(Object.keys(v).sort()).toEqual(['Fd', 'Rd', 'comb', 'nom', 'ok', 'taux']);
     }
   });
 

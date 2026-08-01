@@ -1,0 +1,102 @@
+{
+  "kpis": [
+    {
+      "k": "EM",
+      "v": "3.41",
+      "u": "MPa",
+      "b": ""
+    },
+    {
+      "k": "pL (limite)",
+      "v": "0.439",
+      "u": "MPa",
+      "b": ""
+    },
+    {
+      "k": "Pf",
+      "v": "0.230",
+      "u": "MPa",
+      "b": ""
+    },
+    {
+      "k": "E/PLM",
+      "v": "7.8",
+      "u": "—",
+      "b": "N.C."
+    },
+    {
+      "k": "P*LM",
+      "v": "0.420",
+      "u": "MPa net",
+      "b": ""
+    },
+    {
+      "k": "P*f",
+      "v": "0.211",
+      "u": "MPa net",
+      "b": ""
+    },
+    {
+      "k": "α Ménard",
+      "v": "0.67",
+      "u": "—",
+      "b": ""
+    },
+    {
+      "k": "Ey=E/α",
+      "v": "5.1",
+      "u": "MPa",
+      "b": ""
+    }
+  ],
+  "catName": "Sol mou (cat. B)",
+  "catDesc": "Argile molle, limon. 0,2 ≤ pL < 0,6 MPa.",
+  "catClass": "B",
+  "paramRows": [
+    ["pE", "0.0300", "MPa"],
+    ["p₀ — début pseudo-élast.", "0.1100", "MPa"],
+    ["pf — fin zone plate", "0.230", "MPa"],
+    ["σh0 = K₀·σ′v0+u₀ (z=2.0 m)", "0.0190", "MPa"],
+    ["pf* nette = pf−σh0", "0.211", "MPa"],
+    ["pL — pression limite", "0.439", "MPa"],
+    ["pL* nette = pL−σh0", "0.420", "MPa"],
+    ["pL méthode", "extrapolé", ""],
+    ["P*LM", "0.420", "MPa net"],
+    ["VE — restitution", "24", "cm³"],
+    ["V(p₀) — début pseudo-élast.", "69", "cm³"],
+    ["V(pf) — fluage", "129", "cm³"],
+    ["Vs+2×V(p₀) = VLim", "673", "cm³"]
+  ],
+  "extRows": [
+    ["A", "1.47e-2"],
+    ["B", "-3.01e-3"],
+    ["pLM à V=Vs+2·V(p₀)", "0.439 MPa"],
+    ["pLM asymptote (réf.)", "0.489 MPa"]
+  ],
+  "extErr": "Ajustement moyen : 0.13 cm³",
+  "synthese": "Synthèse EM = 3.41 MPa · pf = 0.230 MPa · pL = 0.439 MPa (extrapolé) β = 1.500 · mE = 495 cm³/MPa · Plage auto L1→L7 EM/PLM = 7.8 → Sol normalement consolidé α = 0.67 · Ey = E/α = 5.1 MPa Corrections NF EN ISO 22476-4 : a=5.000 cm³/MPa · Ph=0.5 bar · Pe=1 bar · Vs=535 cm³",
+  "recTable": [
+    ["1", "0.800", "0.3000", "24", "2", "Recompression"],
+    ["2", "1.200", "0.7000", "46", "2", "Recompression"],
+    ["3", "1.600", "1.1000", "69", "1", "Pseudo-élast."],
+    ["4", "2.000", "1.5000", "89", "1", "Pseudo-élast."],
+    ["5", "2.400", "1.9000", "109", "1", "Pseudo-élast."],
+    ["6", "2.800", "2.3000", "129", "2", "Pseudo-élast."],
+    ["7", "3.200", "2.7000", "152", "6", "Plastique"],
+    ["8", "3.600", "3.1000", "186", "11", "Plastique"],
+    ["9", "4.000", "3.5000", "240", "15", "Plastique"],
+    ["10", "4.400", "3.9000", "338", "19", "Plastique"]
+  ],
+  "tabs": [
+    "Log",
+    "Étalon.",
+    "Calibrage",
+    "Projet",
+    "Mesures",
+    "Résultats",
+    "Profil",
+    "Export"
+  ],
+  "hasChart": true,
+  "resLen": 7241
+}
