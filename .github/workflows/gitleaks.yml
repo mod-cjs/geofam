@@ -20,7 +20,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Fetch complet de l'historique pour détecter les secrets supprimés
           # mais présents dans des commits antérieurs du push.
